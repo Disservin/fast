@@ -9,25 +9,39 @@
         </router-link>
       </li>
       <li class="nav-item">
-        <router-link to="/analysis" class="nav-link">
+        <router-link
+          to="/analysis"
+          class="nav-link"
+          exact-active-class="active"
+        >
           <font-awesome-icon icon="fa-brands fa-searchengin" />
           <span class="link-text">Analysis</span>
         </router-link>
       </li>
       <li class="nav-item">
-        <router-link to="/engines" class="nav-link">
+        <router-link to="/engines" class="nav-link" exact-active-class="active">
           <font-awesome-icon icon="fa-solid fa-list" />
           <span class="link-text">Engines</span>
         </router-link>
       </li>
       <li class="nav-item">
-        <router-link to="/notes" class="nav-link">
+        <router-link to="/notes" class="nav-link" exact-active-class="active">
           <font-awesome-icon icon="fa-solid fa-note-sticky" />
           <span class="link-text">Notes</span>
         </router-link>
       </li>
       <li class="nav-item">
-        <router-link to="/settings" class="nav-link">
+        <router-link to="/games" class="nav-link" exact-active-class="active">
+          <font-awesome-icon icon="fa-solid fa-note-sticky" />
+          <span class="link-text">Games</span>
+        </router-link>
+      </li>
+      <li class="nav-item">
+        <router-link
+          to="/settings"
+          class="nav-link"
+          exact-active-class="active"
+        >
           <font-awesome-icon icon="fa-solid fa-gear" />
           <span class="link-text">Settings</span>
         </router-link>
@@ -72,6 +86,7 @@ main {
   background-color: var(--bg-primary);
   transition: width 600ms ease;
   overflow: hidden;
+  z-index: 1;
 }
 
 .navbar-nav {
@@ -99,13 +114,18 @@ main {
   color: var(--text-primary);
   text-decoration: none;
   filter: grayscale(100%) opacity(0.7);
-  transition: var(--transition-speed);
+  transition: 200ms;
 }
 
 .nav-link:hover {
   filter: grayscale(0%) opacity(1);
   background: var(--bg-secondary);
   color: var(--text-secondary);
+}
+
+.nav-link.active {
+  filter: grayscale(0%) opacity(1);
+  background: #6649b8;
 }
 
 .link-text {

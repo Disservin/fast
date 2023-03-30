@@ -36,6 +36,13 @@ const router = new VueRouter({
         // this generates a separate chunk (About.[hash].js) for this route
         // which is lazy-loaded when the route is visited.
         component: () => import("../views/Notes.vue"),
+      },      {
+        path: "/games",
+        name: "games",
+        // route level code-splitting
+        // this generates a separate chunk (About.[hash].js) for this route
+        // which is lazy-loaded when the route is visited.
+        component: () => import("../views/Games.vue"),
       },
       {
         path: "/settings",

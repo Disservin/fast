@@ -18,6 +18,7 @@
     "@fortawesome/vue-fontawesome": "^2.0.10",
     "normalize.css": "^8.0.1",
     "vue": "^2.7.7",
+    "vue-chessboard": "^0.6.7",
     "vue-router": "^3.5.4"
   },
   "devDependencies": {

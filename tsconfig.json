@@ -6,12 +6,16 @@
     "paths": {
       "@/*": ["./src/*"]
     },
-    "allowJs": true
-  },
+    "allowJs": true,
 
+  },
+  "vueCompilerOptions": {
+    "target": 2.7
+  },
   "references": [
     {
       "path": "./tsconfig.config.json"
     }
-  ]
+  ],
+
 }
