@@ -1,13 +1,50 @@
-<script setup lang="ts">
+<script lang="ts">
 import Sidebar from "@/components/SideBar.vue";
+
+export default {
+  name: "app",
+  components: {
+    Sidebar: Sidebar,
+  },
+  mounted() {
+    this.calculateSquareSize();
+    window.addEventListener("resize", this.calculateSquareSize);
+  },
+  beforeDestroy() {
+    window.removeEventListener("resize", this.calculateSquareSize);
+  },
+  methods: {
+    calculateSquareSize() {
+      const board_space = this.$refs.boardSpace as HTMLElement;
+
+      let width = board_space.offsetWidth - 7; // for the numbers on the side of the ground
+      width -= width % 8; // fix chrome alignment errors; https://github.com/ornicar/lila/pull/3881
+
+      let height = board_space.offsetHeight - 7;
+      height -= height % 8;
+
+      const max_size = Math.min(height, width);
+      console.log("maxSize", max_size);
+
+      const cgw = document.querySelector(".cg-board-wrap") as HTMLElement;
+
+      cgw.style.width = max_size + "px";
+      cgw.style.height = max_size + "px";
+
+      document.body.dispatchEvent(new Event("chessground.resize"));
+    },
+  },
+};
 </script>
 
 <template>
   <div>
     <main>
       <div class="game">
+        <div class="board-space" ref="boardSpace">
+          <chessboard class="board"></chessboard>
+        </div>
         <div class="engine-stats"></div>
-        <chessboard class="board"></chessboard>
         <div class="fen-input"></div>
       </div>
       <div class="analysis-info">
@@ -29,8 +66,9 @@ main {
   padding: 1rem;
   color: aliceblue;
   height: 100vh;
+
   display: flex;
-  box-sizing: border-box; /* Add this line */
+  box-sizing: border-box;
 }
 
 h1 {
@@ -40,66 +78,44 @@ h1 {
 }
 
 .game {
+  display: flex;
+  flex-direction: column;
   flex: 0 0 66%;
-  background-color: #ccc;
-  padding: 10px;
   box-sizing: border-box;
 }
 
 .engine-stats {
-  background-color: #eee;
+  flex: 0 0 10%;
   padding: 10px;
   box-sizing: border-box;
-  flex-basis: 10%;
+  background-color: #843b3b;
 }
 
-.cg-board-wrap {
-  width: 640px;
-  height: 640px;
-  position: relative;
-  z-index: 0;
-  /* display: inline-block; */
+.board-space {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  height: 100%;
 }
 
-.blue.merida.board {
-  width: 640px;
-  height: 640px;
-  margin: auto;
+.test {
+  background-color: aquamarine;
 }
 
-coord {
-  /* font-size: 1.5rem; */
-  color: #000000;
-  font-weight: bold;
-  font-size: 12px;
-
-  /* font-family: ; */
-}
-
-.cg-board-wrap coords.files {
-  top: 630px;
-  left: 0px;
-  z-index: 2;
-  text-align: left;
-  text-transform: lowercase;
-  padding-bottom: 0px;
-  margin-bottom: 5px;
-}
-
-.cg-board-wrap coords.ranks coord {
-  transform: none;
-}
-
-.cg-board-wrap coords.ranks {
-  right: 0px;
-  z-index: 2;
-}
+/* .cg-board-wrap {
+  width: 400px;
+  height: 400px;
+  max-width: 100%;
+  max-height: 100%;
+} */
 
 .fen-input {
-  background-color: #343434;
+  flex: 0 0 10%;
   padding: 10px;
   box-sizing: border-box;
-  flex-basis: 10%;
+  background-color: #343434;
 }
 
 .analysis-info {
@@ -118,25 +134,21 @@ coord {
   flex: 1;
   display: flex;
   flex-wrap: nowrap;
-  flex-direction: column; /* Set the direction to column */
+  flex-direction: column;
 }
 
 .engine-lines {
   background-color: #240000;
-  flex-basis: 100%; /* Set the width to be equal to the container */
+  flex-basis: 100%;
 }
 
 .game-pgn {
-  flex-basis: calc(
-    50% - 5px
-  ); /* Set the width to be half the container minus some padding */
+  flex-basis: calc(50% - 5px);
   background-color: #843b3b;
 }
 
 .analysis-graph {
-  flex-basis: calc(
-    50% - 5px
-  ); /* Set the width to be half the container minus some padding */
+  flex-basis: calc(50% - 5px);
 
   background-color: #ae9b9b;
 }
