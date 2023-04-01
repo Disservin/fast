@@ -1,8 +1,14 @@
 <script lang="ts">
 import Sidebar from "@/components/SideBar.vue";
 
-import { Chessground } from "chessground";
 import { defineComponent } from "vue";
+
+import type { Color, Key } from "chessground/types";
+import { Chessground } from "chessground";
+
+import { Chess, SQUARES } from "chess.js";
+
+type ChessgroundInstance = ReturnType<typeof Chessground>;
 
 export default defineComponent({
   name: "app",
@@ -10,9 +16,22 @@ export default defineComponent({
     Sidebar: Sidebar,
   },
   mounted() {
-    const config = {};
+    const config = {
+      movable: {
+        color: "white" as Color,
+        free: false,
+        dests: this.toDests(),
+      },
+      draggable: {
+        showGhost: true,
+      },
+      events: {
+        move: this.makeMove,
+      },
+    };
+
     const board = this.$refs.board as HTMLElement;
-    const ground = Chessground(board, config);
+    this.cg = Chessground(board, config);
 
     this.calculateSquareSize();
     window.addEventListener("resize", this.calculateSquareSize);
@@ -20,8 +39,47 @@ export default defineComponent({
   beforeDestroy() {
     window.removeEventListener("resize", this.calculateSquareSize);
   },
-  created() {},
+
+  data() {
+    return {
+      game: new Chess(),
+      cg: null as ChessgroundInstance | null,
+    };
+  },
   methods: {
+    makeMove(origin: string, destination: string) {
+      const move = this.game.move({ from: origin, to: destination });
+
+      if (move === null) {
+        return "snapback";
+      }
+
+      this.cg!.set({
+        turnColor: this.toColor(),
+        movable: {
+          color: this.toColor(),
+          dests: this.toDests(),
+        },
+      });
+    },
+    toColor(): Color {
+      return this.game.turn() === "w" ? "white" : "black";
+    },
+    toDests(): Map<Key, Key[]> {
+      const dests = new Map();
+      SQUARES.forEach((s) => {
+        const ms = this.game.moves({ square: s, verbose: true });
+        if (ms.length)
+          dests.set(
+            s,
+            ms.map((m) => m.to)
+          );
+      });
+      return dests;
+    },
+    legalMoves() {
+      return this.game.moves({ verbose: true });
+    },
     calculateSquareSize() {
       //   const board_space = this.$refs.boardSpace as HTMLElement;
       //   let width = board_space.offsetWidth - 7; // for the numbers on the side of the ground
@@ -35,6 +93,7 @@ export default defineComponent({
       boardWrap.style.width = size + "px";
       boardWrap.style.height = size + "px";
       document.body.dispatchEvent(new Event("chessground.resize"));
+      // idk why i need to do this, but it works it also yeets the call stack
       window.dispatchEvent(new Event("resize"));
     },
   },

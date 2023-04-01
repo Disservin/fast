@@ -7,7 +7,7 @@
       "@/*": ["./src/*"]
     },
     "allowJs": true,
-
+    "ignoreDeprecations": "5.0"
   },
   "vueCompilerOptions": {
     "target": 2.7
