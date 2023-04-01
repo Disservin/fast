@@ -86,7 +86,7 @@ main {
   background-color: var(--bg-primary);
   transition: width 600ms ease;
   overflow: hidden;
-  z-index: 1;
+  z-index: 3;
 }
 
 .navbar-nav {

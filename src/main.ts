@@ -5,9 +5,6 @@ import router from "./router";
 
 import FontAwesomeIcon from "./fontawesome-icons";
 
-import chessboard from 'vue-chessboard';
-
-Vue.use(chessboard);
 
 Vue.component("font-awesome-icon", FontAwesomeIcon);
 

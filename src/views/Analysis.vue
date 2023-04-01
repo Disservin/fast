@@ -1,40 +1,44 @@
 <script lang="ts">
 import Sidebar from "@/components/SideBar.vue";
 
-export default {
+import { Chessground } from "chessground";
+import { defineComponent } from "vue";
+
+export default defineComponent({
   name: "app",
   components: {
     Sidebar: Sidebar,
   },
   mounted() {
+    const config = {};
+    const board = this.$refs.board as HTMLElement;
+    const ground = Chessground(board, config);
+
     this.calculateSquareSize();
     window.addEventListener("resize", this.calculateSquareSize);
   },
   beforeDestroy() {
     window.removeEventListener("resize", this.calculateSquareSize);
   },
+  created() {},
   methods: {
     calculateSquareSize() {
-      const board_space = this.$refs.boardSpace as HTMLElement;
-
-      let width = board_space.offsetWidth - 7; // for the numbers on the side of the ground
-      width -= width % 8; // fix chrome alignment errors; https://github.com/ornicar/lila/pull/3881
-
-      let height = board_space.offsetHeight - 7;
-      height -= height % 8;
-
-      const max_size = Math.min(height, width);
-      console.log("maxSize", max_size);
-
-      const cgw = document.querySelector(".cg-board-wrap") as HTMLElement;
-
-      cgw.style.width = max_size + "px";
-      cgw.style.height = max_size + "px";
-
+      //   const board_space = this.$refs.boardSpace as HTMLElement;
+      //   let width = board_space.offsetWidth - 7; // for the numbers on the side of the ground
+      //   width -= width % 8; // fix chrome alignment errors; https://github.com/ornicar/lila/pull/3881
+      const boardSpace = this.$refs.boardSpace as HTMLElement;
+      const boardWrap = document.querySelector(".cg-wrap") as HTMLElement;
+      const rect = boardSpace.getBoundingClientRect();
+      let size = Math.min(rect.width, rect.height);
+      size -= 7; // adjust for borders and padding
+      size -= size % 8; // ensure the size is a multiple of 8
+      boardWrap.style.width = size + "px";
+      boardWrap.style.height = size + "px";
       document.body.dispatchEvent(new Event("chessground.resize"));
+      window.dispatchEvent(new Event("resize"));
     },
   },
-};
+});
 </script>
 
 <template>
@@ -42,7 +46,7 @@ export default {
     <main>
       <div class="game">
         <div class="board-space" ref="boardSpace">
-          <chessboard class="board"></chessboard>
+          <div class="board" ref="board"></div>
         </div>
         <div class="engine-stats"></div>
         <div class="fen-input"></div>
@@ -61,8 +65,11 @@ export default {
 </template>
 
 <style>
+@import "@/assets/styles/chessground-theme.css";
+@import "@/assets/styles/chessground-pieces.css";
+@import "@/assets/styles/chessground.css";
+
 main {
-  margin-left: 15rem;
   padding: 1rem;
   color: aliceblue;
   height: 100vh;

@@ -11,14 +11,13 @@
     "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix --ignore-path .gitignore"
   },
   "dependencies": {
-    "@chrisoakman/chessboard2": "^0.3.0",
     "@fortawesome/free-brands-svg-icons": "^6.4.0",
     "@fortawesome/free-regular-svg-icons": "^6.4.0",
     "@fortawesome/free-solid-svg-icons": "^6.4.0",
     "@fortawesome/vue-fontawesome": "^2.0.10",
+    "chessground": "^8.3.7",
     "normalize.css": "^8.0.1",
     "vue": "^2.7.7",
-    "vue-chessboard": "^0.6.7",
     "vue-router": "^3.5.4"
   },
   "devDependencies": {
