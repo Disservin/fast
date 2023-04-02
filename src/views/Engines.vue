@@ -35,7 +35,7 @@
             <br />
             <label style="font-weight: bold"
               >Path: <br />
-              <button @click="selectFile(index)">Choose File</button>
+              <button @click="selectFile(index)">Choose Engine</button>
             </label>
             <br />
             <label style="font-weight: bold">Settings:</label>
@@ -87,7 +87,7 @@ export default defineComponent({
       // Open a file dialog and get the path of the selected file
       // we cant use html input type file because we will get a fakepath
       const result = await open({
-        filters: [{ name: "All Files", extensions: ["*"] }],
+        filters: [{ name: "All Files", extensions: ["", "exe"] }],
       });
 
       // update the path of the engine
