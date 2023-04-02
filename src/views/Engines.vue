@@ -1,6 +1,52 @@
 <template>
   <main>
-    <h1>Engines</h1>
+    <div class="engine-table">
+      <div
+        class="engine-column"
+        v-for="(engine, index) in engines"
+        :key="index"
+      >
+        <div v-if="editingIndex !== index || editedEngine === null">
+          <button class="remove-button" @click="removeEngine(index)">
+            Remove
+          </button>
+          <button class="edit-button" @click="editEngine(index)">Edit</button>
+          <button class="use-button">Use</button>
+        </div>
+        <div>
+          <h2>{{ engine.name }}</h2>
+          <div v-if="editingIndex !== index || editedEngine === null">
+            <div v-for="(value, key) in engine.settings" :key="key">
+              <p>{{ key }}: {{ value }}</p>
+            </div>
+            <p>{{ engine.path }}</p>
+          </div>
+        </div>
+        <div v-if="editingIndex === index && editedEngine !== null">
+          <form @submit.prevent="saveEdit">
+            <label style="font-weight: bold"
+              >Name: <br />
+              <input v-model="editedEngine.name"
+            /></label>
+            <br />
+            <label style="font-weight: bold"
+              >Path: <br />
+              <input v-model="editedEngine.path"
+            /></label>
+            <br />
+            <label style="font-weight: bold">Settings:</label>
+            <br />
+            <div v-for="(value, key) in editedEngine.settings" :key="key">
+              <label>{{ key }}: <br /></label>
+              <input v-model="editedEngine?.settings[key]" />
+            </div>
+            <button type="button" @click="cancelEdit">Cancel</button>
+            <button type="submit">Save</button>
+          </form>
+        </div>
+      </div>
+    </div>
+    <button class="add-engine-button" @click="addEngine()">+</button>
   </main>
 </template>
 
@@ -9,27 +55,66 @@ import { invoke } from "@tauri-apps/api";
 
 import { defineComponent } from "vue";
 
+interface Engine {
+  name: string;
+  path: string;
+  settings: Record<string, unknown>;
+}
+
 export default defineComponent({
   name: "Engines",
   data() {
-    return {};
+    const enginesData = localStorage.getItem("engines");
+    const engines = enginesData ? JSON.parse(enginesData) : [];
+
+    return {
+      engines,
+      editingIndex: null as number | null,
+      editedEngine: null as Engine | null,
+    };
   },
   mounted() {
     this.test();
-    console.log("ready");
   },
   methods: {
-    test() {
-      //   invoke("greet")
-      //     .then((response) => console.log(response));
-      invoke("start_process", {
-        command: "./stockfish.exe",
-        args: ["bench"],
-      }).then((response) =>
-        invoke("send_string", { input: "bench" }).then((response) =>
-          console.log(response)
-        )
-      );
+    test() {},
+    removeEngine(index: number) {
+      this.engines.splice(index, 1);
+      localStorage.setItem("engines", JSON.stringify(this.engines));
+    },
+    editEngine(index: number) {
+      // Set the editing index and copy the engine to edit to a new object
+      this.editingIndex = index;
+      this.editedEngine = { ...this.engines[index] };
+    },
+    cancelEdit() {
+      // Reset the editing state
+      this.editingIndex = null;
+      this.editedEngine = null;
+    },
+    saveEdit() {
+      if (this.editingIndex === null || this.editedEngine === null) {
+        return;
+      }
+      // Update the engine in the engines array
+      this.engines.splice(this.editingIndex, 1, this.editedEngine);
+      // Reset the editing state
+      this.editingIndex = null;
+      this.editedEngine = null;
+
+      localStorage.setItem("engines", JSON.stringify(this.engines));
+    },
+    addEngine() {
+      const newEngine: Engine = {
+        name: "New Engine ",
+        path: "",
+        settings: { hash: 0 },
+      };
+
+      // Add the new engine object to the array
+      this.engines.push(newEngine);
+
+      localStorage.setItem("engines", JSON.stringify(this.engines));
     },
   },
   destroyed() {
@@ -37,3 +122,94 @@ export default defineComponent({
   },
 });
 </script>
+
+<style scoped>
+@import "../assets/styles/variables.css";
+
+.engine-table {
+  display: flex;
+  flex-direction: column;
+  position: absolute;
+  height: auto;
+  bottom: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  margin: 20px;
+  margin-left: 6rem;
+  margin-bottom: 5%;
+
+  background-color: var(--bg-secondary);
+
+  overflow: scroll;
+  overflow-x: hidden;
+}
+
+.engine-column {
+  color: var(--text-secondary);
+  background-color: var(--bg-tertiary);
+  padding: 10px;
+  margin: 10px;
+  border-radius: 5px;
+}
+
+.engine-table::-webkit-scrollbar {
+  width: 0.25rem;
+}
+
+.engine-table::-webkit-scrollbar-track {
+  background: #1e1e24;
+}
+
+.engine-table::-webkit-scrollbar-thumb {
+  background: #6649b8;
+}
+
+.engine-column button {
+  background-color: var(--button-bg);
+  color: var(--button-text);
+  border-radius: 3px;
+  padding: 5px 10px;
+  border: none;
+  cursor: pointer;
+}
+
+.engine-column button:hover {
+  background-color: var(--button-bg-hover);
+  color: var(--button-text-hover);
+}
+
+.engine-column button:active {
+  background-color: var(--button-bg-active);
+  color: var(--button-text-active);
+}
+
+.edit-button,
+.use-button {
+  margin-left: 5px;
+}
+
+.add-engine-button {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background-color: #007bff;
+  color: #fff;
+  font-size: 30px;
+  line-height: 1;
+  border: none;
+  box-shadow: 0px 3px 8px rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+}
+
+input {
+  padding: 0.5rem;
+  border-radius: 0.25rem;
+  border: 1px solid gray;
+  font-size: 1rem;
+}
+</style>

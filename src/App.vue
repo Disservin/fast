@@ -9,15 +9,4 @@ import Sidebar from "@/components/SideBar.vue";
   </div>
 </template>
 
-<style scoped>
-.content {
-  margin-left: 5rem;
-  padding: 1rem;
-  color: aliceblue;
-}
-main {
-  margin-left: 5rem;
-  padding: 1rem;
-  color: aliceblue;
-}
-</style>
+<style scoped></style>

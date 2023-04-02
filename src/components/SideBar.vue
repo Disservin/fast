@@ -58,8 +58,7 @@
 }
 
 body {
-  color: black;
-  background-color: rgb(42, 42, 42);
+  background-color: var(--bg-primary);
   margin: 0;
   padding: 0;
 }
@@ -74,11 +73,6 @@ body::-webkit-scrollbar-track {
 
 body::-webkit-scrollbar-thumb {
   background: #6649b8;
-}
-
-main {
-  margin-left: 5rem;
-  padding: 1rem;
 }
 
 .navbar {
@@ -97,6 +91,7 @@ main {
   flex-direction: column;
   align-items: center;
   height: 100%;
+  background-color: var(--bg-secondary);
 }
 
 .nav-item {

@@ -1,7 +1,41 @@
-:root {
-    --text-primary: #b6b6b6;
-    --text-secondary: #ececec;
-    --bg-primary: #23232e;
-    --bg-secondary: #141418;
+/* :root {
+    --text-primary: #F8FAFC;
+    --text-secondary: #F4F4F5;
+    --bg-primary: #18181B;
+    --bg-secondary: #27272A;
+    --bg-tertiary: #3F3F46;
+    --bg-blueish: #475569;
     --transition-speed: 400ms;
 }
+ */
+ :root {
+    /* Background colors */
+    --bg-primary: #141414;
+    --bg-secondary: #1f1f1f;
+    --bg-tertiary: #252525;
+    
+    /* Text colors */
+    --text-primary: #fff;
+    --text-secondary: #b3b3b3;
+    --text-tertiary: #8c8c8c;
+    
+    /* Border colors */
+    --border-color: #333;
+    
+    /* Button colors */
+    --button-bg: #3d3d3d;
+    --button-bg-hover: #4c4c4c;
+    --button-text: #fff;
+    --button-text-hover: #e6e6e6;
+    --button-bg-active: #2d2d2d;
+    --button-text-active: #d9d9d9;
+    
+    /* Input colors */
+    --input-bg: #252525;
+    --input-bg-hover: #333;
+    --input-text: #fff;
+    
+    /* Link colors */
+    --link-color: #007bff;
+    --link-color-hover: #66b3ff;
+  }

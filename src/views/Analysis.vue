@@ -102,7 +102,7 @@ export default defineComponent({
 
 <template>
   <div>
-    <main>
+    <main class="analysis">
       <div class="game">
         <div class="board-space" ref="boardSpace">
           <div class="board" ref="board"></div>
@@ -128,7 +128,7 @@ export default defineComponent({
 @import "@/assets/styles/chessground-pieces.css";
 @import "@/assets/styles/chessground.css";
 
-main {
+main.analysis {
   padding: 1rem;
   color: aliceblue;
   height: 100vh;
