@@ -4,6 +4,7 @@
   </div>
 </template>
 <script>
+import { invoke } from "@tauri-apps/api";
 import { defineComponent } from "vue";
 
 export default defineComponent({
@@ -12,7 +13,15 @@ export default defineComponent({
     this.test();
   },
   methods: {
-    test() {},
+    test() {
+      invoke("new", { command: "./stockfish.exe" }).then((res) => {
+        invoke("go_nodes", { nodes: 100 }).then((res) => {
+          invoke("get_bestmove").then((res) => {
+            console.log(res);
+          });
+        });
+      });
+    },
   },
 });
 </script>
