@@ -122,6 +122,10 @@ impl Engine {
         Ok(move_string.to_string())
     }
 
+    pub fn go(&mut self) -> io::Result<()> {
+        self.write(&format!("go infinite"))
+    }
+
     pub fn go_nodes(&mut self, nodes: usize) -> io::Result<()> {
         self.write(&format!("go nodes {}", nodes))
     }
@@ -217,6 +221,13 @@ pub async fn stop(state: tauri::State<'_, MyState>) -> Result<(), String> {
 pub async fn get_bestmove(state: tauri::State<'_, MyState>) -> Result<String, String> {
     let mut state_guard = state.0.lock().unwrap();
     Ok(state_guard.get_bestmove().unwrap())
+}
+
+#[tauri::command]
+pub async fn go(state: tauri::State<'_, MyState>) -> Result<(), String> {
+    let mut state_guard = state.0.lock().unwrap();
+    state_guard.go().unwrap();
+    Ok(())
 }
 
 #[tauri::command]

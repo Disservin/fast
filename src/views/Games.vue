@@ -23,6 +23,9 @@ export default defineComponent({
       });
     },
   },
+  destroyed() {
+    invoke("quit").then((response) => console.log(response));
+  },
 });
 </script>
 <style lang=""></style>

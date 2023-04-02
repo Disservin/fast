@@ -5,21 +5,25 @@
         class="engine-column"
         v-for="(engine, index) in engines"
         :key="index"
+        :class="{ active: engine.use }"
       >
         <div v-if="editingIndex !== index || editedEngine === null">
           <button class="remove-button" @click="removeEngine(index)">
             Remove
           </button>
           <button class="edit-button" @click="editEngine(index)">Edit</button>
-          <button class="use-button">Use</button>
+          <button class="use-button" @click="useEngine(index)">Use</button>
         </div>
         <div>
           <h2>{{ engine.name }}</h2>
           <div v-if="editingIndex !== index || editedEngine === null">
+            <p><u>UCI Options</u></p>
+
             <div v-for="(value, key) in engine.settings" :key="key">
               <p>{{ key }}: {{ value }}</p>
             </div>
-            <p>{{ engine.path }}</p>
+            <p><u>Path</u></p>
+            {{ engine.path }}
           </div>
         </div>
         <div v-if="editingIndex === index && editedEngine !== null">
@@ -31,8 +35,8 @@
             <br />
             <label style="font-weight: bold"
               >Path: <br />
-              <input v-model="editedEngine.path"
-            /></label>
+              <button @click="selectFile(index)">Choose File</button>
+            </label>
             <br />
             <label style="font-weight: bold">Settings:</label>
             <br />
@@ -40,8 +44,10 @@
               <label>{{ key }}: <br /></label>
               <input v-model="editedEngine?.settings[key]" />
             </div>
-            <button type="button" @click="cancelEdit">Cancel</button>
-            <button type="submit">Save</button>
+            <div class="setting-buttons">
+              <button type="button" @click="cancelEdit">Cancel</button>
+              <button type="submit">Save</button>
+            </div>
           </form>
         </div>
       </div>
@@ -52,12 +58,14 @@
 
 <script lang="ts">
 import { invoke } from "@tauri-apps/api";
+import { open } from "@tauri-apps/api/dialog";
 
 import { defineComponent } from "vue";
 
 interface Engine {
   name: string;
   path: string;
+  use: boolean;
   settings: Record<string, unknown>;
 }
 
@@ -73,11 +81,22 @@ export default defineComponent({
       editedEngine: null as Engine | null,
     };
   },
-  mounted() {
-    this.test();
-  },
+  mounted() {},
   methods: {
-    test() {},
+    async selectFile(index: number) {
+      // Open a file dialog and get the path of the selected file
+      // we cant use html input type file because we will get a fakepath
+      const result = await open({
+        filters: [{ name: "All Files", extensions: ["*"] }],
+      });
+
+      // update the path of the engine
+      if (result && !Array.isArray(result)) {
+        // we need to use the index to update the correct engine
+        this.editingIndex = index;
+        this.engines[index]!.path = result;
+      }
+    },
     removeEngine(index: number) {
       this.engines.splice(index, 1);
       localStorage.setItem("engines", JSON.stringify(this.engines));
@@ -104,10 +123,19 @@ export default defineComponent({
 
       localStorage.setItem("engines", JSON.stringify(this.engines));
     },
+    useEngine(index: number) {
+      this.engines.forEach((engine: Engine) => {
+        engine.use = false;
+      });
+      this.engines[index].use = true;
+
+      localStorage.setItem("engines", JSON.stringify(this.engines));
+    },
     addEngine() {
       const newEngine: Engine = {
         name: "New Engine ",
-        path: "",
+        path: "empty",
+        use: false,
         settings: { hash: 0 },
       };
 
@@ -116,9 +144,6 @@ export default defineComponent({
 
       localStorage.setItem("engines", JSON.stringify(this.engines));
     },
-  },
-  destroyed() {
-    invoke("end_process").then((response) => console.log(response));
   },
 });
 </script>
@@ -153,6 +178,11 @@ export default defineComponent({
   border-radius: 5px;
 }
 
+.engine-column.active {
+  filter: grayscale(0%) opacity(1);
+  background-color: #3700b3;
+}
+
 .engine-table::-webkit-scrollbar {
   width: 0.25rem;
 }
@@ -163,6 +193,14 @@ export default defineComponent({
 
 .engine-table::-webkit-scrollbar-thumb {
   background: #6649b8;
+}
+
+.engine-column input {
+  background-color: var(--button-bg);
+  color: var(--button-text);
+  border-radius: 3px;
+  padding: 5px 10px;
+  border: none;
 }
 
 .engine-column button {
@@ -184,9 +222,22 @@ export default defineComponent({
   color: var(--button-text-active);
 }
 
+.engine-column.active button {
+  background-color: white;
+  color: #000000;
+}
+
+.engine-column.active h2 {
+  color: var(--button-text);
+}
+
 .edit-button,
 .use-button {
   margin-left: 5px;
+}
+
+.setting-buttons button {
+  margin: 5px;
 }
 
 .add-engine-button {

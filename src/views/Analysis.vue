@@ -6,7 +6,7 @@ import { defineComponent } from "vue";
 import type { Color, Key } from "chessground/types";
 import { Chessground } from "chessground";
 
-import { Chess, SQUARES } from "chess.js";
+import { Chess, SQUARES, type Move, type Square } from "chess.js";
 
 type ChessgroundInstance = ReturnType<typeof Chessground>;
 
@@ -28,6 +28,10 @@ export default defineComponent({
       events: {
         move: this.makeMove,
       },
+      highlight: {
+        lastMove: true,
+        check: true,
+      },
     };
 
     const board = this.$refs.board as HTMLElement;
@@ -44,16 +48,71 @@ export default defineComponent({
     return {
       game: new Chess(),
       cg: null as ChessgroundInstance | null,
+      showPromotion: false,
+      promotionMove: { origin: "", destination: "" },
     };
   },
   methods: {
-    makeMove(origin: string, destination: string) {
-      const move = this.game.move({ from: origin, to: destination });
+    setPromotionPiece(piece: string) {
+      this.showPromotion = false;
 
-      if (move === null) {
+      // do move
+      const promotionMove = this.game.move({
+        from: this.promotionMove.origin,
+        to: this.promotionMove.destination,
+        promotion: piece,
+      });
+
+      // set check highlighting
+      if (this.game.inCheck()) {
+        this.cg?.set({
+          check: this.toColor(),
+        });
+      }
+
+      if (promotionMove === null) {
         return "snapback";
       }
 
+      // update chessground board
+      this.cg!.set({
+        fen: this.game.fen(),
+        turnColor: this.toColor(),
+        movable: {
+          color: this.toColor(),
+          dests: this.toDests(),
+        },
+      });
+    },
+    makeMove(origin: string, destination: string) {
+      const sq = origin as Square;
+
+      // is promotion?
+      if (
+        this.game.get(sq)?.type === "p" &&
+        (destination[1] === "1" || destination[1] === "8")
+      ) {
+        this.showPromotion = true;
+        this.promotionMove = { origin, destination };
+
+        // user has to select a promotion piece and setPromotionPiece() will be called
+        return;
+      } else {
+        const move = this.game.move({ from: origin, to: destination });
+
+        // check highlighting
+        if (this.game.inCheck()) {
+          this.cg?.set({
+            check: this.toColor(),
+          });
+        }
+
+        if (move === null) {
+          return "snapback";
+        }
+      }
+
+      // update chessground board
       this.cg!.set({
         turnColor: this.toColor(),
         movable: {
@@ -65,6 +124,7 @@ export default defineComponent({
     toColor(): Color {
       return this.game.turn() === "w" ? "white" : "black";
     },
+    // movable destionations for a piece
     toDests(): Map<Key, Key[]> {
       const dests = new Map();
       SQUARES.forEach((s) => {
@@ -77,11 +137,7 @@ export default defineComponent({
       });
       return dests;
     },
-    legalMoves() {
-      return this.game.moves({ verbose: true });
-    },
     calculateSquareSize() {
-      //   const board_space = this.$refs.boardSpace as HTMLElement;
       //   let width = board_space.offsetWidth - 7; // for the numbers on the side of the ground
       //   width -= width % 8; // fix chrome alignment errors; https://github.com/ornicar/lila/pull/3881
       const boardSpace = this.$refs.boardSpace as HTMLElement;
@@ -106,7 +162,28 @@ export default defineComponent({
       <div class="game">
         <div class="board-space" ref="boardSpace">
           <div class="board" ref="board"></div>
+          <div class="promotion-options" v-if="showPromotion">
+            <div id="promotion-select">
+              <button
+                class="piece white-queen"
+                @click="setPromotionPiece('q')"
+              ></button>
+              <button
+                class="piece white-rook"
+                @click="setPromotionPiece('r')"
+              ></button>
+              <button
+                class="piece white-bishop"
+                @click="setPromotionPiece('b')"
+              ></button>
+              <button
+                class="piece white-knight"
+                @click="setPromotionPiece('n')"
+              ></button>
+            </div>
+          </div>
         </div>
+
         <div class="engine-stats"></div>
         <div class="fen-input"></div>
       </div>
@@ -170,13 +247,6 @@ h1 {
   background-color: aquamarine;
 }
 
-/* .cg-board-wrap {
-  width: 400px;
-  height: 400px;
-  max-width: 100%;
-  max-height: 100%;
-} */
-
 .fen-input {
   flex: 0 0 10%;
   padding: 10px;
@@ -217,5 +287,54 @@ h1 {
   flex-basis: calc(50% - 5px);
 
   background-color: #ae9b9b;
+}
+
+.promotion-options {
+  position: absolute;
+  width: 20%;
+  height: auto;
+  background-color: rgba(0, 0, 0, 0.5);
+}
+
+#promotion-select {
+  display: flex;
+  justify-content: space-evenly;
+  align-items: center;
+  min-width: 5%;
+  padding: 5px;
+}
+
+#promotion-select button {
+  background-color: transparent;
+  border: none;
+  outline: none;
+  color: inherit;
+  border: none;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+  outline: inherit;
+  z-index: 3;
+}
+
+.piece {
+  width: 20%;
+  height: 5rem;
+  background-size: contain;
+  background-repeat: no-repeat;
+  display: inline-block;
+}
+
+.white-bishop {
+  background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0NSIgaGVpZ2h0PSI0NSI+PGcgZmlsbD0ibm9uZSIgZmlsbC1ydWxlPSJldmVub2RkIiBzdHJva2U9IiMwMDAiIHN0cm9rZS13aWR0aD0iMS41IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxnIGZpbGw9IiNmZmYiIHN0cm9rZS1saW5lY2FwPSJidXR0Ij48cGF0aCBkPSJNOSAzNmMzLjM5LS45NyAxMC4xMS40MyAxMy41LTIgMy4zOSAyLjQzIDEwLjExIDEuMDMgMTMuNSAyIDAgMCAxLjY1LjU0IDMgMi0uNjguOTctMS42NS45OS0zIC41LTMuMzktLjk3LTEwLjExLjQ2LTEzLjUtMS0zLjM5IDEuNDYtMTAuMTEuMDMtMTMuNSAxLTEuMzU0LjQ5LTIuMzIzLjQ3LTMtLjUgMS4zNTQtMS45NCAzLTIgMy0yeiIvPjxwYXRoIGQ9Ik0xNSAzMmMyLjUgMi41IDEyLjUgMi41IDE1IDAgLjUtMS41IDAtMiAwLTIgMC0yLjUtMi41LTQtMi41LTQgNS41LTEuNSA2LTExLjUtNS0xNS41LTExIDQtMTAuNSAxNC01IDE1LjUgMCAwLTIuNSAxLjUtMi41IDQgMCAwLS41LjUgMCAyeiIvPjxwYXRoIGQ9Ik0yNSA4YTIuNSAyLjUgMCAxIDEtNSAwIDIuNSAyLjUgMCAxIDEgNSAweiIvPjwvZz48cGF0aCBkPSJNMTcuNSAyNmgxME0xNSAzMGgxNW0tNy41LTE0LjV2NU0yMCAxOGg1IiBzdHJva2UtbGluZWpvaW49Im1pdGVyIi8+PC9nPjwvc3ZnPg==");
+}
+.white-knight {
+  background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0NSIgaGVpZ2h0PSI0NSI+PGcgZmlsbD0ibm9uZSIgZmlsbC1ydWxlPSJldmVub2RkIiBzdHJva2U9IiMwMDAiIHN0cm9rZS13aWR0aD0iMS41IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxwYXRoIGQ9Ik0yMiAxMGMxMC41IDEgMTYuNSA4IDE2IDI5SDE1YzAtOSAxMC02LjUgOC0yMSIgZmlsbD0iI2ZmZiIvPjxwYXRoIGQ9Ik0yNCAxOGMuMzggMi45MS01LjU1IDcuMzctOCA5LTMgMi0yLjgyIDQuMzQtNSA0LTEuMDQyLS45NCAxLjQxLTMuMDQgMC0zLTEgMCAuMTkgMS4yMy0xIDItMSAwLTQuMDAzIDEtNC00IDAtMiA2LTEyIDYtMTJzMS44OS0xLjkgMi0zLjVjLS43My0uOTk0LS41LTItLjUtMyAxLTEgMyAyLjUgMyAyLjVoMnMuNzgtMS45OTIgMi41LTNjMSAwIDEgMyAxIDMiIGZpbGw9IiNmZmYiLz48cGF0aCBkPSJNOS41IDI1LjVhLjUuNSAwIDEgMS0xIDAgLjUuNSAwIDEgMSAxIDB6bTUuNDMzLTkuNzVhLjUgMS41IDMwIDEgMS0uODY2LS41LjUgMS41IDMwIDEgMSAuODY2LjV6IiBmaWxsPSIjMDAwIi8+PC9nPjwvc3ZnPg==");
+}
+.white-rook {
+  background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0NSIgaGVpZ2h0PSI0NSI+PGcgZmlsbD0iI2ZmZiIgZmlsbC1ydWxlPSJldmVub2RkIiBzdHJva2U9IiMwMDAiIHN0cm9rZS13aWR0aD0iMS41IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxwYXRoIGQ9Ik05IDM5aDI3di0zSDl2M3ptMy0zdi00aDIxdjRIMTJ6bS0xLTIyVjloNHYyaDVWOWg1djJoNVY5aDR2NSIgc3Ryb2tlLWxpbmVjYXA9ImJ1dHQiLz48cGF0aCBkPSJNMzQgMTRsLTMgM0gxNGwtMy0zIi8+PHBhdGggZD0iTTMxIDE3djEyLjVIMTRWMTciIHN0cm9rZS1saW5lY2FwPSJidXR0IiBzdHJva2UtbGluZWpvaW49Im1pdGVyIi8+PHBhdGggZD0iTTMxIDI5LjVsMS41IDIuNWgtMjBsMS41LTIuNSIvPjxwYXRoIGQ9Ik0xMSAxNGgyMyIgZmlsbD0ibm9uZSIgc3Ryb2tlLWxpbmVqb2luPSJtaXRlciIvPjwvZz48L3N2Zz4=");
+}
+.white-queen {
+  background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0NSIgaGVpZ2h0PSI0NSI+PGcgZmlsbD0iI2ZmZiIgZmlsbC1ydWxlPSJldmVub2RkIiBzdHJva2U9IiMwMDAiIHN0cm9rZS13aWR0aD0iMS41IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxwYXRoIGQ9Ik04IDEyYTIgMiAwIDEgMS00IDAgMiAyIDAgMSAxIDQgMHptMTYuNS00LjVhMiAyIDAgMSAxLTQgMCAyIDIgMCAxIDEgNCAwek00MSAxMmEyIDIgMCAxIDEtNCAwIDIgMiAwIDEgMSA0IDB6TTE2IDguNWEyIDIgMCAxIDEtNCAwIDIgMiAwIDEgMSA0IDB6TTMzIDlhMiAyIDAgMSAxLTQgMCAyIDIgMCAxIDEgNCAweiIvPjxwYXRoIGQ9Ik05IDI2YzguNS0xLjUgMjEtMS41IDI3IDBsMi0xMi03IDExVjExbC01LjUgMTMuNS0zLTE1LTMgMTUtNS41LTE0VjI1TDcgMTRsMiAxMnoiIHN0cm9rZS1saW5lY2FwPSJidXR0Ii8+PHBhdGggZD0iTTkgMjZjMCAyIDEuNSAyIDIuNSA0IDEgMS41IDEgMSAuNSAzLjUtMS41IDEtMS41IDIuNS0xLjUgMi41LTEuNSAxLjUuNSAyLjUuNSAyLjUgNi41IDEgMTYuNSAxIDIzIDAgMCAwIDEuNS0xIDAtMi41IDAgMCAuNS0xLjUtMS0yLjUtLjUtMi41LS41LTIgLjUtMy41IDEtMiAyLjUtMiAyLjUtNC04LjUtMS41LTE4LjUtMS41LTI3IDB6IiBzdHJva2UtbGluZWNhcD0iYnV0dCIvPjxwYXRoIGQ9Ik0xMS41IDMwYzMuNS0xIDE4LjUtMSAyMiAwTTEyIDMzLjVjNi0xIDE1LTEgMjEgMCIgZmlsbD0ibm9uZSIvPjwvZz48L3N2Zz4=");
 }
 </style>

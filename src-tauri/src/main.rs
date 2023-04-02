@@ -23,6 +23,7 @@ fn main() {
             process::position_fen,
             process::position_startpos,
             process::get_bestmove,
+            process::go,
             process::go_nodes,
             process::set_option,
             process::new_game,

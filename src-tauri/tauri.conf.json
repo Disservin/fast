@@ -11,14 +11,19 @@
   },
   "tauri": {
     "allowlist": {
-        "shell": {
-            "all": true,
-            "execute": true, 
-            "sidecar": true, 
-            "open": true 
-          }
+      "shell": {
+        "all": true,
+        "execute": true,
+        "sidecar": true,
+        "open": true
+      },
+      "dialog": {
+        "all": true, 
+        "open": true, 
+        "save": true 
+      }
     },
-    
+
     "bundle": {
       "active": true,
       "category": "DeveloperTool",
