@@ -19,8 +19,8 @@
           <div v-if="editingIndex !== index || editedEngine === null">
             <p><u>UCI Options</u></p>
 
-            <div v-for="(value, key) in engine.settings" :key="key">
-              <p>{{ key }}: {{ value }}</p>
+            <div v-for="option in engine.settings" v-if="option.name != ''">
+              <p>{{ option.name }}: {{ option.value }}</p>
             </div>
             <p><u>Path</u></p>
             {{ engine.path }}
@@ -41,8 +41,10 @@
             <label style="font-weight: bold">Settings:</label>
             <br />
             <div v-for="(value, key) in editedEngine.settings" :key="key">
-              <label>{{ key }}: <br /></label>
-              <input v-model="editedEngine?.settings[key]" />
+              <div v-if="value.name !== ''">
+                <label>{{ value.name }}: <br /></label>
+                <input v-model="editedEngine?.settings[key].value" />
+              </div>
             </div>
             <div class="setting-buttons">
               <button type="button" @click="cancelEdit">Cancel</button>
@@ -62,11 +64,20 @@ import { open } from "@tauri-apps/api/dialog";
 
 import { defineComponent } from "vue";
 
+interface Option {
+  name: string;
+  type: string;
+  default: unknown;
+  min: number;
+  max: number;
+  value: unknown;
+}
+
 interface Engine {
   name: string;
   path: string;
   use: boolean;
-  settings: Record<string, unknown>;
+  settings: Option[];
 }
 
 export default defineComponent({
@@ -90,11 +101,69 @@ export default defineComponent({
         filters: [{ name: "All Files", extensions: ["", "exe"] }],
       });
 
+      await invoke("new", { command: result });
+
+      // Auto Detect Options
+      const options: String[] = await invoke("get_options");
+
+      let settings: Option[] = [];
+      let engine_name = "New Engine";
+
+      for (let line of options) {
+        line = line.replace(/^\s+|\s+$/g, "");
+
+        if (line.startsWith("id name")) {
+          engine_name = line.replace("id name ", "");
+        } else if (line.startsWith("option name")) {
+          const parts = line.split(" ");
+
+          let length = 1;
+
+          let option: Option = {
+            name: "",
+            type: "",
+            default: "",
+            min: 0,
+            max: 0,
+            value: "",
+          };
+
+          while (length + 1 < parts.length && parts[++length] !== "type") {
+            option.name += " " + parts[length];
+          }
+
+          if (length + 1 < parts.length && parts[length++] === "type") {
+            option.type = parts[length];
+          }
+
+          if (length + 1 < parts.length && parts[++length] === "default") {
+            length++;
+            option.default = option.value = parts[length];
+          }
+
+          if (length + 1 < parts.length && parts[++length] === "min") {
+            length++;
+            option.min = Number(parts[length]);
+          }
+
+          if (length + 1 < parts.length && parts[++length] === "max") {
+            length++;
+            option.max = Number(parts[length]);
+          }
+
+          settings.push(option);
+        }
+      }
+
       // update the path of the engine
       if (result && !Array.isArray(result)) {
         // we need to use the index to update the correct engine
         this.editingIndex = index;
         this.engines[index]!.path = result;
+        this.engines[index]!.settings = settings;
+        this.engines[index]!.name = engine_name;
+
+        localStorage.setItem("engines", JSON.stringify(this.engines));
       }
     },
     removeEngine(index: number) {
@@ -132,11 +201,20 @@ export default defineComponent({
       localStorage.setItem("engines", JSON.stringify(this.engines));
     },
     addEngine() {
+      const option = {
+        name: "",
+        type: "",
+        default: 0,
+        min: 0,
+        max: 0,
+        value: 0,
+      };
+
       const newEngine: Engine = {
         name: "New Engine ",
         path: "empty",
         use: false,
-        settings: { hash: 0 },
+        settings: [option],
       };
 
       // Add the new engine object to the array

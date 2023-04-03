@@ -25,6 +25,7 @@ fn main() {
             process::get_bestmove,
             process::go,
             process::go_nodes,
+            process::get_options,
             process::set_option,
             process::new_game,
             process::stop,

@@ -58,7 +58,6 @@ impl Engine {
         let timer = Instant::now();
         while timer.elapsed() < READLINE_TIMEOUT {
             if self.reader.as_mut().unwrap().read_line(&mut s).is_ok() {
-                println!("read_line: {}", s.trim());
                 return Ok(s);
             }
         }
@@ -102,6 +101,21 @@ impl Engine {
 
     pub fn set_option(&mut self, name: &str, value: &str) -> io::Result<()> {
         self.write(&format!("setoption name {} value {}", name, value))
+    }
+
+    pub fn get_options(&mut self) -> Vec<String> {
+        let expected = "uciok";
+
+        let mut lines: Vec<String> = Vec::new();
+
+        self.write("uci").expect("No uci");
+        while let Ok(line) = self.read_line() {
+            lines.push(line.to_owned());
+            if line.starts_with(expected) {
+                return lines;
+            }
+        }
+        return lines;
     }
 
     pub fn new_game(&mut self) -> io::Result<()> {
@@ -201,6 +215,12 @@ pub async fn set_option(
     let mut state_guard = state.0.lock().unwrap();
     state_guard.set_option(&name, &value).unwrap();
     Ok(())
+}
+
+#[tauri::command]
+pub async fn get_options(state: tauri::State<'_, MyState>) -> Result<Vec<String>, String> {
+    let mut state_guard = state.0.lock().unwrap();
+    Ok(state_guard.get_options())
 }
 
 #[tauri::command]
