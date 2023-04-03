@@ -19,8 +19,40 @@
           <div v-if="editingIndex !== index || editedEngine === null">
             <p><u>UCI Options</u></p>
 
-            <div v-for="option in engine.settings" v-if="option.name != ''">
-              <p>{{ option.name }}: {{ option.value }}</p>
+            <div class="options">
+              <div
+                class="option"
+                v-for="option in engine.settings"
+                v-if="option.name != ''"
+              >
+                <div class="option-name">{{ option.name }}</div>
+                <div class="option-value">
+                  <input
+                    v-if="option.type == 'string' || option.type == 'file'"
+                    v-model="option.value"
+                    disabled
+                  />
+                  <input
+                    v-if="option.type == 'spin'"
+                    v-model.number="option.value"
+                    type="number"
+                    disabled
+                  />
+                  <input
+                    v-if="option.type == 'check'"
+                    v-model="option.value"
+                    type="checkbox"
+                    disabled
+                  />
+                  <input
+                    v-if="option.type == 'button'"
+                    v-model="option.value"
+                    type="button"
+                    value="Button"
+                    disabled
+                  />
+                </div>
+              </div>
             </div>
             <p><u>Path</u></p>
             {{ engine.path }}
@@ -33,19 +65,59 @@
               <input v-model="editedEngine.name"
             /></label>
             <br />
+
             <label style="font-weight: bold"
               >Path: <br />
-              <button @click="selectFile(index)">Choose Engine</button>
+              <button @click="selectEngine(index)">Choose Engine</button>
             </label>
+
             <br />
             <label style="font-weight: bold">Settings:</label>
             <br />
-            <div v-for="(value, key) in editedEngine.settings" :key="key">
-              <div v-if="value.name !== ''">
-                <label>{{ value.name }}: <br /></label>
-                <input v-model="editedEngine?.settings[key].value" />
+
+            <div class="options">
+              <div
+                class="option"
+                v-for="(value, key) in editedEngine.settings"
+                :key="key"
+              >
+                <div v-if="value.name !== ''">
+                  <div class="option-name">
+                    <label>{{ value.name }}:</label>
+                  </div>
+                  <div class="option-value">
+                    <input
+                      v-if="value.type == 'string' || value.type == 'file'"
+                      v-model="editedEngine?.settings[key].value"
+                    />
+                    <button
+                      v-if="value.type == 'file'"
+                      @click="selectFile(index, key)"
+                      style="margin-left: 10px"
+                    >
+                      ...
+                    </button>
+                    <input
+                      v-if="value.type == 'spin'"
+                      v-model.number="editedEngine?.settings[key].value"
+                      type="number"
+                    />
+                    <input
+                      v-if="value.type == 'check'"
+                      v-model="editedEngine?.settings[key].value"
+                      type="checkbox"
+                    />
+                    <input
+                      v-if="value.type == 'button'"
+                      v-model="editedEngine?.settings[key].value"
+                      type="button"
+                      value="Button"
+                    />
+                  </div>
+                </div>
               </div>
             </div>
+
             <div class="setting-buttons">
               <button type="button" @click="cancelEdit">Cancel</button>
               <button type="submit">Save</button>
@@ -94,7 +166,16 @@ export default defineComponent({
   },
   mounted() {},
   methods: {
-    async selectFile(index: number) {
+    async selectFile(index: number, key: any) {
+      const result = await open({
+        filters: [{ name: "All Files", extensions: [] }],
+      });
+
+      this.engines[index]!.settings[key].value = result;
+
+      localStorage.setItem("engines", JSON.stringify(this.engines));
+    },
+    async selectEngine(index: number) {
       // Open a file dialog and get the path of the selected file
       // we cant use html input type file because we will get a fakepath
       const result = await open({
@@ -111,6 +192,7 @@ export default defineComponent({
 
       for (let line of options) {
         line = line.replace(/^\s+|\s+$/g, "");
+        line = line.trim();
 
         if (line.startsWith("id name")) {
           engine_name = line.replace("id name ", "");
@@ -151,10 +233,17 @@ export default defineComponent({
             option.max = Number(parts[length]);
           }
 
+          option.name = option.name.trim();
+
+          // overwrite types
+          if (option.name === "SyzygyPath") option.type = "file";
+          if (option.name === "EvalFile") option.type = "file";
+
           settings.push(option);
         }
       }
 
+      console.log(settings);
       // update the path of the engine
       if (result && !Array.isArray(result)) {
         // we need to use the index to update the correct engine
@@ -336,9 +425,35 @@ export default defineComponent({
 }
 
 input {
-  padding: 0.5rem;
-  border-radius: 0.25rem;
-  border: 1px solid gray;
   font-size: 1rem;
+}
+input:focus {
+  outline: 2px solid white;
+  outline-offset: -1px;
+}
+
+.options {
+  display: flex;
+  flex-direction: column;
+  flex-wrap: wrap;
+  max-height: 50vh;
+  overflow: auto;
+  overflow-y: hidden;
+}
+
+.options::-webkit-scrollbar {
+  width: 0.25rem;
+}
+
+.options::-webkit-scrollbar-track {
+  background: #1e1e24;
+}
+
+.options::-webkit-scrollbar-thumb {
+  background: #6649b8;
+}
+
+.option {
+  margin: 10px;
 }
 </style>
