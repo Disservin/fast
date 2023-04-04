@@ -221,6 +221,12 @@ export default defineComponent({
           if (length + 1 < parts.length && parts[++length] === "default") {
             length++;
             option.default = option.value = parts[length];
+
+            if (option.type === "check") {
+              option.value = option.value === "true";
+            } else if (option.type === "spin") {
+              option.value = Number(option.value);
+            }
           }
 
           if (length + 1 < parts.length && parts[++length] === "min") {
@@ -243,7 +249,6 @@ export default defineComponent({
         }
       }
 
-      console.log(settings);
       // update the path of the engine
       if (result && !Array.isArray(result)) {
         // we need to use the index to update the correct engine
@@ -287,6 +292,10 @@ export default defineComponent({
       });
       this.engines[index].use = true;
 
+      const engine = this.engines[0];
+      this.engines[0] = this.engines[index];
+      this.engines[index] = engine;
+
       localStorage.setItem("engines", JSON.stringify(this.engines));
     },
     addEngine() {
@@ -310,6 +319,8 @@ export default defineComponent({
       this.engines.push(newEngine);
 
       localStorage.setItem("engines", JSON.stringify(this.engines));
+
+      this.selectEngine(this.engines.length - 1);
     },
   },
 });
@@ -390,12 +401,19 @@ export default defineComponent({
 }
 
 .engine-column.active button {
-  background-color: white;
+  background-color: var(--light-white);
+  color: #000000;
+}
+.engine-column.active input {
+  background-color: var(--light-white);
   color: #000000;
 }
 
 .engine-column.active h2 {
-  color: var(--button-text);
+  color: var(--light-white);
+}
+.engine-column.active .option-name {
+  color: var(--light-white);
 }
 
 .edit-button,

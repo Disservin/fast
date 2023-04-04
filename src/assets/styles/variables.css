@@ -38,4 +38,7 @@
     /* Link colors */
     --link-color: #007bff;
     --link-color-hover: #66b3ff;
+
+    /* General stuff */
+    --light-white: #E2E8F0;
   }
