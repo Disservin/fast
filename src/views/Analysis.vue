@@ -46,12 +46,8 @@ export default defineComponent({
 
     const activeEngine = engines[0];
 
-    console.log(activeEngine.path);
-    await invoke("new", { command: activeEngine.path });
-
-    await invoke("go");
-
-    console.log("started engine");
+    // await invoke("new", { command: activeEngine.path });
+    // await invoke("go");
 
     this.timer = setInterval(() => {
       this.info();
@@ -61,9 +57,8 @@ export default defineComponent({
     window.removeEventListener("resize", this.calculateSquareSize);
     clearInterval(this.timer as number);
 
-    await invoke("stop");
-    await invoke("quit");
-    console.log("stopped and quit engine");
+    // await invoke("stop");
+    // await invoke("quit");
   },
 
   data() {
@@ -74,9 +69,14 @@ export default defineComponent({
       promotionMove: { origin: "", destination: "" },
       engine_info: "test",
       timer: null as number | null,
+      small_navbar: ["Engine Lines", "Prompt", "Settings"],
+      isActive: "Engine Lines",
     };
   },
   methods: {
+    setActive(element: string, index: number) {
+      this.isActive = element;
+    },
     async info() {
       const info: string = await invoke("read_line");
       if (info != "") {
@@ -241,7 +241,18 @@ export default defineComponent({
         <div class="fen-input"></div>
       </div>
       <div class="analysis-info">
-        <div class="info-nav"></div>
+        <div class="info-nav">
+          <ul>
+            <li
+              v-for="(element, index) in small_navbar"
+              :class="{ active: isActive === element }"
+              :key="element"
+              @click="setActive(element, index)"
+            >
+              {{ element }}
+            </li>
+          </ul>
+        </div>
         <div class="info-content">
           <div class="engine-lines"></div>
           <div class="game-pgn"></div>
@@ -317,6 +328,36 @@ h1 {
   background-color: #333;
   color: #fff;
   padding: 10px;
+}
+
+.info-nav ul {
+  display: flex;
+  justify-content: space-evenly;
+  align-items: center;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.info-nav li {
+  padding: 10px;
+  cursor: pointer;
+  flex-grow: 1;
+  text-align: center;
+}
+
+.info-nav li.active {
+  background-color: #fff;
+  color: #333;
+}
+
+.info-nav li.active:hover {
+  background-color: #fff;
+  color: #333;
+}
+
+.info-nav li:hover {
+  background-color: #5f5f5f;
 }
 
 .info-content {
