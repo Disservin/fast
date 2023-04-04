@@ -1,5 +1,6 @@
 <script lang="ts">
 import Sidebar from "@/components/SideBar.vue";
+import EngineStats from "@/components/EngineStats.vue";
 
 import { defineComponent } from "vue";
 
@@ -9,12 +10,19 @@ import { Chessground } from "chessground";
 import { Chess, SQUARES, type Move, type Square } from "chess.js";
 import { invoke } from "@tauri-apps/api";
 
+import type { EngineInfo } from "@/ts/UciFilter";
+
+import { filterUCIInfo } from "@/ts/UciFilter";
+
+import type { Option, Engine } from "@/ts/types";
+
 type ChessgroundInstance = ReturnType<typeof Chessground>;
 
 export default defineComponent({
   name: "app",
   components: {
     Sidebar: Sidebar,
+    EngineStats: EngineStats,
   },
   async mounted() {
     const config = {
@@ -41,56 +49,97 @@ export default defineComponent({
     this.calculateSquareSize();
     window.addEventListener("resize", this.calculateSquareSize);
 
-    const enginesData = localStorage.getItem("engines");
-    const engines = enginesData ? JSON.parse(enginesData) : [];
+    await this.setupEngine();
 
-    const activeEngine = engines[0];
-
-    // await invoke("new", { command: activeEngine.path });
-    // await invoke("go");
+    await invoke("go");
 
     this.timer = setInterval(() => {
       this.info();
-    }, 1000);
+    }, 100);
   },
   async beforeDestroy() {
     window.removeEventListener("resize", this.calculateSquareSize);
     clearInterval(this.timer as number);
 
-    // await invoke("stop");
-    // await invoke("quit");
+    await invoke("stop");
+
+    this.isEngineAlive = false;
+    await invoke("quit");
   },
 
   data() {
     return {
+      isActive: "Engine Lines",
+      small_navbar: ["Engine Lines", "Prompt", "Settings"],
+
       game: new Chess(),
       cg: null as ChessgroundInstance | null,
+
       showPromotion: false,
       promotionMove: { origin: "", destination: "" },
-      engine_info: "test",
+
+      engine_info: {
+        nodes: "0",
+        nps: "0",
+        depth: "0",
+        time: "0",
+      } as EngineInfo,
+
+      activeEngine: null as null | Engine,
+      isEngineAlive: false,
+
       timer: null as number | null,
-      small_navbar: ["Engine Lines", "Prompt", "Settings"],
-      isActive: "Engine Lines",
     };
   },
   methods: {
+    async setupEngine() {
+      const enginesData = localStorage.getItem("engines");
+      const engines = enginesData ? JSON.parse(enginesData) : [];
+
+      const activeEngine = engines[0];
+
+      await invoke("new", { command: activeEngine.path });
+
+      this.isEngineAlive = true;
+      this.activeEngine = activeEngine;
+
+      // set options
+      this.activeEngine?.settings.forEach((option: Option) => {
+        if (
+          option.value === "" ||
+          option.name === "" ||
+          option.value === undefined ||
+          option.name === undefined
+        ) {
+          return;
+        }
+        console.log(option.name, option.value);
+        invoke("set_option", {
+          name: option.name,
+          value: option.value,
+        });
+      });
+    },
     setActive(element: string, index: number) {
       this.isActive = element;
     },
+    async sendOptions() {},
     async info() {
+      if (!this.isEngineAlive) {
+        return;
+      }
       const info: string = await invoke("read_line");
-      if (info != "") {
-        this.engine_info = info;
+      if (info != "" && info.startsWith("info")) {
+        const filtered = filterUCIInfo(info);
 
-        // draw engine pv move on board
-        const pv = info.split(" pv ")[1];
-        if (pv) {
-          const pvMoves = pv.split(" ");
-          const origin = pvMoves[0].substring(0, 2);
-          const destination = pvMoves[0].substring(2, 4);
-          console.log(origin, destination);
+        // only update changed values
+        this.engine_info = { ...this.engine_info, ...filtered };
 
-          this.drawMove(origin, destination);
+        if (this.engine_info.pv && this.engine_info.pv.length > 0) {
+          this.drawMove(
+            this.engine_info.pv[0].orig,
+            this.engine_info.pv[0].dest
+          );
         }
       }
     },
@@ -235,9 +284,7 @@ export default defineComponent({
             </div>
           </div>
         </div>
-        <div class="engine-stats">
-          {{ engine_info }}
-        </div>
+        <EngineStats :engine_info="engine_info"></EngineStats>
         <div class="fen-input"></div>
       </div>
       <div class="analysis-info">
@@ -289,13 +336,6 @@ h1 {
   flex-direction: column;
   flex: 0 0 66%;
   box-sizing: border-box;
-}
-
-.engine-stats {
-  flex: 0 0 10%;
-  padding: 10px;
-  box-sizing: border-box;
-  background-color: #843b3b;
 }
 
 .board-space {
@@ -422,18 +462,17 @@ h1 {
 .white-bishop {
   background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0NSIgaGVpZ2h0PSI0NSI+PGcgZmlsbD0ibm9uZSIgZmlsbC1ydWxlPSJldmVub2RkIiBzdHJva2U9IiMwMDAiIHN0cm9rZS13aWR0aD0iMS41IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxnIGZpbGw9IiNmZmYiIHN0cm9rZS1saW5lY2FwPSJidXR0Ij48cGF0aCBkPSJNOSAzNmMzLjM5LS45NyAxMC4xMS40MyAxMy41LTIgMy4zOSAyLjQzIDEwLjExIDEuMDMgMTMuNSAyIDAgMCAxLjY1LjU0IDMgMi0uNjguOTctMS42NS45OS0zIC41LTMuMzktLjk3LTEwLjExLjQ2LTEzLjUtMS0zLjM5IDEuNDYtMTAuMTEuMDMtMTMuNSAxLTEuMzU0LjQ5LTIuMzIzLjQ3LTMtLjUgMS4zNTQtMS45NCAzLTIgMy0yeiIvPjxwYXRoIGQ9Ik0xNSAzMmMyLjUgMi41IDEyLjUgMi41IDE1IDAgLjUtMS41IDAtMiAwLTIgMC0yLjUtMi41LTQtMi41LTQgNS41LTEuNSA2LTExLjUtNS0xNS41LTExIDQtMTAuNSAxNC01IDE1LjUgMCAwLTIuNSAxLjUtMi41IDQgMCAwLS41LjUgMCAyeiIvPjxwYXRoIGQ9Ik0yNSA4YTIuNSAyLjUgMCAxIDEtNSAwIDIuNSAyLjUgMCAxIDEgNSAweiIvPjwvZz48cGF0aCBkPSJNMTcuNSAyNmgxME0xNSAzMGgxNW0tNy41LTE0LjV2NU0yMCAxOGg1IiBzdHJva2UtbGluZWpvaW49Im1pdGVyIi8+PC9nPjwvc3ZnPg==");
 }
+
 .white-knight {
   background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0NSIgaGVpZ2h0PSI0NSI+PGcgZmlsbD0ibm9uZSIgZmlsbC1ydWxlPSJldmVub2RkIiBzdHJva2U9IiMwMDAiIHN0cm9rZS13aWR0aD0iMS41IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxwYXRoIGQ9Ik0yMiAxMGMxMC41IDEgMTYuNSA4IDE2IDI5SDE1YzAtOSAxMC02LjUgOC0yMSIgZmlsbD0iI2ZmZiIvPjxwYXRoIGQ9Ik0yNCAxOGMuMzggMi45MS01LjU1IDcuMzctOCA5LTMgMi0yLjgyIDQuMzQtNSA0LTEuMDQyLS45NCAxLjQxLTMuMDQgMC0zLTEgMCAuMTkgMS4yMy0xIDItMSAwLTQuMDAzIDEtNC00IDAtMiA2LTEyIDYtMTJzMS44OS0xLjkgMi0zLjVjLS43My0uOTk0LS41LTItLjUtMyAxLTEgMyAyLjUgMyAyLjVoMnMuNzgtMS45OTIgMi41LTNjMSAwIDEgMyAxIDMiIGZpbGw9IiNmZmYiLz48cGF0aCBkPSJNOS41IDI1LjVhLjUuNSAwIDEgMS0xIDAgLjUuNSAwIDEgMSAxIDB6bTUuNDMzLTkuNzVhLjUgMS41IDMwIDEgMS0uODY2LS41LjUgMS41IDMwIDEgMSAuODY2LjV6IiBmaWxsPSIjMDAwIi8+PC9nPjwvc3ZnPg==");
 }
+
 .white-rook {
   background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0NSIgaGVpZ2h0PSI0NSI+PGcgZmlsbD0iI2ZmZiIgZmlsbC1ydWxlPSJldmVub2RkIiBzdHJva2U9IiMwMDAiIHN0cm9rZS13aWR0aD0iMS41IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxwYXRoIGQ9Ik05IDM5aDI3di0zSDl2M3ptMy0zdi00aDIxdjRIMTJ6bS0xLTIyVjloNHYyaDVWOWg1djJoNVY5aDR2NSIgc3Ryb2tlLWxpbmVjYXA9ImJ1dHQiLz48cGF0aCBkPSJNMzQgMTRsLTMgM0gxNGwtMy0zIi8+PHBhdGggZD0iTTMxIDE3djEyLjVIMTRWMTciIHN0cm9rZS1saW5lY2FwPSJidXR0IiBzdHJva2UtbGluZWpvaW49Im1pdGVyIi8+PHBhdGggZD0iTTMxIDI5LjVsMS41IDIuNWgtMjBsMS41LTIuNSIvPjxwYXRoIGQ9Ik0xMSAxNGgyMyIgZmlsbD0ibm9uZSIgc3Ryb2tlLWxpbmVqb2luPSJtaXRlciIvPjwvZz48L3N2Zz4=");
 }
+
 .white-queen {
   background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0NSIgaGVpZ2h0PSI0NSI+PGcgZmlsbD0iI2ZmZiIgZmlsbC1ydWxlPSJldmVub2RkIiBzdHJva2U9IiMwMDAiIHN0cm9rZS13aWR0aD0iMS41IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxwYXRoIGQ9Ik04IDEyYTIgMiAwIDEgMS00IDAgMiAyIDAgMSAxIDQgMHptMTYuNS00LjVhMiAyIDAgMSAxLTQgMCAyIDIgMCAxIDEgNCAwek00MSAxMmEyIDIgMCAxIDEtNCAwIDIgMiAwIDEgMSA0IDB6TTE2IDguNWEyIDIgMCAxIDEtNCAwIDIgMiAwIDEgMSA0IDB6TTMzIDlhMiAyIDAgMSAxLTQgMCAyIDIgMCAxIDEgNCAweiIvPjxwYXRoIGQ9Ik05IDI2YzguNS0xLjUgMjEtMS41IDI3IDBsMi0xMi03IDExVjExbC01LjUgMTMuNS0zLTE1LTMgMTUtNS41LTE0VjI1TDcgMTRsMiAxMnoiIHN0cm9rZS1saW5lY2FwPSJidXR0Ii8+PHBhdGggZD0iTTkgMjZjMCAyIDEuNSAyIDIuNSA0IDEgMS41IDEgMSAuNSAzLjUtMS41IDEtMS41IDIuNS0xLjUgMi41LTEuNSAxLjUuNSAyLjUuNSAyLjUgNi41IDEgMTYuNSAxIDIzIDAgMCAwIDEuNS0xIDAtMi41IDAgMCAuNS0xLjUtMS0yLjUtLjUtMi41LS41LTIgLjUtMy41IDEtMiAyLjUtMiAyLjUtNC04LjUtMS41LTE4LjUtMS41LTI3IDB6IiBzdHJva2UtbGluZWNhcD0iYnV0dCIvPjxwYXRoIGQ9Ik0xMS41IDMwYzMuNS0xIDE4LjUtMSAyMiAwTTEyIDMzLjVjNi0xIDE1LTEgMjEgMCIgZmlsbD0ibm9uZSIvPjwvZz48L3N2Zz4=");
-}
-
-.engine-stats {
-  padding-left: 5rem;
 }
 
 .fen-input {

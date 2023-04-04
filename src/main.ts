@@ -6,8 +6,6 @@ import router from "./router";
 import FontAwesomeIcon from "./fontawesome-icons";
 
 
-
-
 Vue.component("font-awesome-icon", FontAwesomeIcon);
 
 new Vue({

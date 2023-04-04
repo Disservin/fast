@@ -34,7 +34,7 @@
                   />
                   <input
                     v-if="option.type == 'spin'"
-                    v-model.number="option.value"
+                    v-model="option.value"
                     type="number"
                     disabled
                   />
@@ -92,7 +92,7 @@
                     </button>
                     <input
                       v-if="value.type == 'spin'"
-                      v-model.number="editedEngine?.settings[key].value"
+                      v-model="editedEngine?.settings[key].value"
                       type="number"
                     />
                     <input
@@ -123,21 +123,7 @@ import { open } from "@tauri-apps/api/dialog";
 
 import { defineComponent } from "vue";
 
-interface Option {
-  name: string;
-  type: string;
-  default: unknown;
-  min: number;
-  max: number;
-  value: unknown;
-}
-
-interface Engine {
-  name: string;
-  path: string;
-  use: boolean;
-  settings: Option[];
-}
+import type { Option, Engine } from "@/ts/types";
 
 export default defineComponent({
   name: "Engines",
@@ -210,12 +196,6 @@ export default defineComponent({
           if (length + 1 < parts.length && parts[++length] === "default") {
             length++;
             option.default = option.value = parts[length];
-
-            if (option.type === "check") {
-              option.value = option.value === "true";
-            } else if (option.type === "spin") {
-              option.value = Number(option.value);
-            }
           }
 
           if (length + 1 < parts.length && parts[++length] === "min") {
@@ -292,10 +272,10 @@ export default defineComponent({
       const option = {
         name: "",
         type: "",
-        default: 0,
+        default: "0",
         min: 0,
         max: 0,
-        value: 0,
+        value: "0",
       };
 
       const newEngine: Engine = {
