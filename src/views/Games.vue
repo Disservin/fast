@@ -1,7 +1,9 @@
 <template lang="">
-  <div>
-    <h1>Games</h1>
-  </div>
+  <main>
+    <div>
+      <h1>Games</h1>
+    </div>
+  </main>
 </template>
 <script>
 import { invoke } from "@tauri-apps/api";
@@ -28,4 +30,13 @@ export default defineComponent({
   },
 });
 </script>
-<style lang=""></style>
+
+<style scoped>
+main {
+  margin-left: 5rem;
+}
+
+h1 {
+  color: #fff;
+}
+</style>
