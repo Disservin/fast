@@ -7,6 +7,7 @@ import type { Color, Key } from "chessground/types";
 import { Chessground } from "chessground";
 
 import { Chess, SQUARES, type Move, type Square } from "chess.js";
+import { invoke } from "@tauri-apps/api";
 
 type ChessgroundInstance = ReturnType<typeof Chessground>;
 
@@ -15,7 +16,7 @@ export default defineComponent({
   components: {
     Sidebar: Sidebar,
   },
-  mounted() {
+  async mounted() {
     const config = {
       movable: {
         color: "white" as Color,
@@ -39,9 +40,30 @@ export default defineComponent({
 
     this.calculateSquareSize();
     window.addEventListener("resize", this.calculateSquareSize);
+
+    const enginesData = localStorage.getItem("engines");
+    const engines = enginesData ? JSON.parse(enginesData) : [];
+
+    const activeEngine = engines[0];
+
+    console.log(activeEngine.path);
+    await invoke("new", { command: activeEngine.path });
+
+    await invoke("go");
+
+    console.log("started engine");
+
+    this.timer = setInterval(() => {
+      this.info();
+    }, 1000);
   },
-  beforeDestroy() {
+  async beforeDestroy() {
     window.removeEventListener("resize", this.calculateSquareSize);
+    clearInterval(this.timer as number);
+
+    await invoke("stop");
+    await invoke("quit");
+    console.log("stopped and quit engine");
   },
 
   data() {
@@ -50,9 +72,37 @@ export default defineComponent({
       cg: null as ChessgroundInstance | null,
       showPromotion: false,
       promotionMove: { origin: "", destination: "" },
+      engine_info: "test",
+      timer: null as number | null,
     };
   },
   methods: {
+    async info() {
+      const info: string = await invoke("read_line");
+      if (info != "") {
+        this.engine_info = info;
+
+        // draw engine pv move on board
+        const pv = info.split(" pv ")[1];
+        if (pv) {
+          const pvMoves = pv.split(" ");
+          const origin = pvMoves[0].substring(0, 2);
+          const destination = pvMoves[0].substring(2, 4);
+          console.log(origin, destination);
+
+          this.drawMove(origin, destination);
+        }
+      }
+    },
+    drawMove(origin: string, destination: string) {
+      this.cg?.setShapes([
+        {
+          orig: origin as Key,
+          dest: destination as Key,
+          brush: "paleBlue",
+        },
+      ]);
+    },
     setPromotionPiece(piece: string) {
       this.showPromotion = false;
 
@@ -120,6 +170,8 @@ export default defineComponent({
           dests: this.toDests(),
         },
       });
+
+      this.drawMove(origin, destination);
     },
     toColor(): Color {
       return this.game.turn() === "w" ? "white" : "black";
@@ -183,8 +235,9 @@ export default defineComponent({
             </div>
           </div>
         </div>
-
-        <div class="engine-stats"></div>
+        <div class="engine-stats">
+          {{ engine_info }}
+        </div>
         <div class="fen-input"></div>
       </div>
       <div class="analysis-info">
@@ -336,5 +389,13 @@ h1 {
 }
 .white-queen {
   background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0NSIgaGVpZ2h0PSI0NSI+PGcgZmlsbD0iI2ZmZiIgZmlsbC1ydWxlPSJldmVub2RkIiBzdHJva2U9IiMwMDAiIHN0cm9rZS13aWR0aD0iMS41IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxwYXRoIGQ9Ik04IDEyYTIgMiAwIDEgMS00IDAgMiAyIDAgMSAxIDQgMHptMTYuNS00LjVhMiAyIDAgMSAxLTQgMCAyIDIgMCAxIDEgNCAwek00MSAxMmEyIDIgMCAxIDEtNCAwIDIgMiAwIDEgMSA0IDB6TTE2IDguNWEyIDIgMCAxIDEtNCAwIDIgMiAwIDEgMSA0IDB6TTMzIDlhMiAyIDAgMSAxLTQgMCAyIDIgMCAxIDEgNCAweiIvPjxwYXRoIGQ9Ik05IDI2YzguNS0xLjUgMjEtMS41IDI3IDBsMi0xMi03IDExVjExbC01LjUgMTMuNS0zLTE1LTMgMTUtNS41LTE0VjI1TDcgMTRsMiAxMnoiIHN0cm9rZS1saW5lY2FwPSJidXR0Ii8+PHBhdGggZD0iTTkgMjZjMCAyIDEuNSAyIDIuNSA0IDEgMS41IDEgMSAuNSAzLjUtMS41IDEtMS41IDIuNS0xLjUgMi41LTEuNSAxLjUuNSAyLjUuNSAyLjUgNi41IDEgMTYuNSAxIDIzIDAgMCAwIDEuNS0xIDAtMi41IDAgMCAuNS0xLjUtMS0yLjUtLjUtMi41LS41LTIgLjUtMy41IDEtMiAyLjUtMiAyLjUtNC04LjUtMS41LTE4LjUtMS41LTI3IDB6IiBzdHJva2UtbGluZWNhcD0iYnV0dCIvPjxwYXRoIGQ9Ik0xMS41IDMwYzMuNS0xIDE4LjUtMSAyMiAwTTEyIDMzLjVjNi0xIDE1LTEgMjEgMCIgZmlsbD0ibm9uZSIvPjwvZz48L3N2Zz4=");
+}
+
+.engine-stats {
+  padding-left: 5rem;
+}
+
+.fen-input {
+  padding-left: 5rem;
 }
 </style>

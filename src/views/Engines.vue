@@ -44,13 +44,6 @@
                     type="checkbox"
                     disabled
                   />
-                  <input
-                    v-if="option.type == 'button'"
-                    v-model="option.value"
-                    type="button"
-                    value="Button"
-                    disabled
-                  />
                 </div>
               </div>
             </div>
@@ -106,12 +99,6 @@
                       v-if="value.type == 'check'"
                       v-model="editedEngine?.settings[key].value"
                       type="checkbox"
-                    />
-                    <input
-                      v-if="value.type == 'button'"
-                      v-model="editedEngine?.settings[key].value"
-                      type="button"
-                      value="Button"
                     />
                   </div>
                 </div>
@@ -187,6 +174,8 @@ export default defineComponent({
       // Auto Detect Options
       const options: String[] = await invoke("get_options");
 
+      invoke("quit");
+
       let settings: Option[] = [];
       let engine_name = "New Engine";
 
@@ -245,6 +234,7 @@ export default defineComponent({
           if (option.name === "SyzygyPath") option.type = "file";
           if (option.name === "EvalFile") option.type = "file";
 
+          if (option.type === "button") continue;
           settings.push(option);
         }
       }
