@@ -50,23 +50,17 @@ export default defineComponent({
     window.addEventListener("resize", this.calculateSquareSize);
 
     this.setupEngine().then(() => {
-      console.log("sent go");
-      invoke("go");
+      invoke("go").then(() => {
+        this.info();
+      });
     });
-
-    this.timer = setInterval(() => {
-      this.info();
-    }, 300);
   },
   beforeUnmount() {
     this.isEngineAlive = false;
 
     window.removeEventListener("resize", this.calculateSquareSize);
-    clearInterval(this.timer as number);
 
-    console.log("sending stop");
     invoke("stop").then((response) => {
-      console.log("sending quit");
       invoke("quit");
     });
   },
@@ -91,8 +85,6 @@ export default defineComponent({
 
       activeEngine: null as null | Engine,
       isEngineAlive: false,
-
-      timer: null as number | null,
     };
   },
   methods: {
@@ -102,7 +94,6 @@ export default defineComponent({
 
       const activeEngine = engines[0];
 
-      console.log("starting engine: " + activeEngine.path);
       await invoke("new", { command: activeEngine.path });
 
       this.isEngineAlive = true;
@@ -134,7 +125,9 @@ export default defineComponent({
       if (!this.isEngineAlive) {
         return;
       }
-      console.log("reading info");
+
+      const start = Date.now();
+
       const info: string = await invoke("read_line");
       if (info != "" && info.startsWith("info")) {
         const filtered = filterUCIInfo(info);
@@ -152,6 +145,17 @@ export default defineComponent({
             this.engine_info.pv[0].dest
           );
         }
+      }
+
+      const end = Date.now();
+
+      // wait 100ms before calling info() again
+      if (end - start < 100) {
+        setTimeout(() => {
+          this.info();
+        }, 100);
+      } else {
+        this.info();
       }
     },
     drawMove(origin: string, destination: string) {

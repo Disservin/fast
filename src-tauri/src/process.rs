@@ -14,20 +14,24 @@ pub struct Engine {
 
 impl Engine {
     pub fn new(&mut self, command: &String) {
-        println!("Starting engine: {}", command);
-        let mut process = Command::new(command)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .spawn()
-            .expect("Failed to spawn engine process");
+        let mut process = Command::new(command);
+        process.stdin(Stdio::piped()).stdout(Stdio::piped());
 
-        println!("Engine started: {}", command);
+        // Hide the console window on Windows
+        if cfg!(windows) {
+            use std::os::windows::process::CommandExt;
+
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
+            process.creation_flags(CREATE_NO_WINDOW);
+        }
+
+        let mut child = process.spawn().expect("Failed to spawn engine process");
 
         self.reader = Some(BufReader::new(
-            process.stdout.take().expect("Stdout is piped"),
+            child.stdout.take().expect("Stdout is piped"),
         ));
 
-        self.process = Some(process);
+        self.process = Some(child);
     }
 
     fn write(&mut self, cmd: &str) -> io::Result<()> {
@@ -123,7 +127,6 @@ impl Engine {
     }
 
     pub fn stop(&mut self) -> io::Result<()> {
-        println!("Sending stop to engine... ");
         self.write("stop")
     }
 
@@ -146,8 +149,6 @@ impl Engine {
     }
 
     pub fn quit(&mut self) -> io::Result<()> {
-        println!("Quitting engine... ");
-
         let res = self.write("quit");
         self.process.as_mut().unwrap().kill().unwrap();
         self.reader = None;
@@ -238,13 +239,7 @@ pub async fn new_game(state: tauri::State<'_, MyState>) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn stop(state: tauri::State<'_, MyState>) -> Result<(), String> {
-    println!("acquire stop mutex to engine... ");
-    let start = Instant::now();
-
     let mut state_guard = state.0.lock().unwrap();
-    let duration = start.elapsed();
-
-    println!("got stop mutex mutex to engine... {:?} ", duration);
 
     state_guard.stop().unwrap();
     Ok(())
