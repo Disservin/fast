@@ -49,22 +49,26 @@ export default defineComponent({
     this.calculateSquareSize();
     window.addEventListener("resize", this.calculateSquareSize);
 
-    await this.setupEngine();
-
-    await invoke("go");
+    this.setupEngine().then(() => {
+      console.log("sent go");
+      invoke("go");
+    });
 
     this.timer = setInterval(() => {
       this.info();
-    }, 100);
+    }, 300);
   },
-  async beforeDestroy() {
+  beforeUnmount() {
+    this.isEngineAlive = false;
+
     window.removeEventListener("resize", this.calculateSquareSize);
     clearInterval(this.timer as number);
 
-    await invoke("stop");
-
-    this.isEngineAlive = false;
-    await invoke("quit");
+    console.log("sending stop");
+    invoke("stop").then((response) => {
+      console.log("sending quit");
+      invoke("quit");
+    });
   },
 
   data() {
@@ -98,13 +102,14 @@ export default defineComponent({
 
       const activeEngine = engines[0];
 
+      console.log("starting engine: " + activeEngine.path);
       await invoke("new", { command: activeEngine.path });
 
       this.isEngineAlive = true;
       this.activeEngine = activeEngine;
 
       // set options
-      this.activeEngine?.settings.forEach((option: Option) => {
+      this.activeEngine?.settings.forEach((option: Option) => async () => {
         if (
           option.value === "" ||
           option.name === "" ||
@@ -113,8 +118,7 @@ export default defineComponent({
         ) {
           return;
         }
-        console.log(option.name, option.value);
-        invoke("set_option", {
+        await invoke("set_option", {
           name: option.name,
           value: option.value,
         });
@@ -123,11 +127,14 @@ export default defineComponent({
     setActive(element: string, index: number) {
       this.isActive = element;
     },
-    async sendOptions() {},
+    async sendOptions() {
+      // TODO
+    },
     async info() {
       if (!this.isEngineAlive) {
         return;
       }
+      console.log("reading info");
       const info: string = await invoke("read_line");
       if (info != "" && info.startsWith("info")) {
         const filtered = filterUCIInfo(info);
@@ -135,7 +142,11 @@ export default defineComponent({
         // only update changed values
         this.engine_info = { ...this.engine_info, ...filtered };
 
-        if (this.engine_info.pv && this.engine_info.pv.length > 0) {
+        if (
+          this.engine_info.pv &&
+          this.engine_info.pv.length > 0 &&
+          this.isEngineAlive
+        ) {
           this.drawMove(
             this.engine_info.pv[0].orig,
             this.engine_info.pv[0].dest
@@ -251,7 +262,7 @@ export default defineComponent({
       boardWrap.style.height = size + "px";
       document.body.dispatchEvent(new Event("chessground.resize"));
       // idk why i need to do this, but it works it also yeets the call stack
-      window.dispatchEvent(new Event("resize"));
+      //   window.dispatchEvent(new Event("resize"));
     },
   },
 });

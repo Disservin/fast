@@ -10,7 +10,7 @@
     "ignoreDeprecations": "5.0"
   },
   "vueCompilerOptions": {
-    "target": 2.7
+    "target": 3
   },
   "references": [
     {

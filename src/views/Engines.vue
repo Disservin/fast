@@ -20,30 +20,27 @@
             <p><u>UCI Options</u></p>
 
             <div class="options">
-              <div
-                class="option"
-                v-for="option in engine.settings"
-                v-if="option.name != ''"
-              >
-                <div class="option-name">{{ option.name }}</div>
-                <div class="option-value">
-                  <input
-                    v-if="option.type == 'string' || option.type == 'file'"
-                    v-model="option.value"
-                    disabled
-                  />
-                  <input
-                    v-if="option.type == 'spin'"
-                    v-model="option.value"
-                    type="number"
-                    disabled
-                  />
-                  <input
-                    v-if="option.type == 'check'"
-                    v-model="option.value"
-                    type="checkbox"
-                    disabled
-                  />
+              <div class="option" v-for="option in engine.settings">
+                <div v-if="option && option.name != ''">
+                  <div class="option-name">{{ option.name }}</div>
+                  <div class="option-value">
+                    <input
+                      v-if="option.type == 'string' || option.type == 'file'"
+                      v-model="option.value"
+                      disabled
+                    />
+                    <input
+                      v-if="option.type == 'spin'"
+                      v-model="option.value"
+                      disabled
+                    />
+                    <input
+                      v-if="option.type == 'check'"
+                      v-model="option.value"
+                      type="checkbox"
+                      disabled
+                    />
+                  </div>
                 </div>
               </div>
             </div>
@@ -81,7 +78,7 @@
                   <div class="option-value">
                     <input
                       v-if="value.type == 'string' || value.type == 'file'"
-                      v-model="editedEngine?.settings[key].value"
+                      v-model="editedEngine.settings[key].value"
                     />
                     <button
                       v-if="value.type == 'file'"
@@ -92,12 +89,11 @@
                     </button>
                     <input
                       v-if="value.type == 'spin'"
-                      v-model="editedEngine?.settings[key].value"
-                      type="number"
+                      v-model="editedEngine.settings[key].value"
                     />
                     <input
                       v-if="value.type == 'check'"
-                      v-model="editedEngine?.settings[key].value"
+                      v-model="editedEngine.settings[key].value"
                       type="checkbox"
                     />
                   </div>
@@ -128,23 +124,30 @@ import type { Option, Engine } from "@/ts/types";
 export default defineComponent({
   name: "Engines",
   data() {
-    const enginesData = localStorage.getItem("engines");
-    const engines = enginesData ? JSON.parse(enginesData) : [];
-
     return {
-      engines,
+      engines: [] as Engine[],
       editingIndex: null as number | null,
       editedEngine: null as Engine | null,
     };
   },
-  mounted() {},
+  mounted() {
+    const enginesData = localStorage.getItem("engines");
+
+    if (enginesData) {
+      this.engines = JSON.parse(enginesData) as Engine[];
+    }
+  },
   methods: {
     async selectFile(index: number, key: any) {
-      const result = await open({
+      if (this.engines.length === 0 || index > this.engines.length) return;
+
+      const selected = await open({
         filters: [{ name: "All Files", extensions: [] }],
       });
 
-      this.engines[index]!.settings[key].value = result;
+      if (!Array.isArray(selected) && selected !== null) {
+        this.engines[index].settings[key].value = selected;
+      }
 
       localStorage.setItem("engines", JSON.stringify(this.engines));
     },

@@ -10,24 +10,24 @@ const READLINE_TIMEOUT: Duration = Duration::from_millis(100);
 pub struct Engine {
     pub process: Option<Child>,
     pub reader: Option<BufReader<ChildStdout>>,
-    pub clock: Option<Instant>,
 }
 
 impl Engine {
     pub fn new(&mut self, command: &String) {
+        println!("Starting engine: {}", command);
         let mut process = Command::new(command)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .spawn()
             .expect("Failed to spawn engine process");
 
+        println!("Engine started: {}", command);
+
         self.reader = Some(BufReader::new(
             process.stdout.take().expect("Stdout is piped"),
         ));
 
         self.process = Some(process);
-
-        self.uci().expect("Failed to send uci command");
     }
 
     fn write(&mut self, cmd: &str) -> io::Result<()> {
@@ -123,6 +123,7 @@ impl Engine {
     }
 
     pub fn stop(&mut self) -> io::Result<()> {
+        println!("Sending stop to engine... ");
         self.write("stop")
     }
 
@@ -145,7 +146,12 @@ impl Engine {
     }
 
     pub fn quit(&mut self) -> io::Result<()> {
-        self.write("quit")
+        println!("Quitting engine... ");
+
+        let res = self.write("quit");
+        self.process.as_mut().unwrap().kill().unwrap();
+        self.reader = None;
+        return res;
     }
 }
 
@@ -232,7 +238,14 @@ pub async fn new_game(state: tauri::State<'_, MyState>) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn stop(state: tauri::State<'_, MyState>) -> Result<(), String> {
+    println!("acquire stop mutex to engine... ");
+    let start = Instant::now();
+
     let mut state_guard = state.0.lock().unwrap();
+    let duration = start.elapsed();
+
+    println!("got stop mutex mutex to engine... {:?} ", duration);
+
     state_guard.stop().unwrap();
     Ok(())
 }

@@ -12,7 +12,6 @@ fn main() {
         .manage(process::MyState(Mutex::new(process::Engine {
             process: None,
             reader: None,
-            clock: None,
         })))
         .invoke_handler(tauri::generate_handler![
             process::new,
