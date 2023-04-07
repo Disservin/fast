@@ -1,6 +1,8 @@
 <script lang="ts">
 import Sidebar from "@/components/SideBar.vue";
 import EngineStats from "@/components/EngineStats.vue";
+import EngineButtons from "@/components/EngineButtons.vue";
+import Fen from "@/components/Fen.vue";
 
 import { defineComponent } from "vue";
 
@@ -23,6 +25,8 @@ export default defineComponent({
   components: {
     Sidebar: Sidebar,
     EngineStats: EngineStats,
+    Fen: Fen,
+    EngineButtons: EngineButtons,
   },
   async mounted() {
     const config = {
@@ -53,27 +57,39 @@ export default defineComponent({
 
     this.calculateSquareSize();
     window.addEventListener("resize", this.calculateSquareSize);
-
-    this.setupEngine().then(() => {
-      invoke("go").then(() => {
-        this.getInfo();
-      });
-    });
   },
   beforeUnmount() {
     this.isEngineAlive = false;
 
     window.removeEventListener("resize", this.calculateSquareSize);
 
+    this.isRunning = false;
     invoke("stop").then((response) => {
       invoke("quit");
     });
   },
-
+  computed: {
+    activeTab(): String {
+      return this.smallNavbar[this.activeTabIndex].id;
+    },
+  },
   data() {
     return {
-      isActive: "Engine Lines",
-      small_navbar: ["Engine Lines", "Prompt", "Settings"],
+      activeTabIndex: 0,
+      smallNavbar: [
+        {
+          id: "engine-lines",
+          name: "Engine Lines",
+        },
+        {
+          id: "prompt",
+          name: "Prompt",
+        },
+        {
+          id: "settings",
+          name: "Settings",
+        },
+      ],
 
       game: new Chess(),
       cg: null as ChessgroundInstance | null,
@@ -90,13 +106,42 @@ export default defineComponent({
 
       activeEngine: null as null | Engine,
       isEngineAlive: false,
+      isRunning: false,
 
       oldSize: 0,
     };
   },
   methods: {
-    setActive(element: string, index: number) {
-      this.isActive = element;
+    // button methods for engine
+    sendEngineCommand(command: string) {
+      if (command === "go") {
+        if (this.isEngineAlive) {
+          invoke("go").then(() => {
+            this.isRunning = true;
+            this.getInfo();
+          });
+        } else {
+          this.setupEngine().then(() => {
+            invoke("go").then(() => {
+              this.isRunning = true;
+              this.getInfo();
+            });
+          });
+        }
+
+        this.engine_info = {
+          nodes: "0",
+          nps: "0",
+          depth: "0",
+          time: "0",
+        };
+      } else if (command === "stop") {
+        this.isRunning = false;
+
+        invoke("stop").then(() => {
+          console.log("stop");
+        });
+      }
     },
     async sendOptions() {
       this.activeEngine?.settings.forEach((option: Option) => async () => {
@@ -126,10 +171,11 @@ export default defineComponent({
       this.activeEngine = activeEngine;
 
       // set options
+      await invoke("uci");
       await this.sendOptions();
     },
     async getInfo() {
-      if (!this.isEngineAlive) {
+      if (!this.isEngineAlive || !this.isRunning) {
         return;
       }
 
@@ -310,26 +356,31 @@ export default defineComponent({
             </div>
           </div>
         </div>
-        <EngineStats :engine_info="engine_info"></EngineStats>
-        <div class="fen-input"></div>
       </div>
       <div class="analysis-info">
-        <div class="info-nav">
-          <ul>
-            <li
-              v-for="(element, index) in small_navbar"
-              :class="{ active: isActive === element }"
-              :key="element"
-              @click="setActive(element, index)"
-            >
-              {{ element }}
-            </li>
-          </ul>
-        </div>
+        <Fen
+          fen="rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+        ></Fen>
+        <EngineStats :engine_info="engine_info"></EngineStats>
+
+        <v-tabs v-model="activeTabIndex" class="info-nav">
+          <v-tab v-for="element in smallNavbar">
+            {{ element.name }}
+          </v-tab>
+        </v-tabs>
         <div class="info-content">
-          <div class="engine-lines"></div>
-          <div class="game-pgn"></div>
-          <div class="analysis-graph"></div>
+          <div class="nav-main-content">
+            <div v-if="activeTab == 'engine-lines'"></div>
+            <div v-if="activeTab == 'prompt'">
+              <EngineButtons
+                @engine-command="sendEngineCommand"
+              ></EngineButtons>
+            </div>
+          </div>
+          <div class="nav-secondary-content">
+            <div class="game-pgn"></div>
+            <div class="analysis-graph"></div>
+          </div>
         </div>
       </div>
     </main>
@@ -367,6 +418,7 @@ h1 {
 .board-space {
   flex: 1;
   display: flex;
+  flex-direction: column;
   justify-content: center;
   align-items: center;
   width: 100%;
@@ -377,53 +429,10 @@ h1 {
   background-color: aquamarine;
 }
 
-.fen-input {
-  flex: 0 0 10%;
-  padding: 10px;
-  box-sizing: border-box;
-  background-color: #343434;
-}
-
 .analysis-info {
   flex: 1;
   display: flex;
   flex-direction: column;
-}
-
-.info-nav {
-  background-color: #333;
-  color: #fff;
-  padding: 10px;
-}
-
-.info-nav ul {
-  display: flex;
-  justify-content: space-evenly;
-  align-items: center;
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.info-nav li {
-  padding: 10px;
-  cursor: pointer;
-  flex-grow: 1;
-  text-align: center;
-}
-
-.info-nav li.active {
-  background-color: #fff;
-  color: #333;
-}
-
-.info-nav li.active:hover {
-  background-color: #fff;
-  color: #333;
-}
-
-.info-nav li:hover {
-  background-color: #5f5f5f;
 }
 
 .info-content {
@@ -433,9 +442,17 @@ h1 {
   flex-direction: column;
 }
 
-.engine-lines {
-  background-color: #240000;
-  flex-basis: 100%;
+.nav-main-content {
+  background-color: var(--bg-secondary);
+  /* flex-basis: 100%; */
+}
+
+.nav-secondary-content {
+  flex: 1;
+  display: flex;
+  flex-wrap: nowrap;
+  flex-direction: column;
+  margin-top: 10px;
 }
 
 .game-pgn {
@@ -445,7 +462,6 @@ h1 {
 
 .analysis-graph {
   flex-basis: calc(50% - 5px);
-
   background-color: #ae9b9b;
 }
 
@@ -499,9 +515,5 @@ h1 {
 
 .white-queen {
   background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0NSIgaGVpZ2h0PSI0NSI+PGcgZmlsbD0iI2ZmZiIgZmlsbC1ydWxlPSJldmVub2RkIiBzdHJva2U9IiMwMDAiIHN0cm9rZS13aWR0aD0iMS41IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxwYXRoIGQ9Ik04IDEyYTIgMiAwIDEgMS00IDAgMiAyIDAgMSAxIDQgMHptMTYuNS00LjVhMiAyIDAgMSAxLTQgMCAyIDIgMCAxIDEgNCAwek00MSAxMmEyIDIgMCAxIDEtNCAwIDIgMiAwIDEgMSA0IDB6TTE2IDguNWEyIDIgMCAxIDEtNCAwIDIgMiAwIDEgMSA0IDB6TTMzIDlhMiAyIDAgMSAxLTQgMCAyIDIgMCAxIDEgNCAweiIvPjxwYXRoIGQ9Ik05IDI2YzguNS0xLjUgMjEtMS41IDI3IDBsMi0xMi03IDExVjExbC01LjUgMTMuNS0zLTE1LTMgMTUtNS41LTE0VjI1TDcgMTRsMiAxMnoiIHN0cm9rZS1saW5lY2FwPSJidXR0Ii8+PHBhdGggZD0iTTkgMjZjMCAyIDEuNSAyIDIuNSA0IDEgMS41IDEgMSAuNSAzLjUtMS41IDEtMS41IDIuNS0xLjUgMi41LTEuNSAxLjUuNSAyLjUuNSAyLjUgNi41IDEgMTYuNSAxIDIzIDAgMCAwIDEuNS0xIDAtMi41IDAgMCAuNS0xLjUtMS0yLjUtLjUtMi41LS41LTIgLjUtMy41IDEtMiAyLjUtMiAyLjUtNC04LjUtMS41LTE4LjUtMS41LTI3IDB6IiBzdHJva2UtbGluZWNhcD0iYnV0dCIvPjxwYXRoIGQ9Ik0xMS41IDMwYzMuNS0xIDE4LjUtMSAyMiAwTTEyIDMzLjVjNi0xIDE1LTEgMjEgMCIgZmlsbD0ibm9uZSIvPjwvZz48L3N2Zz4=");
-}
-
-.fen-input {
-  padding-left: 5rem;
 }
 </style>

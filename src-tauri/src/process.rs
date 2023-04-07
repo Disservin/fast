@@ -5,7 +5,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-const READLINE_TIMEOUT: Duration = Duration::from_millis(100);
+const READLINE_TIMEOUT: Duration = Duration::from_millis(20);
 
 pub struct Engine {
     pub process: Option<Child>,
@@ -16,6 +16,8 @@ impl Engine {
     pub fn new(&mut self, command: &String) {
         let mut process = Command::new(command);
         process.stdin(Stdio::piped()).stdout(Stdio::piped());
+
+        println!("Starting engine: {}", command);
 
         // Hide the console window on Windows
         if cfg!(windows) {
@@ -38,6 +40,8 @@ impl Engine {
         if self.process.is_none() {
             return Ok(());
         }
+
+        println!("Writing: {}", cmd);
 
         let stdin = self
             .process
@@ -62,6 +66,7 @@ impl Engine {
         let timer = Instant::now();
         while timer.elapsed() < READLINE_TIMEOUT {
             if self.reader.as_mut().unwrap().read_line(&mut s).is_ok() {
+                println!("Read: {}", s);
                 return Ok(s);
             }
         }
@@ -240,7 +245,7 @@ pub async fn new_game(state: tauri::State<'_, MyState>) -> Result<(), String> {
 #[tauri::command]
 pub async fn stop(state: tauri::State<'_, MyState>) -> Result<(), String> {
     let mut state_guard = state.0.lock().unwrap();
-
+    println!("received stop command");
     state_guard.stop().unwrap();
     Ok(())
 }
@@ -254,6 +259,7 @@ pub async fn get_bestmove(state: tauri::State<'_, MyState>) -> Result<String, St
 #[tauri::command]
 pub async fn go(state: tauri::State<'_, MyState>) -> Result<(), String> {
     let mut state_guard = state.0.lock().unwrap();
+    println!("received go command");
     state_guard.go().unwrap();
     Ok(())
 }
@@ -268,6 +274,7 @@ pub async fn go_nodes(state: tauri::State<'_, MyState>, nodes: usize) -> Result<
 #[tauri::command]
 pub async fn quit(state: tauri::State<'_, MyState>) -> Result<(), String> {
     let mut state_guard = state.0.lock().unwrap();
+    println!("received quit command");
     state_guard.quit().unwrap();
     Ok(())
 }

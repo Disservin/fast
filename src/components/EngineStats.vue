@@ -66,9 +66,9 @@ export default defineComponent({
 .engine-stats {
   display: flex;
   flex-wrap: wrap;
-  justify-content: space-between;
+  justify-content: space-evenly;
   align-items: center;
-  background-color: #843b3b;
+  background-color: var(--bg-tertiary);
   color: white;
   padding: 10px;
   box-sizing: border-box;
@@ -82,15 +82,10 @@ export default defineComponent({
 }
 
 .engine-stat-label {
-  font-weight: bold;
   margin-right: 5px;
 }
 
 .engine-stat-value {
   font-size: 16px;
-}
-
-.engine-stats {
-  padding-left: 5rem;
 }
 </style>
