@@ -46,12 +46,17 @@ export default defineComponent({
     const board = this.$refs.board as HTMLElement;
     this.cg = Chessground(board, config);
 
+    let boardSpace = this.$refs.boardSpace as HTMLElement;
+    let rect = boardSpace.getBoundingClientRect();
+
+    this.oldSize = rect.width;
+
     this.calculateSquareSize();
     window.addEventListener("resize", this.calculateSquareSize);
 
     this.setupEngine().then(() => {
       invoke("go").then(() => {
-        this.info();
+        this.getInfo();
       });
     });
   },
@@ -85,21 +90,15 @@ export default defineComponent({
 
       activeEngine: null as null | Engine,
       isEngineAlive: false,
+
+      oldSize: 0,
     };
   },
   methods: {
-    async setupEngine() {
-      const enginesData = localStorage.getItem("engines");
-      const engines = enginesData ? JSON.parse(enginesData) : [];
-
-      const activeEngine = engines[0];
-
-      await invoke("new", { command: activeEngine.path });
-
-      this.isEngineAlive = true;
-      this.activeEngine = activeEngine;
-
-      // set options
+    setActive(element: string, index: number) {
+      this.isActive = element;
+    },
+    async sendOptions() {
       this.activeEngine?.settings.forEach((option: Option) => async () => {
         if (
           option.value === "" ||
@@ -115,13 +114,21 @@ export default defineComponent({
         });
       });
     },
-    setActive(element: string, index: number) {
-      this.isActive = element;
+    async setupEngine() {
+      const enginesData = localStorage.getItem("engines");
+      const engines = enginesData ? JSON.parse(enginesData) : [];
+
+      const activeEngine = engines[0];
+
+      await invoke("new", { command: activeEngine.path });
+
+      this.isEngineAlive = true;
+      this.activeEngine = activeEngine;
+
+      // set options
+      await this.sendOptions();
     },
-    async sendOptions() {
-      // TODO
-    },
-    async info() {
+    async getInfo() {
       if (!this.isEngineAlive) {
         return;
       }
@@ -149,13 +156,13 @@ export default defineComponent({
 
       const end = Date.now();
 
-      // wait 100ms before calling info() again
+      // wait 100ms before calling getInfo() again
       if (end - start < 100) {
         setTimeout(() => {
-          this.info();
+          this.getInfo();
         }, 100);
       } else {
-        this.info();
+        this.getInfo();
       }
     },
     drawMove(origin: string, destination: string) {
@@ -254,19 +261,23 @@ export default defineComponent({
       return dests;
     },
     calculateSquareSize() {
-      //   let width = board_space.offsetWidth - 7; // for the numbers on the side of the ground
-      //   width -= width % 8; // fix chrome alignment errors; https://github.com/ornicar/lila/pull/3881
       const boardSpace = this.$refs.boardSpace as HTMLElement;
       const boardWrap = document.querySelector(".cg-wrap") as HTMLElement;
       const rect = boardSpace.getBoundingClientRect();
       let size = Math.min(rect.width, rect.height);
       size -= 7; // adjust for borders and padding
+      // fix chrome alignment errors; https://github.com/ornicar/lila/pull/3881
       size -= size % 8; // ensure the size is a multiple of 8
-      boardWrap.style.width = size + "px";
-      boardWrap.style.height = size + "px";
-      document.body.dispatchEvent(new Event("chessground.resize"));
-      // idk why i need to do this, but it works it also yeets the call stack
-      //   window.dispatchEvent(new Event("resize"));
+
+      if (size != this.oldSize) {
+        boardWrap.style.width = size + "px";
+        boardWrap.style.height = size + "px";
+        document.body.dispatchEvent(new Event("chessground.resize"));
+
+        this.oldSize = size;
+
+        window.dispatchEvent(new Event("resize"));
+      }
     },
   },
 });
