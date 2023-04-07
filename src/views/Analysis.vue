@@ -109,38 +109,59 @@ export default defineComponent({
       isRunning: false,
 
       oldSize: 0,
+
+      currentFen: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+
+      startFen: "startpos",
     };
   },
   methods: {
-    // button methods for engine
-    sendEngineCommand(command: string) {
-      if (command === "go") {
-        if (this.isEngineAlive) {
-          invoke("go").then(() => {
-            this.isRunning = true;
-            this.getInfo();
-          });
-        } else {
-          this.setupEngine().then(() => {
-            invoke("go").then(() => {
-              this.isRunning = true;
-              this.getInfo();
-            });
-          });
-        }
+    getPlayedMoves() {
+      let moves: String = "";
 
+      this.game.history({ verbose: true }).forEach((move: Move) => {
+        moves += move.lan + " ";
+      });
+
+      moves = moves.trim();
+
+      return moves;
+    },
+    // button methods for engine
+    async sendEngineCommand(command: string) {
+      if (command === "go") {
         this.engine_info = {
           nodes: "0",
           nps: "0",
           depth: "0",
           time: "0",
         };
+
+        if (!this.isEngineAlive) {
+          await this.setupEngine();
+        }
+
+        if (this.startFen === "startpos" && this.getPlayedMoves() === "") {
+          await invoke("position_startpos");
+        } else if (this.startFen === "startpos") {
+          await invoke("position_startpos_moves", {
+            moves: this.getPlayedMoves(),
+          });
+        } else {
+          await invoke("position_fen_moves", {
+            start: this.startFen,
+            moves: this.getPlayedMoves(),
+          });
+        }
+
+        invoke("go").then(() => {
+          this.isRunning = true;
+          this.getInfo();
+        });
       } else if (command === "stop") {
         this.isRunning = false;
 
-        invoke("stop").then(() => {
-          console.log("stop");
-        });
+        await invoke("stop");
       }
     },
     async sendOptions() {
@@ -179,9 +200,8 @@ export default defineComponent({
         return;
       }
 
-      const start = Date.now();
-
-      const info: string = await invoke("read_line");
+      console.log("get info");
+      const info: string = await invoke("read_line_instant");
       if (info != "" && info.startsWith("info")) {
         const filtered = filterUCIInfo(info);
 
@@ -200,16 +220,7 @@ export default defineComponent({
         }
       }
 
-      const end = Date.now();
-
-      // wait 100ms before calling getInfo() again
-      if (end - start < 100) {
-        setTimeout(() => {
-          this.getInfo();
-        }, 100);
-      } else {
-        this.getInfo();
-      }
+      this.getInfo();
     },
     drawMove(origin: string, destination: string) {
       this.cg?.setShapes([
@@ -220,7 +231,7 @@ export default defineComponent({
         },
       ]);
     },
-    setPromotionPiece(piece: string) {
+    makePromotionMove(piece: string) {
       this.showPromotion = false;
 
       // do move
@@ -230,15 +241,18 @@ export default defineComponent({
         promotion: piece,
       });
 
+      if (promotionMove === null) {
+        return "snapback";
+      }
+
+      // update fen
+      this.currentFen = this.game.fen();
+
       // set check highlighting
       if (this.game.inCheck()) {
         this.cg?.set({
           check: this.toColor(),
         });
-      }
-
-      if (promotionMove === null) {
-        return "snapback";
       }
 
       // update chessground board
@@ -250,8 +264,14 @@ export default defineComponent({
           dests: this.toDests(),
         },
       });
+
+      if (this.isRunning) {
+        this.sendEngineCommand("stop").then(() => {
+          this.sendEngineCommand("go");
+        });
+      }
     },
-    makeMove(origin: string, destination: string) {
+    async makeMove(origin: string, destination: string) {
       const sq = origin as Square;
 
       // is promotion?
@@ -262,10 +282,17 @@ export default defineComponent({
         this.showPromotion = true;
         this.promotionMove = { origin, destination };
 
-        // user has to select a promotion piece and setPromotionPiece() will be called
+        // user has to select a promotion piece and makePromotionMove() will be called
         return;
       } else {
         const move = this.game.move({ from: origin, to: destination });
+
+        if (move === null) {
+          return "snapback";
+        }
+
+        // update fen
+        this.currentFen = this.game.fen();
 
         // check highlighting
         if (this.game.inCheck()) {
@@ -274,8 +301,9 @@ export default defineComponent({
           });
         }
 
-        if (move === null) {
-          return "snapback";
+        if (this.isRunning) {
+          await this.sendEngineCommand("stop");
+          await this.sendEngineCommand("go");
         }
       }
 
@@ -339,28 +367,26 @@ export default defineComponent({
             <div id="promotion-select">
               <button
                 class="piece white-queen"
-                @click="setPromotionPiece('q')"
+                @click="makePromotionMove('q')"
               ></button>
               <button
                 class="piece white-rook"
-                @click="setPromotionPiece('r')"
+                @click="makePromotionMove('r')"
               ></button>
               <button
                 class="piece white-bishop"
-                @click="setPromotionPiece('b')"
+                @click="makePromotionMove('b')"
               ></button>
               <button
                 class="piece white-knight"
-                @click="setPromotionPiece('n')"
+                @click="makePromotionMove('n')"
               ></button>
             </div>
           </div>
         </div>
       </div>
       <div class="analysis-info">
-        <Fen
-          fen="rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
-        ></Fen>
+        <Fen :fen="currentFen" :key="currentFen"></Fen>
         <EngineStats :engine_info="engine_info"></EngineStats>
 
         <v-tabs v-model="activeTabIndex" class="info-nav">

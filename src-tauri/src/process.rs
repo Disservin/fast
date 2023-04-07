@@ -5,7 +5,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-const READLINE_TIMEOUT: Duration = Duration::from_millis(20);
+const READLINE_TIMEOUT: Duration = Duration::from_millis(100);
 
 pub struct Engine {
     pub process: Option<Child>,
@@ -56,6 +56,20 @@ impl Engine {
         Ok(())
     }
 
+    fn read_line_instant(&mut self) -> Result<String, String> {
+        if self.reader.is_none() {
+            return Err("ReadlineTimeout".to_string());
+        }
+
+        let mut s = String::new();
+
+        if self.reader.as_mut().unwrap().read_line(&mut s).is_ok() {
+            println!("Read: {}", s);
+            return Ok(s);
+        }
+        Ok("".to_string())
+    }
+
     fn read_line(&mut self) -> Result<String, String> {
         if self.reader.is_none() {
             return Err("ReadlineTimeout".to_string());
@@ -100,11 +114,15 @@ impl Engine {
         Ok(())
     }
 
-    pub fn position_fen(&mut self, start: &str, moves: &str) -> io::Result<()> {
+    pub fn position_startpos(&mut self) -> io::Result<()> {
+        self.write("position startpos")
+    }
+
+    pub fn position_fen_moves(&mut self, start: &str, moves: &str) -> io::Result<()> {
         self.write(&format!("position fen {} moves {}", start, moves))
     }
 
-    pub fn position_startpos(&mut self, moves: &str) -> io::Result<()> {
+    pub fn position_startpos_moves(&mut self, moves: &str) -> io::Result<()> {
         self.write(&format!("position startpos moves {}", (moves)))
     }
 
@@ -184,6 +202,12 @@ pub async fn read_line(state: tauri::State<'_, MyState>) -> Result<String, Strin
 }
 
 #[tauri::command]
+pub async fn read_line_instant(state: tauri::State<'_, MyState>) -> Result<String, String> {
+    let mut state_guard = state.0.lock().unwrap();
+    Ok(state_guard.read_line_instant().unwrap())
+}
+
+#[tauri::command]
 pub async fn isready(state: tauri::State<'_, MyState>) -> Result<(), String> {
     let mut state_guard = state.0.lock().unwrap();
     state_guard.isready().unwrap();
@@ -198,23 +222,29 @@ pub async fn uci(state: tauri::State<'_, MyState>) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn position_fen(
+pub async fn position_fen_moves(
     state: tauri::State<'_, MyState>,
     start: String,
     moves: String,
 ) -> Result<(), String> {
     let mut state_guard = state.0.lock().unwrap();
-    state_guard.position_fen(&start, &moves).unwrap();
+    state_guard.position_fen_moves(&start, &moves).unwrap();
     Ok(())
 }
 
 #[tauri::command]
-pub async fn position_startpos(
+pub async fn position_startpos(state: tauri::State<'_, MyState>) -> Result<(), String> {
+    let mut state_guard = state.0.lock().unwrap();
+    state_guard.position_startpos().unwrap();
+    Ok(())
+}
+#[tauri::command]
+pub async fn position_startpos_moves(
     state: tauri::State<'_, MyState>,
     moves: String,
 ) -> Result<(), String> {
     let mut state_guard = state.0.lock().unwrap();
-    state_guard.position_startpos(&moves).unwrap();
+    state_guard.position_startpos_moves(&moves).unwrap();
     Ok(())
 }
 

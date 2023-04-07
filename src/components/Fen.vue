@@ -3,7 +3,7 @@
     <div class="fen-input">
       <v-text-field
         id="fen-input"
-        v-model="fen"
+        v-model="currentFen"
         @input="updatePosition"
       ></v-text-field>
     </div>
@@ -12,9 +12,15 @@
 
 <script>
 export default {
+  props: {
+    fen: {
+      type: String,
+      required: true,
+    },
+  },
   data() {
     return {
-      fen: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+      currentFen: this.fen,
     };
   },
   methods: {
