@@ -114,18 +114,17 @@
 </template>
 
 <script lang="ts">
-import { invoke } from "@tauri-apps/api";
+import { defineComponent } from "vue";
 import { open } from "@tauri-apps/api/dialog";
 
-import { defineComponent } from "vue";
-
+import ChessProcess from "../ts/ChessProcess";
 import type { Option, Engine } from "@/ts/types";
-import { Command } from "@tauri-apps/api/shell";
 
 export default defineComponent({
   name: "Engines",
   data() {
     return {
+      chessProcess: null as ChessProcess | null,
       engines: [] as Engine[],
       editingIndex: null as number | null,
       editedEngine: null as Engine | null,
@@ -139,12 +138,11 @@ export default defineComponent({
     }
   },
   methods: {
+    // Update an engine setting with a file path
     async selectFile(index: number, key: any) {
       if (this.engines.length === 0 || index > this.engines.length) return;
 
-      const selected = await open({
-        filters: [{ name: "All Files", extensions: [] }],
-      });
+      const selected = await open();
 
       if (!Array.isArray(selected) && selected !== null) {
         this.engines[index].settings[key].value = selected;
@@ -155,111 +153,81 @@ export default defineComponent({
     async selectEngine(index: number) {
       // Open a file dialog and get the path of the selected file
       // we cant use html input type file because we will get a fakepath
-      const result = await open({
-        filters: [{ name: "All Files", extensions: ["", "exe"] }],
-      });
-
-      //   await invoke("new", { command: result });
-
-      // Auto Detect Options
-      //   const options: String[] = await invoke("get_options");
-      const options: String[] = [];
-
-      //   invoke("quit");
-
-      let settings: Option[] = [];
-      let engine_name = "New Engine";
-
-      for (let line of options) {
-        line = line.replace(/^\s+|\s+$/g, "");
-        line = line.trim();
-
-        if (line.startsWith("id name")) {
-          engine_name = line.replace("id name ", "");
-        } else if (line.startsWith("option name")) {
-          const parts = line.split(" ");
-
-          let length = 1;
-
-          let option: Option = {
-            name: "",
-            type: "",
-            default: "",
-            min: 0,
-            max: 0,
-            value: "",
-          };
-
-          while (length + 1 < parts.length && parts[++length] !== "type") {
-            option.name += " " + parts[length];
-          }
-
-          if (length + 1 < parts.length && parts[length++] === "type") {
-            option.type = parts[length];
-          }
-
-          if (length + 1 < parts.length && parts[++length] === "default") {
-            length++;
-            option.default = option.value = parts[length];
-          }
-
-          if (length + 1 < parts.length && parts[++length] === "min") {
-            length++;
-            option.min = Number(parts[length]);
-          }
-
-          if (length + 1 < parts.length && parts[++length] === "max") {
-            length++;
-            option.max = Number(parts[length]);
-          }
-
-          option.name = option.name.trim();
-
-          // overwrite types
-          if (option.name === "SyzygyPath") option.type = "file";
-          if (option.name === "EvalFile") option.type = "file";
-
-          if (option.type === "button") continue;
-          settings.push(option);
-        }
-      }
-
-      // update the path of the engine
-      if (result && !Array.isArray(result)) {
-        // we need to use the index to update the correct engine
-        this.editingIndex = index;
-        this.engines[index]!.path = result;
-        this.engines[index]!.settings = settings;
-        this.engines[index]!.name = engine_name;
-
-        localStorage.setItem("engines", JSON.stringify(this.engines));
-      }
+      const result = await open();
 
       if (result && !Array.isArray(result)) {
-        console.log("cmd");
-        const command = new Command(result);
-        command.on("close", (data) => {
-          console.log(
-            `command finished with code ${data.code} and signal ${data.signal}`
-          );
+        this.chessProcess = new ChessProcess(result, (line) => {
+          if (line.trim() == "uciok") {
+            this.chessProcess?.sendQuit();
+            return;
+          }
+
+          this.editingIndex = index;
+          this.engines[index]!.path = result;
+
+          let settings: Option[] = this.engines[index].settings || [];
+
+          line = line.replace(/^\s+|\s+$/g, "");
+          line = line.trim();
+
+          if (line.startsWith("id name")) {
+            this.engines[index]!.name = line.replace("id name ", "");
+          } else if (line.startsWith("option name")) {
+            const parts = line.split(" ");
+
+            let option: Option = {
+              name: "",
+              type: "",
+              default: "",
+              min: 0,
+              max: 0,
+              value: "",
+            };
+
+            let length = 1;
+
+            while (length + 1 < parts.length && parts[++length] !== "type") {
+              option.name += " " + parts[length];
+            }
+
+            if (length + 1 < parts.length && parts[length++] === "type") {
+              option.type = parts[length];
+            }
+
+            if (length + 1 < parts.length && parts[++length] === "default") {
+              length++;
+              option.default = option.value = parts[length];
+            }
+
+            if (length + 1 < parts.length && parts[++length] === "min") {
+              length++;
+              option.min = Number(parts[length]);
+            }
+
+            if (length + 1 < parts.length && parts[++length] === "max") {
+              length++;
+              option.max = Number(parts[length]);
+            }
+
+            option.name = option.name.trim();
+
+            // overwrite types
+            if (option.name === "SyzygyPath") option.type = "file";
+            if (option.name === "EvalFile") option.type = "file";
+            if (option.type !== "button") settings.push(option);
+          }
+
+          // we need to use the index to update the correct engine
+          this.engines[index]!.settings = settings;
+
+          localStorage.setItem("engines", JSON.stringify(this.engines));
         });
-        command.stdout.on("data", (line) =>
-          console.log(`command stdout: "${line}"`)
-        );
-        command.stderr.on("data", (line) =>
-          console.log(`command stderr: "${line}"`)
-        );
 
-        const child = await command.spawn();
-        console.log("pid:", child.pid);
-
-        child.write("uci\n");
+        await this.chessProcess.start();
+        this.chessProcess.write("uci\n");
       }
     },
-    removeEngine(index: number) {
-      this.engines.splice(index, 1);
-      localStorage.setItem("engines", JSON.stringify(this.engines));
-    },
+
     editEngine(index: number) {
       // Set the editing index and copy the engine to edit to a new object
       this.editingIndex = index;
@@ -282,16 +250,8 @@ export default defineComponent({
 
       localStorage.setItem("engines", JSON.stringify(this.engines));
     },
-    useEngine(index: number) {
-      this.engines.forEach((engine: Engine) => {
-        engine.use = false;
-      });
-      this.engines[index].use = true;
-
-      const engine = this.engines[0];
-      this.engines[0] = this.engines[index];
-      this.engines[index] = engine;
-
+    removeEngine(index: number) {
+      this.engines.splice(index, 1);
       localStorage.setItem("engines", JSON.stringify(this.engines));
     },
     addEngine() {
@@ -317,6 +277,18 @@ export default defineComponent({
       localStorage.setItem("engines", JSON.stringify(this.engines));
 
       this.selectEngine(this.engines.length - 1);
+    },
+    useEngine(index: number) {
+      this.engines.forEach((engine: Engine) => {
+        engine.use = false;
+      });
+      this.engines[index].use = true;
+
+      const engine = this.engines[0];
+      this.engines[0] = this.engines[index];
+      this.engines[index] = engine;
+
+      localStorage.setItem("engines", JSON.stringify(this.engines));
     },
   },
 });
@@ -354,7 +326,7 @@ export default defineComponent({
 
 .engine-column.active {
   filter: grayscale(0%) opacity(1);
-  background-color: #3700b3;
+  background-color: var(--selected-secondary);
 }
 
 .engine-table::-webkit-scrollbar {

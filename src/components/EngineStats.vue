@@ -2,6 +2,12 @@
   <div>
     <div class="engine-stats">
       <div class="engine-stat">
+        <span class="engine-stat-label">Eval:</span>
+        <span class="engine-stat-value">{{
+          formatEval(engine_info.score)
+        }}</span>
+      </div>
+      <div class="engine-stat">
         <span class="engine-stat-label">Nodes:</span>
         <span class="engine-stat-value">{{
           formatNumber(engine_info.nodes)
@@ -57,6 +63,18 @@ export default defineComponent({
       return `${(hours < 10 ? "0" : "") + hours}:${
         (minutes < 10 ? "0" : "") + minutes
       }:${(seconds < 10 ? "0" : "") + seconds}`;
+    },
+    formatEval(evaluation: string): string {
+      if (!evaluation) return "N/A";
+
+      if (evaluation.startsWith("cp")) {
+        return (Number(evaluation.slice(2)) / 100).toString();
+      } else if (evaluation.startsWith("mate")) {
+        const mateIn = Number(evaluation.slice(4));
+        return (mateIn > 0 ? "+" : "-") + "M" + Math.abs(mateIn);
+      } else {
+        return evaluation;
+      }
     },
   },
 });

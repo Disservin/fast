@@ -1,22 +1,22 @@
 <script lang="ts">
+import { defineComponent } from "vue";
+
 import Sidebar from "@/components/SideBar.vue";
 import EngineStats from "@/components/EngineStats.vue";
 import EngineButtons from "@/components/EngineButtons.vue";
 import Fen from "@/components/Fen.vue";
 
-import { defineComponent } from "vue";
+import { Chessground } from "chessground";
+import { Chess, SQUARES, type Move, type Square } from "chess.js";
 
 import type { Color, Key } from "chessground/types";
-import { Chessground } from "chessground";
-
-import { Chess, SQUARES, type Move, type Square } from "chess.js";
-import { invoke } from "@tauri-apps/api";
 
 import type { EngineInfo } from "@/ts/UciFilter";
+import type { Option, Engine } from "@/ts/types";
 
 import { filterUCIInfo } from "@/ts/UciFilter";
 
-import type { Option, Engine } from "@/ts/types";
+import ChessProcess from "../ts/ChessProcess";
 
 type ChessgroundInstance = ReturnType<typeof Chessground>;
 
@@ -45,6 +45,9 @@ export default defineComponent({
         lastMove: true,
         check: true,
       },
+      drawable: {
+        eraseOnClick: false,
+      },
     };
 
     const board = this.$refs.board as HTMLElement;
@@ -60,13 +63,12 @@ export default defineComponent({
   },
   beforeUnmount() {
     this.isEngineAlive = false;
+    this.isRunning = false;
 
     window.removeEventListener("resize", this.calculateSquareSize);
 
-    this.isRunning = false;
-    invoke("stop").then((response) => {
-      invoke("quit");
-    });
+    this.chessProcess?.sendStop();
+    this.chessProcess?.sendQuit();
   },
   computed: {
     activeTab(): String {
@@ -75,6 +77,8 @@ export default defineComponent({
   },
   data() {
     return {
+      chessProcess: null as ChessProcess | null,
+
       activeTabIndex: 0,
       smallNavbar: [
         {
@@ -98,6 +102,7 @@ export default defineComponent({
       promotionMove: { origin: "", destination: "" },
 
       engine_info: {
+        score: "0",
         nodes: "0",
         nps: "0",
         depth: "0",
@@ -113,19 +118,13 @@ export default defineComponent({
       currentFen: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
 
       startFen: "startpos",
+
+      moveHistory: "",
     };
   },
   methods: {
     getPlayedMoves() {
-      let moves: String = "";
-
-      this.game.history({ verbose: true }).forEach((move: Move) => {
-        moves += move.lan + " ";
-      });
-
-      moves = moves.trim();
-
-      return moves;
+      return this.moveHistory.trim();
     },
     // button methods for engine
     async sendEngineCommand(command: string) {
@@ -142,26 +141,29 @@ export default defineComponent({
         }
 
         if (this.startFen === "startpos" && this.getPlayedMoves() === "") {
-          await invoke("position_startpos");
+          this.chessProcess?.sendStartpos();
         } else if (this.startFen === "startpos") {
-          await invoke("position_startpos_moves", {
-            moves: this.getPlayedMoves(),
-          });
+          this.chessProcess?.sendStartposMoves(this.getPlayedMoves());
         } else {
-          await invoke("position_fen_moves", {
-            start: this.startFen,
-            moves: this.getPlayedMoves(),
-          });
+          this.chessProcess?.sendPositionMoves(
+            this.startFen,
+            this.getPlayedMoves()
+          );
         }
 
-        invoke("go").then(() => {
-          this.isRunning = true;
-          this.getInfo();
-        });
+        this.isRunning = true;
+        this.chessProcess?.sendGo();
       } else if (command === "stop") {
         this.isRunning = false;
+        this.chessProcess?.sendStop();
+      } else if (command === "restart") {
+        this.activeEngine = null;
+        this.isRunning = false;
 
-        await invoke("stop");
+        this.chessProcess?.sendStop();
+        this.chessProcess?.sendQuit();
+        this.chessProcess?.sendStartpos();
+        this.chessProcess?.sendGo();
       }
     },
     async sendOptions() {
@@ -174,36 +176,34 @@ export default defineComponent({
         ) {
           return;
         }
-        await invoke("set_option", {
-          name: option.name,
-          value: option.value,
-        });
+        this.chessProcess?.sendOption(option.name, option.value);
       });
     },
     async setupEngine() {
       const enginesData = localStorage.getItem("engines");
       const engines = enginesData ? JSON.parse(enginesData) : [];
 
-      const activeEngine = engines[0];
-
-      await invoke("new", { command: activeEngine.path });
-
       this.isEngineAlive = true;
-      this.activeEngine = activeEngine;
+      this.activeEngine = engines[0];
 
-      // set options
-      await invoke("uci");
+      this.chessProcess = new ChessProcess(engines[0].path, (line) => {
+        this.getInfo(line);
+      });
+
+      await this.chessProcess.start();
+
+      this.chessProcess.write("uci\n");
+
       await this.sendOptions();
     },
-    async getInfo() {
+    getInfo(line: string) {
+      console.log(line);
       if (!this.isEngineAlive || !this.isRunning) {
         return;
       }
 
-      console.log("get info");
-      const info: string = await invoke("read_line_instant");
-      if (info != "" && info.startsWith("info")) {
-        const filtered = filterUCIInfo(info);
+      if (line != "" && line.startsWith("info")) {
+        const filtered = filterUCIInfo(line);
 
         // only update changed values
         this.engine_info = { ...this.engine_info, ...filtered };
@@ -213,16 +213,14 @@ export default defineComponent({
           this.engine_info.pv.length > 0 &&
           this.isEngineAlive
         ) {
-          this.drawMove(
+          this.drawAnalysisMove(
             this.engine_info.pv[0].orig,
             this.engine_info.pv[0].dest
           );
         }
       }
-
-      this.getInfo();
     },
-    drawMove(origin: string, destination: string) {
+    drawAnalysisMove(origin: string, destination: string) {
       this.cg?.setShapes([
         {
           orig: origin as Key,
@@ -231,7 +229,7 @@ export default defineComponent({
         },
       ]);
     },
-    makePromotionMove(piece: string) {
+    async makePromotionMove(piece: string) {
       this.showPromotion = false;
 
       // do move
@@ -284,27 +282,12 @@ export default defineComponent({
 
         // user has to select a promotion piece and makePromotionMove() will be called
         return;
-      } else {
-        const move = this.game.move({ from: origin, to: destination });
+      }
 
-        if (move === null) {
-          return "snapback";
-        }
+      const move = this.game.move({ from: origin, to: destination });
 
-        // update fen
-        this.currentFen = this.game.fen();
-
-        // check highlighting
-        if (this.game.inCheck()) {
-          this.cg?.set({
-            check: this.toColor(),
-          });
-        }
-
-        if (this.isRunning) {
-          await this.sendEngineCommand("stop");
-          await this.sendEngineCommand("go");
-        }
+      if (move === null) {
+        return "snapback";
       }
 
       // update chessground board
@@ -312,25 +295,68 @@ export default defineComponent({
         turnColor: this.toColor(),
         movable: {
           color: this.toColor(),
-          dests: this.toDests(),
+          dests: await this.toDests(),
         },
       });
 
-      this.drawMove(origin, destination);
+      this.moveHistory += move.lan + " ";
+
+      // update fen
+      this.currentFen = this.game.fen();
+
+      // check highlighting
+      if (this.game.inCheck()) {
+        this.cg?.set({
+          check: this.toColor(),
+        });
+      }
+
+      if (this.isRunning) {
+        await this.sendEngineCommand("stop");
+        await this.sendEngineCommand("go");
+      }
     },
     toColor(): Color {
       return this.game.turn() === "w" ? "white" : "black";
     },
     // movable destionations for a piece
-    toDests(): Map<Key, Key[]> {
+    toDests() {
       const dests = new Map();
       SQUARES.forEach((s) => {
-        const ms = this.game.moves({ square: s, verbose: true });
-        if (ms.length)
+        const moves = this.game.moves({ square: s });
+        if (moves.length) {
           dests.set(
             s,
-            ms.map((m) => m.to)
+            moves.map((m) => {
+              // horrible hack to get the destination square
+              // all because chess.js verbose printer is so slow,
+              // this is a 30x speedup to the previous approach
+              let to;
+              if (m.includes("=")) {
+                const index = m.indexOf("=");
+                to = m.slice(index - 2, index);
+              } else if (m.includes("x")) {
+                const index = m.indexOf("x");
+                to = m.slice(index + 1, index + 3);
+              } else if (m === "O-O" || m === "O-O-O") {
+                if (m === "O-O") {
+                  to = s === "e1" ? "g1" : "g8";
+                } else {
+                  to = s === "e1" ? "c1" : "c8";
+                }
+              } else if (m.length == 2) {
+                to = m;
+              } else if (m.length == 3) {
+                to = m.slice(1);
+              } else if (m.endsWith("+") || m.endsWith("#")) {
+                to = m.slice(m.length - 3, m.length - 1);
+              } else {
+                to = m.slice(m.length - 2, m.length);
+              }
+              return to;
+            })
           );
+        }
       });
       return dests;
     },
