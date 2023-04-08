@@ -120,6 +120,7 @@ import { open } from "@tauri-apps/api/dialog";
 import { defineComponent } from "vue";
 
 import type { Option, Engine } from "@/ts/types";
+import { Command } from "@tauri-apps/api/shell";
 
 export default defineComponent({
   name: "Engines",
@@ -158,12 +159,13 @@ export default defineComponent({
         filters: [{ name: "All Files", extensions: ["", "exe"] }],
       });
 
-      await invoke("new", { command: result });
+      //   await invoke("new", { command: result });
 
       // Auto Detect Options
-      const options: String[] = await invoke("get_options");
+      //   const options: String[] = await invoke("get_options");
+      const options: String[] = [];
 
-      invoke("quit");
+      //   invoke("quit");
 
       let settings: Option[] = [];
       let engine_name = "New Engine";
@@ -231,6 +233,27 @@ export default defineComponent({
         this.engines[index]!.name = engine_name;
 
         localStorage.setItem("engines", JSON.stringify(this.engines));
+      }
+
+      if (result && !Array.isArray(result)) {
+        console.log("cmd");
+        const command = new Command(result);
+        command.on("close", (data) => {
+          console.log(
+            `command finished with code ${data.code} and signal ${data.signal}`
+          );
+        });
+        command.stdout.on("data", (line) =>
+          console.log(`command stdout: "${line}"`)
+        );
+        command.stderr.on("data", (line) =>
+          console.log(`command stderr: "${line}"`)
+        );
+
+        const child = await command.spawn();
+        console.log("pid:", child.pid);
+
+        child.write("uci\n");
       }
     },
     removeEngine(index: number) {
