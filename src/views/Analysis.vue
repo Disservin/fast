@@ -408,6 +408,7 @@ export default defineComponent({
       this.cg?.set({
         fen: this.game.fen(),
         turnColor: this.toColor(),
+        lastMove: undefined,
         movable: {
           color: this.toColor(),
           dests: this.toDests(),
@@ -423,6 +424,7 @@ export default defineComponent({
 
       this.moveHistory = "";
       this.startFen = this.game.fen();
+
       await this.sendEngineCommand("restart");
     },
     calculateSquareSize() {
