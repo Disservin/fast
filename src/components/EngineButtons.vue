@@ -1,27 +1,29 @@
 <script lang="ts">
 export default {
+  props: ["status"],
   methods: {
     sendEngineCommand(command: string) {
       if (command === "go") {
-        this.engineStatus = "running";
+        this.isRunning = true;
       } else if (command === "stop") {
-        this.engineStatus = "stopped";
+        this.isRunning = false;
       } else if (command === "restart") {
-        this.engineStatus = "stopped";
+        this.isRunning = false;
       }
       this.$emit("engine-command", command);
 
-      localStorage.setItem("engineStatus", this.engineStatus);
+      localStorage.setItem("status", this.isRunning);
     },
   },
   mounted() {
-    this.engineStatus = localStorage.getItem("engineStatus") || "stopped";
+    this.isRunning = localStorage.getItem("status") === "true";
+    console.log(this.isRunning);
   },
   data() {
     return {
       engineLog: "",
       // stopped, running
-      engineStatus: "stopped",
+      isRunning: this.status,
     };
   },
 };
@@ -36,7 +38,7 @@ export default {
           outlined
           color="primary"
           block
-          :disabled="engineStatus === 'running'"
+          :disabled="isRunning"
           @click="sendEngineCommand('go')"
         >
           Go Infinite
@@ -48,7 +50,7 @@ export default {
           outlined
           color="primary"
           block
-          :disabled="engineStatus === 'stopped'"
+          :disabled="!isRunning"
           @click="sendEngineCommand('stop')"
         >
           Stop
@@ -59,7 +61,7 @@ export default {
           outlined
           color="primary"
           block
-          :disabled="engineStatus === 'running'"
+          :disabled="isRunning"
           @click="sendEngineCommand('restart')"
         >
           Restart

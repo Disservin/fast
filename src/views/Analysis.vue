@@ -23,6 +23,8 @@ import ChessProcess from "../ts/ChessProcess";
 
 type ChessgroundInstance = ReturnType<typeof Chessground>;
 
+const startpos = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+
 export default defineComponent({
   name: "app",
   components: {
@@ -64,6 +66,8 @@ export default defineComponent({
 
     this.calculateSquareSize();
     window.addEventListener("resize", this.calculateSquareSize);
+
+    this.newPosition(startpos);
   },
   beforeUnmount() {
     this.isEngineAlive = false;
@@ -73,9 +77,6 @@ export default defineComponent({
 
     this.chessProcess?.sendStop();
     this.chessProcess?.sendQuit();
-
-    // clear button status
-    localStorage.setItem("engineStatus", "stopped");
   },
   computed: {
     activeTab(): String {
@@ -122,41 +123,43 @@ export default defineComponent({
       isEngineAlive: false,
       isRunning: false,
 
+      lastCommand: "",
+
       oldSize: 0,
-
-      currentFen: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
-
-      startFen: "startpos",
 
       moveHistory: "",
 
       engineLines: new Map<string, PV>(),
+
+      startFen: startpos,
+      currentFen: startpos,
     };
   },
   methods: {
     getPlayedMoves() {
       return this.moveHistory.trim();
     },
-    newPosition(fen: string) {
-      this.game.load(fen);
-      this.cg?.set({
-        fen: fen,
-        turnColor: this.toColor(),
-        movable: {
-          color: this.toColor(),
-          dests: this.toDests(),
-        },
+    async setupEngine() {
+      const enginesData = localStorage.getItem("engines");
+      const engines = enginesData ? JSON.parse(enginesData) : [];
+
+      this.isEngineAlive = true;
+      this.activeEngine = engines[0];
+
+      this.chessProcess = new ChessProcess(engines[0].path, (line) => {
+        this.formatInfoStats(line);
       });
 
-      // set check highlighting
-      if (this.game.inCheck()) {
-        this.cg?.set({
-          check: this.toColor(),
-        });
-      }
+      await this.chessProcess.start();
+
+      this.chessProcess.write("uci\n");
+
+      await this.sendOptions();
     },
     // button methods for engine
     async sendEngineCommand(command: string) {
+      this.lastCommand = command;
+
       if (command === "go") {
         this.engine_info = {
           nodes: "0",
@@ -171,9 +174,9 @@ export default defineComponent({
           await this.setupEngine();
         }
 
-        if (this.startFen === "startpos" && this.getPlayedMoves() === "") {
+        if (this.startFen === startpos && this.getPlayedMoves() === "") {
           this.chessProcess?.sendStartpos();
-        } else if (this.startFen === "startpos") {
+        } else if (this.startFen === startpos) {
           this.chessProcess?.sendStartposMoves(this.getPlayedMoves());
         } else {
           this.chessProcess?.sendPositionMoves(
@@ -184,9 +187,11 @@ export default defineComponent({
 
         this.isRunning = true;
         this.chessProcess?.sendGo();
+        localStorage.setItem("status", "true");
       } else if (command === "stop") {
         this.isRunning = false;
         this.chessProcess?.sendStop();
+        localStorage.setItem("status", "false");
       } else if (command === "restart") {
         this.activeEngine = null;
         this.isRunning = false;
@@ -203,9 +208,11 @@ export default defineComponent({
         this.chessProcess?.sendStop();
         await this.chessProcess?.sendQuit();
         await this.setupEngine();
-        this.chessProcess?.sendStartpos();
-        this.chessProcess?.sendGo();
+        localStorage.setItem("status", "false");
       }
+
+      // force update of buttons
+      this.currentFen = this.game.fen();
     },
     async sendOptions() {
       this.activeEngine?.settings.forEach((option: Option) => async () => {
@@ -220,24 +227,7 @@ export default defineComponent({
         this.chessProcess?.sendOption(option.name, option.value);
       });
     },
-    async setupEngine() {
-      const enginesData = localStorage.getItem("engines");
-      const engines = enginesData ? JSON.parse(enginesData) : [];
-
-      this.isEngineAlive = true;
-      this.activeEngine = engines[0];
-
-      this.chessProcess = new ChessProcess(engines[0].path, (line) => {
-        this.getInfo(line);
-      });
-
-      await this.chessProcess.start();
-
-      this.chessProcess.write("uci\n");
-
-      await this.sendOptions();
-    },
-    getInfo(line: string) {
+    formatInfoStats(line: string) {
       if (!this.isEngineAlive || !this.isRunning) {
         return;
       }
@@ -273,94 +263,7 @@ export default defineComponent({
         },
       ]);
     },
-    async makePromotionMove(piece: string) {
-      this.showPromotion = false;
-
-      // do move
-      const promotionMove = this.game.move({
-        from: this.promotionMove.origin,
-        to: this.promotionMove.destination,
-        promotion: piece,
-      });
-
-      if (promotionMove === null) {
-        return "snapback";
-      }
-
-      // update fen
-      this.currentFen = this.game.fen();
-
-      // set check highlighting
-      if (this.game.inCheck()) {
-        this.cg?.set({
-          check: this.toColor(),
-        });
-      }
-
-      // update chessground board
-      this.cg!.set({
-        fen: this.game.fen(),
-        turnColor: this.toColor(),
-        movable: {
-          color: this.toColor(),
-          dests: this.toDests(),
-        },
-      });
-
-      if (this.isRunning) {
-        this.sendEngineCommand("stop").then(() => {
-          this.sendEngineCommand("go");
-        });
-      }
-    },
-    async makeMove(origin: string, destination: string) {
-      const sq = origin as Square;
-
-      // is promotion?
-      if (
-        this.game.get(sq)?.type === "p" &&
-        (destination[1] === "1" || destination[1] === "8")
-      ) {
-        this.showPromotion = true;
-        this.promotionMove = { origin, destination };
-
-        // user has to select a promotion piece and makePromotionMove() will be called
-        return;
-      }
-
-      const move = this.game.move({ from: origin, to: destination });
-
-      if (move === null) {
-        return "snapback";
-      }
-
-      // update chessground board
-      this.cg!.set({
-        fen: this.game.fen(),
-        turnColor: this.toColor(),
-        movable: {
-          color: this.toColor(),
-          dests: this.toDests(),
-        },
-      });
-
-      this.moveHistory += move.lan + " ";
-
-      // update fen
-      this.currentFen = this.game.fen();
-
-      // check highlighting
-      if (this.game.inCheck()) {
-        this.cg?.set({
-          check: this.toColor(),
-        });
-      }
-
-      if (this.isRunning) {
-        await this.sendEngineCommand("stop");
-        await this.sendEngineCommand("go");
-      }
-    },
+    // CHESSBOARD METHODS
     toColor(): Color {
       return this.game.turn() === "w" ? "white" : "black";
     },
@@ -404,6 +307,115 @@ export default defineComponent({
         }
       });
       return dests;
+    },
+    async makePromotionMove(piece: string) {
+      this.showPromotion = false;
+
+      // do move
+      const promotionMove = this.game.move({
+        from: this.promotionMove.origin,
+        to: this.promotionMove.destination,
+        promotion: piece,
+      });
+
+      if (promotionMove === null) {
+        return "snapback";
+      }
+
+      this.currentFen = this.game.fen();
+
+      // update chessground board
+      this.cg!.set({
+        fen: this.game.fen(),
+        turnColor: this.toColor(),
+        movable: {
+          color: this.toColor(),
+          dests: this.toDests(),
+        },
+      });
+
+      // set check highlighting
+      if (this.game.inCheck()) {
+        this.cg?.set({
+          check: this.toColor(),
+        });
+      }
+
+      if (this.isRunning) {
+        this.sendEngineCommand("stop").then(() => {
+          this.sendEngineCommand("go");
+        });
+      }
+    },
+    async makeMove(origin: string, destination: string) {
+      const sq = origin as Square;
+
+      // is promotion?
+      if (
+        this.game.get(sq)?.type === "p" &&
+        (destination[1] === "1" || destination[1] === "8")
+      ) {
+        this.showPromotion = true;
+        this.promotionMove = { origin, destination };
+
+        // user has to select a promotion piece and makePromotionMove() will be called
+        return;
+      }
+
+      const move = this.game.move({ from: origin, to: destination });
+
+      if (move === null) {
+        return "snapback";
+      }
+
+      this.currentFen = this.game.fen();
+
+      // update chessground board
+      this.cg!.set({
+        fen: this.game.fen(),
+        turnColor: this.toColor(),
+        movable: {
+          color: this.toColor(),
+          dests: this.toDests(),
+        },
+      });
+
+      this.moveHistory += move.lan + " ";
+
+      // check highlighting
+      if (this.game.inCheck()) {
+        this.cg?.set({
+          check: this.toColor(),
+        });
+      }
+
+      if (this.isRunning) {
+        await this.sendEngineCommand("stop");
+        await this.sendEngineCommand("go");
+      }
+    },
+    async newPosition(fen: string) {
+      console.log("new position: " + fen);
+      this.game.load(fen);
+      this.cg?.set({
+        fen: fen,
+        turnColor: this.toColor(),
+        movable: {
+          color: this.toColor(),
+          dests: this.toDests(),
+        },
+      });
+
+      // set check highlighting
+      if (this.game.inCheck()) {
+        this.cg?.set({
+          check: this.toColor(),
+        });
+      }
+
+      this.moveHistory = "";
+      this.startFen = this.game.fen();
+      await this.sendEngineCommand("restart");
     },
     calculateSquareSize() {
       const boardSpace = this.$refs.boardSpace as HTMLElement;
@@ -460,8 +472,8 @@ export default defineComponent({
       </div>
       <div class="analysis-info">
         <Fen
-          :fen="currentFen"
-          :key="currentFen"
+          :fen="game.fen()"
+          :key="game.fen()"
           @update-position="newPosition"
         ></Fen>
         <EngineStats
@@ -487,6 +499,8 @@ export default defineComponent({
             <EngineButtons
               v-if="activeTab == 'prompt'"
               @engine-command="sendEngineCommand"
+              :engineStatus="isRunning"
+              :key="currentFen"
             ></EngineButtons>
 
             <!-- <div></div> -->
