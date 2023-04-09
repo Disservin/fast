@@ -419,24 +419,43 @@ export default defineComponent({
     },
     calculateSquareSize() {
       const boardSpace = this.$refs.boardSpace as HTMLElement;
-      const boardWrap = document.querySelector(".cg-wrap") as HTMLElement;
-      const rect = boardSpace.getBoundingClientRect();
-      let size = Math.min(rect.width, rect.height);
+
+      // Lets get the width/height without padding and borders
+      const cs = window.getComputedStyle(boardSpace);
+
+      const paddingX = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+      const paddingY = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+
+      const borderX =
+        parseFloat(cs.borderLeftWidth) + parseFloat(cs.borderRightWidth);
+      const borderY =
+        parseFloat(cs.borderTopWidth) + parseFloat(cs.borderBottomWidth);
+
+      console.log(
+        boardSpace.offsetWidth - paddingX - borderX,
+        boardSpace.offsetHeight - paddingY - borderY
+      );
+
+      let size = Math.min(
+        boardSpace.offsetWidth - paddingX - borderX,
+        boardSpace.offsetHeight - paddingY - borderY
+      );
+
       size -= 7; // adjust for borders and padding
       // fix chrome alignment errors; https://github.com/ornicar/lila/pull/3881
       size -= size % 8; // ensure the size is a multiple of 8
 
       size = Math.min(size, 800);
 
-      if (size != this.oldSize) {
-        boardWrap.style.width = size + "px";
-        boardWrap.style.height = size + "px";
-        document.body.dispatchEvent(new Event("chessground.resize"));
+      const boardWrap = document.querySelector(".cg-wrap") as HTMLElement;
 
-        this.oldSize = size;
+      boardWrap.style.width = size + "px";
+      boardWrap.style.height = size + "px";
+      document.body.dispatchEvent(new Event("chessground.resize"));
 
-        window.dispatchEvent(new Event("resize"));
-      }
+      this.oldSize = size;
+
+      this.cg?.redrawAll();
     },
   },
 });
@@ -541,17 +560,32 @@ h1 {
   flex-direction: column;
   flex: 0 0 66%;
   box-sizing: border-box;
+  max-width: 66%;
 }
 
-.board-space {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  width: 100%;
-  height: 100%;
-  padding-left: 5rem;
+@media only screen and (min-width: 600px) {
+  .board-space {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    height: 100%;
+    padding-left: 5rem;
+  }
+}
+
+@media only screen and (max-width: 600px) {
+  .board-space {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    height: 100%;
+  }
 }
 
 .test {
