@@ -248,9 +248,26 @@ export default defineComponent({
           );
         }
 
-        const pv = extractPV(line);
-        if (pv.pv[0]) {
-          this.engineLines.set(pv.pv[0], pv);
+        let lines = extractPV(line);
+
+        if (lines.pv[0]) {
+          // reset active pvs
+          this.engineLines.forEach((pv) => {
+            pv.active = false;
+          });
+
+          lines.active = true;
+          this.engineLines.set(lines.pv[0], lines);
+        } else {
+          this.engineLines.forEach((pv) => {
+            if (pv.active) {
+              lines.pv = pv.pv;
+              lines.active = true;
+              lines.score = pv.score;
+
+              this.engineLines.set(lines.pv[0], lines);
+            }
+          });
         }
       }
     },
@@ -322,6 +339,7 @@ export default defineComponent({
         return "snapback";
       }
 
+      this.engineLines.clear();
       this.currentFen = this.game.fen();
 
       // update chessground board
@@ -368,6 +386,7 @@ export default defineComponent({
         return "snapback";
       }
 
+      this.engineLines.clear();
       this.currentFen = this.game.fen();
 
       // update chessground board
@@ -510,7 +529,7 @@ export default defineComponent({
         <div class="info-content">
           <div class="nav-main-content">
             <EngineLines
-              v-if="activeTab == 'engine-lines'"
+              v-show="activeTab == 'engine-lines'"
               :engineLines="engineLines"
               :color="toColor()"
             >

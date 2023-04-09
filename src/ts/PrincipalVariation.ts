@@ -6,7 +6,8 @@ export interface PV {
         win: string;
         draw: string;
         loss: string;
-    }
+    },
+    active: boolean
 }
 
 export function extractPV(line: string) {
@@ -18,7 +19,8 @@ export function extractPV(line: string) {
             win: "0",
             draw: "0",
             loss: "0",
-        }
+        },
+        active: false
     };
     const tokens = line.split(" ");
     for (let i = 0; i < tokens.length; i++) {

@@ -43,3 +43,16 @@ export function formatEval(evaluation: string, color: string): string {
         return evaluation;
     }
 }
+
+export function formatPv(pv: string[]): string[] {
+    // add move numbers
+    const pvWithMoveNumbers = [];
+    for (let i = 0; i < pv.length; i++) {
+        let move = pv[i];
+        if (i % 2 === 0) {
+            move = (i / 2 + 1).toString() + ". " + move;
+        }
+        pvWithMoveNumbers.push(move);
+    }
+    return pvWithMoveNumbers;
+}
