@@ -25,7 +25,7 @@ export default {
   },
   methods: {
     updatePosition() {
-      // Code to update chess board with new FEN goes here
+      this.$emit("update-position", this.currentFen);
     },
   },
 };

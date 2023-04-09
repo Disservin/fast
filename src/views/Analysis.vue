@@ -5,6 +5,7 @@ import Sidebar from "@/components/SideBar.vue";
 import EngineStats from "@/components/EngineStats.vue";
 import EngineButtons from "@/components/EngineButtons.vue";
 import Fen from "@/components/Fen.vue";
+import EngineLines from "@/components/EngineLines.vue";
 
 import { Chessground } from "chessground";
 import { Chess, SQUARES, type Move, type Square } from "chess.js";
@@ -12,9 +13,11 @@ import { Chess, SQUARES, type Move, type Square } from "chess.js";
 import type { Color, Key } from "chessground/types";
 
 import type { EngineInfo } from "@/ts/UciFilter";
-import type { Option, Engine } from "@/ts/types";
+import type { Option, Engine } from "@/ts/Types";
+import type { PV } from "@/ts/PrincipalVariation";
 
 import { filterUCIInfo } from "@/ts/UciFilter";
+import { extractPV } from "@/ts/PrincipalVariation";
 
 import ChessProcess from "../ts/ChessProcess";
 
@@ -27,6 +30,7 @@ export default defineComponent({
     EngineStats: EngineStats,
     Fen: Fen,
     EngineButtons: EngineButtons,
+    EngineLines: EngineLines,
   },
   async mounted() {
     const config = {
@@ -107,6 +111,8 @@ export default defineComponent({
         nps: "0",
         depth: "0",
         time: "0",
+        tbhits: "0",
+        hashfull: "0",
       } as EngineInfo,
 
       activeEngine: null as null | Engine,
@@ -120,11 +126,31 @@ export default defineComponent({
       startFen: "startpos",
 
       moveHistory: "",
+
+      engineLines: new Map<string, PV>(),
     };
   },
   methods: {
     getPlayedMoves() {
       return this.moveHistory.trim();
+    },
+    newPosition(fen: string) {
+      this.game.load(fen);
+      this.cg?.set({
+        fen: fen,
+        turnColor: this.toColor(),
+        movable: {
+          color: this.toColor(),
+          dests: this.toDests(),
+        },
+      });
+
+      // set check highlighting
+      if (this.game.inCheck()) {
+        this.cg?.set({
+          check: this.toColor(),
+        });
+      }
     },
     // button methods for engine
     async sendEngineCommand(command: string) {
@@ -134,6 +160,8 @@ export default defineComponent({
           nps: "0",
           depth: "0",
           time: "0",
+          tbhits: "0",
+          hashfull: "0",
         };
 
         if (!this.isEngineAlive) {
@@ -204,7 +232,6 @@ export default defineComponent({
 
       if (line != "" && line.startsWith("info")) {
         const filtered = filterUCIInfo(line);
-
         // only update changed values
         this.engine_info = { ...this.engine_info, ...filtered };
 
@@ -217,6 +244,13 @@ export default defineComponent({
             this.engine_info.pv[0].orig,
             this.engine_info.pv[0].dest
           );
+        }
+
+        const pv = extractPV(line);
+        if (pv.pv[0]) {
+          console.log(pv.pv[0], pv);
+
+          this.engineLines.set(pv.pv[0], pv);
         }
       }
     },
@@ -292,10 +326,11 @@ export default defineComponent({
 
       // update chessground board
       this.cg!.set({
+        fen: this.game.fen(),
         turnColor: this.toColor(),
         movable: {
           color: this.toColor(),
-          dests: await this.toDests(),
+          dests: this.toDests(),
         },
       });
 
@@ -331,6 +366,7 @@ export default defineComponent({
               // horrible hack to get the destination square
               // all because chess.js verbose printer is so slow,
               // this is a 30x speedup to the previous approach
+              console.log(m);
               let to;
               if (m.includes("=")) {
                 const index = m.indexOf("=");
@@ -344,12 +380,12 @@ export default defineComponent({
                 } else {
                   to = s === "e1" ? "c1" : "c8";
                 }
+              } else if (m.endsWith("+") || m.endsWith("#")) {
+                to = m.slice(m.length - 3, m.length - 1);
               } else if (m.length == 2) {
                 to = m;
               } else if (m.length == 3) {
                 to = m.slice(1);
-              } else if (m.endsWith("+") || m.endsWith("#")) {
-                to = m.slice(m.length - 3, m.length - 1);
               } else {
                 to = m.slice(m.length - 2, m.length);
               }
@@ -368,6 +404,8 @@ export default defineComponent({
       size -= 7; // adjust for borders and padding
       // fix chrome alignment errors; https://github.com/ornicar/lila/pull/3881
       size -= size % 8; // ensure the size is a multiple of 8
+
+      size = Math.min(size, 800);
 
       if (size != this.oldSize) {
         boardWrap.style.width = size + "px";
@@ -412,22 +450,33 @@ export default defineComponent({
         </div>
       </div>
       <div class="analysis-info">
-        <Fen :fen="currentFen" :key="currentFen"></Fen>
+        <Fen
+          :fen="currentFen"
+          :key="currentFen"
+          @update-position="newPosition"
+        ></Fen>
         <EngineStats :engine_info="engine_info"></EngineStats>
 
-        <v-tabs v-model="activeTabIndex" class="info-nav">
-          <v-tab v-for="element in smallNavbar">
-            {{ element.name }}
-          </v-tab>
-        </v-tabs>
+        <div>
+          <v-tabs v-model="activeTabIndex" class="info-nav">
+            <v-tab v-for="element in smallNavbar">
+              {{ element.name }}
+            </v-tab>
+          </v-tabs>
+        </div>
         <div class="info-content">
           <div class="nav-main-content">
-            <div v-if="activeTab == 'engine-lines'"></div>
-            <div v-if="activeTab == 'prompt'">
-              <EngineButtons
-                @engine-command="sendEngineCommand"
-              ></EngineButtons>
-            </div>
+            <EngineLines
+              v-if="activeTab == 'engine-lines'"
+              :engine_lines="engineLines"
+            >
+            </EngineLines>
+            <EngineButtons
+              v-if="activeTab == 'prompt'"
+              @engine-command="sendEngineCommand"
+            ></EngineButtons>
+
+            <!-- <div></div> -->
           </div>
           <div class="nav-secondary-content">
             <div class="game-pgn"></div>
@@ -475,6 +524,7 @@ h1 {
   align-items: center;
   width: 100%;
   height: 100%;
+  padding-left: 5rem;
 }
 
 .test {
@@ -488,6 +538,7 @@ h1 {
 }
 
 .info-content {
+  margin-top: 10px;
   flex: 1;
   display: flex;
   flex-wrap: nowrap;
@@ -495,16 +546,32 @@ h1 {
 }
 
 .nav-main-content {
-  background-color: var(--bg-secondary);
-  /* flex-basis: 100%; */
+  display: flex;
+  flex-direction: column;
+  overflow-y: scroll;
+  overflow-x: hidden;
+  flex-grow: 0;
+  height: calc(50vh - 100px);
+}
+
+.nav-main-content::-webkit-scrollbar {
+  width: 0.25rem;
+}
+
+.nav-main-content::-webkit-scrollbar-track {
+  background: #1e1e24;
+}
+
+.nav-main-content::-webkit-scrollbar-thumb {
+  background: #6649b8;
 }
 
 .nav-secondary-content {
-  flex: 1;
+  flex-basis: 50%;
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   flex-direction: column;
-  margin-top: 10px;
+  flex-grow: 0 !important;
 }
 
 .game-pgn {

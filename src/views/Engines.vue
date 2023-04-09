@@ -118,7 +118,7 @@ import { defineComponent } from "vue";
 import { open } from "@tauri-apps/api/dialog";
 
 import ChessProcess from "../ts/ChessProcess";
-import type { Option, Engine } from "@/ts/types";
+import type { Option, Engine } from "@/ts/Types";
 
 export default defineComponent({
   name: "Engines",
