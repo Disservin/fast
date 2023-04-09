@@ -59,11 +59,6 @@ export default defineComponent({
     const board = this.$refs.board as HTMLElement;
     this.cg = Chessground(board, config);
 
-    let boardSpace = this.$refs.boardSpace as HTMLElement;
-    let rect = boardSpace.getBoundingClientRect();
-
-    this.oldSize = rect.width;
-
     this.calculateSquareSize();
     window.addEventListener("resize", this.calculateSquareSize);
 
@@ -123,10 +118,6 @@ export default defineComponent({
       isEngineAlive: false,
       isRunning: false,
 
-      lastCommand: "",
-
-      oldSize: 0,
-
       moveHistory: "",
 
       engineLines: new Map<string, PV>(),
@@ -158,8 +149,6 @@ export default defineComponent({
     },
     // button methods for engine
     async sendEngineCommand(command: string) {
-      this.lastCommand = command;
-
       if (command === "go") {
         this.engine_info = {
           nodes: "0",
@@ -466,8 +455,6 @@ export default defineComponent({
       boardWrap.style.width = size + "px";
       boardWrap.style.height = size + "px";
       document.body.dispatchEvent(new Event("chessground.resize"));
-
-      this.oldSize = size;
 
       this.cg?.redrawAll();
     },
