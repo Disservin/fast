@@ -1,6 +1,11 @@
 <script lang="ts">
 export default {
-  props: ["status"],
+  props: {
+    status: {
+      type: Boolean,
+      required: true,
+    },
+  },
   methods: {
     sendEngineCommand(command: string) {
       if (command === "go") {
@@ -12,7 +17,7 @@ export default {
       }
       this.$emit("engine-command", command);
 
-      localStorage.setItem("status", this.isRunning);
+      localStorage.setItem("status", this.isRunning.toString());
     },
   },
   mounted() {

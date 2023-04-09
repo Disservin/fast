@@ -76,7 +76,7 @@ export default defineComponent({
 </template>
 
 <style scoped>
-@import "../assets/styles/variables.css";
+@import "@/assets/styles/variables.css";
 .container {
   overflow-y: auto;
 }

@@ -1,11 +1,11 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
-import Sidebar from "@/components/SideBar.vue";
-import EngineStats from "@/components/EngineStats.vue";
-import EngineButtons from "@/components/EngineButtons.vue";
-import Fen from "@/components/Fen.vue";
-import EngineLines from "@/components/EngineLines.vue";
+import Sidebar from "@/components/AppSideBar.vue";
+import EngineStats from "@/components/Analysis/AnalysisEngineStats.vue";
+import EngineButtons from "@/components/Analysis/AnalysisEngineButtons.vue";
+import Fen from "@/components/Analysis/AnalysisFen.vue";
+import EngineLines from "@/components/Analysis/AnalysisEngineLines.vue";
 
 import { Chessground } from "chessground";
 import { Chess, SQUARES, type Move, type Square } from "chess.js";
@@ -508,11 +508,8 @@ export default defineComponent({
           :fen="game.fen()"
           :key="game.fen()"
           @update-position="newPosition"
-        ></Fen>
-        <EngineStats
-          :engineInfo="engine_info"
-          :sideToMove="toColor()"
-        ></EngineStats>
+        />
+        <EngineStats :engineInfo="engine_info" :sideToMove="toColor()" />
 
         <div>
           <v-tabs v-model="activeTabIndex" class="info-nav">
@@ -527,16 +524,13 @@ export default defineComponent({
               v-show="activeTab == 'engine-lines'"
               :engineLines="engineLines"
               :color="toColor()"
-            >
-            </EngineLines>
+            />
             <EngineButtons
               v-if="activeTab == 'prompt'"
               @engine-command="sendEngineCommand"
-              :engineStatus="isRunning"
+              :status="isRunning"
               :key="currentFen"
-            ></EngineButtons>
-
-            <!-- <div></div> -->
+            />
           </div>
           <div class="nav-secondary-content">
             <div class="game-pgn"></div>

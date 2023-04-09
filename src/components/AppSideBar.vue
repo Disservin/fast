@@ -25,18 +25,6 @@
         </router-link>
       </li>
       <li class="nav-item">
-        <router-link to="/notes" class="nav-link" exact-active-class="active">
-          <font-awesome-icon icon="fa-solid fa-note-sticky" />
-          <span class="link-text">Notes</span>
-        </router-link>
-      </li>
-      <li class="nav-item">
-        <router-link to="/games" class="nav-link" exact-active-class="active">
-          <font-awesome-icon icon="fa-solid fa-note-sticky" />
-          <span class="link-text">Games</span>
-        </router-link>
-      </li>
-      <li class="nav-item">
         <router-link
           to="/settings"
           class="nav-link"
@@ -51,7 +39,8 @@
 </template>
 
 <style>
-@import "../assets/styles/variables.css";
+@import "@/assets/styles/variables.css";
+
 :root {
   font-size: 16px;
   font-family: "Roboto", sans-serif;

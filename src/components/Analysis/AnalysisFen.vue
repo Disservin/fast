@@ -32,7 +32,7 @@ export default {
 </script>
 
 <style scoped>
-@import "../assets/styles/variables.css";
+@import "@/assets/styles/variables.css";
 
 .fen-input {
   margin-top: 5px;

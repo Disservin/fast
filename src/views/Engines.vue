@@ -295,7 +295,7 @@ export default defineComponent({
 </script>
 
 <style scoped>
-@import "../assets/styles/variables.css";
+@import "@/assets/styles/variables.css";
 
 .engine-table {
   display: flex;
