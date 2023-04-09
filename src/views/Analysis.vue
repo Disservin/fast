@@ -203,6 +203,8 @@ export default defineComponent({
       } else if (command === "restart") {
         this.isRunning = false;
         this.activeEngine = null;
+        this.isEngineAlive = false;
+
         this.engineLines.clear();
 
         this.engine_info = {
@@ -400,33 +402,9 @@ export default defineComponent({
       }
     },
     async newPosition(fen: string) {
-      const config = {
-        movable: {
-          color: "white" as Color,
-          free: false,
-          dests: this.toDests(),
-        },
-        draggable: {
-          showGhost: true,
-        },
-        events: {
-          move: this.makeMove,
-        },
-        highlight: {
-          lastMove: true,
-          check: true,
-        },
-        drawable: {
-          enabled: false,
-          eraseOnClick: false,
-        },
-      };
-
       this.engineLines.clear();
       this.game.load(fen);
 
-      const board = this.$refs.board as HTMLElement;
-      this.cg = Chessground(board, config);
       this.cg?.set({
         fen: this.game.fen(),
         turnColor: this.toColor(),
