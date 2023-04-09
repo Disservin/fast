@@ -17,7 +17,6 @@ export default {
   },
   mounted() {
     this.isRunning = localStorage.getItem("status") === "true";
-    console.log(this.isRunning);
   },
   data() {
     return {

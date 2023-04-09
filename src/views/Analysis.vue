@@ -415,7 +415,6 @@ export default defineComponent({
       }
     },
     async newPosition(fen: string) {
-      console.log("new position: " + fen);
       this.game.load(fen);
       this.cg?.set({
         fen: fen,
@@ -450,11 +449,6 @@ export default defineComponent({
         parseFloat(cs.borderLeftWidth) + parseFloat(cs.borderRightWidth);
       const borderY =
         parseFloat(cs.borderTopWidth) + parseFloat(cs.borderBottomWidth);
-
-      console.log(
-        boardSpace.offsetWidth - paddingX - borderX,
-        boardSpace.offsetHeight - paddingY - borderY
-      );
 
       let size = Math.min(
         boardSpace.offsetWidth - paddingX - borderX,
