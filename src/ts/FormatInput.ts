@@ -32,7 +32,7 @@ export function formatEval(evaluation: string, color: string): string {
         if (color === "black") {
             cp = -cp;
         }
-        return (cp > 0 ? "+" : "-") + (cp / 100).toString();
+        return (cp > 0 ? "+" : "-") + (Math.abs((cp / 100))).toString();
     } else if (evaluation.startsWith("mate")) {
         let mateIn = Number(evaluation.slice(4));
         if (color === "black") {

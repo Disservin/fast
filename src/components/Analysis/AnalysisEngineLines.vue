@@ -84,7 +84,7 @@ export default defineComponent({
 .line {
   background-color: var(--bg-tertiary);
   margin: 10px;
-  border: 1px solid #ccc;
+  border-radius: 5px;
   margin-bottom: 10px;
   padding: 10px;
 }

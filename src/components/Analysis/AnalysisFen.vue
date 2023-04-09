@@ -25,6 +25,7 @@ export default {
       <v-text-field
         id="fen-input"
         v-model="currentFen"
+        hide-details="auto"
         @input="updatePosition"
       ></v-text-field>
     </div>

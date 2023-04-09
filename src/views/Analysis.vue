@@ -116,6 +116,7 @@ export default defineComponent({
 
     this.calculateSquareSize();
     window.addEventListener("resize", this.calculateSquareSize);
+    window.addEventListener("keydown", this.handleKeydown);
 
     this.newPosition(startpos);
   },
@@ -131,6 +132,20 @@ export default defineComponent({
   methods: {
     getPlayedMoves() {
       return this.moveHistory.trim();
+    },
+    handleKeydown(event: KeyboardEvent) {
+      event.preventDefault();
+
+      if (event.key === "g" && event.ctrlKey) {
+        this.sendEngineCommand("go");
+      } else if (event.key === "h" && event.ctrlKey) {
+        this.sendEngineCommand("stop");
+      } else if (event.key === "r" && event.ctrlKey && !this.isRunning) {
+        this.sendEngineCommand("restart");
+      } else if (event.key === "n" && event.ctrlKey) {
+        this.sendEngineCommand("stop");
+        this.newPosition(startpos);
+      }
     },
     async setupEngine() {
       const enginesData = localStorage.getItem("engines");
@@ -152,6 +167,8 @@ export default defineComponent({
     // button methods for engine
     async sendEngineCommand(command: string) {
       if (command === "go") {
+        this.engineLines.clear();
+
         this.engine_info = {
           nodes: "0",
           nps: "0",
@@ -382,9 +399,34 @@ export default defineComponent({
       }
     },
     async newPosition(fen: string) {
+      const config = {
+        movable: {
+          color: "white" as Color,
+          free: false,
+          dests: this.toDests(),
+        },
+        draggable: {
+          showGhost: true,
+        },
+        events: {
+          move: this.makeMove,
+        },
+        highlight: {
+          lastMove: true,
+          check: true,
+        },
+        drawable: {
+          enabled: false,
+          eraseOnClick: false,
+        },
+      };
+
       this.game.load(fen);
+
+      const board = this.$refs.board as HTMLElement;
+      this.cg = Chessground(board, config);
       this.cg?.set({
-        fen: fen,
+        fen: this.game.fen(),
         turnColor: this.toColor(),
         movable: {
           color: this.toColor(),
@@ -474,6 +516,11 @@ export default defineComponent({
           :key="game.fen()"
           @update-position="newPosition"
         />
+        <div class="engine-status">
+          <span class="engine-stat-value" :class="{ active: isRunning }">{{
+            isRunning ? "ANALYSIS" : "HALTED"
+          }}</span>
+        </div>
         <EngineStats :engineInfo="engine_info" :sideToMove="toColor()" />
 
         <div>
@@ -494,6 +541,7 @@ export default defineComponent({
               v-if="activeTab == 'prompt'"
               @engine-command="sendEngineCommand"
               :status="isRunning"
+              :key="isRunning.toString()"
             />
           </div>
           <div class="nav-secondary-content">
@@ -568,6 +616,27 @@ h1 {
   flex: 1;
   display: flex;
   flex-direction: column;
+}
+
+.engine-status {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-evenly;
+  align-items: center;
+  background-color: var(--bg-tertiary);
+  color: white;
+  padding: 10px;
+  margin-bottom: 5px;
+  box-sizing: border-box;
+  border-radius: 5px;
+}
+
+.engine-status .active {
+  color: #22c55e;
+}
+
+.engine-status {
+  color: #f43f5e;
 }
 
 .info-content {
