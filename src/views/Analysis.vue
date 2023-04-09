@@ -136,7 +136,7 @@ export default defineComponent({
     handleKeydown(event: KeyboardEvent) {
       event.preventDefault();
 
-      if (event.key === "g" && event.ctrlKey) {
+      if (event.key === "g" && event.ctrlKey && !this.isRunning) {
         this.sendEngineCommand("go");
       } else if (event.key === "h" && event.ctrlKey) {
         this.sendEngineCommand("stop");
@@ -203,6 +203,7 @@ export default defineComponent({
       } else if (command === "restart") {
         this.isRunning = false;
         this.activeEngine = null;
+        this.engineLines.clear();
 
         this.engine_info = {
           nodes: "0",
@@ -421,6 +422,7 @@ export default defineComponent({
         },
       };
 
+      this.engineLines.clear();
       this.game.load(fen);
 
       const board = this.$refs.board as HTMLElement;
