@@ -341,6 +341,7 @@ export default defineComponent({
 
       this.engineLines.clear();
       this.currentFen = this.game.fen();
+      this.moveHistory += promotionMove.lan + " ";
 
       // update chessground board
       this.cg!.set({
