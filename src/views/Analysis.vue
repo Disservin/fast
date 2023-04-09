@@ -154,18 +154,27 @@ export default defineComponent({
       this.isEngineAlive = true;
       this.activeEngine = engines[0];
 
+      if (this.chessProcess) {
+        this.chessProcess.sendStop();
+        await this.chessProcess.sendQuit();
+      }
+
       this.chessProcess = new ChessProcess(engines[0].path, (line) => {
         this.updateInfoStats(line);
       });
 
       await this.chessProcess.start();
 
-      this.chessProcess.write("uci\n");
+      this.chessProcess.write("uci");
 
       await this.sendOptions();
     },
     // button methods for engine
     async sendEngineCommand(command: string) {
+      //   if (!this.isEngineAlive || !this.isRunning) {
+      //     return;
+      //   }
+
       if (command === "go") {
         this.engineLines.clear();
 
@@ -425,7 +434,8 @@ export default defineComponent({
       this.moveHistory = "";
       this.startFen = this.game.fen();
 
-      await this.sendEngineCommand("restart");
+      await this.sendEngineCommand("stop");
+      this.chessProcess?.write("ucinewgame");
     },
     calculateSquareSize() {
       const boardSpace = this.$refs.boardSpace as HTMLElement;

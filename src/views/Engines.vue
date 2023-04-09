@@ -109,7 +109,7 @@ export default defineComponent({
         });
 
         await this.chessProcess.start();
-        this.chessProcess.write("uci\n");
+        this.chessProcess.write("uci");
       }
     },
 

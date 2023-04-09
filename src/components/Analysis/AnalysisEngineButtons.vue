@@ -10,6 +10,7 @@ export default {
     return {
       // stopped, running
       isRunning: this.status,
+      disabled: false,
     };
   },
   mounted() {
@@ -22,7 +23,10 @@ export default {
       } else if (command === "stop") {
         this.isRunning = false;
       } else if (command === "restart") {
-        this.isRunning = false;
+        this.disabled = true;
+        setTimeout(() => {
+          this.disabled = false;
+        }, 5000);
       }
       this.$emit("engine-command", command);
 
@@ -61,10 +65,11 @@ export default {
       </v-col>
       <v-col cols="4">
         <v-btn
+          id="restart-button"
           outlined
           color="primary"
           block
-          :disabled="isRunning"
+          :disabled="isRunning || disabled"
           @click="sendEngineCommand('restart')"
         >
           Restart

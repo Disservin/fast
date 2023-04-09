@@ -34,51 +34,51 @@ class ChessProcess {
     }
 
     write(data: string): void {
-        this.child.write(data);
+        this.child.write(data + "\n");
     }
 
     sendGo(): void {
-        this.child.write("go\n");
+        this.write("go");
     }
 
     sendGoDepth(depth: number): void {
-        this.child.write(`go depth ${depth}\n`);
+        this.write(`go depth ${depth}`);
     }
 
     sendGoNodes(nodes: number): void {
-        this.child.write(`go nodes ${nodes}\n`);
+        this.write(`go nodes ${nodes}`);
     }
 
     sendGoMovetime(movetime: number): void {
-        this.child.write(`go movetime ${movetime}\n`);
+        this.write(`go movetime ${movetime}`);
     }
 
     sendOption(name: string, value: string): void {
-        this.child.write(`setoption name ${name} value ${value}\n`);
+        this.write(`setoption name ${name} value ${value}`);
     }
 
     sendStartpos(): void {
-        this.child.write("position startpos\n");
+        this.write("position startpos");
     }
 
     sendStartposMoves(moves: string): void {
-        this.child.write(`position startpos moves ${moves}\n`);
+        this.write(`position startpos moves ${moves}`);
     }
 
     sendPosition(fen: string): void {
-        this.child.write(`position fen ${fen}\n`);
+        this.write(`position fen ${fen}`);
     }
 
     sendPositionMoves(fen: string, moves: string): void {
-        this.child.write(`position fen ${fen} moves ${moves}\n`);
+        this.write(`position fen ${fen} moves ${moves}`);
     }
 
     sendStop(): void {
-        this.child.write("stop\n");
+        this.write("stop");
     }
 
     async sendQuit() {
-        this.child.write("quit\n");
+        this.write("quit");
         await this.delay(500);
         await this.child.kill();
     }

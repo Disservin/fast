@@ -5,7 +5,7 @@
     <ul class="navbar-nav">
       <li class="logo">
         <router-link to="/" class="nav-link">
-          <span class="link-text logo-text">UI</span>
+          <span class="link-text logo-text">fast</span>
         </router-link>
       </li>
       <li class="nav-item">
