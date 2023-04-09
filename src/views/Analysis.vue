@@ -8,8 +8,9 @@ import Fen from "@/components/Analysis/AnalysisFen.vue";
 import EngineLines from "@/components/Analysis/AnalysisEngineLines.vue";
 
 import { Chessground } from "chessground";
-import { Chess, SQUARES, type Move, type Square } from "chess.js";
+import { Chess, SQUARES } from "chess.js";
 
+import type { Square } from "chess.js";
 import type { Color, Key } from "chessground/types";
 
 import type { EngineInfo } from "@/ts/UciFilter";
@@ -138,7 +139,7 @@ export default defineComponent({
       this.activeEngine = engines[0];
 
       this.chessProcess = new ChessProcess(engines[0].path, (line) => {
-        this.formatInfoStats(line);
+        this.updateInfoStats(line);
       });
 
       await this.chessProcess.start();
@@ -182,8 +183,8 @@ export default defineComponent({
         this.chessProcess?.sendStop();
         localStorage.setItem("status", "false");
       } else if (command === "restart") {
-        this.activeEngine = null;
         this.isRunning = false;
+        this.activeEngine = null;
 
         this.engine_info = {
           nodes: "0",
@@ -216,7 +217,7 @@ export default defineComponent({
         this.chessProcess?.sendOption(option.name, option.value);
       });
     },
-    formatInfoStats(line: string) {
+    updateInfoStats(line: string) {
       if (!this.isEngineAlive || !this.isRunning) {
         return;
       }
@@ -250,8 +251,9 @@ export default defineComponent({
         } else {
           this.engineLines.forEach((pv) => {
             if (pv.active) {
-              lines.pv = pv.pv;
               lines.active = true;
+              // keep other displayed values
+              lines.pv = pv.pv;
               lines.score = pv.score;
 
               this.engineLines.set(lines.pv[0], lines);
@@ -324,43 +326,12 @@ export default defineComponent({
         promotion: piece,
       });
 
-      if (promotionMove === null) {
-        return "snapback";
-      }
-
-      this.engineLines.clear();
-      this.currentFen = this.game.fen();
-      this.moveHistory += promotionMove.lan + " ";
-
-      // update chessground board
-      this.cg!.set({
-        fen: this.game.fen(),
-        turnColor: this.toColor(),
-        movable: {
-          color: this.toColor(),
-          dests: this.toDests(),
-        },
-      });
-
-      // set check highlighting
-      if (this.game.inCheck()) {
-        this.cg?.set({
-          check: this.toColor(),
-        });
-      }
-
-      if (this.isRunning) {
-        this.sendEngineCommand("stop").then(() => {
-          this.sendEngineCommand("go");
-        });
-      }
+      this.updateMove(promotionMove);
     },
     async makeMove(origin: string, destination: string) {
-      const sq = origin as Square;
-
       // is promotion?
       if (
-        this.game.get(sq)?.type === "p" &&
+        this.game.get(origin as Square)?.type === "p" &&
         (destination[1] === "1" || destination[1] === "8")
       ) {
         this.showPromotion = true;
@@ -370,14 +341,22 @@ export default defineComponent({
         return;
       }
 
-      const move = this.game.move({ from: origin, to: destination });
+      // do move
+      const move = this.game.move({
+        from: origin,
+        to: destination,
+      });
 
+      this.updateMove(move);
+    },
+    async updateMove(move: any) {
       if (move === null) {
         return "snapback";
       }
 
       this.engineLines.clear();
       this.currentFen = this.game.fen();
+      this.moveHistory += move.lan + " ";
 
       // update chessground board
       this.cg!.set({
@@ -388,8 +367,6 @@ export default defineComponent({
           dests: this.toDests(),
         },
       });
-
-      this.moveHistory += move.lan + " ";
 
       // check highlighting
       if (this.game.inCheck()) {
