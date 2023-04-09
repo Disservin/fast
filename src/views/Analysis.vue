@@ -35,50 +35,6 @@ export default defineComponent({
     EngineButtons: EngineButtons,
     EngineLines: EngineLines,
   },
-  async mounted() {
-    const config = {
-      movable: {
-        color: "white" as Color,
-        free: false,
-        dests: this.toDests(),
-      },
-      draggable: {
-        showGhost: true,
-      },
-      events: {
-        move: this.makeMove,
-      },
-      highlight: {
-        lastMove: true,
-        check: true,
-      },
-      drawable: {
-        eraseOnClick: false,
-      },
-    };
-
-    const board = this.$refs.board as HTMLElement;
-    this.cg = Chessground(board, config);
-
-    this.calculateSquareSize();
-    window.addEventListener("resize", this.calculateSquareSize);
-
-    this.newPosition(startpos);
-  },
-  beforeUnmount() {
-    this.isEngineAlive = false;
-    this.isRunning = false;
-
-    window.removeEventListener("resize", this.calculateSquareSize);
-
-    this.chessProcess?.sendStop();
-    this.chessProcess?.sendQuit();
-  },
-  computed: {
-    activeTab(): String {
-      return this.smallNavbar[this.activeTabIndex].id;
-    },
-  },
   data() {
     return {
       chessProcess: null as ChessProcess | null,
@@ -126,6 +82,50 @@ export default defineComponent({
       startFen: startpos,
       currentFen: startpos,
     };
+  },
+  computed: {
+    activeTab(): String {
+      return this.smallNavbar[this.activeTabIndex].id;
+    },
+  },
+  async mounted() {
+    const config = {
+      movable: {
+        color: "white" as Color,
+        free: false,
+        dests: this.toDests(),
+      },
+      draggable: {
+        showGhost: true,
+      },
+      events: {
+        move: this.makeMove,
+      },
+      highlight: {
+        lastMove: true,
+        check: true,
+      },
+      drawable: {
+        eraseOnClick: false,
+      },
+    };
+
+    const board = this.$refs.board as HTMLElement;
+    this.cg = Chessground(board, config);
+
+    this.calculateSquareSize();
+    window.addEventListener("resize", this.calculateSquareSize);
+
+    this.newPosition(startpos);
+  },
+  beforeUnmount() {
+    this.isEngineAlive = false;
+    this.isRunning = false;
+
+    window.removeEventListener("resize", this.calculateSquareSize);
+
+    this.chessProcess?.sendStop();
+    this.chessProcess?.sendQuit();
   },
   methods: {
     getPlayedMoves() {

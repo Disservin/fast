@@ -1,15 +1,3 @@
-<template>
-  <div>
-    <div class="fen-input">
-      <v-text-field
-        id="fen-input"
-        v-model="currentFen"
-        @input="updatePosition"
-      ></v-text-field>
-    </div>
-  </div>
-</template>
-
 <script>
 export default {
   props: {
@@ -30,6 +18,18 @@ export default {
   },
 };
 </script>
+
+<template>
+  <div>
+    <div class="fen-input">
+      <v-text-field
+        id="fen-input"
+        v-model="currentFen"
+        @input="updatePosition"
+      ></v-text-field>
+    </div>
+  </div>
+</template>
 
 <style scoped>
 @import "@/assets/styles/variables.css";

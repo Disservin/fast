@@ -26,12 +26,6 @@ export default defineComponent({
       engineLinesSorted: [] as PV[],
     };
   },
-  methods: {
-    formatEval,
-    formatNumber,
-    formatTime,
-    formatPv,
-  },
   watch: {
     engineLines: {
       handler: function (newVal, oldVal) {
@@ -50,6 +44,12 @@ export default defineComponent({
       },
       deep: true,
     },
+  },
+  methods: {
+    formatEval,
+    formatNumber,
+    formatTime,
+    formatPv,
   },
 });
 </script>

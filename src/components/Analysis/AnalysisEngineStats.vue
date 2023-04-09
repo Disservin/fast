@@ -1,3 +1,17 @@
+<script lang="ts">
+import { defineComponent } from "vue";
+import { formatEval, formatNumber, formatTime } from "@/ts/FormatInput";
+
+export default defineComponent({
+  props: ["engineInfo", "sideToMove"],
+  methods: {
+    formatEval,
+    formatNumber,
+    formatTime,
+  },
+});
+</script>
+
 <template>
   <div>
     <div class="engine-stats">
@@ -38,20 +52,6 @@
     </div>
   </div>
 </template>
-
-<script lang="ts">
-import { defineComponent } from "vue";
-import { formatEval, formatNumber, formatTime } from "@/ts/FormatInput";
-
-export default defineComponent({
-  props: ["engineInfo", "sideToMove"],
-  methods: {
-    formatEval,
-    formatNumber,
-    formatTime,
-  },
-});
-</script>
 
 <style>
 .engine-stats {

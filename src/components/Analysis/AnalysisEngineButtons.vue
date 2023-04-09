@@ -6,6 +6,16 @@ export default {
       required: true,
     },
   },
+  data() {
+    return {
+      engineLog: "",
+      // stopped, running
+      isRunning: this.status,
+    };
+  },
+  mounted() {
+    this.isRunning = localStorage.getItem("status") === "true";
+  },
   methods: {
     sendEngineCommand(command: string) {
       if (command === "go") {
@@ -19,16 +29,6 @@ export default {
 
       localStorage.setItem("status", this.isRunning.toString());
     },
-  },
-  mounted() {
-    this.isRunning = localStorage.getItem("status") === "true";
-  },
-  data() {
-    return {
-      engineLog: "",
-      // stopped, running
-      isRunning: this.status,
-    };
   },
 };
 </script>

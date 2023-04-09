@@ -1,118 +1,3 @@
-<template>
-  <main>
-    <div class="engine-table">
-      <div
-        class="engine-column"
-        v-for="(engine, index) in engines"
-        :key="index"
-        :class="{ active: engine.use }"
-      >
-        <div v-if="editingIndex !== index || editedEngine === null">
-          <button class="remove-button" @click="removeEngine(index)">
-            Remove
-          </button>
-          <button class="edit-button" @click="editEngine(index)">Edit</button>
-          <button class="use-button" @click="useEngine(index)">Use</button>
-        </div>
-        <div>
-          <h2>{{ engine.name }}</h2>
-          <div v-if="editingIndex !== index || editedEngine === null">
-            <p><u>UCI Options</u></p>
-
-            <div class="options">
-              <div class="option" v-for="option in engine.settings">
-                <div v-if="option && option.name != ''">
-                  <div class="option-name">{{ option.name }}</div>
-                  <div class="option-value">
-                    <input
-                      v-if="option.type == 'string' || option.type == 'file'"
-                      v-model="option.value"
-                      disabled
-                    />
-                    <input
-                      v-if="option.type == 'spin'"
-                      v-model="option.value"
-                      disabled
-                    />
-                    <input
-                      v-if="option.type == 'check'"
-                      v-model="option.value"
-                      type="checkbox"
-                      disabled
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-            <p><u>Path</u></p>
-            {{ engine.path }}
-          </div>
-        </div>
-        <div v-if="editingIndex === index && editedEngine !== null">
-          <form @submit.prevent="saveEdit">
-            <label style="font-weight: bold"
-              >Name: <br />
-              <input v-model="editedEngine.name"
-            /></label>
-            <br />
-
-            <label style="font-weight: bold"
-              >Path: <br />
-              <button @click="selectEngine(index)">Choose Engine</button>
-            </label>
-
-            <br />
-            <label style="font-weight: bold">Settings:</label>
-            <br />
-
-            <div class="options">
-              <div
-                class="option"
-                v-for="(value, key) in editedEngine.settings"
-                :key="key"
-              >
-                <div v-if="value.name !== ''">
-                  <div class="option-name">
-                    <label>{{ value.name }}:</label>
-                  </div>
-                  <div class="option-value">
-                    <input
-                      v-if="value.type == 'string' || value.type == 'file'"
-                      v-model="editedEngine.settings[key].value"
-                    />
-                    <button
-                      v-if="value.type == 'file'"
-                      @click="selectFile(index, key)"
-                      style="margin-left: 10px"
-                    >
-                      ...
-                    </button>
-                    <input
-                      v-if="value.type == 'spin'"
-                      v-model="editedEngine.settings[key].value"
-                    />
-                    <input
-                      v-if="value.type == 'check'"
-                      v-model="editedEngine.settings[key].value"
-                      type="checkbox"
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div class="setting-buttons">
-              <button type="button" @click="cancelEdit">Cancel</button>
-              <button type="submit">Save</button>
-            </div>
-          </form>
-        </div>
-      </div>
-    </div>
-    <button class="add-engine-button" @click="addEngine()">+</button>
-  </main>
-</template>
-
 <script lang="ts">
 import { defineComponent } from "vue";
 import { open } from "@tauri-apps/api/dialog";
@@ -293,6 +178,121 @@ export default defineComponent({
   },
 });
 </script>
+
+<template>
+  <main>
+    <div class="engine-table">
+      <div
+        class="engine-column"
+        v-for="(engine, index) in engines"
+        :key="index"
+        :class="{ active: engine.use }"
+      >
+        <div v-if="editingIndex !== index || editedEngine === null">
+          <button class="remove-button" @click="removeEngine(index)">
+            Remove
+          </button>
+          <button class="edit-button" @click="editEngine(index)">Edit</button>
+          <button class="use-button" @click="useEngine(index)">Use</button>
+        </div>
+        <div>
+          <h2>{{ engine.name }}</h2>
+          <div v-if="editingIndex !== index || editedEngine === null">
+            <p><u>UCI Options</u></p>
+
+            <div class="options">
+              <div class="option" v-for="option in engine.settings">
+                <div v-if="option && option.name != ''">
+                  <div class="option-name">{{ option.name }}</div>
+                  <div class="option-value">
+                    <input
+                      v-if="option.type == 'string' || option.type == 'file'"
+                      v-model="option.value"
+                      disabled
+                    />
+                    <input
+                      v-if="option.type == 'spin'"
+                      v-model="option.value"
+                      disabled
+                    />
+                    <input
+                      v-if="option.type == 'check'"
+                      v-model="option.value"
+                      type="checkbox"
+                      disabled
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+            <p><u>Path</u></p>
+            {{ engine.path }}
+          </div>
+        </div>
+        <div v-if="editingIndex === index && editedEngine !== null">
+          <form @submit.prevent="saveEdit">
+            <label style="font-weight: bold"
+              >Name: <br />
+              <input v-model="editedEngine.name"
+            /></label>
+            <br />
+
+            <label style="font-weight: bold"
+              >Path: <br />
+              <button @click="selectEngine(index)">Choose Engine</button>
+            </label>
+
+            <br />
+            <label style="font-weight: bold">Settings:</label>
+            <br />
+
+            <div class="options">
+              <div
+                class="option"
+                v-for="(value, key) in editedEngine.settings"
+                :key="key"
+              >
+                <div v-if="value.name !== ''">
+                  <div class="option-name">
+                    <label>{{ value.name }}:</label>
+                  </div>
+                  <div class="option-value">
+                    <input
+                      v-if="value.type == 'string' || value.type == 'file'"
+                      v-model="editedEngine.settings[key].value"
+                    />
+                    <button
+                      v-if="value.type == 'file'"
+                      @click="selectFile(index, key)"
+                      style="margin-left: 10px"
+                    >
+                      ...
+                    </button>
+                    <input
+                      v-if="value.type == 'spin'"
+                      v-model="editedEngine.settings[key].value"
+                    />
+                    <input
+                      v-if="value.type == 'check'"
+                      v-model="editedEngine.settings[key].value"
+                      type="checkbox"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="setting-buttons">
+              <button type="button" @click="cancelEdit">Cancel</button>
+              <button type="submit">Save</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+    <button class="add-engine-button" @click="addEngine()">+</button>
+  </main>
+</template>
 
 <style scoped>
 @import "@/assets/styles/variables.css";
