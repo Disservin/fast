@@ -525,7 +525,7 @@ export default defineComponent({
         </div>
         <EngineStats :engineInfo="engine_info" :sideToMove="toColor()" />
 
-        <div>
+        <div style="margin-top: 5px; margin-bottom: 5px">
           <v-tabs v-model="activeTabIndex" class="info-nav">
             <v-tab v-for="element in smallNavbar">
               {{ element.name }}
@@ -656,6 +656,9 @@ h1 {
   overflow-x: hidden;
   flex-grow: 0;
   height: calc(50vh - 100px);
+  background-color: var(--bg-secondary);
+  border-radius: 5px;
+  margin-bottom: 5px;
 }
 
 .nav-main-content::-webkit-scrollbar {

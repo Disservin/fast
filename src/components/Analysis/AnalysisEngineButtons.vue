@@ -33,7 +33,7 @@ export default {
 </script>
 
 <template lang="">
-  <div>
+  <div class="buttons">
     <v-row justify="center" class="mt-4 mb-4 mx-2">
       <v-col cols="4">
         <v-btn
@@ -74,4 +74,8 @@ export default {
   </div>
 </template>
 
-<style lang=""></style>
+<style scoped>
+.buttons {
+  background-color: var(--bg-tertiary);
+}
+</style>
