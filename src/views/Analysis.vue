@@ -73,6 +73,9 @@ export default defineComponent({
 
     this.chessProcess?.sendStop();
     this.chessProcess?.sendQuit();
+
+    // clear button status
+    localStorage.setItem("engineStatus", "stopped");
   },
   computed: {
     activeTab(): String {
@@ -188,8 +191,18 @@ export default defineComponent({
         this.activeEngine = null;
         this.isRunning = false;
 
+        this.engine_info = {
+          nodes: "0",
+          nps: "0",
+          depth: "0",
+          time: "0",
+          tbhits: "0",
+          hashfull: "0",
+        };
+
         this.chessProcess?.sendStop();
-        this.chessProcess?.sendQuit();
+        await this.chessProcess?.sendQuit();
+        await this.setupEngine();
         this.chessProcess?.sendStartpos();
         this.chessProcess?.sendGo();
       }
@@ -225,7 +238,6 @@ export default defineComponent({
       await this.sendOptions();
     },
     getInfo(line: string) {
-      console.log(line);
       if (!this.isEngineAlive || !this.isRunning) {
         return;
       }
@@ -248,8 +260,6 @@ export default defineComponent({
 
         const pv = extractPV(line);
         if (pv.pv[0]) {
-          console.log(pv.pv[0], pv);
-
           this.engineLines.set(pv.pv[0], pv);
         }
       }
@@ -366,7 +376,6 @@ export default defineComponent({
               // horrible hack to get the destination square
               // all because chess.js verbose printer is so slow,
               // this is a 30x speedup to the previous approach
-              console.log(m);
               let to;
               if (m.includes("=")) {
                 const index = m.indexOf("=");
@@ -455,7 +464,10 @@ export default defineComponent({
           :key="currentFen"
           @update-position="newPosition"
         ></Fen>
-        <EngineStats :engine_info="engine_info"></EngineStats>
+        <EngineStats
+          :engineInfo="engine_info"
+          :sideToMove="toColor()"
+        ></EngineStats>
 
         <div>
           <v-tabs v-model="activeTabIndex" class="info-nav">
@@ -468,7 +480,8 @@ export default defineComponent({
           <div class="nav-main-content">
             <EngineLines
               v-if="activeTab == 'engine-lines'"
-              :engine_lines="engineLines"
+              :engineLines="engineLines"
+              :color="toColor()"
             >
             </EngineLines>
             <EngineButtons

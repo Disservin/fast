@@ -7,8 +7,12 @@ import type { PV } from "@/ts/PrincipalVariation";
 
 export default defineComponent({
   props: {
-    engine_lines: {
+    engineLines: {
       type: Map<string, PV>,
+      required: true,
+    },
+    color: {
+      type: String,
       required: true,
     },
   },
@@ -22,10 +26,10 @@ export default defineComponent({
 
 <template>
   <div>
-    <div class="new-test" v-for="[key, value] in engine_lines" :key="key">
+    <div class="new-test" v-for="[key, value] in engineLines" :key="key">
       <span>
-        {{ formatEval(value.score) }}, {{ value.pv[0] }}, {{ value.depth }},
-        {{ value.pv }}</span
+        {{ formatEval(value.score, color) }}, {{ value.pv[0] }},
+        {{ value.depth }}, {{ value.pv }}</span
       >
     </div>
   </div>

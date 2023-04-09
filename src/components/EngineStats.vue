@@ -4,37 +4,35 @@
       <div class="engine-stat">
         <!-- <span class="engine-stat-label"></span> -->
         <span class="engine-stat-value">{{
-          formatEval(engine_info.score)
+          formatEval(engineInfo.score, sideToMove)
         }}</span>
       </div>
       <div class="engine-stat">
-        <span class="engine-stat-value">{{
-          formatTime(engine_info.time)
-        }}</span>
+        <span class="engine-stat-value">{{ formatTime(engineInfo.time) }}</span>
       </div>
       <div class="engine-stat">
         <span class="engine-stat-value"
-          >{{ formatNumber(engine_info.nps) }} nps</span
+          >{{ formatNumber(engineInfo.nps) }} nps</span
         >
       </div>
       <div class="engine-stat">
         <span class="engine-stat-value">{{
-          formatNumber(engine_info.nodes)
+          formatNumber(engineInfo.nodes)
         }}</span>
         <span class="engine-stat-label">nodes</span>
       </div>
 
       <div class="engine-stat">
-        <span class="engine-stat-value">{{ engine_info.depth }}</span>
+        <span class="engine-stat-value">{{ engineInfo.depth }}</span>
         <span class="engine-stat-label">depth</span>
       </div>
 
       <div class="engine-stat-advanced">
-        <span class="engine-stat-value">{{ engine_info.tbhits }}</span>
+        <span class="engine-stat-value">{{ engineInfo.tbhits }}</span>
         <span class="engine-stat-label">tbhits</span>
       </div>
       <div class="engine-stat-advanced">
-        <span class="engine-stat-value">{{ engine_info.hashfull }}</span>
+        <span class="engine-stat-value">{{ engineInfo.hashfull }}</span>
         <span class="engine-stat-label">hashfull</span>
       </div>
     </div>
@@ -46,7 +44,7 @@ import { defineComponent } from "vue";
 import { formatEval, formatNumber, formatTime } from "@/ts/FormatInput";
 
 export default defineComponent({
-  props: ["engine_info"],
+  props: ["engineInfo", "sideToMove"],
   methods: {
     formatEval,
     formatNumber,

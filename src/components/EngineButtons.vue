@@ -10,7 +10,12 @@ export default {
         this.engineStatus = "stopped";
       }
       this.$emit("engine-command", command);
+
+      localStorage.setItem("engineStatus", this.engineStatus);
     },
+  },
+  mounted() {
+    this.engineStatus = localStorage.getItem("engineStatus") || "stopped";
   },
   data() {
     return {
