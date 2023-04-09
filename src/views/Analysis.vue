@@ -88,7 +88,7 @@ export default defineComponent({
       return this.smallNavbar[this.activeTabIndex].id;
     },
   },
-  async mounted() {
+  mounted() {
     const config = {
       movable: {
         color: "white" as Color,
@@ -106,6 +106,7 @@ export default defineComponent({
         check: true,
       },
       drawable: {
+        enabled: false,
         eraseOnClick: false,
       },
     };
@@ -493,7 +494,6 @@ export default defineComponent({
               v-if="activeTab == 'prompt'"
               @engine-command="sendEngineCommand"
               :status="isRunning"
-              :key="currentFen"
             />
           </div>
           <div class="nav-secondary-content">

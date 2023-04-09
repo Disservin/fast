@@ -8,7 +8,6 @@ export default {
   },
   data() {
     return {
-      engineLog: "",
       // stopped, running
       isRunning: this.status,
     };
@@ -71,17 +70,6 @@ export default {
           Restart
         </v-btn>
       </v-col>
-    </v-row>
-    <v-row>
-      <v-col cols="12">
-        <v-textarea
-          no-resize
-          hide-details
-          v-model="engineLog"
-          style="min-height: 100%"
-          label="log"
-        ></v-textarea
-      ></v-col>
     </v-row>
   </div>
 </template>

@@ -16,7 +16,6 @@ export default defineComponent({
   <div>
     <div class="engine-stats">
       <div class="engine-stat">
-        <!-- <span class="engine-stat-label"></span> -->
         <span class="engine-stat-value">{{
           formatEval(engineInfo.score, sideToMove)
         }}</span>
