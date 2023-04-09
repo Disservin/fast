@@ -113,10 +113,24 @@ export default defineComponent({
   width: 90%;
   text-align: left;
   display: inline-block;
+  user-select: none;
+  display: flex;
+  flex-wrap: wrap;
 }
 
-span.active {
+.eval-depth span.active {
   color: #34d399;
+}
+
+.pv span.pv-move:hover {
+  color: #34d399;
+  background-color: #1e1e24;
+  transform: scale(1.3);
+}
+
+.pv span.pv-move {
+  padding: 5px;
+  transition: transform 0.2s ease-in-out;
 }
 
 .container::-webkit-scrollbar {
