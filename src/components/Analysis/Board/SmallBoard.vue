@@ -30,11 +30,25 @@ export default defineComponent({
       "#hover-board.cg-wrap"
     ) as HTMLElement;
 
-    const width = window.screen.width * 0.05;
+    const outerDiv = document.querySelector(".nav-main-content") as HTMLElement;
+    const innerDiv = boardWrap;
+    const innerRect = innerDiv.getBoundingClientRect();
+    const outerRect = outerDiv.getBoundingClientRect();
+
+    const position = {
+      top: innerRect.top - outerRect.top,
+      left: innerRect.left - outerRect.left,
+    };
+
+    const width = Math.min(
+      Math.max(window.screen.width * 0.1, outerRect.height / 4),
+      outerRect.height / 2
+    );
+
+    console.log("width: " + width, outerRect.height / 2);
 
     boardWrap.style.width = width + "px";
     boardWrap.style.height = width + "px";
-    document.body.dispatchEvent(new Event("chessground.resize"));
 
     if (
       (this.$refs.smallBoard as HTMLElement).getBoundingClientRect().right >
@@ -42,6 +56,16 @@ export default defineComponent({
     ) {
       boardWrap.style.left = -(width + 10) + "px";
     }
+
+    if (outerRect.height - position.top + 10 < width) {
+      boardWrap.style.removeProperty("top");
+      boardWrap.style.setProperty("bottom", "100%");
+    } else {
+      boardWrap.style.removeProperty("bottom");
+      boardWrap.style.setProperty("top", "100%");
+    }
+
+    document.body.dispatchEvent(new Event("chessground.resize"));
   },
   beforeUnmount() {
     this.cg!.destroy();
@@ -56,8 +80,6 @@ export default defineComponent({
 
 #hover-board {
   position: absolute;
-  /* top: 100%; */
-  bottom: 100%;
   right: 0;
 }
 </style>
