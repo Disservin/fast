@@ -171,7 +171,6 @@
   
   .cg-wrap coords coord {
     flex: 1 1 auto;
-    color: rgb(49, 49, 47) !important;
     font-size: calc( 8px + 4 * (100vw / 960) );;
   }
   
