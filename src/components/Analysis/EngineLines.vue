@@ -1,6 +1,8 @@
 <script lang="ts">
 import { defineComponent } from "vue";
 
+import SmallBoard from "@/components/Analysis/Board/SmallBoard.vue";
+
 import {
   formatEval,
   formatNumber,
@@ -8,12 +10,21 @@ import {
   formatPv,
 } from "@/ts/FormatInput";
 
+import { Chess } from "chess.js";
+
 import type { PV } from "@/ts/PrincipalVariation";
 
 export default defineComponent({
+  components: {
+    SmallBoard,
+  },
   props: {
     engineLines: {
       type: Map<string, PV>,
+      required: true,
+    },
+    fen: {
+      type: String,
       required: true,
     },
     color: {
@@ -24,6 +35,7 @@ export default defineComponent({
   data() {
     return {
       engineLinesSorted: [] as PV[],
+      showBoard: [-1, -1],
     };
   },
   watch: {
@@ -40,6 +52,7 @@ export default defineComponent({
             break;
           }
         }
+
         this.engineLinesSorted = lines;
       },
       deep: true,
@@ -50,6 +63,18 @@ export default defineComponent({
     formatNumber,
     formatTime,
     formatPv,
+    getFenForMove(pvIndex: number, moveIndex: number): string {
+      let fen = this.fen;
+      const pv = this.engineLinesSorted[pvIndex].pv;
+
+      let chess = new Chess(fen);
+
+      for (let i = 0; i < moveIndex + 1; i++) {
+        chess.move(pv[i].trim());
+      }
+
+      return chess.fen();
+    },
   },
 });
 </script>
@@ -59,7 +84,7 @@ export default defineComponent({
     <div
       :class="{ active: value.active }"
       class="line"
-      v-for="value in engineLinesSorted"
+      v-for="(value, index) in engineLinesSorted"
     >
       <div class="eval-depth">
         <span :class="{ active: value.active }" class="stats">
@@ -67,9 +92,18 @@ export default defineComponent({
         </span>
       </div>
       <div class="pv">
-        <span class="pv-move" v-for="move in formatPv(value.pv)">
-          {{ move }}&nbsp;</span
+        <span
+          class="pv-move"
+          v-for="(move, indexMove) in formatPv(value.pv)"
+          @mouseover="showBoard = [index, indexMove]"
+          @mouseleave="showBoard = [-1, -1]"
         >
+          {{ move }}&nbsp;
+          <SmallBoard
+            v-if="showBoard[0] === index && showBoard[1] === indexMove"
+            :fen="getFenForMove(index, indexMove)"
+          />
+        </span>
       </div>
     </div>
   </div>
@@ -78,7 +112,7 @@ export default defineComponent({
 <style scoped>
 @import "@/assets/styles/variables.css";
 .container {
-  overflow-y: auto;
+  overflow-y: scroll;
 }
 
 .line {
@@ -93,15 +127,15 @@ export default defineComponent({
   font-family: Arial, sans-serif;
   font-size: 14px;
   line-height: 1.5;
-  /* color: #333; */
 }
 
 .eval-depth {
-  position: relative;
   top: 0;
   left: 0;
   width: 10%;
   text-align: left;
+  user-select: none;
+  display: inline-block;
 }
 
 .eval-depth span.stats {
@@ -110,9 +144,9 @@ export default defineComponent({
 }
 
 .pv {
+  display: inline-block;
   width: 90%;
   text-align: left;
-  display: inline-block;
   user-select: none;
   display: flex;
   flex-wrap: wrap;

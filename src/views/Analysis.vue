@@ -2,10 +2,10 @@
 import { defineComponent } from "vue";
 
 import Sidebar from "@/components/AppSideBar.vue";
-import EngineStats from "@/components/Analysis/AnalysisEngineStats.vue";
-import EngineButtons from "@/components/Analysis/AnalysisEngineButtons.vue";
-import Fen from "@/components/Analysis/AnalysisFen.vue";
-import EngineLines from "@/components/Analysis/AnalysisEngineLines.vue";
+import EngineStats from "@/components/Analysis/EngineStats.vue";
+import EngineButtons from "@/components/Analysis/EngineButtons.vue";
+import Fen from "@/components/Analysis/Fen.vue";
+import EngineLines from "@/components/Analysis/EngineLines.vue";
 
 import { Chessground } from "chessground";
 import { Chess, SQUARES } from "chess.js";
@@ -527,6 +527,7 @@ export default defineComponent({
             <EngineLines
               v-show="activeTab == 'engine-lines'"
               :engineLines="engineLines"
+              :fen="currentFen"
               :color="toColor()"
             />
             <EngineButtons
