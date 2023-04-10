@@ -45,8 +45,6 @@ export default defineComponent({
       outerRect.height / 2
     );
 
-    console.log("width: " + width, outerRect.height / 2);
-
     boardWrap.style.width = width + "px";
     boardWrap.style.height = width + "px";
 

@@ -133,6 +133,30 @@ export default defineComponent({
     getPlayedMoves() {
       return this.moveHistory.trim();
     },
+    playMoves(moves: string) {
+      const movesArray = moves.split(" ");
+      console.log(moves, movesArray);
+
+      for (let i = 0; i < movesArray.length; i++) {
+        const move = movesArray[i];
+
+        if (move !== "" && this.game.move(move)) {
+          this.moveHistory += move + " ";
+        }
+      }
+
+      this.cg?.set({
+        fen: this.game.fen(),
+        movable: {
+          dests: this.toDests(),
+        },
+      });
+
+      this.currentFen = this.game.fen();
+
+      this.sendEngineCommand("stop");
+      this.sendEngineCommand("go");
+    },
     handleKeydown(event: KeyboardEvent) {
       event.preventDefault();
 
@@ -524,6 +548,7 @@ export default defineComponent({
           <div class="nav-main-content">
             <EngineLines
               v-show="activeTab == 'engine-lines'"
+              @send-moves="playMoves"
               :engineLines="engineLines"
               :fen="currentFen"
               :color="toColor()"

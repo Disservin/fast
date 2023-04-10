@@ -75,6 +75,19 @@ export default defineComponent({
 
       return chess.fen();
     },
+    sendMoves(pvIndex: number, moveIndex: number) {
+      const pv = this.engineLinesSorted[pvIndex].pv;
+
+      let moves = "";
+
+      for (let i = 0; i < moveIndex + 1; i++) {
+        moves += pv[i].trim() + " ";
+      }
+
+      moves.trim();
+
+      this.$emit("send-moves", moves);
+    },
   },
 });
 </script>
@@ -92,7 +105,11 @@ export default defineComponent({
         </span>
       </div>
       <div class="pv">
-        <span class="pv-move" v-for="(move, indexMove) in formatPv(value.pv)">
+        <span
+          class="pv-move"
+          v-for="(move, indexMove) in formatPv(value.pv)"
+          @click="sendMoves(index, indexMove)"
+        >
           <span
             @mouseover="showBoard = [index, indexMove]"
             @mouseleave="showBoard = [-1, -1]"
@@ -162,6 +179,7 @@ export default defineComponent({
   color: #34d399;
   background-color: #1e1e24;
   transform: scale(1);
+  cursor: pointer;
 }
 
 .pv span.pv-move {
