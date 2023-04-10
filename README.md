@@ -2,7 +2,7 @@
 
 a hopefully more modern chess gui
 
-![Interface](./src/assets/imgs/interface.jpeg)
+![Interface](./src/assets/imgs/interface.jpeg?)
 
 ## A few notes
 
