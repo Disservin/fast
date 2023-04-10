@@ -1,6 +1,10 @@
 <template>
   <div class="pgn-display">
-    <div class="pgn-move" v-for="move in formattedPgn" :key="move">
+    <div
+      class="pgn-move"
+      v-for="(move, index) in formattedPgn"
+      @click="sendPGNMoves(index)"
+    >
       {{ move }}
     </div>
   </div>
@@ -33,6 +37,23 @@ export default {
       });
 
       return formatted;
+    },
+  },
+  methods: {
+    sendPGNMoves(moveIndex: number) {
+      const formatted = this.formattedPgn;
+      let pgn = "";
+
+      formatted.forEach((move, index) => {
+        if (index > moveIndex) {
+          return;
+        }
+
+        pgn += move.trim() + " ";
+      });
+
+      pgn = pgn.trim();
+      this.$emit("send-pgn-moves", pgn);
     },
   },
 };

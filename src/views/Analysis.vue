@@ -200,7 +200,26 @@ export default defineComponent({
         },
       });
 
-      //   await this.sendEngineCommand("go");
+      this.currentFen = this.game.fen();
+      this.currentPgn = this.game.pgn();
+    },
+    async newPgnMoves(pgn: string) {
+      await this.sendEngineCommand("stop");
+      this.engineLines.clear();
+
+      this.game.loadPgn(pgn);
+
+      this.cg?.set({
+        fen: this.game.fen(),
+        turnColor: this.toColor(),
+        lastMove: undefined,
+        movable: {
+          color: this.toColor(),
+          dests: this.toDests(),
+        },
+      });
+
+      this.moveHistory = this.game.history().join(" ") + " ";
 
       this.currentFen = this.game.fen();
       this.currentPgn = this.game.pgn();
@@ -623,7 +642,12 @@ export default defineComponent({
             />
           </div>
           <div class="nav-secondary-content">
-            <Pgn class="game-pgn" :gamePgn="currentPgn" :key="currentFen" />
+            <Pgn
+              class="game-pgn"
+              @send-pgn-moves="newPgnMoves"
+              :gamePgn="currentPgn"
+              :key="currentFen"
+            />
             <div class="analysis-graph"></div>
           </div>
         </div>
