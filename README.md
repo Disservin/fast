@@ -2,6 +2,8 @@
 
 a hopefully more modern chess gui
 
+![Interface](./src/assets/imgs/interface.jpeg)
+
 ## A few notes
 
 This project is currently **WIP** and certain features might be missing  
