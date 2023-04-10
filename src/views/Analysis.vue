@@ -225,15 +225,17 @@ export default defineComponent({
       this.currentPgn = this.game.pgn();
     },
     handleKeydown(event: KeyboardEvent) {
-      event.preventDefault();
-
       if (event.key === "g" && event.ctrlKey && !this.isRunning) {
+        event.preventDefault();
         this.sendEngineCommand("go");
       } else if (event.key === "h" && event.ctrlKey) {
+        event.preventDefault();
         this.sendEngineCommand("stop");
       } else if (event.key === "r" && event.ctrlKey && !this.isRunning) {
+        event.preventDefault();
         this.sendEngineCommand("restart");
       } else if (event.key === "n" && event.ctrlKey) {
+        event.preventDefault();
         this.sendEngineCommand("stop");
         this.newPosition(startpos);
       }
