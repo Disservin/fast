@@ -14,7 +14,7 @@ import type { Square } from "chess.js";
 import type { Color, Key } from "chessground/types";
 
 import type { EngineInfo } from "@/ts/UciFilter";
-import type { Option, Engine } from "@/ts/Types";
+import type { Option, Engine } from "@/ts/FastTypes";
 import type { PV } from "@/ts/PrincipalVariation";
 
 import { filterUCIInfo } from "@/ts/UciFilter";

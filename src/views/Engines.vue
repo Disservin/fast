@@ -3,7 +3,7 @@ import { defineComponent } from "vue";
 import { open } from "@tauri-apps/api/dialog";
 
 import ChessProcess from "../ts/ChessProcess";
-import type { Option, Engine } from "@/ts/Types";
+import type { Option, Engine } from "@/ts/FastTypes";
 
 export default defineComponent({
   name: "Engines",
