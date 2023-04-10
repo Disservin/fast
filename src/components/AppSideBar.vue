@@ -52,15 +52,15 @@ body {
   padding: 0;
 }
 
-body::-webkit-scrollbar {
+::-webkit-scrollbar {
   width: 0.25rem;
 }
 
-body::-webkit-scrollbar-track {
+::-webkit-scrollbar-track {
   background: #1e1e24;
 }
 
-body::-webkit-scrollbar-thumb {
+::-webkit-scrollbar-thumb {
   background: #6649b8;
 }
 

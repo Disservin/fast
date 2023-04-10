@@ -329,18 +329,6 @@ export default defineComponent({
   background-color: var(--selected-secondary);
 }
 
-.engine-table::-webkit-scrollbar {
-  width: 0.25rem;
-}
-
-.engine-table::-webkit-scrollbar-track {
-  background: #1e1e24;
-}
-
-.engine-table::-webkit-scrollbar-thumb {
-  background: #6649b8;
-}
-
 .engine-column input {
   background-color: var(--button-bg);
   color: var(--button-text);
@@ -425,18 +413,6 @@ input:focus {
   max-height: 50vh;
   overflow: auto;
   overflow-y: hidden;
-}
-
-.options::-webkit-scrollbar {
-  width: 0.25rem;
-}
-
-.options::-webkit-scrollbar-track {
-  background: #1e1e24;
-}
-
-.options::-webkit-scrollbar-thumb {
-  background: #6649b8;
 }
 
 .option {

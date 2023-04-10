@@ -623,8 +623,7 @@ export default defineComponent({
             />
           </div>
           <div class="nav-secondary-content">
-            <!-- <div class="game-pgn"></div> -->
-            <Pgn :gamePgn="currentPgn" :key="currentFen" />
+            <Pgn class="game-pgn" :gamePgn="currentPgn" :key="currentFen" />
             <div class="analysis-graph"></div>
           </div>
         </div>
@@ -732,35 +731,26 @@ h1 {
   overflow-y: scroll;
   overflow-x: hidden;
   flex-grow: 0;
-  height: calc(50vh - 100px);
+  /* height: calc(50vh - 100px); */
+  height: 50%;
   background-color: var(--bg-secondary);
   border-radius: 5px;
   margin-bottom: 5px;
 }
 
-.nav-main-content::-webkit-scrollbar {
-  width: 0.25rem;
-}
-
-.nav-main-content::-webkit-scrollbar-track {
-  background: #1e1e24;
-}
-
-.nav-main-content::-webkit-scrollbar-thumb {
-  background: #6649b8;
-}
-
 .nav-secondary-content {
-  flex-basis: 50%;
   display: flex;
-  flex-wrap: wrap;
   flex-direction: column;
   flex-grow: 0 !important;
+  height: 50%;
+  margin-bottom: 20px;
+  gap: 10px;
 }
 
 .game-pgn {
   flex-basis: calc(50% - 5px);
-  background-color: #843b3b;
+  overflow-y: scroll;
+  overflow-x: hidden;
 }
 
 .analysis-graph {

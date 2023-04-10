@@ -209,16 +209,4 @@ export default defineComponent({
   padding: 5px;
   transition: transform 0.2s ease-in-out;
 }
-
-.container::-webkit-scrollbar {
-  width: 0.25rem;
-}
-
-.container::-webkit-scrollbar-track {
-  background: #1e1e24;
-}
-
-.container::-webkit-scrollbar-thumb {
-  background: #6649b8;
-}
 </style>
