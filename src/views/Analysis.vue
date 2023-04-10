@@ -84,8 +84,35 @@ export default defineComponent({
     };
   },
   computed: {
-    activeTab(): String {
+    activeTab(): string {
       return this.smallNavbar[this.activeTabIndex].id;
+    },
+    updateAnalysisStatus(): string {
+      let status = "IDLE";
+
+      if (this.isRunning) {
+        status = "ANALYSIS";
+      } else if (this.isEngineAlive) {
+        status = "READY";
+      }
+      if (this.game.isCheckmate()) {
+        status = "CHECKMATE";
+      } else if (this.game.isStalemate()) {
+        status = "STALEMATE";
+      } else if (this.game.isThreefoldRepetition()) {
+        status = "THREEFOLD REPETITION";
+      } else if (this.game.isInsufficientMaterial()) {
+        status = "INSUFFICIENT MATERIAL";
+      } else if (this.game.isDraw()) {
+        // shouldnt happen
+        status = "DRAW";
+      }
+
+      if (this.game.isGameOver()) {
+        this.sendEngineCommand("stop");
+      }
+
+      return status;
     },
   },
   mounted() {
@@ -147,7 +174,10 @@ export default defineComponent({
 
       this.cg?.set({
         fen: this.game.fen(),
+        turnColor: this.toColor(),
+        lastMove: undefined,
         movable: {
+          color: this.toColor(),
           dests: this.toDests(),
         },
       });
@@ -453,6 +483,10 @@ export default defineComponent({
         this.cg?.set({
           check: this.toColor(),
         });
+      } else {
+        this.cg?.set({
+          check: undefined,
+        });
       }
 
       this.moveHistory = "";
@@ -532,7 +566,7 @@ export default defineComponent({
         />
         <div class="engine-status">
           <span class="engine-stat-value" :class="{ active: isRunning }">{{
-            isRunning ? "ANALYSIS" : "HALTED"
+            updateAnalysisStatus
           }}</span>
         </div>
         <EngineStats :engineInfo="engine_info" :sideToMove="toColor()" />
