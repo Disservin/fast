@@ -38,7 +38,7 @@ class ChessProcess {
     }
 
     sendGo(): void {
-        this.write("go");
+        this.write("go infinite");
     }
 
     sendGoDepth(depth: number): void {
