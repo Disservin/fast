@@ -81,7 +81,15 @@ export default defineComponent({
       let chess = new Chess(fen);
 
       for (let i = 0; i < moveIndex + 1; i++) {
-        chess.move(pv[i].trim());
+        const move = pv[i].trim();
+
+        if (chess.isGameOver()) {
+          return chess.fen();
+        }
+
+        if (chess.move(move) === null) {
+          return chess.fen();
+        }
       }
 
       return chess.fen();
@@ -91,7 +99,11 @@ export default defineComponent({
 
       let moves = "";
 
-      for (let i = 0; i < moveIndex + 1; i++) {
+      for (let i = 0; i <= moveIndex; i++) {
+        if (i >= pv.length) {
+          break;
+        }
+
         moves += pv[i].trim() + " ";
       }
 
@@ -130,7 +142,6 @@ export default defineComponent({
           <SmallBoard
             v-if="showBoard[0] === index && showBoard[1] === indexMove"
             :fen="getFenForMove(index, indexMove)"
-            :key="move"
             style="left: 0"
           />
         </span>

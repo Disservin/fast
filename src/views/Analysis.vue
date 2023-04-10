@@ -6,6 +6,7 @@ import EngineStats from "@/components/Analysis/EngineStats.vue";
 import EngineButtons from "@/components/Analysis/EngineButtons.vue";
 import Fen from "@/components/Analysis/Fen.vue";
 import EngineLines from "@/components/Analysis/EngineLines.vue";
+import Pgn from "@/components/Analysis/Pgn.vue";
 
 import { Chessground } from "chessground";
 import { Chess, SQUARES } from "chess.js";
@@ -34,6 +35,7 @@ export default defineComponent({
     Fen: Fen,
     EngineButtons: EngineButtons,
     EngineLines: EngineLines,
+    Pgn: Pgn,
   },
   data() {
     return {
@@ -81,6 +83,7 @@ export default defineComponent({
 
       startFen: startpos,
       currentFen: startpos,
+      currentPgn: "",
     };
   },
   computed: {
@@ -95,6 +98,7 @@ export default defineComponent({
       } else if (this.isEngineAlive) {
         status = "READY";
       }
+
       if (this.game.isCheckmate()) {
         status = "CHECKMATE";
       } else if (this.game.isStalemate()) {
@@ -163,20 +167,28 @@ export default defineComponent({
     async playMoves(moves: string) {
       const movesArray = moves.trim().split(" ");
 
+      await this.sendEngineCommand("stop");
+      this.engineLines.clear();
+
       for (let i = 0; i < movesArray.length; i++) {
+        if (this.game.isGameOver()) {
+          this.currentFen = this.game.fen();
+          this.currentPgn = this.game.pgn();
+
+          return;
+        }
+
         const move = movesArray[i];
 
         if (this.game.move(move) === null) {
+          this.currentFen = this.game.fen();
+          this.currentPgn = this.game.pgn();
+
           return;
         }
 
         this.moveHistory += move + " ";
       }
-
-      await this.sendEngineCommand("stop");
-      await this.sendEngineCommand("go");
-
-      this.engineLines.clear();
 
       this.cg?.set({
         fen: this.game.fen(),
@@ -188,7 +200,10 @@ export default defineComponent({
         },
       });
 
+      //   await this.sendEngineCommand("go");
+
       this.currentFen = this.game.fen();
+      this.currentPgn = this.game.pgn();
     },
     handleKeydown(event: KeyboardEvent) {
       event.preventDefault();
@@ -290,6 +305,7 @@ export default defineComponent({
 
       // force update of buttons
       this.currentFen = this.game.fen();
+      this.currentPgn = this.game.pgn();
     },
     async sendOptions() {
       this.activeEngine?.settings.forEach((option: Option) => async () => {
@@ -322,6 +338,8 @@ export default defineComponent({
         if (
           this.engine_info.pv &&
           this.engine_info.pv.length > 0 &&
+          this.engine_info.pv[0].orig != "" &&
+          this.engine_info.pv[0].dest != "" &&
           this.isEngineAlive
         ) {
           this.drawAnalysisMove(
@@ -448,6 +466,7 @@ export default defineComponent({
 
       this.engineLines.clear();
       this.currentFen = this.game.fen();
+      this.currentPgn = this.game.pgn();
       this.moveHistory += move.lan + " ";
 
       // update chessground board
@@ -593,6 +612,7 @@ export default defineComponent({
               @send-moves="playMoves"
               :engineLines="engineLines"
               :fen="currentFen"
+              :key="currentFen"
               :color="toColor()"
             />
             <EngineButtons
@@ -603,7 +623,8 @@ export default defineComponent({
             />
           </div>
           <div class="nav-secondary-content">
-            <div class="game-pgn"></div>
+            <!-- <div class="game-pgn"></div> -->
+            <Pgn :gamePgn="currentPgn" :key="currentFen" />
             <div class="analysis-graph"></div>
           </div>
         </div>
