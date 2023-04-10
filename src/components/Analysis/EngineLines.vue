@@ -41,7 +41,6 @@ export default defineComponent({
   watch: {
     engineLines: {
       handler: function (newVal, oldVal) {
-        // move active line to top
         let lines: PV[] = Array.from(newVal.values());
 
         // sort others by depth
@@ -55,11 +54,12 @@ export default defineComponent({
           }
         });
 
+        // move active line to top
         for (let i = 0; i < lines.length; i++) {
           if (lines[i].active) {
-            const line = lines[i];
-            lines.splice(i, 1);
-            lines.unshift(line);
+            // const line = lines[i];
+            const line = lines.splice(i, 1);
+            lines.unshift(line[0]);
             break;
           }
         }
