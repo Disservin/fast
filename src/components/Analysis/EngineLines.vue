@@ -42,7 +42,18 @@ export default defineComponent({
     engineLines: {
       handler: function (newVal, oldVal) {
         // move active line to top
-        const lines: PV[] = Array.from(newVal.values());
+        let lines: PV[] = Array.from(newVal.values());
+
+        // sort others by depth
+        lines.sort((a, b) => {
+          if (Number(a.depth) > Number(b.depth)) {
+            return -1;
+          } else if (Number(a.depth) < Number(b.depth)) {
+            return 1;
+          } else {
+            return 0;
+          }
+        });
 
         for (let i = 0; i < lines.length; i++) {
           if (lines[i].active) {
