@@ -92,16 +92,18 @@ export default defineComponent({
         </span>
       </div>
       <div class="pv">
-        <span
-          class="pv-move"
-          v-for="(move, indexMove) in formatPv(value.pv)"
-          @mouseover="showBoard = [index, indexMove]"
-          @mouseleave="showBoard = [-1, -1]"
-        >
-          {{ move }}&nbsp;
+        <span class="pv-move" v-for="(move, indexMove) in formatPv(value.pv)">
+          <span
+            @mouseover="showBoard = [index, indexMove]"
+            @mouseleave="showBoard = [-1, -1]"
+          >
+            {{ move }}&nbsp;
+          </span>
           <SmallBoard
             v-if="showBoard[0] === index && showBoard[1] === indexMove"
             :fen="getFenForMove(index, indexMove)"
+            :key="move"
+            style="left: 0"
           />
         </span>
       </div>
@@ -159,7 +161,7 @@ export default defineComponent({
 .pv span.pv-move:hover {
   color: #34d399;
   background-color: #1e1e24;
-  transform: scale(1.3);
+  transform: scale(1);
 }
 
 .pv span.pv-move {

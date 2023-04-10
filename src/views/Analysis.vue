@@ -462,13 +462,11 @@ export default defineComponent({
 
       size = Math.min(size, 800);
 
-      const boardWrap = document.querySelector(".cg-wrap") as HTMLElement;
+      const boardWrap = document.querySelector(".board.cg-wrap") as HTMLElement;
 
       boardWrap.style.width = size + "px";
       boardWrap.style.height = size + "px";
       document.body.dispatchEvent(new Event("chessground.resize"));
-
-      this.cg?.redrawAll();
     },
   },
 });

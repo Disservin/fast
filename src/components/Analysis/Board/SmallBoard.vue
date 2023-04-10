@@ -1,5 +1,5 @@
 <template>
-  <div id="hover-board" ref="board"></div>
+  <div id="hover-board" ref="smallBoard"></div>
 </template>
 
 <script lang="ts">
@@ -19,7 +19,7 @@ export default defineComponent({
   },
   mounted() {
     // Initialize the Chessground board with the given FEN string
-    this.cg = Chessground(this.$refs.board as HTMLElement, {
+    this.cg = Chessground(this.$refs.smallBoard as HTMLElement, {
       fen: this.fen,
       coordinates: false,
       viewOnly: true,
@@ -30,12 +30,18 @@ export default defineComponent({
       "#hover-board.cg-wrap"
     ) as HTMLElement;
 
-    boardWrap.style.width = 100 + "px";
-    boardWrap.style.height = 100 + "px";
-    // boardWrap.style.zIndex = 4 + "";
+    const width = window.screen.width * 0.05;
+
+    boardWrap.style.width = width + "px";
+    boardWrap.style.height = width + "px";
     document.body.dispatchEvent(new Event("chessground.resize"));
 
-    this.cg.redrawAll();
+    if (
+      (this.$refs.smallBoard as HTMLElement).getBoundingClientRect().right >
+      window.screen.width
+    ) {
+      boardWrap.style.left = -(width + 10) + "px";
+    }
   },
   beforeUnmount() {
     this.cg!.destroy();
@@ -43,14 +49,15 @@ export default defineComponent({
 });
 </script>
 
-<style scoped>
+<style>
 #hover-board coords {
   display: none;
 }
 
 #hover-board {
   position: absolute;
-  top: 100%;
-  left: 0;
+  /* top: 100%; */
+  bottom: 100%;
+  right: 0;
 }
 </style>
