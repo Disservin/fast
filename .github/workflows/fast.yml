@@ -1,5 +1,5 @@
-name: 'test-on-pr'
-on: [pull_request]
+name: 'Test'
+on: [push, pull_request]
 
 jobs:
   release:
