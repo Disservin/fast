@@ -7,20 +7,22 @@ a hopefully more modern chess gui
 ## A few notes
 
 This project is currently **WIP** and certain features might be missing  
-from the releases or not work at all. If you think something is a bug you can  
-open an issue, similarly for feature requests.  
+from the releases or not work at all.
+
+If you think something is a bug you can open an issue, similarly for feature requests.
+
 Since this is also my first project with vue and tauri some parts of the code  
-might not be as clean as they could be ; )  
-Feel free to improve these areas.
+might not be as clean as they could be ; ) Feel free to improve these areas.
 
 ## Requirements
 
-Also make sure that the tauri submodule is properly cloned as well.
+Make sure that the tauri submodule is properly cloned as well.
 
 Why do you have a submodule of tauri ?
-Tauri disallows arbitrary commands to be executed. Of course  
+
+Tauri doesnt allow arbitrary commands to be executed. Of course  
 we would want to support any chess engine so we need to bypass this limitation.  
-Thats where the submodule comes in.
+That's where the submodule comes in.
 
 ```
 git submodule update --init --recursive
@@ -29,8 +31,7 @@ git submodule update --init --recursive
 ## Contributing
 
 Any contributions are welcome, if you add vue.js code try to follow their style guide.
-If you can implement something with [Vuetify](https://vuetifyjs.com/en/) prefer it over  
-implementing itself.
+If you can implement something with [Vuetify](https://vuetifyjs.com/en/) prefer it over implementing it again from scratch ; )
 
 I also use [prettier](https://github.com/prettier/prettier) to format the code.
 
