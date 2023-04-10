@@ -160,17 +160,23 @@ export default defineComponent({
     getPlayedMoves() {
       return this.moveHistory.trim();
     },
-    playMoves(moves: string) {
-      const movesArray = moves.split(" ");
-      console.log(moves, movesArray);
+    async playMoves(moves: string) {
+      const movesArray = moves.trim().split(" ");
 
       for (let i = 0; i < movesArray.length; i++) {
         const move = movesArray[i];
 
-        if (move !== "" && this.game.move(move)) {
-          this.moveHistory += move + " ";
+        if (this.game.move(move) === null) {
+          return;
         }
+
+        this.moveHistory += move + " ";
       }
+
+      await this.sendEngineCommand("stop");
+      await this.sendEngineCommand("go");
+
+      this.engineLines.clear();
 
       this.cg?.set({
         fen: this.game.fen(),
@@ -183,9 +189,6 @@ export default defineComponent({
       });
 
       this.currentFen = this.game.fen();
-
-      this.sendEngineCommand("stop");
-      this.sendEngineCommand("go");
     },
     handleKeydown(event: KeyboardEvent) {
       event.preventDefault();
@@ -308,6 +311,11 @@ export default defineComponent({
 
       if (line != "" && line.startsWith("info")) {
         const filtered = filterUCIInfo(line);
+
+        if (Object.keys(filtered).length === 0) {
+          return;
+        }
+
         // only update changed values
         this.engine_info = { ...this.engine_info, ...filtered };
 

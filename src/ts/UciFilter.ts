@@ -39,7 +39,7 @@ export function filterUCIInfo(str: string): EngineInfo {
             engineInfo.depth = tokens[i + 1];
         } else if (token === "seldepth") engineInfo.seldepth = tokens[i + 1];
         else if (token === "score") {
-            engineInfo.score = tokens[i + 1] + tokens[i + 2];
+            engineInfo.score = tokens[i + 1] + " " + tokens[i + 2];
         } else if (token === "time") {
             engineInfo.time = tokens[i + 1];
         } else if (token === "nodes") {
