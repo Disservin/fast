@@ -175,7 +175,6 @@ export default defineComponent({
       for (let i = 0; i < movesArray.length; i++) {
         if (this.game.isGameOver()) {
           this.currentFen = this.game.fen();
-          this.moveHistory = this.game.history({ verbose: false });
 
           return;
         }
@@ -184,12 +183,14 @@ export default defineComponent({
 
         if (this.game.move(move) === null) {
           this.currentFen = this.game.fen();
-          this.moveHistory = this.game.history({ verbose: false });
 
           return;
         }
 
         this.engineMoves += move + " ";
+        this.moveHistory.push(
+          this.moveToSan(move.slice(0, 2), (move + " ").slice(2, 5))
+        );
       }
 
       this.cg?.set({
@@ -203,7 +204,11 @@ export default defineComponent({
       });
 
       this.currentFen = this.game.fen();
-      this.moveHistory = this.game.history({ verbose: false });
+    },
+    moveToSan(origin: string, dest: string, promotion?: string) {
+      const copy = new Chess(this.game.fen());
+      const move = copy.move({ from: origin, to: dest, promotion: promotion });
+      return move.san;
     },
     async newPgnMoves(pgn: string) {
       await this.sendEngineCommand("stop");
@@ -227,9 +232,11 @@ export default defineComponent({
       history.forEach((move) => {
         this.engineMoves += move.lan + " ";
       });
-
+      this.moveHistory = [];
+      history.forEach((move) => {
+        this.moveHistory.push(move.san);
+      });
       this.currentFen = this.game.fen();
-      this.moveHistory = this.game.history({ verbose: false });
     },
     handleKeydown(event: KeyboardEvent) {
       if (event.key === "g" && event.ctrlKey && !this.isRunning) {
@@ -333,7 +340,6 @@ export default defineComponent({
 
       // force update of buttons
       this.currentFen = this.game.fen();
-      this.moveHistory = this.game.history({ verbose: false });
     },
     async sendOptions() {
       this.activeEngine?.settings.forEach((option: Option) => async () => {
@@ -494,10 +500,10 @@ export default defineComponent({
 
       this.engineLines.clear();
       this.currentFen = this.game.fen();
-      this.moveHistory = this.game.history({ verbose: false });
-      this.engineMoves += move.lan + " ";
 
-      // update chessground board
+      this.engineMoves += move.lan + " ";
+      this.moveHistory.push(move.san);
+
       this.cg!.set({
         fen: this.game.fen(),
         turnColor: this.toColor(),
@@ -545,6 +551,7 @@ export default defineComponent({
       }
 
       this.engineMoves = "";
+      this.moveHistory = [];
       this.startFen = this.game.fen();
 
       await this.sendEngineCommand("stop");
