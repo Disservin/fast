@@ -221,7 +221,12 @@ export default defineComponent({
         },
       });
 
-      this.engineMoves = this.game.history().join(" ") + " ";
+      let history = this.game.history({ verbose: true });
+
+      this.engineMoves = "";
+      history.forEach((move) => {
+        this.engineMoves += move.lan + " ";
+      });
 
       this.currentFen = this.game.fen();
       this.moveHistory = this.game.history({ verbose: false });
