@@ -1,5 +1,7 @@
 import { Command } from "@tauri-apps/api/shell";
 
+import type { Option } from "@/ts/FastTypes";
+
 class ChessProcess {
     private command: Command;
     private callback: (data: string) => void;
@@ -30,7 +32,7 @@ class ChessProcess {
 
     async start(): Promise<void> {
         this.child = await this.command.spawn();
-        console.log("pid:", this.child.pid);
+        this.write("uci");
     }
 
     write(data: string): void {
@@ -55,6 +57,20 @@ class ChessProcess {
 
     sendOption(name: string, value: string): void {
         this.write(`setoption name ${name} value ${value}`);
+    }
+
+    sendOptions(options: Option[]): void {
+        options.forEach((option: Option) => async () => {
+            if (
+                option.value === "" ||
+                option.name === "" ||
+                option.value === undefined ||
+                option.name === undefined
+            ) {
+                return;
+            }
+            this.sendOption(option.name, option.value);
+        });
     }
 
     sendStartpos(): void {

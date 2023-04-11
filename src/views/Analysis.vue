@@ -147,7 +147,6 @@ export default defineComponent({
     const board = this.$refs.board as HTMLElement;
     this.cg = Chessground(board, config);
 
-    this.calculateSquareSize();
     window.addEventListener("resize", this.calculateSquareSize);
     window.addEventListener("keydown", this.handleKeydown);
 
@@ -163,74 +162,43 @@ export default defineComponent({
     this.chessProcess?.sendQuit();
   },
   methods: {
-    getPlayedMoves() {
-      return this.engineMoves.trim();
-    },
-    async playMoves(moves: string) {
-      const movesArray = moves.trim().split(" ");
+    updateCG() {
+      this.cg?.set({
+        fen: this.game.fen(),
+        turnColor: this.toColor(),
+        movable: {
+          color: this.toColor(),
+          dests: this.toDests(),
+        },
+      });
 
-      await this.sendEngineCommand("stop");
-      this.engineLines.clear();
-
-      for (let i = 0; i < movesArray.length; i++) {
-        if (this.game.isGameOver()) {
-          this.currentFen = this.game.fen();
-
-          return;
-        }
-
-        const move = movesArray[i];
-        const chessMove = this.game.move(move);
-
-        if (chessMove === null) {
-          this.currentFen = this.game.fen();
-
-          return;
-        }
-
-        this.engineMoves += move + " ";
-        this.moveHistory.push(chessMove.san);
+      // set check highlighting
+      if (this.game.inCheck()) {
+        this.cg?.set({
+          check: this.toColor(),
+        });
+      } else {
+        this.cg?.set({
+          check: undefined,
+        });
       }
 
-      this.cg?.set({
-        fen: this.game.fen(),
-        turnColor: this.toColor(),
-        lastMove: undefined,
-        movable: {
-          color: this.toColor(),
-          dests: this.toDests(),
-        },
-      });
-
       this.currentFen = this.game.fen();
     },
-    async newPgnMoves(pgn: string) {
-      await this.sendEngineCommand("stop");
+    clearAnalysisInfo() {
       this.engineLines.clear();
 
-      this.game.loadPgn(pgn);
-
-      this.cg?.set({
-        fen: this.game.fen(),
-        turnColor: this.toColor(),
-        lastMove: undefined,
-        movable: {
-          color: this.toColor(),
-          dests: this.toDests(),
-        },
-      });
-
-      let history = this.game.history({ verbose: true });
-
-      this.engineMoves = "";
-      history.forEach((move) => {
-        this.engineMoves += move.lan + " ";
-      });
-      this.moveHistory = [];
-      history.forEach((move) => {
-        this.moveHistory.push(move.san);
-      });
-      this.currentFen = this.game.fen();
+      this.engine_info = {
+        nodes: "0",
+        nps: "0",
+        depth: "0",
+        time: "0",
+        tbhits: "0",
+        hashfull: "0",
+      };
+    },
+    getPlayedMoves() {
+      return this.engineMoves.trim();
     },
     handleKeydown(event: KeyboardEvent) {
       if (event.key === "g" && event.ctrlKey && !this.isRunning) {
@@ -248,156 +216,59 @@ export default defineComponent({
         this.newPosition(startpos);
       }
     },
-    async setupEngine() {
-      const enginesData = localStorage.getItem("engines");
-      const engines = enginesData ? JSON.parse(enginesData) : [];
-
-      this.isEngineAlive = true;
-      this.activeEngine = engines[0];
-
-      if (this.chessProcess) {
-        this.chessProcess.sendStop();
-        await this.chessProcess.sendQuit();
-      }
-
-      this.chessProcess = new ChessProcess(engines[0].path, (line) => {
-        this.updateInfoStats(line);
-      });
-
-      await this.chessProcess.start();
-
-      this.chessProcess.write("uci");
-
-      await this.sendOptions();
-    },
-    // button methods for engine
-    async sendEngineCommand(command: string) {
-      //   if (!this.isEngineAlive || !this.isRunning) {
-      //     return;
-      //   }
-
-      if (command === "go") {
-        this.engineLines.clear();
-
-        this.engine_info = {
-          nodes: "0",
-          nps: "0",
-          depth: "0",
-          time: "0",
-          tbhits: "0",
-          hashfull: "0",
-        };
-
-        if (!this.isEngineAlive) {
-          await this.setupEngine();
-        }
-
-        if (this.startFen === startpos && this.getPlayedMoves() === "") {
-          this.chessProcess?.sendStartpos();
-        } else if (this.startFen === startpos) {
-          this.chessProcess?.sendStartposMoves(this.getPlayedMoves());
-        } else {
-          this.chessProcess?.sendPositionMoves(
-            this.startFen,
-            this.getPlayedMoves()
-          );
-        }
-
-        this.isRunning = true;
-        this.chessProcess?.sendGo();
-        localStorage.setItem("status", "true");
-      } else if (command === "stop") {
-        this.isRunning = false;
-        this.chessProcess?.sendStop();
-        localStorage.setItem("status", "false");
-      } else if (command === "restart") {
-        this.isRunning = false;
-        this.activeEngine = null;
-        this.isEngineAlive = false;
-
-        this.engineLines.clear();
-
-        this.engine_info = {
-          nodes: "0",
-          nps: "0",
-          depth: "0",
-          time: "0",
-          tbhits: "0",
-          hashfull: "0",
-        };
-
-        this.chessProcess?.sendStop();
-        await this.chessProcess?.sendQuit();
-        await this.setupEngine();
-        localStorage.setItem("status", "false");
-      }
-
-      // force update of buttons
-      this.currentFen = this.game.fen();
-    },
-    async sendOptions() {
-      this.activeEngine?.settings.forEach((option: Option) => async () => {
-        if (
-          option.value === "" ||
-          option.name === "" ||
-          option.value === undefined ||
-          option.name === undefined
-        ) {
-          return;
-        }
-        this.chessProcess?.sendOption(option.name, option.value);
-      });
-    },
     updateInfoStats(line: string) {
-      if (!this.isEngineAlive || !this.isRunning) {
+      if (
+        !this.isEngineAlive ||
+        !this.isRunning ||
+        line === "" ||
+        !line.startsWith("info")
+      ) {
         return;
       }
 
-      if (line != "" && line.startsWith("info")) {
-        const filtered = filterUCIInfo(line);
+      const filtered = filterUCIInfo(line);
 
-        if (Object.keys(filtered).length === 0) {
-          return;
-        }
+      if (Object.keys(filtered).length === 0) {
+        return;
+      }
 
-        // only update changed values
-        this.engine_info = { ...this.engine_info, ...filtered };
+      // only update changed values
+      this.engine_info = { ...this.engine_info, ...filtered };
 
-        if (
-          this.engine_info.pv &&
-          this.engine_info.pv.length > 0 &&
-          this.engine_info.pv[0].orig != "" &&
-          this.engine_info.pv[0].dest != "" &&
-          this.isEngineAlive
-        ) {
-          this.drawAnalysisMove(
-            this.engine_info.pv[0].orig,
-            this.engine_info.pv[0].dest
-          );
-        }
+      if (
+        this.engine_info.pv &&
+        this.engine_info.pv.length > 0 &&
+        this.engine_info.pv[0].orig !== "" &&
+        this.engine_info.pv[0].dest !== "" &&
+        this.isEngineAlive
+      ) {
+        this.drawAnalysisMove(
+          this.engine_info.pv[0].orig,
+          this.engine_info.pv[0].dest
+        );
+      }
 
-        let lines = extractPV(line);
+      let lines = extractPV(line);
 
-        if (lines.pv[0]) {
-          // reset active pvs
-          this.engineLines.forEach((pv) => {
-            pv.active = false;
-          });
+      if (lines.pv[0]) {
+        // reset active pvs
+        this.engineLines.forEach((pv) => {
+          pv.active = false;
+        });
 
-          lines.active = true;
-          this.engineLines.set(lines.pv[0], lines);
-        } else {
-          this.engineLines.forEach((pv) => {
-            if (pv.active) {
-              lines.active = true;
-              // keep other displayed values
-              lines.pv = pv.pv;
-              lines.score = pv.score;
+        lines.active = true;
+        this.engineLines.set(lines.pv[0], lines);
+      } else {
+        this.engineLines.forEach((pv) => {
+          if (pv.active) {
+            lines.active = true;
+            // keep other displayed values
+            lines.pv = pv.pv;
+            lines.score = pv.score;
 
-              this.engineLines.set(lines.pv[0], lines);
-            }
-          });
-        }
+            this.engineLines.set(lines.pv[0], lines);
+          }
+        });
       }
     },
     drawAnalysisMove(origin: string, destination: string) {
@@ -454,6 +325,150 @@ export default defineComponent({
       });
       return dests;
     },
+    calculateSquareSize() {
+      const boardSpace = this.$refs.boardSpace as HTMLElement;
+
+      // Lets get the width/height without padding and borders
+      const cs = window.getComputedStyle(boardSpace);
+
+      const paddingX = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+      const paddingY = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+
+      const borderX =
+        parseFloat(cs.borderLeftWidth) + parseFloat(cs.borderRightWidth);
+      const borderY =
+        parseFloat(cs.borderTopWidth) + parseFloat(cs.borderBottomWidth);
+
+      let size = Math.min(
+        boardSpace.offsetWidth - paddingX - borderX,
+        boardSpace.offsetHeight - paddingY - borderY
+      );
+
+      size -= 7; // adjust for borders and padding
+      // fix chrome alignment errors; https://github.com/ornicar/lila/pull/3881
+      size -= size % 8; // ensure the size is a multiple of 8
+
+      size = Math.min(size, 800);
+
+      const boardWrap = document.querySelector(".board.cg-wrap") as HTMLElement;
+
+      boardWrap.style.width = size + "px";
+      boardWrap.style.height = size + "px";
+      document.body.dispatchEvent(new Event("chessground.resize"));
+    },
+    /*
+        Async functions
+    */
+    async playMoves(moves: string) {
+      await this.sendEngineCommand("stop");
+
+      this.engineLines.clear();
+
+      const movesArray = moves.trim().split(" ");
+
+      for (let i = 0; i < movesArray.length; i++) {
+        if (this.game.isGameOver()) {
+          this.currentFen = this.game.fen();
+
+          return;
+        }
+
+        const move = movesArray[i];
+        const chessMove = this.game.move(move);
+
+        if (chessMove === null) {
+          this.currentFen = this.game.fen();
+
+          return;
+        }
+
+        this.engineMoves += move + " ";
+        this.moveHistory.push(chessMove.san);
+      }
+
+      this.updateCG();
+      this.cg?.set({ lastMove: undefined }); // clear last move
+    },
+    async newPgnMoves(pgn: string) {
+      await this.sendEngineCommand("stop");
+      this.clearAnalysisInfo();
+
+      this.game.loadPgn(pgn);
+
+      let history = this.game.history({ verbose: true });
+
+      this.engineMoves = "";
+      this.moveHistory = [];
+
+      history.forEach((move) => {
+        this.engineMoves += move.lan + " ";
+        this.moveHistory.push(move.san);
+      });
+
+      this.updateCG();
+      this.cg?.set({ lastMove: undefined }); // clear last move
+    },
+    async setupEngine() {
+      const enginesData = localStorage.getItem("engines");
+      const engines = enginesData ? JSON.parse(enginesData) : [];
+
+      this.isEngineAlive = true;
+      this.activeEngine = engines[0];
+
+      if (this.chessProcess) {
+        this.chessProcess.sendStop();
+        await this.chessProcess.sendQuit();
+      }
+
+      this.chessProcess = new ChessProcess(engines[0].path, (line) => {
+        this.updateInfoStats(line);
+      });
+
+      await this.chessProcess.start();
+      this.chessProcess.sendOptions(this.activeEngine!.settings);
+    },
+    // button methods for engine
+    async sendEngineCommand(command: string) {
+      if (command === "go") {
+        this.clearAnalysisInfo();
+
+        if (!this.isEngineAlive) {
+          await this.setupEngine();
+        }
+
+        if (this.startFen === startpos && this.getPlayedMoves() === "") {
+          this.chessProcess?.sendStartpos();
+        } else if (this.startFen === startpos) {
+          this.chessProcess?.sendStartposMoves(this.getPlayedMoves());
+        } else {
+          this.chessProcess?.sendPositionMoves(
+            this.startFen,
+            this.getPlayedMoves()
+          );
+        }
+
+        this.isRunning = true;
+        this.chessProcess?.sendGo();
+      } else if (command === "stop") {
+        this.isRunning = false;
+        this.chessProcess?.sendStop();
+      } else if (command === "restart") {
+        this.isRunning = false;
+        this.activeEngine = null;
+        this.isEngineAlive = false;
+
+        this.clearAnalysisInfo();
+
+        this.chessProcess?.sendStop();
+        await this.chessProcess?.sendQuit();
+        await this.setupEngine();
+      }
+
+      localStorage.setItem("status", this.isRunning.toString());
+
+      // force update of buttons
+      this.currentFen = this.game.fen();
+    },
     async makePromotionMove(piece: string) {
       this.showPromotion = false;
 
@@ -492,27 +507,11 @@ export default defineComponent({
         return "snapback";
       }
 
-      this.engineLines.clear();
-      this.currentFen = this.game.fen();
-
       this.engineMoves += move.lan + " ";
       this.moveHistory.push(move.san);
 
-      this.cg!.set({
-        fen: this.game.fen(),
-        turnColor: this.toColor(),
-        movable: {
-          color: this.toColor(),
-          dests: this.toDests(),
-        },
-      });
-
-      // check highlighting
-      if (this.game.inCheck()) {
-        this.cg?.set({
-          check: this.toColor(),
-        });
-      }
+      this.clearAnalysisInfo();
+      this.updateCG();
 
       if (this.isRunning) {
         await this.sendEngineCommand("stop");
@@ -523,26 +522,8 @@ export default defineComponent({
       this.engineLines.clear();
       this.game.load(fen);
 
-      this.cg?.set({
-        fen: this.game.fen(),
-        turnColor: this.toColor(),
-        lastMove: undefined,
-        movable: {
-          color: this.toColor(),
-          dests: this.toDests(),
-        },
-      });
-
-      // set check highlighting
-      if (this.game.inCheck()) {
-        this.cg?.set({
-          check: this.toColor(),
-        });
-      } else {
-        this.cg?.set({
-          check: undefined,
-        });
-      }
+      this.updateCG();
+      this.cg!.set({ lastMove: undefined });
 
       this.engineMoves = "";
       this.moveHistory = [];
@@ -550,37 +531,6 @@ export default defineComponent({
 
       await this.sendEngineCommand("stop");
       this.chessProcess?.write("ucinewgame");
-    },
-    calculateSquareSize() {
-      const boardSpace = this.$refs.boardSpace as HTMLElement;
-
-      // Lets get the width/height without padding and borders
-      const cs = window.getComputedStyle(boardSpace);
-
-      const paddingX = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
-      const paddingY = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
-
-      const borderX =
-        parseFloat(cs.borderLeftWidth) + parseFloat(cs.borderRightWidth);
-      const borderY =
-        parseFloat(cs.borderTopWidth) + parseFloat(cs.borderBottomWidth);
-
-      let size = Math.min(
-        boardSpace.offsetWidth - paddingX - borderX,
-        boardSpace.offsetHeight - paddingY - borderY
-      );
-
-      size -= 7; // adjust for borders and padding
-      // fix chrome alignment errors; https://github.com/ornicar/lila/pull/3881
-      size -= size % 8; // ensure the size is a multiple of 8
-
-      size = Math.min(size, 800);
-
-      const boardWrap = document.querySelector(".board.cg-wrap") as HTMLElement;
-
-      boardWrap.style.width = size + "px";
-      boardWrap.style.height = size + "px";
-      document.body.dispatchEvent(new Event("chessground.resize"));
     },
   },
 });
