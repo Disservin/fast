@@ -11,47 +11,31 @@
 </template>
 
 <script lang="ts">
+import { formatPv } from "@/ts/FormatInput";
+
 export default {
   props: {
-    gamePgn: {
-      type: String,
+    movehistory: {
+      type: Array,
       required: true,
     },
   },
   computed: {
     formattedPgn() {
-      const moves: string[] = this.gamePgn.split(" ");
-      let formatted: string[] = [];
-
-      let new_move = "";
-      moves.forEach((move, index) => {
-        if (move.endsWith(".")) {
-          new_move = " " + move;
-          return;
-        }
-
-        new_move += " " + move;
-
-        formatted.push(new_move);
-        new_move = "";
-      });
-
-      return formatted;
+      return this.formatPv(this.movehistory as string[]);
     },
   },
   methods: {
+    formatPv,
     sendPGNMoves(moveIndex: number) {
-      const formatted = this.formattedPgn;
+      const formatted = this.formatPv(this.movehistory as string[]);
       let pgn = "";
-
       formatted.forEach((move, index) => {
         if (index > moveIndex) {
           return;
         }
-
         pgn += move.trim() + " ";
       });
-
       pgn = pgn.trim();
       this.$emit("send-pgn-moves", pgn);
     },

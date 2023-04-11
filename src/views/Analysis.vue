@@ -77,13 +77,15 @@ export default defineComponent({
       isEngineAlive: false,
       isRunning: false,
 
-      moveHistory: "",
+      // keep track of the played moves, in san/uci notation
+      engineMoves: "",
+      // keep track of the played moves, in algebraic notation
+      moveHistory: [] as string[],
 
       engineLines: new Map<string, PV>(),
 
       startFen: startpos,
       currentFen: startpos,
-      currentPgn: "",
     };
   },
   computed: {
@@ -162,7 +164,7 @@ export default defineComponent({
   },
   methods: {
     getPlayedMoves() {
-      return this.moveHistory.trim();
+      return this.engineMoves.trim();
     },
     async playMoves(moves: string) {
       const movesArray = moves.trim().split(" ");
@@ -173,7 +175,7 @@ export default defineComponent({
       for (let i = 0; i < movesArray.length; i++) {
         if (this.game.isGameOver()) {
           this.currentFen = this.game.fen();
-          this.currentPgn = this.game.pgn();
+          this.moveHistory = this.game.history({ verbose: false });
 
           return;
         }
@@ -182,12 +184,12 @@ export default defineComponent({
 
         if (this.game.move(move) === null) {
           this.currentFen = this.game.fen();
-          this.currentPgn = this.game.pgn();
+          this.moveHistory = this.game.history({ verbose: false });
 
           return;
         }
 
-        this.moveHistory += move + " ";
+        this.engineMoves += move + " ";
       }
 
       this.cg?.set({
@@ -201,7 +203,7 @@ export default defineComponent({
       });
 
       this.currentFen = this.game.fen();
-      this.currentPgn = this.game.pgn();
+      this.moveHistory = this.game.history({ verbose: false });
     },
     async newPgnMoves(pgn: string) {
       await this.sendEngineCommand("stop");
@@ -219,10 +221,10 @@ export default defineComponent({
         },
       });
 
-      this.moveHistory = this.game.history().join(" ") + " ";
+      this.engineMoves = this.game.history().join(" ") + " ";
 
       this.currentFen = this.game.fen();
-      this.currentPgn = this.game.pgn();
+      this.moveHistory = this.game.history({ verbose: false });
     },
     handleKeydown(event: KeyboardEvent) {
       if (event.key === "g" && event.ctrlKey && !this.isRunning) {
@@ -326,7 +328,7 @@ export default defineComponent({
 
       // force update of buttons
       this.currentFen = this.game.fen();
-      this.currentPgn = this.game.pgn();
+      this.moveHistory = this.game.history({ verbose: false });
     },
     async sendOptions() {
       this.activeEngine?.settings.forEach((option: Option) => async () => {
@@ -487,8 +489,8 @@ export default defineComponent({
 
       this.engineLines.clear();
       this.currentFen = this.game.fen();
-      this.currentPgn = this.game.pgn();
-      this.moveHistory += move.lan + " ";
+      this.moveHistory = this.game.history({ verbose: false });
+      this.engineMoves += move.lan + " ";
 
       // update chessground board
       this.cg!.set({
@@ -537,7 +539,7 @@ export default defineComponent({
         });
       }
 
-      this.moveHistory = "";
+      this.engineMoves = "";
       this.startFen = this.game.fen();
 
       await this.sendEngineCommand("stop");
@@ -647,7 +649,7 @@ export default defineComponent({
             <Pgn
               class="game-pgn"
               @send-pgn-moves="newPgnMoves"
-              :gamePgn="currentPgn"
+              :movehistory="moveHistory"
               :key="currentFen"
             />
             <div class="analysis-graph"></div>
