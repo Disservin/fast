@@ -180,17 +180,16 @@ export default defineComponent({
         }
 
         const move = movesArray[i];
+        const chessMove = this.game.move(move);
 
-        if (this.game.move(move) === null) {
+        if (chessMove === null) {
           this.currentFen = this.game.fen();
 
           return;
         }
 
         this.engineMoves += move + " ";
-        this.moveHistory.push(
-          this.moveToSan(move.slice(0, 2), (move + " ").slice(2, 5))
-        );
+        this.moveHistory.push(chessMove.san);
       }
 
       this.cg?.set({
@@ -204,11 +203,6 @@ export default defineComponent({
       });
 
       this.currentFen = this.game.fen();
-    },
-    moveToSan(origin: string, dest: string, promotion?: string) {
-      const copy = new Chess(this.game.fen());
-      const move = copy.move({ from: origin, to: dest, promotion: promotion });
-      return move.san;
     },
     async newPgnMoves(pgn: string) {
       await this.sendEngineCommand("stop");
@@ -771,8 +765,7 @@ h1 {
   overflow-y: scroll;
   overflow-x: hidden;
   flex-grow: 0;
-  /* height: calc(50vh - 100px); */
-  height: 50%;
+  height: calc(50vh - 100px);
   background-color: var(--bg-secondary);
   border-radius: 5px;
   margin-bottom: 5px;
