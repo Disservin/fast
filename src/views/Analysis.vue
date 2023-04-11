@@ -670,10 +670,6 @@ h1 {
   }
 }
 
-.test {
-  background-color: aquamarine;
-}
-
 .analysis-info {
   flex: 1;
   display: flex;
@@ -769,7 +765,7 @@ h1 {
   z-index: 3;
 }
 
-.piece {
+#promotion-select .piece {
   width: 20%;
   height: 5rem;
   background-size: contain;
