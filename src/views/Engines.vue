@@ -41,16 +41,15 @@ export default defineComponent({
       const result = await open();
 
       if (result && !Array.isArray(result)) {
+        this.engines[index]!.path = result;
+        this.engines[index]!.settings = [];
+        this.editingIndex = index;
+
         this.chessProcess = new ChessProcess(result, (line) => {
           if (line.trim() == "uciok") {
             this.chessProcess?.sendQuit();
             return;
           }
-
-          this.editingIndex = index;
-          this.engines[index]!.path = result;
-
-          let settings: Option[] = this.engines[index].settings || [];
 
           line = line.replace(/^\s+|\s+$/g, "");
           line = line.trim();
@@ -99,17 +98,14 @@ export default defineComponent({
             // overwrite types
             if (option.name === "SyzygyPath") option.type = "file";
             if (option.name === "EvalFile") option.type = "file";
-            if (option.type !== "button") settings.push(option);
+            if (option.type !== "button")
+              this.engines[index]!.settings.push(option);
           }
-
-          // we need to use the index to update the correct engine
-          this.engines[index]!.settings = settings;
 
           localStorage.setItem("engines", JSON.stringify(this.engines));
         });
 
         await this.chessProcess.start();
-        this.chessProcess.write("uci");
       }
     },
 
