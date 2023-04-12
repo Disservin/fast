@@ -147,6 +147,7 @@ export default defineComponent({
     const board = this.$refs.board as HTMLElement;
     this.cg = Chessground(board, config);
 
+    this.calculateSquareSize();
     window.addEventListener("resize", this.calculateSquareSize);
     window.addEventListener("keydown", this.handleKeydown);
 
