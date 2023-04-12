@@ -567,8 +567,8 @@ export default defineComponent({
       </div>
       <div class="analysis-info">
         <Fen
-          :fen="game.fen()"
-          :key="game.fen()"
+          :fen="currentFen"
+          :key="currentFen"
           @update-position="newPosition"
         />
         <div class="engine-status">
