@@ -7,7 +7,7 @@
   },
   "package": {
     "productName": "fast",
-    "version": "0.1.0"
+    "version": "0.0.2"
   },
   "tauri": {
     "allowlist": {
@@ -21,13 +21,16 @@
         "all": true, 
         "open": true, 
         "save": true 
+      },
+      "fs": {
+        "scope": ["$RESOURCE/*"]
       }
     },
 
     "bundle": {
       "active": true,
       "category": "DeveloperTool",
-      "copyright": "",
+      "copyright": "GPL-3.0",
       "deb": {
         "depends": []
       },
@@ -57,6 +60,7 @@
         "timestampUrl": ""
       }
     },
+    
     "security": {
       "csp": null
     },

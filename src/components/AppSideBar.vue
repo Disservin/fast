@@ -25,6 +25,12 @@
         </router-link>
       </li>
       <li class="nav-item">
+        <router-link to="/info" class="nav-link" exact-active-class="active">
+          <font-awesome-icon icon="fa-solid fa-circle-info" />
+          <span class="link-text">Info</span>
+        </router-link>
+      </li>
+      <li class="nav-item">
         <router-link
           to="/settings"
           class="nav-link"
