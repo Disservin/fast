@@ -14,11 +14,11 @@ import { Chess, SQUARES } from "chess.js";
 import type { Square } from "chess.js";
 import type { Color, Key } from "chessground/types";
 
-import type { EngineInfo } from "@/ts/UciFilter";
-import type { Option, Engine } from "@/ts/FastTypes";
+import type { EngineInfo, Move } from "@/ts/UciFilter";
+import type { Engine } from "@/ts/FastTypes";
 import type { PV } from "@/ts/PrincipalVariation";
 
-import { filterUCIInfo } from "@/ts/UciFilter";
+import { filterUCIInfo, extractMove } from "@/ts/UciFilter";
 import { extractPV } from "@/ts/PrincipalVariation";
 
 import ChessProcess from "../ts/ChessProcess";
@@ -187,6 +187,8 @@ export default defineComponent({
       this.currentFen = this.game.fen();
     },
     clearAnalysisInfo() {
+      console.log("clearAnalysisInfo");
+
       this.engineLines.clear();
 
       this.engine_info = {
@@ -197,6 +199,36 @@ export default defineComponent({
         tbhits: "0",
         hashfull: "0",
       };
+    },
+    shiftAnalysisInfo() {
+      // remove all other lines and shift the line with the played move to the right
+      let correctLine: PV = null as any;
+
+      this.engineLines.forEach((pv, key) => {
+        const moves = this.engineMoves.trim().split(" ");
+        if (pv.pv[0] !== moves[moves.length - 1]) {
+          this.engineLines.delete(key);
+        } else {
+          correctLine = pv;
+        }
+      });
+
+      if (correctLine) {
+        correctLine.pv.shift();
+        this.engineLines.set(
+          this.engineMoves.trim().split(" ")[0],
+          correctLine
+        );
+
+        const move = extractMove(correctLine.pv[0]);
+        this.cg?.setShapes([
+          {
+            orig: move.orig as Key,
+            dest: move.dest as Key,
+            brush: "paleBlue",
+          },
+        ]);
+      }
     },
     getPlayedMoves() {
       return this.engineMoves.trim();
@@ -363,8 +395,6 @@ export default defineComponent({
     async playMoves(moves: string) {
       await this.sendEngineCommand("stop");
 
-      this.engineLines.clear();
-
       const movesArray = moves.trim().split(" ");
 
       for (let i = 0; i < movesArray.length; i++) {
@@ -385,10 +415,11 @@ export default defineComponent({
 
         this.engineMoves += move + " ";
         this.moveHistory.push(chessMove.san);
-      }
 
-      this.updateCG();
-      this.cg?.set({ lastMove: undefined }); // clear last move
+        this.updateCG();
+        this.cg?.set({ lastMove: undefined }); // clear last move
+        this.shiftAnalysisInfo();
+      }
     },
     async newPgnMoves(pgn: string) {
       await this.sendEngineCommand("stop");
@@ -511,8 +542,8 @@ export default defineComponent({
       this.engineMoves += move.lan + " ";
       this.moveHistory.push(move.san);
 
-      this.clearAnalysisInfo();
       this.updateCG();
+      this.shiftAnalysisInfo();
 
       if (this.isRunning) {
         await this.sendEngineCommand("stop");
@@ -592,7 +623,6 @@ export default defineComponent({
               @send-moves="playMoves"
               :engineLines="engineLines"
               :fen="currentFen"
-              :key="currentFen"
               :color="toColor()"
             />
             <EngineButtons

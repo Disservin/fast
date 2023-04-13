@@ -16,6 +16,23 @@ export interface EngineInfo {
     tbhits?: string;
 }
 
+export function extractMove(move: string): Move {
+    let promotion = null;
+
+    const origin = move.substring(0, 2);
+    const destination = move.substring(2, 4);
+
+    if (move.length == 5) {
+        promotion = move.substring(4, 5);
+    }
+
+    return {
+        orig: origin,
+        dest: destination,
+        prom: promotion,
+    };
+}
+
 export function filterUCIInfo(str: string): EngineInfo {
     const uciInfoStrings = [
         "nodes",
@@ -55,20 +72,8 @@ export function filterUCIInfo(str: string): EngineInfo {
             while (++i < tokens.length) {
                 if (uciInfoStrings.includes(tokens[i])) break;
                 else {
-                    const move = tokens[i];
-                    const origin = move.substring(0, 2);
-                    const destination = move.substring(2, 4);
-                    let promotion = null;
-
-                    if (move.length == 5) {
-                        promotion = move.substring(4, 5);
-                    }
-
-                    engineInfo.pv.push({
-                        orig: origin,
-                        dest: destination,
-                        prom: promotion,
-                    });
+                    const move = extractMove(tokens[i]);
+                    engineInfo.pv.push(move);
                 }
             }
         }
