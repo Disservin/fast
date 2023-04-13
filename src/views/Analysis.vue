@@ -73,7 +73,6 @@ export default defineComponent({
         hashfull: "0",
       } as EngineInfo,
 
-      activeEngine: null as null | Engine,
       isEngineAlive: false,
       isRunning: false,
 
@@ -154,13 +153,10 @@ export default defineComponent({
     this.newPosition(startpos);
   },
   beforeUnmount() {
-    this.isEngineAlive = false;
-    this.isRunning = false;
-
     window.removeEventListener("resize", this.calculateSquareSize);
+    window.removeEventListener("keydown", this.handleKeydown);
 
-    this.chessProcess?.sendStop();
-    this.chessProcess?.sendQuit();
+    this.sendEngineCommand("quit");
   },
   methods: {
     updateCG() {
@@ -444,20 +440,22 @@ export default defineComponent({
       const enginesData = localStorage.getItem("engines");
       const engines = enginesData ? JSON.parse(enginesData) : [];
 
-      this.isEngineAlive = true;
-      this.activeEngine = engines[0];
+      if (engines.length === 0) {
+        return;
+      }
 
       if (this.chessProcess) {
-        this.chessProcess.sendStop();
-        await this.chessProcess.sendQuit();
+        this.sendEngineCommand("quit");
       }
+
+      this.isEngineAlive = true;
 
       this.chessProcess = new ChessProcess(engines[0].path, (line) => {
         this.updateInfoStats(line);
       });
 
       await this.chessProcess.start();
-      this.chessProcess.sendOptions(this.activeEngine!.settings);
+      this.chessProcess.sendOptions(engines[0].settings);
     },
     // button methods for engine
     async sendEngineCommand(command: string) {
@@ -484,9 +482,13 @@ export default defineComponent({
       } else if (command === "stop") {
         this.isRunning = false;
         this.chessProcess?.sendStop();
+      } else if (command === "quit") {
+        this.isEngineAlive = false;
+        this.isRunning = false;
+        this.chessProcess?.sendStop();
+        await this.chessProcess?.sendQuit();
       } else if (command === "restart") {
         this.isRunning = false;
-        this.activeEngine = null;
         this.isEngineAlive = false;
 
         this.clearAnalysisInfo();
