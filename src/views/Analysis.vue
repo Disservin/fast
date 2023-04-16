@@ -15,7 +15,7 @@ import type { PV } from "@/ts/PrincipalVariation";
 import { filterUCIInfo, extractMove } from "@/ts/UciFilter";
 import { extractPV } from "@/ts/PrincipalVariation";
 
-import ChessProcess from "../ts/ChessProcess";
+import ChessProcess from "@/ts/ChessProcess";
 
 const startpos = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
