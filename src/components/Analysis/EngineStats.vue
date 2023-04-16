@@ -3,7 +3,7 @@ import { defineComponent } from "vue";
 import { formatEval, formatNumber, formatTime } from "@/ts/FormatInput";
 
 export default defineComponent({
-  props: ["engineInfo", "sideToMove"],
+  props: ["engineInfo"],
   methods: {
     formatEval,
     formatNumber,
@@ -17,7 +17,7 @@ export default defineComponent({
     <div class="engine-stats">
       <div class="engine-stat">
         <span class="engine-stat-value">{{
-          formatEval(engineInfo.score, sideToMove)
+          formatEval(engineInfo.score)
         }}</span>
       </div>
       <div class="engine-stat">
