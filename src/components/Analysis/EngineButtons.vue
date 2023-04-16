@@ -5,16 +5,22 @@ export default {
       type: Boolean,
       required: true,
     },
+    go: {
+      type: Boolean,
+      required: true,
+    },
   },
   data() {
     return {
       // stopped, running
       isRunning: this.status,
       disabled: false,
+      disabledGo: false,
     };
   },
   mounted() {
     this.isRunning = localStorage.getItem("status") === "true";
+    this.disabledGo = !this.go;
   },
   methods: {
     sendEngineCommand(command: string) {
@@ -45,7 +51,7 @@ export default {
           outlined
           color="primary"
           block
-          :disabled="isRunning"
+          :disabled="isRunning || disabledGo"
           @click="sendEngineCommand('go')"
         >
           Go Infinite

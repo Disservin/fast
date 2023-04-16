@@ -7,23 +7,15 @@ import EngineButtons from "@/components/Analysis/EngineButtons.vue";
 import Fen from "@/components/Analysis/Fen.vue";
 import EngineLines from "@/components/Analysis/EngineLines.vue";
 import Pgn from "@/components/Analysis/Pgn.vue";
+import ChessGroundBoard from "@/components/Analysis/ChessGroundBoard.vue";
 
-import { Chessground } from "chessground";
-import { Chess, SQUARES } from "chess.js";
-
-import type { Square } from "chess.js";
-import type { Color, Key } from "chessground/types";
-
-import type { EngineInfo, Move } from "@/ts/UciFilter";
-import type { Engine } from "@/ts/FastTypes";
+import type { EngineInfo } from "@/ts/UciFilter";
 import type { PV } from "@/ts/PrincipalVariation";
 
 import { filterUCIInfo, extractMove } from "@/ts/UciFilter";
 import { extractPV } from "@/ts/PrincipalVariation";
 
-import ChessProcess from "../ts/ChessProcess";
-
-type ChessgroundInstance = ReturnType<typeof Chessground>;
+import ChessProcess from "@/ts/ChessProcess";
 
 const startpos = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -36,6 +28,7 @@ export default defineComponent({
     EngineButtons: EngineButtons,
     EngineLines: EngineLines,
     Pgn: Pgn,
+    ChessGroundBoard: ChessGroundBoard,
   },
   data() {
     return {
@@ -57,12 +50,6 @@ export default defineComponent({
         },
       ],
 
-      game: new Chess(),
-      cg: null as ChessgroundInstance | null,
-
-      showPromotion: false,
-      promotionMove: { origin: "", destination: "" },
-
       engine_info: {
         score: "0",
         nodes: "0",
@@ -76,15 +63,16 @@ export default defineComponent({
       isEngineAlive: false,
       isRunning: false,
 
-      // keep track of the played moves, in san/uci notation
-      engineMoves: "",
-      // keep track of the played moves, in algebraic notation
-      moveHistory: [] as string[],
+      moveHistoryLan: [] as string[],
+      moveHistorySan: [] as string[],
 
       engineLines: new Map<string, PV>(),
 
       startFen: startpos,
       currentFen: startpos,
+
+      status: "IDLE",
+      sideToMove: "white",
     };
   },
   computed: {
@@ -92,28 +80,17 @@ export default defineComponent({
       return this.smallNavbar[this.activeTabIndex].id;
     },
     updateAnalysisStatus(): string {
-      let status = "IDLE";
+      let status = this.status;
 
-      if (this.isRunning) {
-        status = "ANALYSIS";
-      } else if (this.isEngineAlive) {
-        status = "READY";
-      }
+      if (status === "" || status === "IDLE") {
+        if (this.isRunning) {
+          status = "ANALYSIS";
+        } else if (this.isEngineAlive) {
+          status = "READY";
+        }
+      } else {
+        status = this.status;
 
-      if (this.game.isCheckmate()) {
-        status = "CHECKMATE";
-      } else if (this.game.isStalemate()) {
-        status = "STALEMATE";
-      } else if (this.game.isThreefoldRepetition()) {
-        status = "THREEFOLD REPETITION";
-      } else if (this.game.isInsufficientMaterial()) {
-        status = "INSUFFICIENT MATERIAL";
-      } else if (this.game.isDraw()) {
-        // shouldnt happen
-        status = "DRAW";
-      }
-
-      if (this.game.isGameOver()) {
         this.sendEngineCommand("stop");
       }
 
@@ -121,114 +98,16 @@ export default defineComponent({
     },
   },
   mounted() {
-    const config = {
-      movable: {
-        color: "white" as Color,
-        free: false,
-        dests: this.toDests(),
-      },
-      draggable: {
-        showGhost: true,
-      },
-      events: {
-        move: this.makeMove,
-      },
-      highlight: {
-        lastMove: true,
-        check: true,
-      },
-      drawable: {
-        enabled: false,
-        eraseOnClick: false,
-      },
-    };
+    this.initEngine();
 
-    const board = this.$refs.board as HTMLElement;
-    this.cg = Chessground(board, config);
-
-    this.calculateSquareSize();
-    window.addEventListener("resize", this.calculateSquareSize);
     window.addEventListener("keydown", this.handleKeydown);
-
-    this.newPosition(startpos);
   },
   beforeUnmount() {
-    window.removeEventListener("resize", this.calculateSquareSize);
     window.removeEventListener("keydown", this.handleKeydown);
 
     this.sendEngineCommand("quit");
   },
   methods: {
-    updateCG() {
-      this.cg?.set({
-        fen: this.game.fen(),
-        turnColor: this.toColor(),
-        movable: {
-          color: this.toColor(),
-          dests: this.toDests(),
-        },
-      });
-
-      // set check highlighting
-      if (this.game.inCheck()) {
-        this.cg?.set({
-          check: this.toColor(),
-        });
-      } else {
-        this.cg?.set({
-          check: undefined,
-        });
-      }
-
-      this.currentFen = this.game.fen();
-    },
-    clearAnalysisInfo() {
-      console.log("clearAnalysisInfo");
-
-      this.engineLines.clear();
-
-      this.engine_info = {
-        nodes: "0",
-        nps: "0",
-        depth: "0",
-        time: "0",
-        tbhits: "0",
-        hashfull: "0",
-      };
-    },
-    shiftAnalysisInfo() {
-      // remove all other lines and shift the line with the played move to the right
-      let correctLine: PV = null as any;
-
-      this.engineLines.forEach((pv, key) => {
-        const moves = this.engineMoves.trim().split(" ");
-        if (pv.pv[0] !== moves[moves.length - 1]) {
-          this.engineLines.delete(key);
-        } else {
-          correctLine = pv;
-        }
-      });
-
-      if (correctLine) {
-        correctLine.pv.shift();
-        this.engineLines.set(
-          this.engineMoves.trim().split(" ")[0],
-          correctLine
-        );
-
-        const move = extractMove(correctLine.pv[0]);
-        this.cg?.setShapes([
-          {
-            orig: move.orig as Key,
-            dest: move.dest as Key,
-            brush: "paleBlue",
-          },
-        ]);
-      }
-    },
-    getPlayedMoves() {
-      return this.engineMoves.trim();
-    },
     handleKeydown(event: KeyboardEvent) {
       if (event.key === "g" && event.ctrlKey && !this.isRunning) {
         event.preventDefault();
@@ -246,17 +125,11 @@ export default defineComponent({
       }
     },
     updateInfoStats(line: string) {
-      if (
-        !this.isEngineAlive ||
-        !this.isRunning ||
-        line === "" ||
-        !line.startsWith("info")
-      ) {
+      if (!this.isEngineAlive || !this.isRunning || !line.startsWith("info")) {
         return;
       }
 
       const filtered = filterUCIInfo(line);
-
       if (Object.keys(filtered).length === 0) {
         return;
       }
@@ -271,13 +144,28 @@ export default defineComponent({
         this.engine_info.pv[0].dest !== "" &&
         this.isEngineAlive
       ) {
-        this.drawAnalysisMove(
-          this.engine_info.pv[0].orig,
-          this.engine_info.pv[0].dest
+        (this.$refs.chessGroundBoardRef as any).drawMove(
+          this.engine_info.pv[0]
         );
       }
 
       let lines = extractPV(line);
+
+      const evaluation = lines.score;
+
+      if (evaluation.startsWith("cp")) {
+        let cp = Number(evaluation.slice(2));
+        if (this.sideToMove === "black") {
+          cp = -cp;
+        }
+        lines.score = "cp " + cp;
+      } else if (evaluation.startsWith("mate")) {
+        let mateIn = Number(evaluation.slice(4));
+        if (this.sideToMove === "black") {
+          mateIn = -mateIn;
+        }
+        lines.score = "mate " + mateIn;
+      }
 
       if (lines.pv[0]) {
         // reset active pvs
@@ -299,144 +187,44 @@ export default defineComponent({
           }
         });
       }
+      console.log(this.engineLines);
     },
-    drawAnalysisMove(origin: string, destination: string) {
-      this.cg?.setShapes([
-        {
-          orig: origin as Key,
-          dest: destination as Key,
-          brush: "paleBlue",
-        },
-      ]);
+    clearAnalysisInfo() {
+      this.engineLines.clear();
+
+      this.engine_info = {
+        nodes: "0",
+        nps: "0",
+        depth: "0",
+        time: "0",
+        tbhits: "0",
+        hashfull: "0",
+      };
     },
-    // CHESSBOARD METHODS
-    toColor(): Color {
-      return this.game.turn() === "w" ? "white" : "black";
-    },
-    // movable destionations for a piece
-    toDests() {
-      const dests = new Map();
-      SQUARES.forEach((s) => {
-        const moves = this.game.moves({ square: s });
-        if (moves.length) {
-          dests.set(
-            s,
-            moves.map((m) => {
-              // horrible hack to get the destination square
-              // all because chess.js verbose printer is so slow,
-              // this is a 30x speedup to the previous approach
-              let to;
-              if (m.includes("=")) {
-                const index = m.indexOf("=");
-                to = m.slice(index - 2, index);
-              } else if (m.includes("x")) {
-                const index = m.indexOf("x");
-                to = m.slice(index + 1, index + 3);
-              } else if (m === "O-O" || m === "O-O-O") {
-                if (m === "O-O") {
-                  to = s === "e1" ? "g1" : "g8";
-                } else {
-                  to = s === "e1" ? "c1" : "c8";
-                }
-              } else if (m.endsWith("+") || m.endsWith("#")) {
-                to = m.slice(m.length - 3, m.length - 1);
-              } else if (m.length == 2) {
-                to = m;
-              } else if (m.length == 3) {
-                to = m.slice(1);
-              } else {
-                to = m.slice(m.length - 2, m.length);
-              }
-              return to;
-            })
-          );
+    shiftAnalysisInfo() {
+      // remove all other lines and shift the line with the played move to the right
+      let correctLine: PV = null as any;
+      const moves = this.moveHistoryLan;
+
+      const playedMove = moves[moves.length - 1];
+
+      this.engineLines.forEach((pv, key) => {
+        if (key === playedMove) {
+          correctLine = pv;
+          correctLine.pv.shift();
         }
       });
-      return dests;
-    },
-    calculateSquareSize() {
-      const boardSpace = this.$refs.boardSpace as HTMLElement;
 
-      // Lets get the width/height without padding and borders
-      const cs = window.getComputedStyle(boardSpace);
+      this.engineLines.clear();
 
-      const paddingX = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
-      const paddingY = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
-
-      const borderX =
-        parseFloat(cs.borderLeftWidth) + parseFloat(cs.borderRightWidth);
-      const borderY =
-        parseFloat(cs.borderTopWidth) + parseFloat(cs.borderBottomWidth);
-
-      let size = Math.min(
-        boardSpace.offsetWidth - paddingX - borderX,
-        boardSpace.offsetHeight - paddingY - borderY
-      );
-
-      size -= 7; // adjust for borders and padding
-      // fix chrome alignment errors; https://github.com/ornicar/lila/pull/3881
-      size -= size % 8; // ensure the size is a multiple of 8
-
-      size = Math.min(size, 800);
-
-      const boardWrap = document.querySelector(".board.cg-wrap") as HTMLElement;
-
-      boardWrap.style.width = size + "px";
-      boardWrap.style.height = size + "px";
-      document.body.dispatchEvent(new Event("chessground.resize"));
-    },
-    /*
-        Async functions
-    */
-    async playMoves(moves: string) {
-      await this.sendEngineCommand("stop");
-
-      const movesArray = moves.trim().split(" ");
-
-      for (let i = 0; i < movesArray.length; i++) {
-        if (this.game.isGameOver()) {
-          this.currentFen = this.game.fen();
-
-          return;
-        }
-
-        const move = movesArray[i];
-        const chessMove = this.game.move(move);
-
-        if (chessMove === null) {
-          this.currentFen = this.game.fen();
-
-          return;
-        }
-
-        this.engineMoves += move + " ";
-        this.moveHistory.push(chessMove.san);
-
-        this.updateCG();
-        this.cg?.set({ lastMove: undefined }); // clear last move
-        this.shiftAnalysisInfo();
+      if (correctLine && correctLine.pv.length > 0) {
+        this.engineLines.set(correctLine.pv[0], correctLine);
       }
     },
-    async newPgnMoves(pgn: string) {
-      await this.sendEngineCommand("stop");
-      this.clearAnalysisInfo();
-
-      this.game.loadPgn(pgn);
-
-      let history = this.game.history({ verbose: true });
-
-      this.engineMoves = "";
-      this.moveHistory = [];
-
-      history.forEach((move) => {
-        this.engineMoves += move.lan + " ";
-        this.moveHistory.push(move.san);
-      });
-
-      this.updateCG();
-      this.cg?.set({ lastMove: undefined }); // clear last move
+    getUciMoves() {
+      return this.moveHistoryLan.join(" ");
     },
-    async setupEngine() {
+    async initEngine() {
       const enginesData = localStorage.getItem("engines");
       const engines = enginesData ? JSON.parse(enginesData) : [];
 
@@ -457,35 +245,33 @@ export default defineComponent({
       await this.chessProcess.start();
       this.chessProcess.sendOptions(engines[0].settings);
     },
-    // button methods for engine
     async sendEngineCommand(command: string) {
-      if (command === "go") {
+      if (command === "go" && (this.status === "" || this.status === "IDLE")) {
         this.clearAnalysisInfo();
 
         if (!this.isEngineAlive) {
-          await this.setupEngine();
+          await this.initEngine();
         }
 
-        if (this.startFen === startpos && this.getPlayedMoves() === "") {
+        if (this.startFen === startpos && this.getUciMoves() === "") {
           this.chessProcess?.sendStartpos();
         } else if (this.startFen === startpos) {
-          this.chessProcess?.sendStartposMoves(this.getPlayedMoves());
+          this.chessProcess?.sendStartposMoves(this.getUciMoves());
         } else {
           this.chessProcess?.sendPositionMoves(
             this.startFen,
-            this.getPlayedMoves()
+            this.getUciMoves()
           );
         }
-
         this.isRunning = true;
         this.chessProcess?.sendGo();
       } else if (command === "stop") {
         this.isRunning = false;
-        this.chessProcess?.sendStop();
+        await this.chessProcess?.sendStop();
       } else if (command === "quit") {
         this.isEngineAlive = false;
         this.isRunning = false;
-        this.chessProcess?.sendStop();
+        await this.chessProcess?.sendStop();
         await this.chessProcess?.sendQuit();
       } else if (command === "restart") {
         this.isRunning = false;
@@ -493,78 +279,69 @@ export default defineComponent({
 
         this.clearAnalysisInfo();
 
-        this.chessProcess?.sendStop();
+        await this.chessProcess?.sendStop();
         await this.chessProcess?.sendQuit();
-        await this.setupEngine();
+        await this.initEngine();
       }
 
       localStorage.setItem("status", this.isRunning.toString());
-
-      // force update of buttons
-      this.currentFen = this.game.fen();
     },
-    async makePromotionMove(piece: string) {
-      this.showPromotion = false;
-
-      // do move
-      const promotionMove = this.game.move({
-        from: this.promotionMove.origin,
-        to: this.promotionMove.destination,
-        promotion: piece,
-      });
-
-      this.updateMove(promotionMove);
+    updatedSideToMove(side: string) {
+      this.sideToMove = side;
     },
-    async makeMove(origin: string, destination: string) {
-      // is promotion?
-      if (
-        this.game.get(origin as Square)?.type === "p" &&
-        (destination[1] === "1" || destination[1] === "8")
-      ) {
-        this.showPromotion = true;
-        this.promotionMove = { origin, destination };
-
-        // user has to select a promotion piece and makePromotionMove() will be called
-        return;
-      }
-
-      // do move
-      const move = this.game.move({
-        from: origin,
-        to: destination,
-      });
-
-      this.updateMove(move);
+    updatedStatus(status: string) {
+      this.status = status;
     },
-    async updateMove(move: any) {
-      if (move === null) {
-        return "snapback";
-      }
+    updatedMove(moves: any) {
+      this.moveHistoryLan = moves["moveHistoryLan"];
+      this.moveHistorySan = moves["moveHistorySan"];
 
-      this.engineMoves += move.lan + " ";
-      this.moveHistory.push(move.san);
-
-      this.updateCG();
       this.shiftAnalysisInfo();
 
       if (this.isRunning) {
-        await this.sendEngineCommand("stop");
-        await this.sendEngineCommand("go");
+        this.sendEngineCommand("stop");
+        this.sendEngineCommand("go");
+      }
+    },
+    updatedCg(fen: string) {
+      this.currentFen = fen;
+
+      let activeLine: PV = null as any;
+
+      this.engineLines.forEach((pv) => {
+        if (pv.active) {
+          activeLine = pv;
+        }
+      });
+
+      if (activeLine && activeLine.pv.length > 0) {
+        (this.$refs.chessGroundBoardRef as any).drawMoveStr(
+          activeLine.pv[0].substring(0, 2),
+          activeLine.pv[0].substring(2, 4)
+        );
       }
     },
     async newPosition(fen: string) {
       this.engineLines.clear();
-      this.game.load(fen);
+      this.startFen = fen;
 
-      this.updateCG();
-      this.cg!.set({ lastMove: undefined });
+      this.moveHistoryLan = [];
+      this.moveHistorySan = [];
 
-      this.engineMoves = "";
-      this.moveHistory = [];
-      this.startFen = this.game.fen();
+      (this.$refs.chessGroundBoardRef as any).newPositionFen(fen);
 
+      if (this.isRunning) {
+        await this.sendEngineCommand("stop");
+        this.chessProcess?.write("ucinewgame");
+      }
+    },
+    async playMoves(moves: string) {
       await this.sendEngineCommand("stop");
-      this.chessProcess?.write("ucinewgame");
+      (this.$refs.chessGroundBoardRef as any).playMoves(moves);
+    },
+    async parsePgn(pgn: string) {
+      await this.sendEngineCommand("stop");
+      (this.$refs.chessGroundBoardRef as any).newPositionPgn(pgn);
     },
   },
 });
@@ -574,29 +351,13 @@ export default defineComponent({
   <div>
     <main class="analysis">
       <div class="game">
-        <div class="board-space" ref="boardSpace">
-          <div class="board" ref="board"></div>
-          <div class="promotion-options" v-if="showPromotion">
-            <div id="promotion-select">
-              <button
-                class="piece white-queen"
-                @click="makePromotionMove('q')"
-              ></button>
-              <button
-                class="piece white-rook"
-                @click="makePromotionMove('r')"
-              ></button>
-              <button
-                class="piece white-bishop"
-                @click="makePromotionMove('b')"
-              ></button>
-              <button
-                class="piece white-knight"
-                @click="makePromotionMove('n')"
-              ></button>
-            </div>
-          </div>
-        </div>
+        <ChessGroundBoard
+          ref="chessGroundBoardRef"
+          @updated-sidetomove="updatedSideToMove"
+          @updated-status="updatedStatus"
+          @updated-move="updatedMove"
+          @updated-cg="updatedCg"
+        />
       </div>
       <div class="analysis-info">
         <Fen
@@ -609,7 +370,7 @@ export default defineComponent({
             updateAnalysisStatus
           }}</span>
         </div>
-        <EngineStats :engineInfo="engine_info" :sideToMove="toColor()" />
+        <EngineStats :engineInfo="engine_info" :sideToMove="sideToMove" />
 
         <div style="margin-top: 5px; margin-bottom: 5px">
           <v-tabs v-model="activeTabIndex" class="info-nav">
@@ -625,11 +386,11 @@ export default defineComponent({
               @send-moves="playMoves"
               :engineLines="engineLines"
               :fen="currentFen"
-              :color="toColor()"
             />
             <EngineButtons
               v-if="activeTab == 'prompt'"
               @engine-command="sendEngineCommand"
+              :go="status === '' || status === 'IDLE'"
               :status="isRunning"
               :key="isRunning.toString()"
             />
@@ -637,8 +398,8 @@ export default defineComponent({
           <div class="nav-secondary-content">
             <Pgn
               class="game-pgn"
-              @send-pgn-moves="newPgnMoves"
-              :movehistory="moveHistory"
+              @send-pgn-moves="parsePgn"
+              :movehistory="moveHistorySan"
               :key="currentFen"
             />
             <div class="analysis-graph"></div>
