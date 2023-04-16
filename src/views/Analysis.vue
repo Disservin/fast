@@ -9,11 +9,6 @@ import EngineLines from "@/components/Analysis/EngineLines.vue";
 import Pgn from "@/components/Analysis/Pgn.vue";
 import ChessGroundBoard from "@/components/Analysis/ChessGroundBoard.vue";
 
-import { Chess, SQUARES } from "chess.js";
-
-import type { Square } from "chess.js";
-import type { Color, Key } from "chessground/types";
-
 import type { EngineInfo } from "@/ts/UciFilter";
 import type { PV } from "@/ts/PrincipalVariation";
 
