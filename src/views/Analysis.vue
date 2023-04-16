@@ -72,6 +72,7 @@ export default defineComponent({
       currentFen: startpos,
 
       status: "IDLE",
+      sideToMove: "white",
     };
   },
   computed: {
@@ -150,6 +151,22 @@ export default defineComponent({
 
       let lines = extractPV(line);
 
+      const evaluation = lines.score;
+
+      if (evaluation.startsWith("cp")) {
+        let cp = Number(evaluation.slice(2));
+        if (this.sideToMove === "black") {
+          cp = -cp;
+        }
+        lines.score = "cp " + cp;
+      } else if (evaluation.startsWith("mate")) {
+        let mateIn = Number(evaluation.slice(4));
+        if (this.sideToMove === "black") {
+          mateIn = -mateIn;
+        }
+        lines.score = "mate " + mateIn;
+      }
+
       if (lines.pv[0]) {
         // reset active pvs
         this.engineLines.forEach((pv) => {
@@ -170,6 +187,7 @@ export default defineComponent({
           }
         });
       }
+      console.log(this.engineLines);
     },
     clearAnalysisInfo() {
       this.engineLines.clear();
@@ -188,26 +206,19 @@ export default defineComponent({
       let correctLine: PV = null as any;
       const moves = this.moveHistoryLan;
 
+      const playedMove = moves[moves.length - 1];
+
       this.engineLines.forEach((pv, key) => {
-        if (pv.pv[0] !== moves[moves.length - 1]) {
-          this.engineLines.delete(key);
-        } else {
+        if (key === playedMove) {
           correctLine = pv;
+          correctLine.pv.shift();
         }
       });
 
-      if (correctLine) {
-        correctLine.pv.shift();
+      this.engineLines.clear();
 
-        if (correctLine.pv.length === 0) {
-          this.engineLines = new Map<string, PV>();
-          return;
-        }
-
-        this.engineLines.set(moves[0], correctLine);
-
-        const move = extractMove(correctLine.pv[0]);
-        (this.$refs.chessGroundBoardRef as any).drawMove(move);
+      if (correctLine && correctLine.pv.length > 0) {
+        this.engineLines.set(correctLine.pv[0], correctLine);
       }
     },
     getUciMoves() {
@@ -256,11 +267,11 @@ export default defineComponent({
         this.chessProcess?.sendGo();
       } else if (command === "stop") {
         this.isRunning = false;
-        this.chessProcess?.sendStop();
+        await this.chessProcess?.sendStop();
       } else if (command === "quit") {
         this.isEngineAlive = false;
         this.isRunning = false;
-        this.chessProcess?.sendStop();
+        await this.chessProcess?.sendStop();
         await this.chessProcess?.sendQuit();
       } else if (command === "restart") {
         this.isRunning = false;
@@ -268,12 +279,15 @@ export default defineComponent({
 
         this.clearAnalysisInfo();
 
-        this.chessProcess?.sendStop();
+        await this.chessProcess?.sendStop();
         await this.chessProcess?.sendQuit();
         await this.initEngine();
       }
 
       localStorage.setItem("status", this.isRunning.toString());
+    },
+    updatedSideToMove(side: string) {
+      this.sideToMove = side;
     },
     updatedStatus(status: string) {
       this.status = status;
@@ -324,6 +338,7 @@ export default defineComponent({
       <div class="game">
         <ChessGroundBoard
           ref="chessGroundBoardRef"
+          @updated-sidetomove="updatedSideToMove"
           @updated-status="updatedStatus"
           @updated-move="updatedMove"
           @updated-cg="updatedCg"
@@ -340,7 +355,7 @@ export default defineComponent({
             updateAnalysisStatus
           }}</span>
         </div>
-        <EngineStats :engineInfo="engine_info" :sideToMove="'white'" />
+        <EngineStats :engineInfo="engine_info" :sideToMove="sideToMove" />
 
         <div style="margin-top: 5px; margin-bottom: 5px">
           <v-tabs v-model="activeTabIndex" class="info-nav">
@@ -356,7 +371,6 @@ export default defineComponent({
               @send-moves="playMoves"
               :engineLines="engineLines"
               :fen="currentFen"
-              :color="'white'"
             />
             <EngineButtons
               v-if="activeTab == 'prompt'"

@@ -89,8 +89,9 @@ class ChessProcess {
         this.write(`position fen ${fen} moves ${moves}`);
     }
 
-    sendStop(): void {
+    async sendStop() {
         this.write("stop");
+        await this.delay(10);
     }
 
     async sendQuit() {

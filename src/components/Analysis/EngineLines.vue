@@ -27,10 +27,6 @@ export default defineComponent({
       type: String,
       required: true,
     },
-    color: {
-      type: String,
-      required: true,
-    },
   },
   data() {
     return {
@@ -124,7 +120,7 @@ export default defineComponent({
     >
       <div class="eval-depth">
         <span :class="{ active: value.active }" class="stats">
-          {{ formatEval(value.score, color) }}/{{ value.depth }}
+          {{ formatEval(value.score) }}/{{ value.depth }}
         </span>
       </div>
       <div class="pv">

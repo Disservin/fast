@@ -244,6 +244,8 @@ export default defineComponent({
       }
 
       this.$emit("updated-status", status);
+
+      this.$emit("updated-sidetomove", this.toColor());
     },
     async playMoves(moves: string) {
       const movesArray = moves.trim().split(" ");
