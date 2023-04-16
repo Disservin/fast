@@ -305,6 +305,21 @@ export default defineComponent({
     },
     updatedCg(fen: string) {
       this.currentFen = fen;
+
+      let activeLine: PV = null as any;
+
+      this.engineLines.forEach((pv) => {
+        if (pv.active) {
+          activeLine = pv;
+        }
+      });
+
+      if (activeLine && activeLine.pv.length > 0) {
+        (this.$refs.chessGroundBoardRef as any).drawMoveStr(
+          activeLine.pv[0].substring(0, 2),
+          activeLine.pv[0].substring(2, 4)
+        );
+      }
     },
     async newPosition(fen: string) {
       this.engineLines.clear();
