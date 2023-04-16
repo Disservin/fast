@@ -7,15 +7,14 @@ import EngineButtons from "@/components/Analysis/EngineButtons.vue";
 import Fen from "@/components/Analysis/Fen.vue";
 import EngineLines from "@/components/Analysis/EngineLines.vue";
 import Pgn from "@/components/Analysis/Pgn.vue";
-import ChessGroundBoard from "@/components/Analysis/ChessGroundBoard.vue";
+import ChessGroundBoard from "@/components/Analysis/Board/BigBoard.vue";
+
+import { filterUCIInfo } from "@/ts/UciFilter";
+import { extractPV } from "@/ts/PrincipalVariation";
+import ChessProcess from "@/ts/ChessProcess";
 
 import type { EngineInfo } from "@/ts/UciFilter";
 import type { PV } from "@/ts/PrincipalVariation";
-
-import { filterUCIInfo, extractMove } from "@/ts/UciFilter";
-import { extractPV } from "@/ts/PrincipalVariation";
-
-import ChessProcess from "@/ts/ChessProcess";
 
 const startpos = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -108,6 +107,44 @@ export default defineComponent({
     this.sendEngineCommand("quit");
   },
   methods: {
+    getUciMoves() {
+      return this.moveHistoryLan.join(" ");
+    },
+    updatedSideToMove(side: string) {
+      this.sideToMove = side;
+    },
+    updatedStatus(status: string) {
+      this.status = status;
+    },
+    updatedMove(moves: any) {
+      this.moveHistoryLan = moves["moveHistoryLan"];
+      this.moveHistorySan = moves["moveHistorySan"];
+
+      this.shiftInfoStats();
+
+      if (this.isRunning) {
+        this.sendEngineCommand("stop");
+        this.sendEngineCommand("go");
+      }
+    },
+    updatedCg(fen: string) {
+      this.currentFen = fen;
+
+      let activeLine: PV = null as any;
+
+      this.engineLines.forEach((pv) => {
+        if (pv.active) {
+          activeLine = pv;
+        }
+      });
+
+      if (activeLine && activeLine.pv.length > 0) {
+        (this.$refs.chessGroundBoardRef as any).drawMoveStr(
+          activeLine.pv[0].substring(0, 2),
+          activeLine.pv[0].substring(2, 4)
+        );
+      }
+    },
     handleKeydown(event: KeyboardEvent) {
       if (event.key === "g" && event.ctrlKey && !this.isRunning) {
         event.preventDefault();
@@ -123,6 +160,18 @@ export default defineComponent({
         this.sendEngineCommand("stop");
         this.newPosition(startpos);
       }
+    },
+    clearInfoStats() {
+      this.engineLines.clear();
+
+      this.engine_info = {
+        nodes: "0",
+        nps: "0",
+        depth: "0",
+        time: "0",
+        tbhits: "0",
+        hashfull: "0",
+      };
     },
     updateInfoStats(line: string) {
       if (!this.isEngineAlive || !this.isRunning || !line.startsWith("info")) {
@@ -189,19 +238,7 @@ export default defineComponent({
       }
       console.log(this.engineLines);
     },
-    clearAnalysisInfo() {
-      this.engineLines.clear();
-
-      this.engine_info = {
-        nodes: "0",
-        nps: "0",
-        depth: "0",
-        time: "0",
-        tbhits: "0",
-        hashfull: "0",
-      };
-    },
-    shiftAnalysisInfo() {
+    shiftInfoStats() {
       // remove all other lines and shift the line with the played move to the right
       let correctLine: PV = null as any;
       const moves = this.moveHistoryLan;
@@ -221,8 +258,27 @@ export default defineComponent({
         this.engineLines.set(correctLine.pv[0], correctLine);
       }
     },
-    getUciMoves() {
-      return this.moveHistoryLan.join(" ");
+    async newPosition(fen: string) {
+      this.engineLines.clear();
+      this.startFen = fen;
+
+      this.moveHistoryLan = [];
+      this.moveHistorySan = [];
+
+      (this.$refs.chessGroundBoardRef as any).newPositionFen(fen);
+
+      if (this.isRunning) {
+        await this.sendEngineCommand("stop");
+        this.chessProcess?.write("ucinewgame");
+      }
+    },
+    async playMoves(moves: string) {
+      await this.sendEngineCommand("stop");
+      (this.$refs.chessGroundBoardRef as any).playMoves(moves);
+    },
+    async parsePgn(pgn: string) {
+      await this.sendEngineCommand("stop");
+      (this.$refs.chessGroundBoardRef as any).newPositionPgn(pgn);
     },
     async initEngine() {
       const enginesData = localStorage.getItem("engines");
@@ -247,7 +303,7 @@ export default defineComponent({
     },
     async sendEngineCommand(command: string) {
       if (command === "go" && (this.status === "" || this.status === "IDLE")) {
-        this.clearAnalysisInfo();
+        this.clearInfoStats();
 
         if (!this.isEngineAlive) {
           await this.initEngine();
@@ -277,7 +333,7 @@ export default defineComponent({
         this.isRunning = false;
         this.isEngineAlive = false;
 
-        this.clearAnalysisInfo();
+        this.clearInfoStats();
 
         await this.chessProcess?.sendStop();
         await this.chessProcess?.sendQuit();
@@ -285,63 +341,6 @@ export default defineComponent({
       }
 
       localStorage.setItem("status", this.isRunning.toString());
-    },
-    updatedSideToMove(side: string) {
-      this.sideToMove = side;
-    },
-    updatedStatus(status: string) {
-      this.status = status;
-    },
-    updatedMove(moves: any) {
-      this.moveHistoryLan = moves["moveHistoryLan"];
-      this.moveHistorySan = moves["moveHistorySan"];
-
-      this.shiftAnalysisInfo();
-
-      if (this.isRunning) {
-        this.sendEngineCommand("stop");
-        this.sendEngineCommand("go");
-      }
-    },
-    updatedCg(fen: string) {
-      this.currentFen = fen;
-
-      let activeLine: PV = null as any;
-
-      this.engineLines.forEach((pv) => {
-        if (pv.active) {
-          activeLine = pv;
-        }
-      });
-
-      if (activeLine && activeLine.pv.length > 0) {
-        (this.$refs.chessGroundBoardRef as any).drawMoveStr(
-          activeLine.pv[0].substring(0, 2),
-          activeLine.pv[0].substring(2, 4)
-        );
-      }
-    },
-    async newPosition(fen: string) {
-      this.engineLines.clear();
-      this.startFen = fen;
-
-      this.moveHistoryLan = [];
-      this.moveHistorySan = [];
-
-      (this.$refs.chessGroundBoardRef as any).newPositionFen(fen);
-
-      if (this.isRunning) {
-        await this.sendEngineCommand("stop");
-        this.chessProcess?.write("ucinewgame");
-      }
-    },
-    async playMoves(moves: string) {
-      await this.sendEngineCommand("stop");
-      (this.$refs.chessGroundBoardRef as any).playMoves(moves);
-    },
-    async parsePgn(pgn: string) {
-      await this.sendEngineCommand("stop");
-      (this.$refs.chessGroundBoardRef as any).newPositionPgn(pgn);
     },
   },
 });
