@@ -1,5 +1,5 @@
 <script lang="ts">
-import { defineComponent, ref } from "vue";
+import { defineComponent } from "vue";
 
 import Sidebar from "@/components/AppSideBar.vue";
 import EngineStats from "@/components/Analysis/EngineStats.vue";
