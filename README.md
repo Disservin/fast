@@ -14,6 +14,25 @@ If you think something is a bug you can open an issue, similarly for feature req
 Since this is also my first project with vue and tauri some parts of the code  
 might not be as clean as they could be ; ) Feel free to improve these areas.
 
+## Usability
+
+These keybindings are mapped globally:
+
+```
+CTRL + W = Close Window
+```
+
+These keybindings are mapped in the Analysis Vue:
+
+```
+CTRL + G = Engine Go Infinite
+CTRL + H = Engine Halt
+CTRL + R = Engine Restart
+CTRL + N = New Board
+
+ArrowLeft = Undo Move
+```
+
 ## Requirements
 
 Make sure that the tauri submodule is properly cloned as well.

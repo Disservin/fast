@@ -180,6 +180,14 @@ export default defineComponent({
       });
       return dests;
     },
+    undo() {
+      this.game.undo();
+
+      this.moveHistoryLan.pop();
+      this.moveHistorySan.pop();
+
+      this.sendUpdates();
+    },
     async makeMove(origin: string, destination: string) {
       // is promotion?
       if (
@@ -213,14 +221,7 @@ export default defineComponent({
 
       this.updateMove(promotionMove);
     },
-    async updateMove(move: any) {
-      if (move === null) {
-        return "snapback";
-      }
-
-      this.moveHistoryLan.push(move.lan);
-      this.moveHistorySan.push(move.san);
-
+    async sendUpdates() {
       this.$emit("updated-move", {
         moveHistoryLan: this.moveHistoryLan,
         moveHistorySan: this.moveHistorySan,
@@ -246,6 +247,16 @@ export default defineComponent({
       this.$emit("updated-status", status);
 
       this.$emit("updated-sidetomove", this.toColor());
+    },
+    async updateMove(move: any) {
+      if (move === null) {
+        return "snapback";
+      }
+
+      this.moveHistoryLan.push(move.lan);
+      this.moveHistorySan.push(move.san);
+
+      this.sendUpdates();
     },
     async playMoves(moves: string) {
       const movesArray = moves.trim().split(" ");

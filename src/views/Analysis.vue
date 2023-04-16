@@ -145,7 +145,8 @@ export default defineComponent({
         );
       }
     },
-    handleKeydown(event: KeyboardEvent) {
+    async handleKeydown(event: KeyboardEvent) {
+      console.log(event);
       if (event.key === "g" && event.ctrlKey && !this.isRunning) {
         event.preventDefault();
         this.sendEngineCommand("go");
@@ -159,6 +160,8 @@ export default defineComponent({
         event.preventDefault();
         this.sendEngineCommand("stop");
         this.newPosition(startpos);
+      } else if (event.key === "ArrowLeft") {
+        (this.$refs.chessGroundBoardRef as any).undo();
       }
     },
     clearInfoStats() {
