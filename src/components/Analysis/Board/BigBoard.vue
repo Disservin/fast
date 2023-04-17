@@ -239,9 +239,6 @@ export default defineComponent({
         status = "THREEFOLD REPETITION";
       } else if (this.game.isInsufficientMaterial()) {
         status = "INSUFFICIENT MATERIAL";
-      } else if (this.game.isDraw()) {
-        // shouldnt happen
-        status = "DRAW";
       }
 
       this.$emit("updated-status", status);
@@ -261,6 +258,8 @@ export default defineComponent({
     async playMoves(moves: string) {
       const movesArray = moves.trim().split(" ");
 
+      this.clearLastMove();
+
       for (let i = 0; i < movesArray.length; i++) {
         if (this.game.isGameOver()) {
           this.updateCG();
@@ -277,10 +276,11 @@ export default defineComponent({
           return;
         }
 
-        this.updateMove(chessMove);
-
-        this.clearLastMove();
+        this.moveHistoryLan.push(chessMove.lan);
+        this.moveHistorySan.push(chessMove.san);
       }
+
+      this.sendUpdates();
     },
     async newPositionFen(fen: string) {
       this.game.load(fen);
