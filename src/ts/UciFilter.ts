@@ -33,6 +33,29 @@ export function extractMove(move: string): Move {
     };
 }
 
+export function extractScore(score: string | undefined, sideToMove: string): number {
+    if (score === undefined) {
+        return 0;
+    }
+
+    if (score.startsWith("cp")) {
+        let cp = Number(score.slice(2));
+        if (sideToMove === "black") {
+            cp = -cp;
+        }
+        return cp;
+    } else if (score.startsWith("mate")) {
+        let mateIn = Number(score.slice(4));
+
+        if (sideToMove === "black") {
+            mateIn = -mateIn;
+        }
+        return mateIn > 0 ? 500 : -500;
+    } else {
+        return 0;
+    }
+}
+
 export function filterUCIInfo(str: string): EngineInfo {
     const uciInfoStrings = [
         "nodes",
@@ -48,6 +71,8 @@ export function filterUCIInfo(str: string): EngineInfo {
 
     const engineInfo: EngineInfo = {};
 
+    let keepPv = false;
+
     for (let i = 0; i < tokens.length; i++) {
         const token = tokens[i];
         if (token === "info") {
@@ -57,7 +82,10 @@ export function filterUCIInfo(str: string): EngineInfo {
         } else if (token === "seldepth") engineInfo.seldepth = tokens[i + 1];
         else if (token === "score") {
             engineInfo.score = tokens[i + 1] + " " + tokens[i + 2];
-        } else if (token === "time") {
+        } else if (token === "lowerbound" || token === "upperbound") {
+            keepPv = true;
+        }
+        else if (token === "time") {
             engineInfo.time = tokens[i + 1];
         } else if (token === "nodes") {
             engineInfo.nodes = tokens[i + 1];
@@ -67,7 +95,7 @@ export function filterUCIInfo(str: string): EngineInfo {
             engineInfo.hashfull = tokens[i + 1];
         } else if (token === "tbhits") {
             engineInfo.tbhits = tokens[i + 1];
-        } else if (token === "pv") {
+        } else if (token === "pv" && !keepPv) {
             engineInfo.pv = [];
             while (++i < tokens.length) {
                 if (uciInfoStrings.includes(tokens[i])) break;
