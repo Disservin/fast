@@ -107,6 +107,24 @@ export default defineComponent({
     this.sendEngineCommand("quit");
   },
   methods: {
+    normalizePerspectiveScore(score: number) {
+      if (this.sideToMove === "black") {
+        return -score;
+      }
+      return score;
+    },
+    normalizeScoreStr(score: string | undefined) {
+      if (score === undefined) return "";
+      let norm = "";
+      if (score.startsWith("cp")) {
+        let cp = Number(score.slice(2));
+        norm = "cp " + this.normalizePerspectiveScore(cp);
+      } else if (score.startsWith("mate")) {
+        let mateIn = Number(score.slice(4));
+        norm = "mate " + this.normalizePerspectiveScore(mateIn);
+      }
+      return norm;
+    },
     getUciMoves() {
       return this.moveHistoryLan.join(" ");
     },
@@ -116,14 +134,14 @@ export default defineComponent({
     updatedStatus(status: string) {
       this.status = status;
     },
-    updatedMove(moves: any) {
+    async updatedMove(moves: any) {
       this.moveHistoryLan = moves["moveHistoryLan"];
       this.moveHistorySan = moves["moveHistorySan"];
 
       this.shiftInfoStats();
 
       if (this.isRunning) {
-        this.sendEngineCommand("stop");
+        await this.sendEngineCommand("stop");
         this.sendEngineCommand("go");
       }
     },
@@ -146,7 +164,6 @@ export default defineComponent({
       }
     },
     async handleKeydown(event: KeyboardEvent) {
-      console.log(event);
       if (event.key === "g" && event.ctrlKey && !this.isRunning) {
         event.preventDefault();
         this.sendEngineCommand("go");
@@ -176,7 +193,7 @@ export default defineComponent({
         hashfull: "0",
       };
     },
-    updateInfoStats(line: string) {
+    async updateInfoStats(line: string) {
       if (!this.isEngineAlive || !this.isRunning || !line.startsWith("info")) {
         return;
       }
@@ -185,6 +202,8 @@ export default defineComponent({
       if (Object.keys(filtered).length === 0) {
         return;
       }
+
+      filtered.score = this.normalizeScoreStr(filtered.score);
 
       // only update changed values
       this.engine_info = { ...this.engine_info, ...filtered };
@@ -202,44 +221,19 @@ export default defineComponent({
       }
 
       let lines = extractPV(line);
-
-      const evaluation = lines.score;
-
-      if (evaluation.startsWith("cp")) {
-        let cp = Number(evaluation.slice(2));
-        if (this.sideToMove === "black") {
-          cp = -cp;
-        }
-        lines.score = "cp " + cp;
-      } else if (evaluation.startsWith("mate")) {
-        let mateIn = Number(evaluation.slice(4));
-        if (this.sideToMove === "black") {
-          mateIn = -mateIn;
-        }
-        lines.score = "mate " + mateIn;
-      }
+      lines.score = this.normalizeScoreStr(lines.score);
 
       if (lines.pv[0]) {
-        // reset active pvs
-        this.engineLines.forEach((pv) => {
-          pv.active = false;
-        });
+        for (const [key, value] of this.engineLines.entries()) {
+          if (value.active) {
+            value.active = false;
+            break;
+          }
+        }
 
         lines.active = true;
         this.engineLines.set(lines.pv[0], lines);
-      } else {
-        this.engineLines.forEach((pv) => {
-          if (pv.active) {
-            lines.active = true;
-            // keep other displayed values
-            lines.pv = pv.pv;
-            lines.score = pv.score;
-
-            this.engineLines.set(lines.pv[0], lines);
-          }
-        });
       }
-      console.log(this.engineLines);
     },
     shiftInfoStats() {
       // remove all other lines and shift the line with the played move to the right
