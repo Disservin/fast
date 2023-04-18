@@ -261,12 +261,6 @@ export default defineComponent({
       this.clearLastMove();
 
       for (let i = 0; i < movesArray.length; i++) {
-        if (this.game.isGameOver()) {
-          this.updateCG();
-
-          return;
-        }
-
         const move = movesArray[i];
         const chessMove = this.game.move(move);
 
