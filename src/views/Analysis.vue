@@ -102,6 +102,9 @@ export default defineComponent({
           zoom: {
             enabled: false,
           },
+          animations: {
+            enabled: false,
+          },
         },
         legend: {
           show: false,
@@ -120,9 +123,9 @@ export default defineComponent({
           type: "numeric",
         },
         yaxis: {
-          min: -1,
-          max: 1,
-          tickAmount: 5,
+          tickAmount: 4,
+          min: -2,
+          max: 2,
         },
       },
     };
@@ -152,14 +155,15 @@ export default defineComponent({
   mounted() {
     this.initEngine();
 
-    this.graphTimer = setInterval(async () => {
-      //   this.series[0].data = this.evalHistory;
-    }, 2000);
+    this.graphTimer = setInterval(() => {
+      const copy = [...this.evalHistory];
+      this.series[0].data = copy;
+    }, 50);
 
     window.addEventListener("keydown", this.handleKeydown);
   },
   beforeUnmount() {
-    // clearInterval(this.graphTimer!);
+    clearInterval(this.graphTimer!);
 
     window.removeEventListener("keydown", this.handleKeydown);
 
