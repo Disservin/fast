@@ -118,7 +118,7 @@ export default defineComponent({
       // emit new fen
       this.$emit("updated-cg", this.game.fen());
     },
-    drawMove(move: Move) {
+    async drawMove(move: Move) {
       this.cg?.setShapes([
         {
           orig: move.orig as Key,
@@ -127,7 +127,7 @@ export default defineComponent({
         },
       ]);
     },
-    drawMoveStr(origin: string, dest: string) {
+    async drawMoveStr(origin: string, dest: string) {
       this.cg?.setShapes([
         {
           orig: origin as Key,
@@ -282,8 +282,8 @@ export default defineComponent({
       this.moveHistoryLan = [];
       this.moveHistorySan = [];
 
-      this.updateCG();
       this.clearLastMove();
+      this.sendUpdates();
     },
     async newPositionPgn(pgn: string) {
       this.game.loadPgn(pgn);
@@ -294,9 +294,12 @@ export default defineComponent({
       this.moveHistorySan = [];
 
       history.forEach((move) => {
-        this.updateMove(move);
-        this.clearLastMove();
+        this.moveHistoryLan.push(move.lan);
+        this.moveHistorySan.push(move.san);
       });
+
+      this.clearLastMove();
+      this.sendUpdates();
     },
   },
 });
