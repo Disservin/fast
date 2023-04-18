@@ -511,7 +511,7 @@ h1 {
   display: flex;
   flex-direction: column;
   flex-grow: 0 !important;
-  height: 50%;
+  height: calc(40vh - 100px);
   margin-bottom: 20px;
   gap: 10px;
 }
