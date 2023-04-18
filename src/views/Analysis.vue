@@ -86,7 +86,7 @@ export default defineComponent({
         colors: ["#007bff"],
         stroke: {
           curve: "straight",
-          width: 1.5,
+          width: 2.5,
         },
         markers: {
           size: 0,
