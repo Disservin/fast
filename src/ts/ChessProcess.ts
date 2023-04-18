@@ -60,7 +60,7 @@ class ChessProcess {
     }
 
     sendOptions(options: Option[]): void {
-        options.forEach((option: Option) => async () => {
+        options.forEach((option: Option) => {
             if (
                 option.value === "" ||
                 option.name === "" ||
