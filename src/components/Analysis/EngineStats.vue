@@ -16,9 +16,9 @@ export default defineComponent({
   <div>
     <div class="engine-stats">
       <div class="engine-stat">
-        <span class="engine-stat-value">{{
-          formatEval(engineInfo.score)
-        }}</span>
+        <span class="engine-stat-value"
+          >{{ formatEval(engineInfo.score) }}
+        </span>
       </div>
       <div class="engine-stat">
         <span class="engine-stat-value">{{ formatTime(engineInfo.time) }}</span>

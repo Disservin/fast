@@ -13,7 +13,7 @@ export interface PV {
 export function extractPV(line: string) {
     const pv: PV = {
         depth: "0",
-        score: "0",
+        score: "",
         pv: [],
         wdl: {
             win: "0",

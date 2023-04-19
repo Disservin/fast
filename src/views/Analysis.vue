@@ -279,6 +279,10 @@ export default defineComponent({
 
       filtered.score = this.normalizeScoreStr(filtered.score);
 
+      if (filtered.score === "") {
+        filtered.score = this.engine_info.score;
+      }
+
       // only update changed values
       this.engine_info = { ...this.engine_info, ...filtered };
 
@@ -384,7 +388,6 @@ export default defineComponent({
       this.isEngineAlive = true;
 
       this.chessProcess = new ChessProcess(engines[0].path, (line) => {
-        // console.log(line);
         this.updateInfoStats(line);
       });
 

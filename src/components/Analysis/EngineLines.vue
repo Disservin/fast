@@ -34,9 +34,6 @@ export default defineComponent({
       showBoard: [-1, -1],
     };
   },
-  mounted() {
-    console.log("mounted!");
-  },
   watch: {
     engineLines: {
       handler: function (newVal, oldVal) {

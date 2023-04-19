@@ -92,7 +92,7 @@ export function filterUCIInfo(str: string): EngineInfo {
         } else if (token === "nps") {
             engineInfo.nps = tokens[i + 1];
         } else if (token === "hashfull") {
-            engineInfo.hashfull = tokens[i + 1];
+            engineInfo.hashfull = Number(tokens[i + 1]) / 100 + "%";
         } else if (token === "tbhits") {
             engineInfo.tbhits = tokens[i + 1];
         } else if (token === "pv" && !keepPv) {
