@@ -83,7 +83,7 @@ export default defineComponent({
         },
       ],
       options: {
-        colors: ["#007bff"],
+        colors: ["#1D4ED8"],
         stroke: {
           curve: "straight",
           width: 2.5,
@@ -116,16 +116,19 @@ export default defineComponent({
           enabled: false,
         },
         xaxis: {
-          logarithmic: true,
           labels: {
             show: false,
           },
           type: "numeric",
         },
         yaxis: {
-          tickAmount: 4,
-          min: -2,
-          max: 2,
+          tickAmount: 2,
+          min: -5,
+          max: 5,
+          labels: {
+            show: false,
+          },
+          opacity: 0,
         },
       },
     };
@@ -170,6 +173,9 @@ export default defineComponent({
     this.sendEngineCommand("quit");
   },
   methods: {
+    evalFunction(x: number) {
+      return (5 - Math.pow(2, -(Math.abs(x) - 2.319281))) * (x < 0 ? -1 : 1);
+    },
     normalizePerspectiveScore(score: number) {
       if (this.sideToMove === "black") {
         return -score;
@@ -202,7 +208,9 @@ export default defineComponent({
       this.moveHistorySan = moves["moveHistorySan"];
 
       const score = extractScore(this.engine_info.score, this.sideToMove) / 100;
-      this.evalHistory.push(this.normalizePerspectiveScore(score));
+      this.evalHistory.push(
+        this.evalFunction(this.normalizePerspectiveScore(score))
+      );
 
       this.shiftInfoStats();
 
@@ -290,7 +298,9 @@ export default defineComponent({
         const score =
           extractScore(this.engine_info.score, this.sideToMove) / 100;
         const lastIndex = Math.max(0, this.evalHistory.length - 1);
-        this.evalHistory[lastIndex] = this.normalizePerspectiveScore(score);
+        this.evalHistory[lastIndex] = this.evalFunction(
+          this.normalizePerspectiveScore(score)
+        );
       }
 
       let lines = extractPV(line);
