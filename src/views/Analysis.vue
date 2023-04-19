@@ -13,7 +13,7 @@ import { filterUCIInfo } from "@/ts/UciFilter";
 import { extractPV } from "@/ts/PrincipalVariation";
 import ChessProcess from "@/ts/ChessProcess";
 
-import type { EngineInfo } from "@/ts/UciFilter";
+import { extractScore, type EngineInfo } from "@/ts/UciFilter";
 import type { PV } from "@/ts/PrincipalVariation";
 
 const startpos = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
@@ -72,6 +72,65 @@ export default defineComponent({
 
       status: "IDLE",
       sideToMove: "white",
+
+      evalHistory: [] as number[],
+      graphTimer: null as number | null,
+
+      series: [
+        {
+          name: "series-1",
+          data: [] as number[],
+        },
+      ],
+      options: {
+        colors: ["#1D4ED8"],
+        stroke: {
+          curve: "straight",
+          width: 2.5,
+        },
+        markers: {
+          size: 0,
+          hover: {
+            size: null,
+            sizeOffset: 0,
+          },
+        },
+        chart: {
+          toolbar: {
+            show: false,
+          },
+          zoom: {
+            enabled: false,
+          },
+          animations: {
+            enabled: false,
+          },
+        },
+        legend: {
+          show: false,
+          onItemHover: {
+            highlightDataSeries: false,
+          },
+        },
+        tooltip: {
+          enabled: false,
+        },
+        xaxis: {
+          labels: {
+            show: false,
+          },
+          type: "numeric",
+        },
+        yaxis: {
+          tickAmount: 2,
+          min: -5,
+          max: 5,
+          labels: {
+            show: false,
+          },
+          opacity: 0,
+        },
+      },
     };
   },
   computed: {
@@ -99,14 +158,24 @@ export default defineComponent({
   mounted() {
     this.initEngine();
 
+    this.graphTimer = setInterval(() => {
+      const copy = [...this.evalHistory];
+      this.series[0].data = copy;
+    }, 50);
+
     window.addEventListener("keydown", this.handleKeydown);
   },
   beforeUnmount() {
+    clearInterval(this.graphTimer!);
+
     window.removeEventListener("keydown", this.handleKeydown);
 
     this.sendEngineCommand("quit");
   },
   methods: {
+    evalFunction(x: number) {
+      return (5 - Math.pow(2, -(Math.abs(x) - 2.319281))) * (x < 0 ? -1 : 1);
+    },
     normalizePerspectiveScore(score: number) {
       if (this.sideToMove === "black") {
         return -score;
@@ -137,6 +206,11 @@ export default defineComponent({
     async updatedMove(moves: any) {
       this.moveHistoryLan = moves["moveHistoryLan"];
       this.moveHistorySan = moves["moveHistorySan"];
+
+      const score = extractScore(this.engine_info.score, this.sideToMove) / 100;
+      this.evalHistory.push(
+        this.evalFunction(this.normalizePerspectiveScore(score))
+      );
 
       this.shiftInfoStats();
 
@@ -220,6 +294,15 @@ export default defineComponent({
         );
       }
 
+      if (this.engine_info.score) {
+        const score =
+          extractScore(this.engine_info.score, this.sideToMove) / 100;
+        const lastIndex = Math.max(0, this.evalHistory.length - 1);
+        this.evalHistory[lastIndex] = this.evalFunction(
+          this.normalizePerspectiveScore(score)
+        );
+      }
+
       let lines = extractPV(line);
       lines.score = this.normalizeScoreStr(lines.score);
 
@@ -256,11 +339,13 @@ export default defineComponent({
       }
     },
     async newPosition(fen: string) {
-      this.engineLines.clear();
+      this.clearInfoStats();
       this.startFen = fen;
 
       this.moveHistoryLan = [];
       this.moveHistorySan = [];
+
+      this.evalHistory = [];
 
       (this.$refs.chessGroundBoardRef as any).newPositionFen(fen);
 
@@ -270,6 +355,13 @@ export default defineComponent({
       }
     },
     async playMoves(moves: string) {
+      const n = moves.trim().split(" ").length;
+      const lastEval = this.evalHistory[this.evalHistory.length - 1];
+
+      for (let i = 0; i < n; i++) {
+        this.evalHistory.push(lastEval);
+      }
+
       await this.sendEngineCommand("stop");
       (this.$refs.chessGroundBoardRef as any).playMoves(moves);
     },
@@ -292,6 +384,7 @@ export default defineComponent({
       this.isEngineAlive = true;
 
       this.chessProcess = new ChessProcess(engines[0].path, (line) => {
+        // console.log(line);
         this.updateInfoStats(line);
       });
 
@@ -398,7 +491,14 @@ export default defineComponent({
               :movehistory="moveHistorySan"
               :key="currentFen"
             />
-            <div class="analysis-graph"></div>
+            <div class="analysis-graph">
+              <apexchart
+                height="100%"
+                :options="options"
+                :series="series"
+                type="line"
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -433,31 +533,6 @@ h1 {
   flex: 0 0 66%;
   box-sizing: border-box;
   max-width: 66%;
-}
-
-@media only screen and (min-width: 600px) {
-  .board-space {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    width: 100%;
-    height: 100%;
-    padding-left: 5rem;
-  }
-}
-
-@media only screen and (max-width: 600px) {
-  .board-space {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    width: 100%;
-    height: 100%;
-  }
 }
 
 .analysis-info {
@@ -523,8 +598,8 @@ h1 {
 }
 
 .analysis-graph {
-  flex-basis: calc(50% - 5px);
-  background-color: #ae9b9b;
+  flex-basis: calc(45% - 5px);
+  /* background-color: #ae9b9b; */
 }
 
 .promotion-options {

@@ -81,7 +81,7 @@ export default defineComponent({
 
       size -= 7; // adjust for borders and padding
       // fix chrome alignment errors; https://github.com/ornicar/lila/pull/3881
-      size -= size % 8; // ensure the size is a multiple of 8
+      size -= size % 32; // ensure the size is a multiple of 32
 
       size = Math.min(size, 800);
 
