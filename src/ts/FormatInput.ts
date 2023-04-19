@@ -29,7 +29,7 @@ export function formatEval(evaluation: string): string {
 
     if (evaluation.startsWith("cp")) {
         let cp = Number(evaluation.slice(2));
-        return (cp > 0 ? "+" : "-") + (Math.abs((cp / 100))).toString();
+        return (cp >= 0 ? "+" : "-") + Math.abs((cp / 100)).toFixed(2);
     } else if (evaluation.startsWith("mate")) {
         let mateIn = Number(evaluation.slice(4));
 
