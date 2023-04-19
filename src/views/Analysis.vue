@@ -176,6 +176,11 @@ export default defineComponent({
     this.sendEngineCommand("quit");
   },
   methods: {
+    async delay(milliseconds: number) {
+      return new Promise((resolve) => {
+        setTimeout(resolve, milliseconds);
+      });
+    },
     evalFunction(x: number) {
       return (5 - Math.pow(2, -(Math.abs(x) - 2.319281))) * (x < 0 ? -1 : 1);
     },
@@ -206,7 +211,15 @@ export default defineComponent({
     updatedStatus(status: string) {
       this.status = status;
     },
-    async updatedMove(moves: any) {
+    updatedUndoMove(moves: any) {
+      console.log("undo");
+      this.moveHistoryLan = moves["moveHistoryLan"];
+      this.moveHistorySan = moves["moveHistorySan"];
+
+      this.evalHistory.pop();
+      this.clearInfoStats();
+    },
+    updatedMove(moves: any) {
       this.moveHistoryLan = moves["moveHistoryLan"];
       this.moveHistorySan = moves["moveHistorySan"];
 
@@ -216,29 +229,29 @@ export default defineComponent({
       );
 
       this.shiftInfoStats();
+    },
+    async updatedCg(fen: string) {
+      this.currentFen = fen;
 
       if (this.isRunning) {
         await this.sendEngineCommand("stop");
         this.sendEngineCommand("go");
       }
-    },
-    updatedCg(fen: string) {
-      this.currentFen = fen;
 
-      let activeLine: PV = null as any;
+      //   let activeLine: PV = null as any;
 
-      this.engineLines.forEach((pv) => {
-        if (pv.active) {
-          activeLine = pv;
-        }
-      });
+      //   this.engineLines.forEach((pv) => {
+      //     if (pv.active) {
+      //       activeLine = pv;
+      //     }
+      //   });
 
-      if (activeLine && activeLine.pv.length > 0) {
-        (this.$refs.chessGroundBoardRef as any).drawMoveStr(
-          activeLine.pv[0].substring(0, 2),
-          activeLine.pv[0].substring(2, 4)
-        );
-      }
+      //   if (activeLine && activeLine.pv.length > 0) {
+      //     (this.$refs.chessGroundBoardRef as any).drawMoveStr(
+      //       activeLine.pv[0].substring(0, 2),
+      //       activeLine.pv[0].substring(2, 4)
+      //     );
+      //   }
     },
     async handleKeydown(event: KeyboardEvent) {
       if (event.key === "g" && event.ctrlKey && !this.isRunning) {
@@ -255,6 +268,9 @@ export default defineComponent({
         this.sendEngineCommand("stop");
         this.newPosition(startpos);
       } else if (event.key === "ArrowLeft") {
+        if (!this.moveHistoryLan.length) return;
+        await this.sendEngineCommand("stop");
+
         (this.$refs.chessGroundBoardRef as any).undo();
       }
     },
@@ -335,7 +351,7 @@ export default defineComponent({
         this.engineLines.set(sanMoves[0], lines);
       }
     },
-    shiftInfoStats() {
+    async shiftInfoStats() {
       // remove all other lines and shift the line with the played move to the right
       let correctLine: PV = null as any;
       const moves = this.moveHistorySan;
@@ -343,7 +359,6 @@ export default defineComponent({
       const playedMove = moves[moves.length - 1];
 
       this.engineLines.forEach((pv, key) => {
-        console.log(key, playedMove);
         if (key === playedMove) {
           correctLine = pv;
           correctLine.pv.shift();
@@ -351,16 +366,12 @@ export default defineComponent({
         }
       });
 
-      console.log(correctLine);
-
       this.engineLines.clear();
-      this.showAllMoves();
+      await this.showAllMoves();
 
       if (correctLine && correctLine.pv.length > 0) {
         this.engineLines.set(correctLine.pv[0], correctLine);
       }
-
-      console.log(this.engineLines);
     },
     async showAllMoves() {
       // populate engine lines with legal moves
@@ -492,6 +503,7 @@ export default defineComponent({
           @updated-sidetomove="updatedSideToMove"
           @updated-status="updatedStatus"
           @updated-move="updatedMove"
+          @updated-undomove="updatedUndoMove"
           @updated-cg="updatedCg"
         />
       </div>

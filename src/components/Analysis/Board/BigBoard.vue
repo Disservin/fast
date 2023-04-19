@@ -180,13 +180,34 @@ export default defineComponent({
       });
       return dests;
     },
-    undo() {
+    async undo() {
       this.game.undo();
 
       this.moveHistoryLan.pop();
       this.moveHistorySan.pop();
 
-      this.sendUpdates();
+      this.$emit("updated-undomove", {
+        moveHistoryLan: this.moveHistoryLan,
+        moveHistorySan: this.moveHistorySan,
+      });
+
+      this.updateCG();
+
+      let status = "";
+
+      if (this.game.isCheckmate()) {
+        status = "CHECKMATE";
+      } else if (this.game.isStalemate()) {
+        status = "STALEMATE";
+      } else if (this.game.isThreefoldRepetition()) {
+        status = "THREEFOLD REPETITION";
+      } else if (this.game.isInsufficientMaterial()) {
+        status = "INSUFFICIENT MATERIAL";
+      }
+
+      this.$emit("updated-status", status);
+
+      this.$emit("updated-sidetomove", this.toColor());
     },
     async makeMove(origin: string, destination: string) {
       // is promotion?
