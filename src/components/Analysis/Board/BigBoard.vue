@@ -301,6 +301,9 @@ export default defineComponent({
       this.clearLastMove();
       this.sendUpdates();
     },
+    async getLegalMoves() {
+      return this.game.moves();
+    },
   },
 });
 </script>

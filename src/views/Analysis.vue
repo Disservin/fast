@@ -15,6 +15,7 @@ import ChessProcess from "@/ts/ChessProcess";
 
 import { extractScore, type EngineInfo } from "@/ts/UciFilter";
 import type { PV } from "@/ts/PrincipalVariation";
+import { Chess } from "chess.js";
 
 const startpos = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -164,6 +165,8 @@ export default defineComponent({
     }, 50);
 
     window.addEventListener("keydown", this.handleKeydown);
+
+    this.newPosition(startpos);
   },
   beforeUnmount() {
     clearInterval(this.graphTimer!);
@@ -311,6 +314,15 @@ export default defineComponent({
       lines.score = this.normalizeScoreStr(lines.score);
 
       if (lines.pv[0]) {
+        const chess = new Chess();
+        chess.load(this.currentFen);
+        let sanMoves: string[] = [];
+
+        lines.pv.forEach((move) => {
+          const san = chess.move(move).san;
+          sanMoves.push(san);
+        });
+
         for (const [key, value] of this.engineLines.entries()) {
           if (value.active) {
             value.active = false;
@@ -319,28 +331,57 @@ export default defineComponent({
         }
 
         lines.active = true;
-        this.engineLines.set(lines.pv[0], lines);
+        lines.pv = sanMoves;
+        this.engineLines.set(sanMoves[0], lines);
       }
     },
     shiftInfoStats() {
       // remove all other lines and shift the line with the played move to the right
       let correctLine: PV = null as any;
-      const moves = this.moveHistoryLan;
+      const moves = this.moveHistorySan;
 
       const playedMove = moves[moves.length - 1];
 
       this.engineLines.forEach((pv, key) => {
+        console.log(key, playedMove);
         if (key === playedMove) {
           correctLine = pv;
           correctLine.pv.shift();
+          correctLine.active = true;
         }
       });
 
+      console.log(correctLine);
+
       this.engineLines.clear();
+      this.showAllMoves();
 
       if (correctLine && correctLine.pv.length > 0) {
         this.engineLines.set(correctLine.pv[0], correctLine);
       }
+
+      console.log(this.engineLines);
+    },
+    async showAllMoves() {
+      // populate engine lines with legal moves
+      (this.$refs.chessGroundBoardRef as any)
+        .getLegalMoves()
+        .then((moves: any) => {
+          moves.forEach((move: any) => {
+            let pv: PV = {
+              depth: "0",
+              score: "cp 0",
+              pv: [move],
+              wdl: {
+                win: "0",
+                loss: "0",
+                draw: "0",
+              },
+              active: false,
+            };
+            this.engineLines.set(move, pv);
+          });
+        });
     },
     async newPosition(fen: string) {
       this.clearInfoStats();
@@ -352,6 +393,8 @@ export default defineComponent({
       this.evalHistory = [];
 
       (this.$refs.chessGroundBoardRef as any).newPositionFen(fen);
+
+      this.showAllMoves();
 
       if (this.isRunning) {
         await this.sendEngineCommand("stop");
@@ -397,6 +440,7 @@ export default defineComponent({
     async sendEngineCommand(command: string) {
       if (command === "go" && (this.status === "" || this.status === "IDLE")) {
         this.clearInfoStats();
+        this.showAllMoves();
 
         if (!this.isEngineAlive) {
           await this.initEngine();
