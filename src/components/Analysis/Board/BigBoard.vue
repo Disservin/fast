@@ -114,9 +114,6 @@ export default defineComponent({
           check: undefined,
         });
       }
-
-      // emit new fen
-      this.$emit("updated-cg", this.game.fen());
     },
     async drawMove(move: Move) {
       this.cg?.setShapes([
@@ -222,13 +219,6 @@ export default defineComponent({
       this.updateMove(promotionMove);
     },
     async sendUpdates() {
-      this.$emit("updated-move", {
-        moveHistoryLan: this.moveHistoryLan,
-        moveHistorySan: this.moveHistorySan,
-      });
-
-      this.updateCG();
-
       let status = "";
 
       if (this.game.isCheckmate()) {
@@ -241,9 +231,15 @@ export default defineComponent({
         status = "INSUFFICIENT MATERIAL";
       }
 
-      this.$emit("updated-status", status);
+      this.updateCG();
 
-      this.$emit("updated-sidetomove", this.toColor());
+      this.$emit("updated-board", {
+        fen: this.game.fen(),
+        moveHistoryLan: this.moveHistoryLan,
+        moveHistorySan: this.moveHistorySan,
+        status: status,
+        sideToMove: this.toColor(),
+      });
     },
     async updateMove(move: any) {
       if (move === null) {

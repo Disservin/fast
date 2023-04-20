@@ -197,15 +197,28 @@ export default defineComponent({
     getUciMoves() {
       return this.moveHistoryLan.join(" ");
     },
-    updatedSideToMove(side: string) {
-      this.sideToMove = side;
-    },
-    updatedStatus(status: string) {
-      this.status = status;
-    },
-    async updatedMove(moves: any) {
-      this.moveHistoryLan = moves["moveHistoryLan"];
-      this.moveHistorySan = moves["moveHistorySan"];
+    async updatedBoard(data: any) {
+      /*
+    {
+        fen: this.game.fen(),
+        moveHistoryLan: this.moveHistoryLan,
+        moveHistorySan: this.moveHistorySan,
+        status: status,
+        sideToMove: this.toColor(),
+    }
+    */
+      this.sideToMove = data.side;
+      this.status = data.status;
+
+      this.moveHistoryLan = data.moveHistoryLan;
+      this.moveHistorySan = data.moveHistorySan;
+
+      let wasRunning = false;
+
+      if (this.isRunning) {
+        wasRunning = true;
+        await this.sendEngineCommand("stop");
+      }
 
       const score = extractScore(this.engine_info.score, this.sideToMove) / 100;
       this.evalHistory.push(
@@ -214,27 +227,26 @@ export default defineComponent({
 
       this.shiftInfoStats();
 
-      if (this.isRunning) {
-        await this.sendEngineCommand("stop");
-        this.sendEngineCommand("go");
-      }
-    },
-    updatedCg(fen: string) {
-      this.currentFen = fen;
-
       let activeLine: PV = null as any;
 
-      this.engineLines.forEach((pv) => {
-        if (pv.active) {
-          activeLine = pv;
+      for (const [key, value] of this.engineLines.entries()) {
+        if (value.active) {
+          activeLine = value;
+          break;
         }
-      });
+      }
 
       if (activeLine && activeLine.pv.length > 0) {
         (this.$refs.chessGroundBoardRef as any).drawMoveStr(
           activeLine.pv[0].substring(0, 2),
           activeLine.pv[0].substring(2, 4)
         );
+      }
+
+      this.currentFen = data.fen;
+
+      if (wasRunning) {
+        this.sendEngineCommand("go");
       }
     },
     async handleKeydown(event: KeyboardEvent) {
@@ -445,10 +457,7 @@ export default defineComponent({
       <div class="game">
         <ChessGroundBoard
           ref="chessGroundBoardRef"
-          @updated-sidetomove="updatedSideToMove"
-          @updated-status="updatedStatus"
-          @updated-move="updatedMove"
-          @updated-cg="updatedCg"
+          @updated-board="updatedBoard"
         />
       </div>
       <div class="analysis-info">
