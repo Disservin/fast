@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div class="btn-wrap">
     <v-btn class="btn" color="primary" v-bind="$attrs">
       <font-awesome-icon icon="fa-solid fa-clipboard" />
       <span>{{ text }}</span>
@@ -27,11 +27,12 @@ export default defineComponent({
   border-radius: 5px;
   padding: 0.5rem;
   margin: 0.5rem;
-  width: 100%;
+  flex: auto;
 }
 .btn-wrap {
   display: flex;
-  justify-content: center;
+  flex-direction: row;
+  justify-content: space-between;
   background-color: var(--bg-tertiary);
   margin: 5px;
 }

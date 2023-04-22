@@ -26,17 +26,4 @@ export default defineComponent({
 });
 </script>
 
-<style scoped>
-.btn {
-  border-radius: 5px;
-  padding: 0.5rem;
-  margin: 0.5rem;
-  width: 100%;
-}
-.btn-wrap {
-  display: flex;
-  justify-content: center;
-  background-color: var(--bg-tertiary);
-  margin: 5px;
-}
-</style>
+<style></style>
