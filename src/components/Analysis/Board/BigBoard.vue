@@ -91,6 +91,9 @@ export default defineComponent({
       boardWrap.style.height = size + "px";
       document.body.dispatchEvent(new Event("chessground.resize"));
     },
+    getPgn() {
+      return this.game.pgn();
+    },
     clearLastMove() {
       this.cg?.set({ lastMove: undefined });
     },

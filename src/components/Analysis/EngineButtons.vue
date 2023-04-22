@@ -88,5 +88,6 @@ export default {
 <style scoped>
 .buttons {
   background-color: var(--bg-tertiary);
+  margin: 5px;
 }
 </style>

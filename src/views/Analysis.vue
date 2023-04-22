@@ -2,6 +2,7 @@
 import { defineComponent } from "vue";
 
 import Sidebar from "@/components/AppSideBar.vue";
+import AppCopyBtn from "@/components/AppCopyBtn.vue";
 import EngineStats from "@/components/Analysis/EngineStats.vue";
 import EngineButtons from "@/components/Analysis/EngineButtons.vue";
 import Fen from "@/components/Analysis/Fen.vue";
@@ -28,6 +29,7 @@ export default defineComponent({
     EngineLines: EngineLines,
     Pgn: Pgn,
     ChessGroundBoard: ChessGroundBoard,
+    AppCopyBtn: AppCopyBtn,
   },
   data() {
     return {
@@ -153,6 +155,9 @@ export default defineComponent({
       }
 
       return status;
+    },
+    currentPgn(): string {
+      return (this.$refs.chessGroundBoardRef as any).getPgn();
     },
   },
   mounted() {
@@ -495,6 +500,7 @@ export default defineComponent({
               :status="isRunning"
               :key="isRunning.toString()"
             />
+            <AppCopyBtn :text="currentPgn" v-if="activeTab == 'prompt'" />
           </div>
           <div class="nav-secondary-content">
             <Pgn
