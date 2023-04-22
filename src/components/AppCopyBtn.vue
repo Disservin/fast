@@ -1,16 +1,17 @@
 <template>
-  <div class="btn-wrap">
-    <v-btn class="btn" color="primary" @click="copyToClipBoard(text)">
-      <font-awesome-icon icon="fa-solid fa-clipboard" />
-      <span>Copy PGN</span>
-    </v-btn>
-  </div>
+  <AppBtn @click="copyToClipBoard(text)" />
 </template>
 
 <script lang="ts">
 import { defineComponent } from "vue";
+
+import AppBtn from "@/components/AppBtn.vue";
+
 export default defineComponent({
   name: "AppCopyBtn",
+  components: {
+    AppBtn,
+  },
   props: {
     text: {
       type: String,
