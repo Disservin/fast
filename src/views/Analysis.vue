@@ -2,6 +2,7 @@
 import { defineComponent } from "vue";
 
 import Sidebar from "@/components/AppSideBar.vue";
+import AppBtn from "@/components/AppBtn.vue";
 import AppCopyBtn from "@/components/AppCopyBtn.vue";
 import EngineStats from "@/components/Analysis/EngineStats.vue";
 import EngineButtons from "@/components/Analysis/EngineButtons.vue";
@@ -30,6 +31,7 @@ export default defineComponent({
     Pgn: Pgn,
     ChessGroundBoard: ChessGroundBoard,
     AppCopyBtn: AppCopyBtn,
+    AppBtn: AppBtn,
   },
   data() {
     return {
@@ -178,6 +180,11 @@ export default defineComponent({
     this.sendEngineCommand("quit");
   },
   methods: {
+    parsePgnFromClipboard() {
+      navigator.clipboard.readText().then((text) => {
+        this.parsePgn(text);
+      });
+    },
     evalFunction(x: number) {
       return (5 - Math.pow(2, -(Math.abs(x) - 2.319281))) * (x < 0 ? -1 : 1);
     },
@@ -500,7 +507,12 @@ export default defineComponent({
               :status="isRunning"
               :key="isRunning.toString()"
             />
-            <AppCopyBtn :text="currentPgn" v-if="activeTab == 'prompt'" />
+            <AppBtn
+              :text="'paste pgn'"
+              v-if="activeTab == 'prompt'"
+              @click="parsePgnFromClipboard"
+            />
+            <AppCopyBtn :copy="currentPgn" v-if="activeTab == 'prompt'" />
           </div>
           <div class="nav-secondary-content">
             <Pgn

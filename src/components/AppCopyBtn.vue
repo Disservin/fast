@@ -1,5 +1,5 @@
 <template>
-  <AppBtn @click="copyToClipBoard(text)" />
+  <AppBtn @click="copyToClipBoard(copy)" :text="'copy pgn'" />
 </template>
 
 <script lang="ts">
@@ -13,14 +13,14 @@ export default defineComponent({
     AppBtn,
   },
   props: {
-    text: {
+    copy: {
       type: String,
       required: true,
     },
   },
   methods: {
-    copyToClipBoard(text: string) {
-      navigator.clipboard.writeText(text);
+    copyToClipBoard(copy: string) {
+      navigator.clipboard.writeText(copy);
     },
   },
 });

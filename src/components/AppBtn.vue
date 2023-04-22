@@ -2,7 +2,7 @@
   <div>
     <v-btn class="btn" color="primary" v-bind="$attrs">
       <font-awesome-icon icon="fa-solid fa-clipboard" />
-      <span>Copy PGN</span>
+      <span>{{ text }}</span>
     </v-btn>
   </div>
 </template>
@@ -12,7 +12,12 @@ import { defineComponent } from "vue";
 
 export default defineComponent({
   name: "AppBtn",
-  props: {},
+  props: {
+    text: {
+      type: String,
+      required: true,
+    },
+  },
   inheritAttrs: false,
 });
 </script>
