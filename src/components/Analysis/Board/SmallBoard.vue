@@ -11,7 +11,12 @@ type ChessgroundInstance = ReturnType<typeof Chessground>;
 
 export default defineComponent({
   name: "SmallBoard",
-  props: ["fen"],
+  props: {
+    fen: {
+      type: String,
+      required: true,
+    },
+  },
   data() {
     return {
       cg: null as ChessgroundInstance | null,

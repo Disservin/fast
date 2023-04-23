@@ -4,8 +4,8 @@ import { defineComponent } from "vue";
 import { Chessground } from "chessground";
 import { Chess, SQUARES } from "chess.js";
 
-import type { Move } from "@/ts/UciFilter";
-import type { Square } from "chess.js";
+import type { MoveStr } from "@/ts/UciFilter";
+import type { Square, Move } from "chess.js";
 import type { Color, Key } from "chessground/types";
 
 type ChessgroundInstance = ReturnType<typeof Chessground>;
@@ -25,6 +25,7 @@ export default defineComponent({
       moveHistorySan: [] as string[],
     };
   },
+  emits: ["updated-board"],
   mounted() {
     const config = {
       movable: {
@@ -118,7 +119,7 @@ export default defineComponent({
         });
       }
     },
-    async drawMove(move: Move) {
+    async drawMove(move: MoveStr) {
       this.cg?.setShapes([
         {
           orig: move.orig as Key,
@@ -244,7 +245,7 @@ export default defineComponent({
         sideToMove: this.toColor(),
       });
     },
-    async updateMove(move: any) {
+    async updateMove(move: Move) {
       if (move === null) {
         return "snapback";
       }
@@ -287,7 +288,7 @@ export default defineComponent({
     async newPositionPgn(pgn: string) {
       this.game.loadPgn(pgn);
 
-      let history = this.game.history({ verbose: true });
+      const history = this.game.history({ verbose: true });
 
       this.moveHistoryLan = [];
       this.moveHistorySan = [];

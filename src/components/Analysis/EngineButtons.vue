@@ -18,6 +18,7 @@ export default {
       disabledGo: false,
     };
   },
+  emits: ["engine-command"],
   mounted() {
     this.isRunning = localStorage.getItem("status") === "true";
     this.disabledGo = !this.go;

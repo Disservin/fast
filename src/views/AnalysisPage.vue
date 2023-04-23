@@ -1,14 +1,12 @@
 <script lang="ts">
-import { defineComponent } from "vue";
-
 import Sidebar from "@/components/AppSideBar.vue";
 import AppBtn from "@/components/AppBtn.vue";
 import AppCopyBtn from "@/components/AppCopyBtn.vue";
 import EngineStats from "@/components/Analysis/EngineStats.vue";
 import EngineButtons from "@/components/Analysis/EngineButtons.vue";
-import Fen from "@/components/Analysis/Fen.vue";
+import FenBox from "@/components/Analysis/FenBox.vue";
 import EngineLines from "@/components/Analysis/EngineLines.vue";
-import Pgn from "@/components/Analysis/Pgn.vue";
+import PgnBox from "@/components/Analysis/PgnBox.vue";
 import ChessGroundBoard from "@/components/Analysis/Board/BigBoard.vue";
 
 import { filterUCIInfo } from "@/ts/UciFilter";
@@ -20,15 +18,15 @@ import type { PV } from "@/ts/PrincipalVariation";
 
 const startpos = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
-export default defineComponent({
-  name: "app",
+export default {
+  name: "App",
   components: {
     Sidebar: Sidebar,
     EngineStats: EngineStats,
-    Fen: Fen,
+    FenBox: FenBox,
     EngineButtons: EngineButtons,
     EngineLines: EngineLines,
-    Pgn: Pgn,
+    PgnBox: PgnBox,
     ChessGroundBoard: ChessGroundBoard,
     AppCopyBtn: AppCopyBtn,
     AppBtn: AppBtn,
@@ -173,7 +171,9 @@ export default defineComponent({
     window.addEventListener("keydown", this.handleKeydown);
   },
   beforeUnmount() {
-    clearInterval(this.graphTimer!);
+    if (this.graphTimer !== null) {
+      clearInterval(this.graphTimer);
+    }
 
     window.removeEventListener("keydown", this.handleKeydown);
 
@@ -198,10 +198,10 @@ export default defineComponent({
       if (score === undefined) return "";
       let norm = "";
       if (score.startsWith("cp")) {
-        let cp = Number(score.slice(2));
+        const cp = Number(score.slice(2));
         norm = "cp " + this.normalizePerspectiveScore(cp);
       } else if (score.startsWith("mate")) {
-        let mateIn = Number(score.slice(4));
+        const mateIn = Number(score.slice(4));
         norm = "mate " + this.normalizePerspectiveScore(mateIn);
       }
       return norm;
@@ -241,9 +241,9 @@ export default defineComponent({
 
       let activeLine: PV = null as any;
 
-      for (const [key, value] of this.engineLines.entries()) {
-        if (value.active) {
-          activeLine = value;
+      for (const value of this.engineLines.entries()) {
+        if (value[1].active) {
+          activeLine = value[1];
           break;
         }
       }
@@ -331,13 +331,13 @@ export default defineComponent({
         );
       }
 
-      let lines = extractPV(line);
+      const lines = extractPV(line);
       lines.score = this.normalizeScoreStr(lines.score);
 
       if (lines.pv[0]) {
-        for (const [key, value] of this.engineLines.entries()) {
-          if (value.active) {
-            value.active = false;
+        for (const value of this.engineLines.entries()) {
+          if (value[1].active) {
+            value[1].active = false;
             break;
           }
         }
@@ -460,7 +460,7 @@ export default defineComponent({
       localStorage.setItem("status", this.isRunning.toString());
     },
   },
-});
+};
 </script>
 
 <template>
@@ -473,7 +473,7 @@ export default defineComponent({
         />
       </div>
       <div class="analysis-info">
-        <Fen
+        <FenBox
           :fen="currentFen"
           :key="currentFen"
           @update-position="newPosition"
@@ -483,7 +483,7 @@ export default defineComponent({
             updateAnalysisStatus
           }}</span>
         </div>
-        <EngineStats :engineInfo="engine_info" :sideToMove="sideToMove" />
+        <EngineStats :engine-info="engine_info" :side-to-move="sideToMove" />
 
         <div style="margin-top: 5px; margin-bottom: 5px">
           <v-tabs v-model="activeTabIndex" class="info-nav">
@@ -497,7 +497,7 @@ export default defineComponent({
             <EngineLines
               v-show="activeTab == 'engine-lines'"
               @send-moves="playMoves"
-              :engineLines="engineLines"
+              :engine-lines="engineLines"
               :fen="currentFen"
             />
             <EngineButtons
@@ -515,7 +515,7 @@ export default defineComponent({
             <AppCopyBtn :copy="currentPgn" v-if="activeTab == 'prompt'" />
           </div>
           <div class="nav-secondary-content">
-            <Pgn
+            <PgnBox
               class="game-pgn"
               @send-pgn-moves="parsePgn"
               :movehistory="moveHistorySan"

@@ -1,3 +1,7 @@
+<script lang="ts">
+export default {};
+</script>
+
 <template>
   <main>
     <div class="screen">
