@@ -3,7 +3,12 @@ import { defineComponent } from "vue";
 import { formatEval, formatNumber, formatTime } from "@/ts/FormatInput";
 
 export default defineComponent({
-  props: ["engineInfo"],
+  props: {
+    engineInfo: {
+      type: Object,
+      required: true,
+    },
+  },
   methods: {
     formatEval,
     formatNumber,

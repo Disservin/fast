@@ -1,3 +1,7 @@
+<script lang="ts">
+export default {};
+</script>
+
 <template>
   <main>
     <h1 class="text-center ma-10">Settings</h1>

@@ -20,6 +20,7 @@ export default {
       required: true,
     },
   },
+  emits: ["send-pgn-moves"],
   computed: {
     formattedPgn() {
       return this.formatPv(this.movehistory as string[]);

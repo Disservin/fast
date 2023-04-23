@@ -1,1 +1,1 @@
-declare module 'chess/src/main.js';
+declare module "chess/src/main.js";

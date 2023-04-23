@@ -1,3 +1,7 @@
+<script lang="ts">
+export default {};
+</script>
+
 <template>
   <main>
     <div>
@@ -55,10 +59,6 @@
     </div>
   </main>
 </template>
-
-<script lang="ts">
-export default {};
-</script>
 
 <style scoped>
 @import "@/assets/styles/variables.css";

@@ -1,12 +1,10 @@
 <script lang="ts">
-import { defineComponent } from "vue";
 import { open } from "@tauri-apps/api/dialog";
 
 import ChessProcess from "../ts/ChessProcess";
 import type { Option, Engine } from "@/ts/FastTypes";
 
-export default defineComponent({
-  name: "Engines",
+export default {
   data() {
     return {
       chessProcess: null as ChessProcess | null,
@@ -59,7 +57,7 @@ export default defineComponent({
           } else if (line.startsWith("option name")) {
             const parts = line.split(" ");
 
-            let option: Option = {
+            const option: Option = {
               name: "",
               type: "",
               default: "",
@@ -172,7 +170,7 @@ export default defineComponent({
       localStorage.setItem("engines", JSON.stringify(this.engines));
     },
   },
-});
+};
 </script>
 
 <template>
