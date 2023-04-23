@@ -215,7 +215,7 @@ export default {
         sideToMove: this.toColor(),
     }
     */
-      this.sideToMove = data.side;
+      this.sideToMove = data.sideToMove;
       this.status = data.status;
 
       this.moveHistoryLan = data.moveHistoryLan;
