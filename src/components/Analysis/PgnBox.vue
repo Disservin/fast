@@ -3,9 +3,10 @@
     <div
       class="pgn-move"
       v-for="(move, index) in formattedPgn"
+      :key="move.id"
       @click="sendPGNMoves(index)"
     >
-      {{ move }}
+      {{ move.value }}
     </div>
   </div>
 </template>
@@ -35,7 +36,7 @@ export default {
         if (index > moveIndex) {
           return;
         }
-        pgn += move.trim() + " ";
+        pgn += move.value.trim() + " ";
       });
       pgn = pgn.trim();
       this.$emit("send-pgn-moves", pgn);

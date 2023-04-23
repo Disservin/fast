@@ -118,6 +118,7 @@ export default defineComponent({
       :class="{ active: value.active }"
       class="line"
       v-for="(value, index) in engineLinesSorted"
+      :key="value.pv[0]"
     >
       <div class="eval-depth">
         <span :class="{ active: value.active }" class="stats">
@@ -128,13 +129,14 @@ export default defineComponent({
         <span
           class="pv-move"
           v-for="(move, indexMove) in formatPv(value.pv)"
+          :key="move.id"
           @click="sendMoves(index, indexMove)"
         >
           <span
             @mouseover="showBoard = [index, indexMove]"
             @mouseleave="showBoard = [-1, -1]"
           >
-            {{ move }}&nbsp;
+            {{ move.value }}&nbsp;
           </span>
           <SmallBoard
             v-if="showBoard[0] === index && showBoard[1] === indexMove"

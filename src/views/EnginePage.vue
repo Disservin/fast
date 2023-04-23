@@ -195,7 +195,11 @@ export default {
             <p><u>UCI Options</u></p>
 
             <div class="options">
-              <div class="option" v-for="option in engine.settings">
+              <div
+                class="option"
+                v-for="option in engine.settings"
+                :key="option.name"
+              >
                 <div v-if="option && option.name != ''">
                   <div class="option-name">{{ option.name }}</div>
                   <div class="option-value">
