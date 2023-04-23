@@ -57,7 +57,6 @@ export default {
         hashfull: "0",
       } as EngineInfo,
 
-      isEngineAlive: false,
       isRunning: false,
 
       moveHistoryLan: [] as string[],
@@ -141,7 +140,7 @@ export default {
       if (status === "" || status === "IDLE") {
         if (this.isRunning) {
           status = "ANALYSIS";
-        } else if (this.isEngineAlive) {
+        } else if (this.chessProcess !== null) {
           status = "READY";
         }
       } else {
@@ -288,7 +287,11 @@ export default {
       };
     },
     async updateInfoStats(line: string) {
-      if (!this.isEngineAlive || !this.isRunning || !line.startsWith("info")) {
+      if (
+        this.chessProcess !== null ||
+        !this.isRunning ||
+        !line.startsWith("info")
+      ) {
         return;
       }
 
@@ -311,7 +314,7 @@ export default {
         this.engine_info.pv.length > 0 &&
         this.engine_info.pv[0].orig !== "" &&
         this.engine_info.pv[0].dest !== "" &&
-        this.isEngineAlive
+        this.isRunning
       ) {
         (this.$refs.chessGroundBoardRef as any).drawMove(
           this.engine_info.pv[0]
@@ -405,8 +408,6 @@ export default {
         this.sendEngineCommand("quit");
       }
 
-      this.isEngineAlive = true;
-
       this.chessProcess = new ChessProcess(engines[0].path, (line) => {
         this.updateInfoStats(line);
       });
@@ -418,7 +419,7 @@ export default {
       if (command === "go" && (this.status === "" || this.status === "IDLE")) {
         this.clearInfoStats();
 
-        if (!this.isEngineAlive) {
+        if (!this.chessProcess !== null) {
           await this.initEngine();
         }
 
@@ -438,13 +439,11 @@ export default {
         this.isRunning = false;
         await this.chessProcess?.sendStop();
       } else if (command === "quit") {
-        this.isEngineAlive = false;
         this.isRunning = false;
         await this.chessProcess?.sendStop();
         await this.chessProcess?.sendQuit();
       } else if (command === "restart") {
         this.isRunning = false;
-        this.isEngineAlive = false;
 
         this.clearInfoStats();
 
