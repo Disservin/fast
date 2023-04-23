@@ -4,7 +4,7 @@ import { defineComponent } from "vue";
 import { Chessground } from "chessground";
 import { Chess, SQUARES } from "chess.js";
 
-import type { MoveStr } from "@/ts/UciFilter";
+import type { MoveStr } from "@/ts/UciParsing";
 import type { Square, Move } from "chess.js";
 import type { Color, Key } from "chessground/types";
 

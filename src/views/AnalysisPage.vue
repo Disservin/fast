@@ -9,11 +9,12 @@ import EngineLines from "@/components/Analysis/EngineLines.vue";
 import PgnBox from "@/components/Analysis/PgnBox.vue";
 import ChessGroundBoard from "@/components/Analysis/Board/BigBoard.vue";
 
-import { filterUCIInfo } from "@/ts/UciFilter";
-import { extractPV } from "@/ts/PrincipalVariation";
+import { extractScore } from "@/ts/ExtractData";
+import { filterUCIInfo } from "@/ts/UciParsing";
+import { getPV } from "@/ts/PrincipalVariation";
 import ChessProcess from "@/ts/ChessProcess";
 
-import { extractScore, type EngineInfo } from "@/ts/UciFilter";
+import type { EngineInfo } from "@/ts/UciParsing";
 import type { PV } from "@/ts/PrincipalVariation";
 
 const startpos = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
@@ -330,7 +331,7 @@ export default {
         );
       }
 
-      const lines = extractPV(line);
+      const lines = getPV(line);
       lines.score = this.normalizeScoreStr(lines.score);
 
       if (lines.pv[0]) {

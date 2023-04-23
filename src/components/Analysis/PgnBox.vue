@@ -12,7 +12,7 @@
 </template>
 
 <script lang="ts">
-import { formatPv } from "@/ts/FormatInput";
+import { formatPv } from "@/ts/FormatData";
 
 export default {
   props: {

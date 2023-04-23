@@ -8,7 +8,7 @@ import {
   formatNumber,
   formatTime,
   formatPv,
-} from "@/ts/FormatInput";
+} from "@/ts/FormatData";
 
 import { Chess } from "chess.js";
 

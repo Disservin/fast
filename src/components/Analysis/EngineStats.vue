@@ -1,6 +1,6 @@
 <script lang="ts">
 import { defineComponent } from "vue";
-import { formatEval, formatNumber, formatTime } from "@/ts/FormatInput";
+import { formatEval, formatNumber, formatTime } from "@/ts/FormatData";
 
 export default defineComponent({
   props: {

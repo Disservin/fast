@@ -10,7 +10,7 @@ export interface PV {
   active: boolean;
 }
 
-export function extractPV(line: string) {
+export function getPV(line: string) {
   const pv: PV = {
     depth: "0",
     score: "",
