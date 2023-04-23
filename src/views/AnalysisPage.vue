@@ -45,10 +45,6 @@ export default {
           id: "prompt",
           name: "Prompt",
         },
-        {
-          id: "settings",
-          name: "Settings",
-        },
       ],
 
       engine_info: {
