@@ -38,7 +38,7 @@ export function formatEval(evaluation: string): string {
   }
 }
 
-export function formatPv(pv: string[]): string[] {
+export function formatPv(pv: string[]) {
   // add move numbers
   const pvWithMoveNumbers = [];
   for (let i = 0; i < pv.length; i++) {
@@ -46,7 +46,7 @@ export function formatPv(pv: string[]): string[] {
     if (i % 2 === 0) {
       move = (i / 2 + 1).toString() + ". " + move;
     }
-    pvWithMoveNumbers.push(move);
+    pvWithMoveNumbers.push({ id: i, value: move });
   }
   return pvWithMoveNumbers;
 }

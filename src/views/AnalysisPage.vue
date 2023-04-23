@@ -483,7 +483,7 @@ export default {
 
         <div style="margin-top: 5px; margin-bottom: 5px">
           <v-tabs v-model="activeTabIndex" class="info-nav">
-            <v-tab v-for="element in smallNavbar">
+            <v-tab v-for="element in smallNavbar" :key="element.id">
               {{ element.name }}
             </v-tab>
           </v-tabs>
