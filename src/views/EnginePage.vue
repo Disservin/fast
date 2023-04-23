@@ -284,7 +284,14 @@ export default {
         </div>
       </div>
     </div>
-    <button class="add-engine-button" @click="addEngine()">+</button>
+    <v-btn
+      class="add-engine-button"
+      icon="mdi-plus"
+      size="small"
+      @click="addEngine()"
+    >
+      <font-awesome-icon icon="fa-solid fa-plus" />
+    </v-btn>
   </main>
 </template>
 
@@ -354,6 +361,7 @@ export default {
   background-color: var(--light-white);
   color: #000000;
 }
+
 .engine-column.active input {
   background-color: var(--light-white);
   color: #000000;
@@ -362,6 +370,7 @@ export default {
 .engine-column.active h2 {
   color: var(--light-white);
 }
+
 .engine-column.active .option-name {
   color: var(--light-white);
 }
@@ -395,6 +404,7 @@ export default {
 input {
   font-size: 1rem;
 }
+
 input:focus {
   outline: 2px solid white;
   outline-offset: -1px;
