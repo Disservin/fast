@@ -1,25 +1,22 @@
-<script lang="ts">
+<script setup lang="ts">
 import Sidebar from "@/components/AppSideBar.vue";
 import { exit } from "@tauri-apps/api/process";
+import { onMounted } from "vue";
+import { onBeforeUnmount } from "vue";
 
-export default {
-  components: {
-    Sidebar,
-  },
-  mounted() {
-    window.addEventListener("keydown", this.handleKeydown);
-  },
-  beforeUnmount() {
-    window.removeEventListener("keydown", this.handleKeydown);
-  },
-  methods: {
-    async handleKeydown(event: KeyboardEvent) {
-      if (event.key === "w" && event.ctrlKey) {
-        await exit(0);
-      }
-    },
-  },
+const handleKeydown = async (event: KeyboardEvent) => {
+  if (event.key === "w" && event.ctrlKey) {
+    await exit(0);
+  }
 };
+
+onMounted(() => {
+  window.addEventListener("keydown", handleKeydown);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener("keydown", handleKeydown);
+});
 </script>
 
 <template>

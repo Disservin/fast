@@ -11,37 +11,31 @@
   </div>
 </template>
 
-<script lang="ts">
+<script setup lang="ts">
 import { formatPv } from "@/ts/FormatData";
+import { computed } from "vue";
 
-export default {
-  props: {
-    movehistory: {
-      type: Array,
-      required: true,
-    },
-  },
-  emits: ["send-pgn-moves"],
-  computed: {
-    formattedPgn() {
-      return this.formatPv(this.movehistory as string[]);
-    },
-  },
-  methods: {
-    formatPv,
-    sendPGNMoves(moveIndex: number) {
-      const formatted = this.formatPv(this.movehistory as string[]);
-      let pgn = "";
-      formatted.forEach((move, index) => {
-        if (index > moveIndex) {
-          return;
-        }
-        pgn += move.value.trim() + " ";
-      });
-      pgn = pgn.trim();
-      this.$emit("send-pgn-moves", pgn);
-    },
-  },
+const props = defineProps<{
+  movehistory: string[];
+}>();
+
+const emit = defineEmits(["send-pgn-moves"]);
+
+const formattedPgn = computed(() => {
+  return formatPv(props.movehistory as string[]);
+});
+
+const sendPGNMoves = (moveIndex: number) => {
+  const formatted = formatPv(props.movehistory as string[]);
+  let pgn = "";
+  formatted.forEach((move, index) => {
+    if (index > moveIndex) {
+      return;
+    }
+    pgn += move.value.trim() + " ";
+  });
+  pgn = pgn.trim();
+  emit("send-pgn-moves", pgn);
 };
 </script>
 

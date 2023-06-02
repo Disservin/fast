@@ -1,108 +1,114 @@
-import { Command } from "@tauri-apps/api/shell";
+import { Child, Command } from "@tauri-apps/api/shell";
 
 import type { Option } from "@/ts/FastTypes";
 
 class ChessProcess {
-  private command: Command;
-  private callback: (data: string) => void;
-  private child: any;
+	private command: Command;
+	private callback: (data: string) => void;
+	private child: Child | undefined;
 
-  constructor(cmd: string, callback: (data: string) => void) {
-    this.callback = callback;
-    this.command = new Command(cmd);
-    this.command.on("close", (data) => {
-      console.log(
-        `command finished with code ${data.code} and signal ${data.signal}`
-      );
-    });
-    this.command.on("error", (error) =>
-      console.error(`command error: "${error}"`)
-    );
-    this.command.stdout.on("data", (line) => this.callback(line));
-    this.command.stderr.on("data", (line) =>
-      console.error(`command stderr: "${line}"`)
-    );
-  }
+	constructor(cmd: string, callback: (data: string) => void) {
+		console.log(`starting command: "${cmd}"`);
+		this.callback = callback;
+		this.command = new Command(cmd);
+		this.command.on("close", (data) => {
+			console.log(
+				`command finished with code ${data.code} and signal ${data.signal}`
+			);
+		});
+		this.command.on("error", (error) =>
+			console.error(`command error: "${error}"`)
+		);
+		this.command.stdout.on("data", (line) => this.callback(line));
+		this.command.stderr.on("data", (line) =>
+			console.error(`command stderr: "${line}"`)
+		);
+	}
 
-  async delay(milliseconds: number) {
-    return new Promise((resolve) => {
-      setTimeout(resolve, milliseconds);
-    });
-  }
+	async delay(milliseconds: number) {
+		return new Promise((resolve) => {
+			setTimeout(resolve, milliseconds);
+		});
+	}
 
-  async start(): Promise<void> {
-    this.child = await this.command.spawn();
-    this.write("uci");
-  }
+	async start(): Promise<void> {
+		this.child = await this.command.spawn();
+		console.log("spawned child");
 
-  write(data: string): void {
-    this.child.write(data + "\n");
-  }
+		this.write("uci");
+	}
 
-  sendGo(): void {
-    this.write("go infinite");
-  }
+	async write(data: string) {
+		console.log(`writing: "${data}"`);
 
-  sendGoDepth(depth: number): void {
-    this.write(`go depth ${depth}`);
-  }
+		await this.child!.write(data + "\n");
+	}
 
-  sendGoNodes(nodes: number): void {
-    this.write(`go nodes ${nodes}`);
-  }
+	async sendGo() {
+		this.write("go infinite");
+	}
 
-  sendGoMovetime(movetime: number): void {
-    this.write(`go movetime ${movetime}`);
-  }
+	async sendGoDepth(depth: number) {
+		this.write(`go depth ${depth}`);
+	}
 
-  sendOption(name: string, value: string): void {
-    this.write(`setoption name ${name} value ${value}`);
-  }
+	async sendGoNodes(nodes: number) {
+		this.write(`go nodes ${nodes}`);
+	}
 
-  sendOptions(options: Option[]): void {
-    options.forEach((option: Option) => {
-      if (
-        option.value === "" ||
-        option.name === "" ||
-        option.value === undefined ||
-        option.name === undefined
-      ) {
-        return;
-      }
-      this.sendOption(option.name, option.value);
-    });
-  }
+	async sendGoMovetime(movetime: number) {
+		this.write(`go movetime ${movetime}`);
+	}
 
-  sendStartpos(): void {
-    this.write("position startpos");
-  }
+	async sendOption(name: string, value: string) {
+		this.write(`setoption name ${name} value ${value}`);
+	}
 
-  sendStartposMoves(moves: string): void {
-    this.write(`position startpos moves ${moves}`);
-  }
+	async sendOptions(options: Option[]) {
+		options.forEach(async (option: Option) => {
+			if (
+				option.value === "" ||
+				option.name === "" ||
+				option.value === undefined ||
+				option.name === undefined
+			) {
+				return;
+			}
+			await this.sendOption(option.name, option.value);
+		});
+	}
 
-  sendPosition(fen: string): void {
-    this.write(`position fen ${fen}`);
-  }
+	async sendStartpos() {
+		this.write("position startpos");
+	}
 
-  sendPositionMoves(fen: string, moves: string): void {
-    this.write(`position fen ${fen} moves ${moves}`);
-  }
+	async sendStartposMoves(moves: string) {
+		this.write(`position startpos moves ${moves}`);
+	}
 
-  async sendStop() {
-    this.write("stop");
-    await this.delay(10);
-  }
+	async sendPosition(fen: string) {
+		this.write(`position fen ${fen}`);
+	}
 
-  async sendQuit() {
-    this.write("quit");
-    await this.delay(500);
-    await this.child.kill();
-  }
+	async sendPositionMoves(fen: string, moves: string) {
+		this.write(`position fen ${fen} moves ${moves}`);
+	}
 
-  kill(): void {
-    this.child.kill();
-  }
+	async sendStop() {
+		this.write("stop");
+		await this.delay(10);
+	}
+
+	async sendQuit() {
+		console.log("sending quit");
+		this.write("quit");
+		await this.delay(100);
+		await this.child!.kill();
+	}
+
+	async kill() {
+		this.child!.kill();
+	}
 }
 
 export default ChessProcess;
