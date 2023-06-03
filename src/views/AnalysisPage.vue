@@ -1,4 +1,4 @@
-<script lang="ts">
+<script setup lang="ts">
 import Sidebar from "@/components/AppSideBar.vue";
 import AppBtn from "@/components/AppBtn.vue";
 import AppCopyBtn from "@/components/AppCopyBtn.vue";
@@ -16,447 +16,435 @@ import ChessProcess from "@/ts/ChessProcess";
 
 import type { EngineInfo } from "@/ts/UciParsing";
 import type { PV } from "@/ts/PrincipalVariation";
+import { ref } from "vue";
+import { computed } from "vue";
+import { onMounted } from "vue";
+import { onBeforeMount } from "vue";
+import { onUnmounted } from "vue";
 
 const startpos = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
-export default {
-	name: "App",
-	components: {
-		Sidebar: Sidebar,
-		EngineStats: EngineStats,
-		FenBox: FenBox,
-		EngineButtons: EngineButtons,
-		EngineLines: EngineLines,
-		PgnBox: PgnBox,
-		ChessGroundBoard: ChessGroundBoard,
-		AppCopyBtn: AppCopyBtn,
-		AppBtn: AppBtn,
+const chessProcess = ref<ChessProcess | null>(null);
+const activeTabIndex = ref(0);
+
+const smallNavbar = [
+	{
+		id: "engine-lines",
+		name: "Engine Lines",
 	},
-	data() {
-		return {
-			chessProcess: null as ChessProcess | null,
-
-			activeTabIndex: 0,
-			smallNavbar: [
-				{
-					id: "engine-lines",
-					name: "Engine Lines",
-				},
-				{
-					id: "prompt",
-					name: "Prompt",
-				},
-			],
-
-			engine_info: {
-				score: "0",
-				nodes: "0",
-				nps: "0",
-				depth: "0",
-				time: "0",
-				tbhits: "0",
-				hashfull: "0",
-			} as EngineInfo,
-
-			isEngineAlive: false,
-			isRunning: false,
-
-			moveHistoryLan: [] as string[],
-			moveHistorySan: [] as string[],
-
-			engineLines: new Map<string, PV>(),
-
-			startFen: startpos,
-			currentFen: startpos,
-
-			status: "IDLE",
-			sideToMove: "white",
-
-			evalHistory: [] as number[],
-			graphTimer: null as number | null,
-
-			series: [
-				{
-					name: "series-1",
-					data: [] as number[],
-				},
-			],
-			options: {
-				colors: ["#1D4ED8"],
-				stroke: {
-					curve: "straight",
-					width: 2.5,
-				},
-				markers: {
-					size: 0,
-					hover: {
-						size: null,
-						sizeOffset: 0,
-					},
-				},
-				chart: {
-					toolbar: {
-						show: false,
-					},
-					zoom: {
-						enabled: false,
-					},
-					animations: {
-						enabled: false,
-					},
-				},
-				legend: {
-					show: false,
-					onItemHover: {
-						highlightDataSeries: false,
-					},
-				},
-				tooltip: {
-					enabled: false,
-				},
-				xaxis: {
-					labels: {
-						show: false,
-					},
-					type: "numeric",
-				},
-				yaxis: {
-					tickAmount: 2,
-					min: -5,
-					max: 5,
-					labels: {
-						show: false,
-					},
-					opacity: 0,
-				},
-			},
-		};
+	{
+		id: "prompt",
+		name: "Prompt",
 	},
-	computed: {
-		activeTab(): string {
-			return this.smallNavbar[this.activeTabIndex].id;
+];
+
+const engine_info = ref<EngineInfo>({
+	score: "0",
+	nodes: "0",
+	nps: "0",
+	depth: "0",
+	time: "0",
+	tbhits: "0",
+	hashfull: "0",
+});
+
+const chessGroundBoardRef = ref();
+
+const isEngineAlive = ref(false);
+const isRunning = ref(false);
+
+const moveHistoryLan = ref<string[]>([]);
+const moveHistorySan = ref<string[]>([]);
+
+const engineLines = ref<Map<string, PV>>(new Map());
+
+const startFen = ref(startpos);
+const currentFen = ref(startpos);
+
+const status = ref("IDLE");
+const sideToMove = ref("white");
+
+const evalHistory = ref<number[]>([]);
+const graphTimer = ref<number | null>(null);
+
+const series = ref([
+	{
+		name: "series-1",
+		data: [] as number[],
+	},
+]);
+
+const options = ref({
+	colors: ["#1D4ED8"],
+	stroke: {
+		curve: "straight",
+		width: 2.5,
+	},
+	markers: {
+		size: 0,
+		hover: {
+			size: null,
+			sizeOffset: 0,
 		},
-		updateAnalysisStatus(): string {
-			let status = this.status;
+	},
+	chart: {
+		toolbar: {
+			show: false,
+		},
+		zoom: {
+			enabled: false,
+		},
+		animations: {
+			enabled: false,
+		},
+	},
+	legend: {
+		show: false,
+		onItemHover: {
+			highlightDataSeries: false,
+		},
+	},
+	tooltip: {
+		enabled: false,
+	},
+	xaxis: {
+		labels: {
+			show: false,
+		},
+		type: "numeric",
+	},
+	yaxis: {
+		tickAmount: 2,
+		min: -5,
+		max: 5,
+		labels: {
+			show: false,
+		},
+		opacity: 0,
+	},
+});
 
-			if (status === "" || status === "IDLE") {
-				if (this.isRunning) {
-					status = "ANALYSIS";
-				} else if (this.isEngineAlive) {
-					status = "READY";
-				}
-			} else {
-				status = this.status;
+const activeTab = computed(() => {
+	return smallNavbar[activeTabIndex.value].id;
+});
 
-				this.sendEngineCommand("stop");
+const updateAnalysisStatus = (newStatus: string) => {
+	if (newStatus === "" || newStatus === "IDLE") {
+		if (isRunning.value) {
+			return "ANALYSIS";
+		} else if (isEngineAlive.value) {
+			return "READY";
+		}
+	} else {
+		sendEngineCommand("stop");
+	}
+
+	return newStatus;
+};
+
+const currentPgn = computed(() => {
+	return (chessGroundBoardRef.value as any).getPgn();
+});
+
+onMounted(() => {
+	initEngine();
+
+	graphTimer.value = setInterval(() => {
+		const copy = [...evalHistory.value];
+		series.value[0].data = copy;
+	}, 50);
+
+	window.addEventListener("keydown", handleKeydown);
+});
+
+onUnmounted(() => {
+	if (graphTimer.value !== null) {
+		clearInterval(graphTimer.value!);
+	}
+
+	window.removeEventListener("keydown", handleKeydown);
+
+	sendEngineCommand("quit");
+});
+
+const parsePgnFromClipboard = () => {
+	navigator.clipboard.readText().then((text) => {
+		parsePgn(text);
+	});
+};
+
+const evalFunction = (x: number) => {
+	return (5 - Math.pow(2, -(Math.abs(x) - 2.319281))) * (x < 0 ? -1 : 1);
+};
+
+const normalizePerspectiveScore = (score: number) => {
+	if (sideToMove.value === "black") {
+		return -score;
+	}
+	return score;
+};
+
+const normalizeScoreStr = (score: string | undefined) => {
+	if (score === undefined) return "";
+	let norm = "";
+	if (score.startsWith("cp")) {
+		const cp = Number(score.slice(2));
+		norm = "cp " + normalizePerspectiveScore(cp);
+	} else if (score.startsWith("mate")) {
+		const mateIn = Number(score.slice(4));
+		norm = "mate " + normalizePerspectiveScore(mateIn);
+	}
+	return norm;
+};
+
+const getUciMoves = () => {
+	return moveHistoryLan.value.join(" ");
+};
+
+const updatedBoard = async (data: any) => {
+	sideToMove.value = data.sideToMove;
+	status.value = data.status;
+
+	moveHistoryLan.value = data.moveHistoryLan;
+	moveHistorySan.value = data.moveHistorySan;
+
+	let wasRunning = false;
+
+	if (isRunning.value) {
+		wasRunning = true;
+		await sendEngineCommand("stop");
+	}
+
+	const score = extractScore(engine_info.value.score, sideToMove.value) / 100;
+	evalHistory.value.push(evalFunction(normalizePerspectiveScore(score)));
+
+	shiftInfoStats();
+
+	let activeLine: PV = null as any;
+
+	for (const value of engineLines.value.entries()) {
+		if (value[1].active) {
+			activeLine = value[1];
+			break;
+		}
+	}
+
+	if (activeLine && activeLine.pv.length > 0) {
+		(chessGroundBoardRef.value as any).drawMoveStr(
+			activeLine.pv[0].substring(0, 2),
+			activeLine.pv[0].substring(2, 4)
+		);
+	}
+
+	currentFen.value = data.fen;
+
+	if (wasRunning) {
+		sendEngineCommand("go");
+	}
+};
+
+const handleKeydown = async (event: KeyboardEvent) => {
+	if (event.key === "g" && event.ctrlKey && !isRunning.value) {
+		event.preventDefault();
+		sendEngineCommand("go");
+	} else if (event.key === "h" && event.ctrlKey) {
+		event.preventDefault();
+		sendEngineCommand("stop");
+	} else if (event.key === "r" && event.ctrlKey && !isRunning.value) {
+		event.preventDefault();
+		sendEngineCommand("restart");
+	} else if (event.key === "n" && event.ctrlKey) {
+		event.preventDefault();
+		sendEngineCommand("stop");
+		newPosition(startpos);
+	} else if (event.key === "ArrowLeft") {
+		(chessGroundBoardRef.value as any).undo();
+	}
+};
+
+const clearInfoStats = () => {
+	engineLines.value.clear();
+
+	engine_info.value = {
+		nodes: "0",
+		nps: "0",
+		depth: "0",
+		time: "0",
+		tbhits: "0",
+		hashfull: "0",
+	};
+};
+
+const updateInfoStats = async (line: string) => {
+	if (!isEngineAlive.value || !isRunning.value || !line.startsWith("info")) {
+		return;
+	}
+
+	const filtered = filterUCIInfo(line);
+	if (Object.keys(filtered).length === 0) {
+		return;
+	}
+
+	filtered.score = normalizeScoreStr(filtered.score);
+
+	if (filtered.score === "") {
+		filtered.score = engine_info.value.score;
+	}
+
+	// only update changed values
+	engine_info.value = { ...engine_info.value, ...filtered };
+
+	if (
+		engine_info.value.pv &&
+		engine_info.value.pv.length > 0 &&
+		engine_info.value.pv[0].orig !== "" &&
+		engine_info.value.pv[0].dest !== "" &&
+		isEngineAlive
+	) {
+		(chessGroundBoardRef.value as any).drawMove(engine_info.value.pv[0]);
+	}
+
+	if (engine_info.value.score) {
+		const score = extractScore(engine_info.value.score, sideToMove.value) / 100;
+		const lastIndex = Math.max(0, evalHistory.value.length - 1);
+		evalHistory.value[lastIndex] = evalFunction(
+			normalizePerspectiveScore(score)
+		);
+	}
+
+	const lines = getPV(line);
+	lines.score = normalizeScoreStr(lines.score);
+
+	if (lines.pv[0]) {
+		for (const value of engineLines.value.entries()) {
+			if (value[1].active) {
+				value[1].active = false;
+				break;
 			}
-
-			return status;
-		},
-		currentPgn(): string {
-			return (this.$refs.chessGroundBoardRef as any).getPgn();
-		},
-	},
-	mounted() {
-		this.initEngine();
-
-		this.graphTimer = setInterval(() => {
-			const copy = [...this.evalHistory];
-			this.series[0].data = copy;
-		}, 50);
-
-		window.addEventListener("keydown", this.handleKeydown);
-	},
-	beforeUnmount() {
-		if (this.graphTimer !== null) {
-			clearInterval(this.graphTimer);
 		}
 
-		window.removeEventListener("keydown", this.handleKeydown);
+		lines.active = true;
+		engineLines.value.set(lines.pv[0], lines);
+	}
+};
 
-		this.sendEngineCommand("quit");
-	},
-	methods: {
-		parsePgnFromClipboard() {
-			navigator.clipboard.readText().then((text) => {
-				this.parsePgn(text);
-			});
-		},
-		evalFunction(x: number) {
-			return (5 - Math.pow(2, -(Math.abs(x) - 2.319281))) * (x < 0 ? -1 : 1);
-		},
-		normalizePerspectiveScore(score: number) {
-			if (this.sideToMove === "black") {
-				return -score;
-			}
-			return score;
-		},
-		normalizeScoreStr(score: string | undefined) {
-			if (score === undefined) return "";
-			let norm = "";
-			if (score.startsWith("cp")) {
-				const cp = Number(score.slice(2));
-				norm = "cp " + this.normalizePerspectiveScore(cp);
-			} else if (score.startsWith("mate")) {
-				const mateIn = Number(score.slice(4));
-				norm = "mate " + this.normalizePerspectiveScore(mateIn);
-			}
-			return norm;
-		},
-		getUciMoves() {
-			return this.moveHistoryLan.join(" ");
-		},
-		async updatedBoard(data: any) {
-			/*
-    {
-        fen: this.game.fen(),
-        moveHistoryLan: this.moveHistoryLan,
-        moveHistorySan: this.moveHistorySan,
-        status: status,
-        sideToMove: this.toColor(),
-    }
-    */
-			this.sideToMove = data.sideToMove;
-			this.status = data.status;
+const shiftInfoStats = () => {
+	// remove all other lines and shift the line with the played move to the right
+	let correctLine: PV = null as any;
+	const moves = moveHistoryLan.value;
 
-			this.moveHistoryLan = data.moveHistoryLan;
-			this.moveHistorySan = data.moveHistorySan;
+	const playedMove = moves[moves.length - 1];
 
-			let wasRunning = false;
+	engineLines.value.forEach((pv, key) => {
+		if (key === playedMove) {
+			correctLine = pv;
+			correctLine.pv.shift();
+		}
+	});
 
-			if (this.isRunning) {
-				wasRunning = true;
-				await this.sendEngineCommand("stop");
-			}
+	engineLines.value.clear();
 
-			const score = extractScore(this.engine_info.score, this.sideToMove) / 100;
-			this.evalHistory.push(
-				this.evalFunction(this.normalizePerspectiveScore(score))
+	if (correctLine && correctLine.pv.length > 0) {
+		engineLines.value.set(correctLine.pv[0], correctLine);
+	}
+};
+
+const newPosition = async (fen: string) => {
+	clearInfoStats();
+	startFen.value = fen;
+
+	moveHistoryLan.value = [];
+	moveHistorySan.value = [];
+
+	evalHistory.value = [];
+
+	(chessGroundBoardRef.value as any).newPositionFen(fen);
+
+	if (isRunning.value) {
+		await sendEngineCommand("stop");
+		await chessProcess.value?.write("ucinewgame");
+	}
+};
+
+const playMoves = async (moves: string) => {
+	const n = moves.trim().split(" ").length;
+	const lastEval = evalHistory.value[evalHistory.value.length - 1];
+
+	for (let i = 0; i < n; i++) {
+		evalHistory.value.push(lastEval);
+	}
+
+	await sendEngineCommand("stop");
+	(chessGroundBoardRef.value as any).playMoves(moves);
+};
+
+const parsePgn = async (pgn: string) => {
+	await sendEngineCommand("stop");
+	(chessGroundBoardRef.value as any).newPositionPgn(pgn);
+};
+
+const initEngine = async () => {
+	const enginesData = localStorage.getItem("engines");
+	const engines = enginesData ? JSON.parse(enginesData) : [];
+
+	if (engines.length === 0) {
+		return;
+	}
+
+	if (chessProcess.value) {
+		await sendEngineCommand("quit");
+	}
+
+	isEngineAlive.value = true;
+
+	chessProcess.value = new ChessProcess(engines[0].path, (line) => {
+		updateInfoStats(line);
+	});
+
+	await chessProcess.value.start();
+	await chessProcess.value.sendOptions(engines[0].settings);
+};
+
+const sendEngineCommand = async (command: string) => {
+	if (command === "go" && (status.value === "" || status.value === "IDLE")) {
+		clearInfoStats();
+
+		if (!isEngineAlive.value) {
+			await initEngine();
+		}
+
+		if (startFen.value === startpos && getUciMoves() === "") {
+			await chessProcess.value?.sendStartpos();
+		} else if (startFen.value === startpos) {
+			await chessProcess.value?.sendStartposMoves(getUciMoves());
+		} else {
+			await chessProcess.value?.sendPositionMoves(
+				startFen.value,
+				getUciMoves()
 			);
+		}
+		isRunning.value = true;
+		await chessProcess.value?.sendGo();
+	} else if (command === "stop") {
+		isRunning.value = false;
+		await chessProcess.value?.sendStop();
+	} else if (command === "quit") {
+		isEngineAlive.value = false;
+		isRunning.value = false;
+		await chessProcess.value?.sendStop();
+		await chessProcess.value?.sendQuit();
+	} else if (command === "restart") {
+		isRunning.value = false;
+		isEngineAlive.value = false;
 
-			this.shiftInfoStats();
+		clearInfoStats();
 
-			let activeLine: PV = null as any;
+		await chessProcess.value?.sendStop();
+		await chessProcess.value?.sendQuit();
+		await initEngine();
+	}
 
-			for (const value of this.engineLines.entries()) {
-				if (value[1].active) {
-					activeLine = value[1];
-					break;
-				}
-			}
-
-			if (activeLine && activeLine.pv.length > 0) {
-				(this.$refs.chessGroundBoardRef as any).drawMoveStr(
-					activeLine.pv[0].substring(0, 2),
-					activeLine.pv[0].substring(2, 4)
-				);
-			}
-
-			this.currentFen = data.fen;
-
-			if (wasRunning) {
-				this.sendEngineCommand("go");
-			}
-		},
-		async handleKeydown(event: KeyboardEvent) {
-			if (event.key === "g" && event.ctrlKey && !this.isRunning) {
-				event.preventDefault();
-				this.sendEngineCommand("go");
-			} else if (event.key === "h" && event.ctrlKey) {
-				event.preventDefault();
-				this.sendEngineCommand("stop");
-			} else if (event.key === "r" && event.ctrlKey && !this.isRunning) {
-				event.preventDefault();
-				this.sendEngineCommand("restart");
-			} else if (event.key === "n" && event.ctrlKey) {
-				event.preventDefault();
-				this.sendEngineCommand("stop");
-				this.newPosition(startpos);
-			} else if (event.key === "ArrowLeft") {
-				(this.$refs.chessGroundBoardRef as any).undo();
-			}
-		},
-		clearInfoStats() {
-			this.engineLines.clear();
-
-			this.engine_info = {
-				nodes: "0",
-				nps: "0",
-				depth: "0",
-				time: "0",
-				tbhits: "0",
-				hashfull: "0",
-			};
-		},
-		async updateInfoStats(line: string) {
-			if (!this.isEngineAlive || !this.isRunning || !line.startsWith("info")) {
-				return;
-			}
-
-			const filtered = filterUCIInfo(line);
-			if (Object.keys(filtered).length === 0) {
-				return;
-			}
-
-			filtered.score = this.normalizeScoreStr(filtered.score);
-
-			if (filtered.score === "") {
-				filtered.score = this.engine_info.score;
-			}
-
-			// only update changed values
-			this.engine_info = { ...this.engine_info, ...filtered };
-
-			if (
-				this.engine_info.pv &&
-				this.engine_info.pv.length > 0 &&
-				this.engine_info.pv[0].orig !== "" &&
-				this.engine_info.pv[0].dest !== "" &&
-				this.isEngineAlive
-			) {
-				(this.$refs.chessGroundBoardRef as any).drawMove(
-					this.engine_info.pv[0]
-				);
-			}
-
-			if (this.engine_info.score) {
-				const score =
-					extractScore(this.engine_info.score, this.sideToMove) / 100;
-				const lastIndex = Math.max(0, this.evalHistory.length - 1);
-				this.evalHistory[lastIndex] = this.evalFunction(
-					this.normalizePerspectiveScore(score)
-				);
-			}
-
-			const lines = getPV(line);
-			lines.score = this.normalizeScoreStr(lines.score);
-
-			if (lines.pv[0]) {
-				for (const value of this.engineLines.entries()) {
-					if (value[1].active) {
-						value[1].active = false;
-						break;
-					}
-				}
-
-				lines.active = true;
-				this.engineLines.set(lines.pv[0], lines);
-			}
-		},
-		shiftInfoStats() {
-			// remove all other lines and shift the line with the played move to the right
-			let correctLine: PV = null as any;
-			const moves = this.moveHistoryLan;
-
-			const playedMove = moves[moves.length - 1];
-
-			this.engineLines.forEach((pv, key) => {
-				if (key === playedMove) {
-					correctLine = pv;
-					correctLine.pv.shift();
-				}
-			});
-
-			this.engineLines.clear();
-
-			if (correctLine && correctLine.pv.length > 0) {
-				this.engineLines.set(correctLine.pv[0], correctLine);
-			}
-		},
-		async newPosition(fen: string) {
-			this.clearInfoStats();
-			this.startFen = fen;
-
-			this.moveHistoryLan = [];
-			this.moveHistorySan = [];
-
-			this.evalHistory = [];
-
-			(this.$refs.chessGroundBoardRef as any).newPositionFen(fen);
-
-			if (this.isRunning) {
-				await this.sendEngineCommand("stop");
-				this.chessProcess?.write("ucinewgame");
-			}
-		},
-		async playMoves(moves: string) {
-			const n = moves.trim().split(" ").length;
-			const lastEval = this.evalHistory[this.evalHistory.length - 1];
-
-			for (let i = 0; i < n; i++) {
-				this.evalHistory.push(lastEval);
-			}
-
-			await this.sendEngineCommand("stop");
-			(this.$refs.chessGroundBoardRef as any).playMoves(moves);
-		},
-		async parsePgn(pgn: string) {
-			await this.sendEngineCommand("stop");
-			(this.$refs.chessGroundBoardRef as any).newPositionPgn(pgn);
-		},
-		async initEngine() {
-			const enginesData = localStorage.getItem("engines");
-			const engines = enginesData ? JSON.parse(enginesData) : [];
-
-			if (engines.length === 0) {
-				return;
-			}
-
-			if (this.chessProcess) {
-				this.sendEngineCommand("quit");
-			}
-
-			this.isEngineAlive = true;
-
-			this.chessProcess = new ChessProcess(engines[0].path, (line) => {
-				this.updateInfoStats(line);
-			});
-
-			await this.chessProcess.start();
-			this.chessProcess.sendOptions(engines[0].settings);
-		},
-		async sendEngineCommand(command: string) {
-			if (command === "go" && (this.status === "" || this.status === "IDLE")) {
-				this.clearInfoStats();
-
-				if (!this.isEngineAlive) {
-					await this.initEngine();
-				}
-
-				if (this.startFen === startpos && this.getUciMoves() === "") {
-					this.chessProcess?.sendStartpos();
-				} else if (this.startFen === startpos) {
-					this.chessProcess?.sendStartposMoves(this.getUciMoves());
-				} else {
-					this.chessProcess?.sendPositionMoves(
-						this.startFen,
-						this.getUciMoves()
-					);
-				}
-				this.isRunning = true;
-				this.chessProcess?.sendGo();
-			} else if (command === "stop") {
-				this.isRunning = false;
-				await this.chessProcess?.sendStop();
-			} else if (command === "quit") {
-				this.isEngineAlive = false;
-				this.isRunning = false;
-				await this.chessProcess?.sendStop();
-				await this.chessProcess?.sendQuit();
-			} else if (command === "restart") {
-				this.isRunning = false;
-				this.isEngineAlive = false;
-
-				this.clearInfoStats();
-
-				await this.chessProcess?.sendStop();
-				await this.chessProcess?.sendQuit();
-				await this.initEngine();
-			}
-
-			localStorage.setItem("status", this.isRunning.toString());
-		},
-	},
+	localStorage.setItem("status", isRunning.value.toString());
 };
 </script>
 
@@ -477,7 +465,7 @@ export default {
 				/>
 				<div class="engine-status">
 					<span class="engine-stat-value" :class="{ active: isRunning }">{{
-						updateAnalysisStatus
+						updateAnalysisStatus(status)
 					}}</span>
 				</div>
 				<EngineStats :engine-info="engine_info" :side-to-move="sideToMove" />

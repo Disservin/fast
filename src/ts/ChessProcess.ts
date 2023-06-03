@@ -8,14 +8,9 @@ class ChessProcess {
 	private child: Child | undefined;
 
 	constructor(cmd: string, callback: (data: string) => void) {
-		console.log(`starting command: "${cmd}"`);
 		this.callback = callback;
 		this.command = new Command(cmd);
-		this.command.on("close", (data) => {
-			console.log(
-				`command finished with code ${data.code} and signal ${data.signal}`
-			);
-		});
+		this.command.on("close", (data) => {});
 		this.command.on("error", (error) =>
 			console.error(`command error: "${error}"`)
 		);
@@ -33,14 +28,11 @@ class ChessProcess {
 
 	async start(): Promise<void> {
 		this.child = await this.command.spawn();
-		console.log("spawned child");
 
 		this.write("uci");
 	}
 
 	async write(data: string) {
-		console.log(`writing: "${data}"`);
-
 		await this.child!.write(data + "\n");
 	}
 
@@ -100,7 +92,6 @@ class ChessProcess {
 	}
 
 	async sendQuit() {
-		console.log("sending quit");
 		this.write("quit");
 		await this.delay(100);
 		await this.child!.kill();
@@ -108,6 +99,7 @@ class ChessProcess {
 
 	async kill() {
 		this.child!.kill();
+		this.command.removeAllListeners();
 	}
 }
 
