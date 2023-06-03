@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { onMounted } from "vue";
-import { ref } from "vue";
+// Utilities
+import { onMounted, ref } from "vue";
 
 const props = defineProps<{
 	status: boolean | undefined;

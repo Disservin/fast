@@ -1,13 +1,18 @@
 <script setup lang="ts">
+// Components
 import SmallBoard from "@/components/Analysis/Board/SmallBoard.vue";
 
+// JS
 import { formatEval, formatPv } from "@/ts/FormatData";
 
+// Libs
 import { Chess } from "chess.js";
 
+// Types
 import type { PV } from "@/ts/PrincipalVariation";
-import { ref } from "vue";
-import { watch } from "vue";
+
+// Utilities
+import { ref, watch } from "vue";
 
 const props = defineProps<{
 	engineLines: Map<string, PV>;

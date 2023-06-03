@@ -1,26 +1,30 @@
 <script setup lang="ts">
-import { ref, onMounted, onBeforeMount } from "vue";
+// Utilities
+import { ref, onMounted, onUnmounted } from "vue";
 
+// Libraries
 import { Chessground } from "chessground";
 import { Chess, SQUARES } from "chess.js";
 
+// Types
 import type { MoveStr } from "@/ts/UciParsing";
 import type { Square, Move } from "chess.js";
 import type { Color, Key } from "chessground/types";
-import { onUnmounted } from "vue";
+
+// Constants
+import { startpos } from "@/ts/Constants/StartPosition";
 
 type ChessgroundInstance = ReturnType<typeof Chessground>;
 
-const startpos = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+let promotionMove: MoveStr = { orig: "", dest: "" };
+
+let moveHistoryLan: string[] = [];
+let moveHistorySan: string[] = [];
 
 const showPromotion = ref(false);
-const promotionMove = ref({ origin: "", destination: "" });
 
-const game = ref(new Chess());
+const game = new Chess();
 const cg = ref<ChessgroundInstance>();
-
-const moveHistoryLan = ref<string[]>([]);
-const moveHistorySan = ref<string[]>([]);
 
 const board = ref<HTMLElement>();
 const boardSpace = ref();
@@ -95,7 +99,7 @@ const calculateSquareSize = () => {
 };
 
 const getPgn = () => {
-	return game.value.pgn();
+	return game.pgn();
 };
 
 const clearLastMove = () => {
@@ -106,7 +110,7 @@ const clearLastMove = () => {
 
 const updateCG = () => {
 	cg.value?.set({
-		fen: game.value.fen(),
+		fen: game.fen(),
 		turnColor: toColor(),
 		movable: {
 			color: toColor(),
@@ -115,7 +119,7 @@ const updateCG = () => {
 	});
 
 	// set check highlighting
-	if (game.value.inCheck()) {
+	if (game.inCheck()) {
 		cg.value?.set({
 			check: toColor(),
 		});
@@ -147,13 +151,13 @@ const drawMoveStr = async (origin: string, dest: string) => {
 };
 
 const toColor = () => {
-	return game.value.turn() === "w" ? "white" : "black";
+	return game.turn() === "w" ? "white" : "black";
 };
 
 const toDests = () => {
 	const dests = new Map();
 	SQUARES.forEach((s) => {
-		const moves = game.value.moves({ square: s });
+		const moves = game.moves({ square: s });
 		if (moves.length) {
 			dests.set(
 				s,
@@ -192,10 +196,10 @@ const toDests = () => {
 };
 
 const undo = () => {
-	game.value.undo();
+	game.undo();
 
-	moveHistoryLan.value.pop();
-	moveHistorySan.value.pop();
+	moveHistoryLan.pop();
+	moveHistorySan.pop();
 
 	sendUpdates();
 };
@@ -203,18 +207,18 @@ const undo = () => {
 const makeMove = async (origin: string, destination: string) => {
 	// is promotion?
 	if (
-		game.value.get(origin as Square)?.type === "p" &&
+		game.get(origin as Square)?.type === "p" &&
 		(destination[1] === "1" || destination[1] === "8")
 	) {
 		showPromotion.value = true;
-		promotionMove.value = { origin, destination };
+		promotionMove = { orig: origin, dest: destination };
 
 		// user has to select a promotion piece and makePromotionMove() will be called
 		return;
 	}
 
 	// do move
-	const move = game.value.move({
+	const move = game.move({
 		from: origin,
 		to: destination,
 	});
@@ -226,9 +230,9 @@ const makePromotionMove = async (piece: string) => {
 	showPromotion.value = false;
 
 	// do move
-	const move = game.value.move({
-		from: promotionMove.value.origin,
-		to: promotionMove.value.destination,
+	const move = game.move({
+		from: promotionMove.orig,
+		to: promotionMove.dest,
 		promotion: piece,
 	});
 
@@ -238,22 +242,22 @@ const makePromotionMove = async (piece: string) => {
 const sendUpdates = async () => {
 	let status = "";
 
-	if (game.value.isCheckmate()) {
+	if (game.isCheckmate()) {
 		status = "CHECKMATE";
-	} else if (game.value.isStalemate()) {
+	} else if (game.isStalemate()) {
 		status = "STALEMATE";
-	} else if (game.value.isThreefoldRepetition()) {
+	} else if (game.isThreefoldRepetition()) {
 		status = "THREEFOLD REPETITION";
-	} else if (game.value.isInsufficientMaterial()) {
+	} else if (game.isInsufficientMaterial()) {
 		status = "INSUFFICIENT MATERIAL";
 	}
 
 	updateCG();
 
 	emit("updated-board", {
-		fen: game.value.fen(),
-		moveHistoryLan: moveHistoryLan.value,
-		moveHistorySan: moveHistorySan.value,
+		fen: game.fen(),
+		moveHistoryLan: moveHistoryLan,
+		moveHistorySan: moveHistorySan,
 		status: status,
 		sideToMove: toColor(),
 	});
@@ -264,8 +268,8 @@ const updateMove = async (move: Move) => {
 		return "snapback";
 	}
 
-	moveHistoryLan.value.push(move.lan);
-	moveHistorySan.value.push(move.san);
+	moveHistoryLan.push(move.lan);
+	moveHistorySan.push(move.san);
 
 	sendUpdates();
 };
@@ -277,7 +281,7 @@ const playMoves = async (moves: string) => {
 
 	for (let i = 0; i < movesArray.length; i++) {
 		const move = movesArray[i];
-		const chessMove = game.value.move(move);
+		const chessMove = game.move(move);
 
 		if (chessMove === null) {
 			updateCG();
@@ -285,34 +289,34 @@ const playMoves = async (moves: string) => {
 			return;
 		}
 
-		moveHistoryLan.value.push(chessMove.lan);
-		moveHistorySan.value.push(chessMove.san);
+		moveHistoryLan.push(chessMove.lan);
+		moveHistorySan.push(chessMove.san);
 	}
 
 	sendUpdates();
 };
 
 const newPositionFen = async (fen: string) => {
-	game.value.load(fen);
+	game.load(fen);
 
-	moveHistoryLan.value = [];
-	moveHistorySan.value = [];
+	moveHistoryLan = [];
+	moveHistorySan = [];
 
 	clearLastMove();
 	sendUpdates();
 };
 
 const newPositionPgn = async (pgn: string) => {
-	game.value.loadPgn(pgn);
+	game.loadPgn(pgn);
 
-	const history = game.value.history({ verbose: true });
+	const history = game.history({ verbose: true });
 
-	moveHistoryLan.value = [];
-	moveHistorySan.value = [];
+	moveHistoryLan = [];
+	moveHistorySan = [];
 
 	history.forEach((move) => {
-		moveHistoryLan.value.push(move.lan);
-		moveHistorySan.value.push(move.san);
+		moveHistoryLan.push(move.lan);
+		moveHistorySan.push(move.san);
 	});
 
 	clearLastMove();

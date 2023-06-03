@@ -134,7 +134,7 @@ const removeEngine = (index: number) => {
 	localStorage.setItem("engines", JSON.stringify(engines.value));
 };
 const addEngine = () => {
-	const option = {
+	const option: Option = {
 		name: "",
 		type: "",
 		default: "0",

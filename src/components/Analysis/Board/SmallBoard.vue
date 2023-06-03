@@ -3,8 +3,10 @@
 </template>
 
 <script setup lang="ts">
+// Utilities
 import { onMounted, ref, onBeforeUnmount } from "vue";
 
+// Libraries
 import { Chessground } from "chessground";
 
 type ChessgroundInstance = ReturnType<typeof Chessground>;
