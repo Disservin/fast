@@ -6,6 +6,8 @@ class ChessProcess {
 	private command: Command;
 	private callback: (data: string) => void;
 	private child: Child | undefined;
+	private isRunning: boolean = false;
+	private isAlive: boolean = false;
 
 	constructor(cmd: string, callback: (data: string) => void) {
 		this.callback = callback;
@@ -20,40 +22,42 @@ class ChessProcess {
 		);
 	}
 
-	async delay(milliseconds: number) {
+	private async delay(milliseconds: number) {
 		return new Promise((resolve) => {
 			setTimeout(resolve, milliseconds);
 		});
 	}
 
-	async start(): Promise<void> {
-		this.child = await this.command.spawn();
-
-		this.write("uci");
-	}
-
-	async write(data: string) {
+	private async write(data: string) {
 		await this.child!.write(data + "\n");
 	}
 
+	public getIsRunning(): boolean {
+		return this.isRunning;
+	}
+
+	public getIsAlive(): boolean {
+		return this.isAlive;
+	}
+
+	async start(): Promise<void> {
+		this.isAlive = true;
+		this.child = await this.command.spawn();
+
+		await this.write("uci");
+	}
+
+	async ucinewgame() {
+		await this.write("ucinewgame");
+	}
+
 	async sendGo() {
-		this.write("go infinite");
-	}
-
-	async sendGoDepth(depth: number) {
-		this.write(`go depth ${depth}`);
-	}
-
-	async sendGoNodes(nodes: number) {
-		this.write(`go nodes ${nodes}`);
-	}
-
-	async sendGoMovetime(movetime: number) {
-		this.write(`go movetime ${movetime}`);
+		this.isRunning = true;
+		await this.write("go infinite");
 	}
 
 	async sendOption(name: string, value: string) {
-		this.write(`setoption name ${name} value ${value}`);
+		await this.write(`setoption name ${name} value ${value}`);
 	}
 
 	async sendOptions(options: Option[]) {
@@ -71,35 +75,33 @@ class ChessProcess {
 	}
 
 	async sendStartpos() {
-		this.write("position startpos");
+		await this.write("position startpos");
 	}
 
 	async sendStartposMoves(moves: string) {
-		this.write(`position startpos moves ${moves}`);
+		await this.write(`position startpos moves ${moves}`);
 	}
 
 	async sendPosition(fen: string) {
-		this.write(`position fen ${fen}`);
+		await this.write(`position fen ${fen}`);
 	}
 
 	async sendPositionMoves(fen: string, moves: string) {
-		this.write(`position fen ${fen} moves ${moves}`);
+		await this.write(`position fen ${fen} moves ${moves}`);
 	}
 
 	async sendStop() {
+		this.isRunning = false;
 		this.write("stop");
 		await this.delay(10);
 	}
 
 	async sendQuit() {
-		this.write("quit");
+		this.isAlive = false;
+		this.isRunning = false;
+		await this.write("quit");
 		await this.delay(100);
 		await this.child!.kill();
-	}
-
-	async kill() {
-		this.child!.kill();
-		this.command.removeAllListeners();
 	}
 }
 

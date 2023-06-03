@@ -50,9 +50,6 @@ const engine_info = ref<EngineInfo>({
 
 const chessGroundBoardRef = ref();
 
-const isEngineAlive = ref(false);
-const isRunning = ref(false);
-
 const moveHistoryLan = ref<string[]>([]);
 const moveHistorySan = ref<string[]>([]);
 
@@ -130,9 +127,9 @@ const activeTab = computed(() => {
 
 const updateAnalysisStatus = (newStatus: string) => {
 	if (newStatus === "" || newStatus === "IDLE") {
-		if (isRunning.value) {
+		if (chessProcess.value?.getIsRunning()) {
 			return "ANALYSIS";
-		} else if (isEngineAlive.value) {
+		} else if (chessProcess.value?.getIsAlive()) {
 			return "READY";
 		}
 	} else {
@@ -210,7 +207,7 @@ const updatedBoard = async (data: any) => {
 
 	let wasRunning = false;
 
-	if (isRunning.value) {
+	if (chessProcess.value?.getIsRunning()) {
 		wasRunning = true;
 		await sendEngineCommand("stop");
 	}
@@ -244,13 +241,21 @@ const updatedBoard = async (data: any) => {
 };
 
 const handleKeydown = async (event: KeyboardEvent) => {
-	if (event.key === "g" && event.ctrlKey && !isRunning.value) {
+	if (
+		event.key === "g" &&
+		event.ctrlKey &&
+		!chessProcess.value?.getIsRunning()
+	) {
 		event.preventDefault();
 		sendEngineCommand("go");
 	} else if (event.key === "h" && event.ctrlKey) {
 		event.preventDefault();
 		sendEngineCommand("stop");
-	} else if (event.key === "r" && event.ctrlKey && !isRunning.value) {
+	} else if (
+		event.key === "r" &&
+		event.ctrlKey &&
+		!chessProcess.value?.getIsRunning()
+	) {
 		event.preventDefault();
 		sendEngineCommand("restart");
 	} else if (event.key === "n" && event.ctrlKey) {
@@ -276,7 +281,11 @@ const clearInfoStats = () => {
 };
 
 const updateInfoStats = async (line: string) => {
-	if (!isEngineAlive.value || !isRunning.value || !line.startsWith("info")) {
+	if (
+		!chessProcess.value!.getIsAlive() ||
+		!chessProcess.value!.getIsRunning() ||
+		!line.startsWith("info")
+	) {
 		return;
 	}
 
@@ -299,7 +308,7 @@ const updateInfoStats = async (line: string) => {
 		engine_info.value.pv.length > 0 &&
 		engine_info.value.pv[0].orig !== "" &&
 		engine_info.value.pv[0].dest !== "" &&
-		isEngineAlive
+		chessProcess.value!.getIsAlive()
 	) {
 		(chessGroundBoardRef.value as any).drawMove(engine_info.value.pv[0]);
 	}
@@ -360,9 +369,9 @@ const newPosition = async (fen: string) => {
 
 	(chessGroundBoardRef.value as any).newPositionFen(fen);
 
-	if (isRunning.value) {
+	if (chessProcess.value?.getIsRunning()) {
 		await sendEngineCommand("stop");
-		await chessProcess.value?.write("ucinewgame");
+		await chessProcess.value?.ucinewgame();
 	}
 };
 
@@ -395,8 +404,6 @@ const initEngine = async () => {
 		await sendEngineCommand("quit");
 	}
 
-	isEngineAlive.value = true;
-
 	chessProcess.value = new ChessProcess(engines[0].path, (line) => {
 		updateInfoStats(line);
 	});
@@ -409,7 +416,7 @@ const sendEngineCommand = async (command: string) => {
 	if (command === "go" && (status.value === "" || status.value === "IDLE")) {
 		clearInfoStats();
 
-		if (!isEngineAlive.value) {
+		if (!chessProcess.value!.getIsAlive()) {
 			await initEngine();
 		}
 
@@ -423,28 +430,20 @@ const sendEngineCommand = async (command: string) => {
 				getUciMoves()
 			);
 		}
-		isRunning.value = true;
 		await chessProcess.value?.sendGo();
 	} else if (command === "stop") {
-		isRunning.value = false;
 		await chessProcess.value?.sendStop();
 	} else if (command === "quit") {
-		isEngineAlive.value = false;
-		isRunning.value = false;
 		await chessProcess.value?.sendStop();
 		await chessProcess.value?.sendQuit();
 	} else if (command === "restart") {
-		isRunning.value = false;
-		isEngineAlive.value = false;
-
 		clearInfoStats();
 
 		await chessProcess.value?.sendStop();
 		await chessProcess.value?.sendQuit();
 		await initEngine();
 	}
-
-	localStorage.setItem("status", isRunning.value.toString());
+	localStorage.setItem("status", chessProcess.value!.getIsRunning().toString());
 };
 </script>
 
@@ -464,9 +463,11 @@ const sendEngineCommand = async (command: string) => {
 					@update-position="newPosition"
 				/>
 				<div class="engine-status">
-					<span class="engine-stat-value" :class="{ active: isRunning }">{{
-						updateAnalysisStatus(status)
-					}}</span>
+					<span
+						class="engine-stat-value"
+						:class="{ active: chessProcess?.getIsRunning() }"
+						>{{ updateAnalysisStatus(status) }}</span
+					>
 				</div>
 				<EngineStats :engine-info="engine_info" :side-to-move="sideToMove" />
 
@@ -489,8 +490,8 @@ const sendEngineCommand = async (command: string) => {
 							v-if="activeTab == 'prompt'"
 							@engine-command="sendEngineCommand"
 							:go="status === '' || status === 'IDLE'"
-							:status="isRunning"
-							:key="isRunning.toString()"
+							:status="chessProcess?.getIsRunning()"
+							:key="chessProcess?.getIsRunning().toString()"
 						/>
 						<AppBtn
 							:text="'paste pgn'"
