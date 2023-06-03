@@ -1,4 +1,4 @@
-<script lang="ts">
+<script setup lang="ts">
 import Sidebar from "@/components/AppSideBar.vue";
 import AppBtn from "@/components/AppBtn.vue";
 import AppCopyBtn from "@/components/AppCopyBtn.vue";
@@ -16,521 +16,510 @@ import ChessProcess from "@/ts/ChessProcess";
 
 import type { EngineInfo } from "@/ts/UciParsing";
 import type { PV } from "@/ts/PrincipalVariation";
+import { ref } from "vue";
+import { computed } from "vue";
+import { onMounted } from "vue";
+import { onBeforeMount } from "vue";
+import { onUnmounted } from "vue";
 
 const startpos = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
-export default {
-  name: "App",
-  components: {
-    Sidebar: Sidebar,
-    EngineStats: EngineStats,
-    FenBox: FenBox,
-    EngineButtons: EngineButtons,
-    EngineLines: EngineLines,
-    PgnBox: PgnBox,
-    ChessGroundBoard: ChessGroundBoard,
-    AppCopyBtn: AppCopyBtn,
-    AppBtn: AppBtn,
-  },
-  data() {
-    return {
-      chessProcess: null as ChessProcess | null,
+const chessProcess = ref<ChessProcess | null>(null);
+const activeTabIndex = ref(0);
 
-      activeTabIndex: 0,
-      smallNavbar: [
-        {
-          id: "engine-lines",
-          name: "Engine Lines",
-        },
-        {
-          id: "prompt",
-          name: "Prompt",
-        },
-      ],
+const smallNavbar = [
+	{
+		id: "engine-lines",
+		name: "Engine Lines",
+	},
+	{
+		id: "prompt",
+		name: "Prompt",
+	},
+];
 
-      engine_info: {
-        score: "0",
-        nodes: "0",
-        nps: "0",
-        depth: "0",
-        time: "0",
-        tbhits: "0",
-        hashfull: "0",
-      } as EngineInfo,
+const engine_info = ref<EngineInfo>({
+	score: "0",
+	nodes: "0",
+	nps: "0",
+	depth: "0",
+	time: "0",
+	tbhits: "0",
+	hashfull: "0",
+});
 
-      isRunning: false,
+const chessGroundBoardRef = ref();
 
-      moveHistoryLan: [] as string[],
-      moveHistorySan: [] as string[],
+const isEngineAlive = ref(false);
+const isRunning = ref(false);
 
-      engineLines: new Map<string, PV>(),
+const moveHistoryLan = ref<string[]>([]);
+const moveHistorySan = ref<string[]>([]);
 
-      startFen: startpos,
-      currentFen: startpos,
+const engineLines = ref<Map<string, PV>>(new Map());
 
-      status: "IDLE",
-      sideToMove: "white",
+const startFen = ref(startpos);
+const currentFen = ref(startpos);
 
-      evalHistory: [] as number[],
-      graphTimer: null as number | null,
+const status = ref("IDLE");
+const sideToMove = ref("white");
 
-      series: [
-        {
-          name: "series-1",
-          data: [] as number[],
-        },
-      ],
-      options: {
-        colors: ["#1D4ED8"],
-        stroke: {
-          curve: "straight",
-          width: 2.5,
-        },
-        markers: {
-          size: 0,
-          hover: {
-            size: null,
-            sizeOffset: 0,
-          },
-        },
-        chart: {
-          toolbar: {
-            show: false,
-          },
-          zoom: {
-            enabled: false,
-          },
-          animations: {
-            enabled: false,
-          },
-        },
-        legend: {
-          show: false,
-          onItemHover: {
-            highlightDataSeries: false,
-          },
-        },
-        tooltip: {
-          enabled: false,
-        },
-        xaxis: {
-          labels: {
-            show: false,
-          },
-          type: "numeric",
-        },
-        yaxis: {
-          tickAmount: 2,
-          min: -5,
-          max: 5,
-          labels: {
-            show: false,
-          },
-          opacity: 0,
-        },
-      },
-    };
-  },
-  computed: {
-    activeTab(): string {
-      return this.smallNavbar[this.activeTabIndex].id;
-    },
-    updateAnalysisStatus(): string {
-      let status = this.status;
+const evalHistory = ref<number[]>([]);
+const graphTimer = ref<number | null>(null);
 
-      if (status === "" || status === "IDLE") {
-        if (this.isRunning) {
-          status = "ANALYSIS";
-        } else if (this.chessProcess !== null) {
-          status = "READY";
-        }
-      } else {
-        status = this.status;
+const series = ref([
+	{
+		name: "series-1",
+		data: [] as number[],
+	},
+]);
 
-        this.sendEngineCommand("stop");
-      }
+const options = ref({
+	colors: ["#1D4ED8"],
+	stroke: {
+		curve: "straight",
+		width: 2.5,
+	},
+	markers: {
+		size: 0,
+		hover: {
+			size: null,
+			sizeOffset: 0,
+		},
+	},
+	chart: {
+		toolbar: {
+			show: false,
+		},
+		zoom: {
+			enabled: false,
+		},
+		animations: {
+			enabled: false,
+		},
+	},
+	legend: {
+		show: false,
+		onItemHover: {
+			highlightDataSeries: false,
+		},
+	},
+	tooltip: {
+		enabled: false,
+	},
+	xaxis: {
+		labels: {
+			show: false,
+		},
+		type: "numeric",
+	},
+	yaxis: {
+		tickAmount: 2,
+		min: -5,
+		max: 5,
+		labels: {
+			show: false,
+		},
+		opacity: 0,
+	},
+});
 
-      return status;
-    },
-    currentPgn(): string {
-      return (this.$refs.chessGroundBoardRef as any).getPgn();
-    },
-  },
-  mounted() {
-    this.initEngine();
+const activeTab = computed(() => {
+	return smallNavbar[activeTabIndex.value].id;
+});
 
-    this.graphTimer = setInterval(() => {
-      const copy = [...this.evalHistory];
-      this.series[0].data = copy;
-    }, 50);
+const updateAnalysisStatus = (newStatus: string) => {
+	if (newStatus === "" || newStatus === "IDLE") {
+		if (isRunning.value) {
+			return "ANALYSIS";
+		} else if (isEngineAlive.value) {
+			return "READY";
+		}
+	} else {
+		sendEngineCommand("stop");
+	}
 
-    window.addEventListener("keydown", this.handleKeydown);
-  },
-  beforeUnmount() {
-    if (this.graphTimer !== null) {
-      clearInterval(this.graphTimer);
-    }
+	return newStatus;
+};
 
-    window.removeEventListener("keydown", this.handleKeydown);
+const currentPgn = computed(() => {
+	return (chessGroundBoardRef.value as any).getPgn();
+});
 
-    this.sendEngineCommand("quit");
-  },
-  methods: {
-    parsePgnFromClipboard() {
-      navigator.clipboard.readText().then((text) => {
-        this.parsePgn(text);
-      });
-    },
-    evalFunction(x: number) {
-      return (5 - Math.pow(2, -(Math.abs(x) - 2.319281))) * (x < 0 ? -1 : 1);
-    },
-    normalizePerspectiveScore(score: number) {
-      if (this.sideToMove === "black") {
-        return -score;
-      }
-      return score;
-    },
-    normalizeScoreStr(score: string | undefined) {
-      if (score === undefined) return "";
-      let norm = "";
-      if (score.startsWith("cp")) {
-        const cp = Number(score.slice(2));
-        norm = "cp " + this.normalizePerspectiveScore(cp);
-      } else if (score.startsWith("mate")) {
-        const mateIn = Number(score.slice(4));
-        norm = "mate " + this.normalizePerspectiveScore(mateIn);
-      }
-      return norm;
-    },
-    getUciMoves() {
-      return this.moveHistoryLan.join(" ");
-    },
-    async updatedBoard(data: any) {
-      /*
-    {
-        fen: this.game.fen(),
-        moveHistoryLan: this.moveHistoryLan,
-        moveHistorySan: this.moveHistorySan,
-        status: status,
-        sideToMove: this.toColor(),
-    }
-    */
-      this.sideToMove = data.sideToMove;
-      this.status = data.status;
+onMounted(() => {
+	initEngine();
 
-      this.moveHistoryLan = data.moveHistoryLan;
-      this.moveHistorySan = data.moveHistorySan;
+	graphTimer.value = setInterval(() => {
+		const copy = [...evalHistory.value];
+		series.value[0].data = copy;
+	}, 50);
 
-      let wasRunning = false;
+	window.addEventListener("keydown", handleKeydown);
+});
 
-      if (this.isRunning) {
-        wasRunning = true;
-        await this.sendEngineCommand("stop");
-      }
+onUnmounted(() => {
+	if (graphTimer.value !== null) {
+		clearInterval(graphTimer.value!);
+	}
 
-      const score = extractScore(this.engine_info.score, this.sideToMove) / 100;
-      this.evalHistory.push(
-        this.evalFunction(this.normalizePerspectiveScore(score))
-      );
+	window.removeEventListener("keydown", handleKeydown);
 
-      this.shiftInfoStats();
+	sendEngineCommand("quit");
+});
 
-      let activeLine: PV = null as any;
+const parsePgnFromClipboard = () => {
+	navigator.clipboard.readText().then((text) => {
+		parsePgn(text);
+	});
+};
 
-      for (const value of this.engineLines.entries()) {
-        if (value[1].active) {
-          activeLine = value[1];
-          break;
-        }
-      }
+const evalFunction = (x: number) => {
+	return (5 - Math.pow(2, -(Math.abs(x) - 2.319281))) * (x < 0 ? -1 : 1);
+};
 
-      if (activeLine && activeLine.pv.length > 0) {
-        (this.$refs.chessGroundBoardRef as any).drawMoveStr(
-          activeLine.pv[0].substring(0, 2),
-          activeLine.pv[0].substring(2, 4)
-        );
-      }
+const normalizePerspectiveScore = (score: number) => {
+	if (sideToMove.value === "black") {
+		return -score;
+	}
+	return score;
+};
 
-      this.currentFen = data.fen;
+const normalizeScoreStr = (score: string | undefined) => {
+	if (score === undefined) return "";
+	let norm = "";
+	if (score.startsWith("cp")) {
+		const cp = Number(score.slice(2));
+		norm = "cp " + normalizePerspectiveScore(cp);
+	} else if (score.startsWith("mate")) {
+		const mateIn = Number(score.slice(4));
+		norm = "mate " + normalizePerspectiveScore(mateIn);
+	}
+	return norm;
+};
 
-      if (wasRunning) {
-        this.sendEngineCommand("go");
-      }
-    },
-    async handleKeydown(event: KeyboardEvent) {
-      if (event.key === "g" && event.ctrlKey && !this.isRunning) {
-        event.preventDefault();
-        this.sendEngineCommand("go");
-      } else if (event.key === "h" && event.ctrlKey) {
-        event.preventDefault();
-        this.sendEngineCommand("stop");
-      } else if (event.key === "r" && event.ctrlKey && !this.isRunning) {
-        event.preventDefault();
-        this.sendEngineCommand("restart");
-      } else if (event.key === "n" && event.ctrlKey) {
-        event.preventDefault();
-        this.sendEngineCommand("stop");
-        this.newPosition(startpos);
-      } else if (event.key === "ArrowLeft") {
-        (this.$refs.chessGroundBoardRef as any).undo();
-      }
-    },
-    clearInfoStats() {
-      this.engineLines.clear();
+const getUciMoves = () => {
+	return moveHistoryLan.value.join(" ");
+};
 
-      this.engine_info = {
-        nodes: "0",
-        nps: "0",
-        depth: "0",
-        time: "0",
-        tbhits: "0",
-        hashfull: "0",
-      };
-    },
-    async updateInfoStats(line: string) {
-      if (
-        this.chessProcess !== null ||
-        !this.isRunning ||
-        !line.startsWith("info")
-      ) {
-        return;
-      }
+const updatedBoard = async (data: any) => {
+	sideToMove.value = data.sideToMove;
+	status.value = data.status;
 
-      const filtered = filterUCIInfo(line);
-      if (Object.keys(filtered).length === 0) {
-        return;
-      }
+	moveHistoryLan.value = data.moveHistoryLan;
+	moveHistorySan.value = data.moveHistorySan;
 
-      filtered.score = this.normalizeScoreStr(filtered.score);
+	let wasRunning = false;
 
-      if (filtered.score === "") {
-        filtered.score = this.engine_info.score;
-      }
+	if (isRunning.value) {
+		wasRunning = true;
+		await sendEngineCommand("stop");
+	}
 
-      // only update changed values
-      this.engine_info = { ...this.engine_info, ...filtered };
+	const score = extractScore(engine_info.value.score, sideToMove.value) / 100;
+	evalHistory.value.push(evalFunction(normalizePerspectiveScore(score)));
 
-      if (
-        this.engine_info.pv &&
-        this.engine_info.pv.length > 0 &&
-        this.engine_info.pv[0].orig !== "" &&
-        this.engine_info.pv[0].dest !== "" &&
-        this.isRunning
-      ) {
-        (this.$refs.chessGroundBoardRef as any).drawMove(
-          this.engine_info.pv[0]
-        );
-      }
+	shiftInfoStats();
 
-      if (this.engine_info.score) {
-        const score =
-          extractScore(this.engine_info.score, this.sideToMove) / 100;
-        const lastIndex = Math.max(0, this.evalHistory.length - 1);
-        this.evalHistory[lastIndex] = this.evalFunction(
-          this.normalizePerspectiveScore(score)
-        );
-      }
+	let activeLine: PV = null as any;
 
-      const lines = getPV(line);
-      lines.score = this.normalizeScoreStr(lines.score);
+	for (const value of engineLines.value.entries()) {
+		if (value[1].active) {
+			activeLine = value[1];
+			break;
+		}
+	}
 
-      if (lines.pv[0]) {
-        for (const value of this.engineLines.entries()) {
-          if (value[1].active) {
-            value[1].active = false;
-            break;
-          }
-        }
+	if (activeLine && activeLine.pv.length > 0) {
+		(chessGroundBoardRef.value as any).drawMoveStr(
+			activeLine.pv[0].substring(0, 2),
+			activeLine.pv[0].substring(2, 4)
+		);
+	}
 
-        lines.active = true;
-        this.engineLines.set(lines.pv[0], lines);
-      }
-    },
-    shiftInfoStats() {
-      // remove all other lines and shift the line with the played move to the right
-      let correctLine: PV = null as any;
-      const moves = this.moveHistoryLan;
+	currentFen.value = data.fen;
 
-      const playedMove = moves[moves.length - 1];
+	if (wasRunning) {
+		sendEngineCommand("go");
+	}
+};
 
-      this.engineLines.forEach((pv, key) => {
-        if (key === playedMove) {
-          correctLine = pv;
-          correctLine.pv.shift();
-        }
-      });
+const handleKeydown = async (event: KeyboardEvent) => {
+	if (event.key === "g" && event.ctrlKey && !isRunning.value) {
+		event.preventDefault();
+		sendEngineCommand("go");
+	} else if (event.key === "h" && event.ctrlKey) {
+		event.preventDefault();
+		sendEngineCommand("stop");
+	} else if (event.key === "r" && event.ctrlKey && !isRunning.value) {
+		event.preventDefault();
+		sendEngineCommand("restart");
+	} else if (event.key === "n" && event.ctrlKey) {
+		event.preventDefault();
+		sendEngineCommand("stop");
+		newPosition(startpos);
+	} else if (event.key === "ArrowLeft") {
+		(chessGroundBoardRef.value as any).undo();
+	}
+};
 
-      this.engineLines.clear();
+const clearInfoStats = () => {
+	engineLines.value.clear();
 
-      if (correctLine && correctLine.pv.length > 0) {
-        this.engineLines.set(correctLine.pv[0], correctLine);
-      }
-    },
-    async newPosition(fen: string) {
-      this.clearInfoStats();
-      this.startFen = fen;
+	engine_info.value = {
+		nodes: "0",
+		nps: "0",
+		depth: "0",
+		time: "0",
+		tbhits: "0",
+		hashfull: "0",
+	};
+};
 
-      this.moveHistoryLan = [];
-      this.moveHistorySan = [];
+const updateInfoStats = async (line: string) => {
+	if (!isEngineAlive.value || !isRunning.value || !line.startsWith("info")) {
+		return;
+	}
 
-      this.evalHistory = [];
+	const filtered = filterUCIInfo(line);
+	if (Object.keys(filtered).length === 0) {
+		return;
+	}
 
-      (this.$refs.chessGroundBoardRef as any).newPositionFen(fen);
+	filtered.score = normalizeScoreStr(filtered.score);
 
-      if (this.isRunning) {
-        await this.sendEngineCommand("stop");
-        this.chessProcess?.write("ucinewgame");
-      }
-    },
-    async playMoves(moves: string) {
-      const n = moves.trim().split(" ").length;
-      const lastEval = this.evalHistory[this.evalHistory.length - 1];
+	if (filtered.score === "") {
+		filtered.score = engine_info.value.score;
+	}
 
-      for (let i = 0; i < n; i++) {
-        this.evalHistory.push(lastEval);
-      }
+	// only update changed values
+	engine_info.value = { ...engine_info.value, ...filtered };
 
-      await this.sendEngineCommand("stop");
-      (this.$refs.chessGroundBoardRef as any).playMoves(moves);
-    },
-    async parsePgn(pgn: string) {
-      await this.sendEngineCommand("stop");
-      (this.$refs.chessGroundBoardRef as any).newPositionPgn(pgn);
-    },
-    async initEngine() {
-      const enginesData = localStorage.getItem("engines");
-      const engines = enginesData ? JSON.parse(enginesData) : [];
+	if (
+		engine_info.value.pv &&
+		engine_info.value.pv.length > 0 &&
+		engine_info.value.pv[0].orig !== "" &&
+		engine_info.value.pv[0].dest !== "" &&
+		isEngineAlive
+	) {
+		(chessGroundBoardRef.value as any).drawMove(engine_info.value.pv[0]);
+	}
 
-      if (engines.length === 0) {
-        return;
-      }
+	if (engine_info.value.score) {
+		const score = extractScore(engine_info.value.score, sideToMove.value) / 100;
+		const lastIndex = Math.max(0, evalHistory.value.length - 1);
+		evalHistory.value[lastIndex] = evalFunction(
+			normalizePerspectiveScore(score)
+		);
+	}
 
-      if (this.chessProcess) {
-        this.sendEngineCommand("quit");
-      }
+	const lines = getPV(line);
+	lines.score = normalizeScoreStr(lines.score);
 
-      this.chessProcess = new ChessProcess(engines[0].path, (line) => {
-        this.updateInfoStats(line);
-      });
+	if (lines.pv[0]) {
+		for (const value of engineLines.value.entries()) {
+			if (value[1].active) {
+				value[1].active = false;
+				break;
+			}
+		}
 
-      await this.chessProcess.start();
-      this.chessProcess.sendOptions(engines[0].settings);
-    },
-    async sendEngineCommand(command: string) {
-      if (command === "go" && (this.status === "" || this.status === "IDLE")) {
-        this.clearInfoStats();
+		lines.active = true;
+		engineLines.value.set(lines.pv[0], lines);
+	}
+};
 
-        if (!this.chessProcess !== null) {
-          await this.initEngine();
-        }
+const shiftInfoStats = () => {
+	// remove all other lines and shift the line with the played move to the right
+	let correctLine: PV = null as any;
+	const moves = moveHistoryLan.value;
 
-        if (this.startFen === startpos && this.getUciMoves() === "") {
-          this.chessProcess?.sendStartpos();
-        } else if (this.startFen === startpos) {
-          this.chessProcess?.sendStartposMoves(this.getUciMoves());
-        } else {
-          this.chessProcess?.sendPositionMoves(
-            this.startFen,
-            this.getUciMoves()
-          );
-        }
-        this.isRunning = true;
-        this.chessProcess?.sendGo();
-      } else if (command === "stop") {
-        this.isRunning = false;
-        await this.chessProcess?.sendStop();
-      } else if (command === "quit") {
-        this.isRunning = false;
-        await this.chessProcess?.sendStop();
-        await this.chessProcess?.sendQuit();
-      } else if (command === "restart") {
-        this.isRunning = false;
+	const playedMove = moves[moves.length - 1];
 
-        this.clearInfoStats();
+	engineLines.value.forEach((pv, key) => {
+		if (key === playedMove) {
+			correctLine = pv;
+			correctLine.pv.shift();
+		}
+	});
 
-        await this.chessProcess?.sendStop();
-        await this.chessProcess?.sendQuit();
-        await this.initEngine();
-      }
+	engineLines.value.clear();
 
-      localStorage.setItem("status", this.isRunning.toString());
-    },
-  },
+	if (correctLine && correctLine.pv.length > 0) {
+		engineLines.value.set(correctLine.pv[0], correctLine);
+	}
+};
+
+const newPosition = async (fen: string) => {
+	clearInfoStats();
+	startFen.value = fen;
+
+	moveHistoryLan.value = [];
+	moveHistorySan.value = [];
+
+	evalHistory.value = [];
+
+	(chessGroundBoardRef.value as any).newPositionFen(fen);
+
+	if (isRunning.value) {
+		await sendEngineCommand("stop");
+		await chessProcess.value?.write("ucinewgame");
+	}
+};
+
+const playMoves = async (moves: string) => {
+	const n = moves.trim().split(" ").length;
+	const lastEval = evalHistory.value[evalHistory.value.length - 1];
+
+	for (let i = 0; i < n; i++) {
+		evalHistory.value.push(lastEval);
+	}
+
+	await sendEngineCommand("stop");
+	(chessGroundBoardRef.value as any).playMoves(moves);
+};
+
+const parsePgn = async (pgn: string) => {
+	await sendEngineCommand("stop");
+	(chessGroundBoardRef.value as any).newPositionPgn(pgn);
+};
+
+const initEngine = async () => {
+	const enginesData = localStorage.getItem("engines");
+	const engines = enginesData ? JSON.parse(enginesData) : [];
+
+	if (engines.length === 0) {
+		return;
+	}
+
+	if (chessProcess.value) {
+		await sendEngineCommand("quit");
+	}
+
+	isEngineAlive.value = true;
+
+	chessProcess.value = new ChessProcess(engines[0].path, (line) => {
+		updateInfoStats(line);
+	});
+
+	await chessProcess.value.start();
+	await chessProcess.value.sendOptions(engines[0].settings);
+};
+
+const sendEngineCommand = async (command: string) => {
+	if (command === "go" && (status.value === "" || status.value === "IDLE")) {
+		clearInfoStats();
+
+		if (!isEngineAlive.value) {
+			await initEngine();
+		}
+
+		if (startFen.value === startpos && getUciMoves() === "") {
+			await chessProcess.value?.sendStartpos();
+		} else if (startFen.value === startpos) {
+			await chessProcess.value?.sendStartposMoves(getUciMoves());
+		} else {
+			await chessProcess.value?.sendPositionMoves(
+				startFen.value,
+				getUciMoves()
+			);
+		}
+		isRunning.value = true;
+		await chessProcess.value?.sendGo();
+	} else if (command === "stop") {
+		isRunning.value = false;
+		await chessProcess.value?.sendStop();
+	} else if (command === "quit") {
+		isEngineAlive.value = false;
+		isRunning.value = false;
+		await chessProcess.value?.sendStop();
+		await chessProcess.value?.sendQuit();
+	} else if (command === "restart") {
+		isRunning.value = false;
+		isEngineAlive.value = false;
+
+		clearInfoStats();
+
+		await chessProcess.value?.sendStop();
+		await chessProcess.value?.sendQuit();
+		await initEngine();
+	}
+
+	localStorage.setItem("status", isRunning.value.toString());
 };
 </script>
 
 <template>
-  <div>
-    <main class="analysis">
-      <div class="game">
-        <ChessGroundBoard
-          ref="chessGroundBoardRef"
-          @updated-board="updatedBoard"
-        />
-      </div>
-      <div class="analysis-info">
-        <FenBox
-          :fen="currentFen"
-          :key="currentFen"
-          @update-position="newPosition"
-        />
-        <div class="engine-status">
-          <span class="engine-stat-value" :class="{ active: isRunning }">{{
-            updateAnalysisStatus
-          }}</span>
-        </div>
-        <EngineStats :engine-info="engine_info" :side-to-move="sideToMove" />
+	<div>
+		<main class="analysis">
+			<div class="game">
+				<ChessGroundBoard
+					ref="chessGroundBoardRef"
+					@updated-board="updatedBoard"
+				/>
+			</div>
+			<div class="analysis-info">
+				<FenBox
+					:fen="currentFen"
+					:key="currentFen"
+					@update-position="newPosition"
+				/>
+				<div class="engine-status">
+					<span class="engine-stat-value" :class="{ active: isRunning }">{{
+						updateAnalysisStatus(status)
+					}}</span>
+				</div>
+				<EngineStats :engine-info="engine_info" :side-to-move="sideToMove" />
 
-        <div style="margin-top: 5px; margin-bottom: 5px">
-          <v-tabs v-model="activeTabIndex" class="info-nav">
-            <v-tab v-for="element in smallNavbar" :key="element.id">
-              {{ element.name }}
-            </v-tab>
-          </v-tabs>
-        </div>
-        <div class="info-content">
-          <div class="nav-main-content">
-            <EngineLines
-              v-show="activeTab == 'engine-lines'"
-              @send-moves="playMoves"
-              :engine-lines="engineLines"
-              :fen="currentFen"
-            />
-            <EngineButtons
-              v-if="activeTab == 'prompt'"
-              @engine-command="sendEngineCommand"
-              :go="status === '' || status === 'IDLE'"
-              :status="isRunning"
-              :key="isRunning.toString()"
-            />
-            <AppBtn
-              :text="'paste pgn'"
-              v-if="activeTab == 'prompt'"
-              @click="parsePgnFromClipboard"
-            />
-            <AppCopyBtn :copy="currentPgn" v-if="activeTab == 'prompt'" />
-          </div>
-          <div class="nav-secondary-content">
-            <PgnBox
-              class="game-pgn"
-              @send-pgn-moves="parsePgn"
-              :movehistory="moveHistorySan"
-              :key="currentFen"
-            />
-            <div class="analysis-graph">
-              <apexchart
-                height="100%"
-                :options="options"
-                :series="series"
-                type="line"
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-    </main>
-    <Sidebar />
-  </div>
+				<div style="margin-top: 5px; margin-bottom: 5px">
+					<v-tabs v-model="activeTabIndex" class="info-nav">
+						<v-tab v-for="element in smallNavbar" :key="element.id">
+							{{ element.name }}
+						</v-tab>
+					</v-tabs>
+				</div>
+				<div class="info-content">
+					<div class="nav-main-content">
+						<EngineLines
+							v-show="activeTab == 'engine-lines'"
+							@send-moves="playMoves"
+							:engine-lines="engineLines"
+							:fen="currentFen"
+						/>
+						<EngineButtons
+							v-if="activeTab == 'prompt'"
+							@engine-command="sendEngineCommand"
+							:go="status === '' || status === 'IDLE'"
+							:status="isRunning"
+							:key="isRunning.toString()"
+						/>
+						<AppBtn
+							:text="'paste pgn'"
+							v-if="activeTab == 'prompt'"
+							@click="parsePgnFromClipboard"
+						/>
+						<AppCopyBtn :copy="currentPgn" v-if="activeTab == 'prompt'" />
+					</div>
+					<div class="nav-secondary-content">
+						<PgnBox
+							class="game-pgn"
+							@send-pgn-moves="parsePgn"
+							:movehistory="moveHistorySan"
+							:key="currentFen"
+						/>
+						<div class="analysis-graph">
+							<apexchart
+								height="100%"
+								:options="options"
+								:series="series"
+								type="line"
+							/>
+						</div>
+					</div>
+				</div>
+			</div>
+		</main>
+		<Sidebar />
+	</div>
 </template>
 
 <style>
@@ -539,144 +528,144 @@ export default {
 @import "@/assets/styles/chessground.css";
 
 main.analysis {
-  padding: 1rem;
-  color: aliceblue;
-  height: 100vh;
+	padding: 1rem;
+	color: aliceblue;
+	height: 100vh;
 
-  display: flex;
-  box-sizing: border-box;
+	display: flex;
+	box-sizing: border-box;
 }
 
 h1 {
-  font-size: 2rem;
-  font-weight: 400;
-  color: rgb(252, 241, 222);
+	font-size: 2rem;
+	font-weight: 400;
+	color: rgb(252, 241, 222);
 }
 
 .game {
-  display: flex;
-  flex-direction: column;
-  flex: 0 0 66%;
-  box-sizing: border-box;
-  max-width: 66%;
+	display: flex;
+	flex-direction: column;
+	flex: 0 0 66%;
+	box-sizing: border-box;
+	max-width: 66%;
 }
 
 .analysis-info {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
+	flex: 1;
+	display: flex;
+	flex-direction: column;
 }
 
 .engine-status {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-evenly;
-  align-items: center;
-  background-color: var(--bg-tertiary);
-  color: white;
-  padding: 10px;
-  margin-bottom: 5px;
-  box-sizing: border-box;
-  border-radius: 5px;
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: space-evenly;
+	align-items: center;
+	background-color: var(--bg-tertiary);
+	color: white;
+	padding: 10px;
+	margin-bottom: 5px;
+	box-sizing: border-box;
+	border-radius: 5px;
 }
 
 .engine-status .active {
-  color: #22c55e;
+	color: #22c55e;
 }
 
 .engine-status {
-  color: #f43f5e;
+	color: #f43f5e;
 }
 
 .info-content {
-  margin-top: 10px;
-  flex: 1;
-  display: flex;
-  flex-wrap: nowrap;
-  flex-direction: column;
+	margin-top: 10px;
+	flex: 1;
+	display: flex;
+	flex-wrap: nowrap;
+	flex-direction: column;
 }
 
 .nav-main-content {
-  display: flex;
-  flex-direction: column;
-  overflow-y: scroll;
-  overflow-x: hidden;
-  flex-grow: 0;
-  height: calc(50vh - 100px);
-  background-color: var(--bg-secondary);
-  border-radius: 5px;
-  margin-bottom: 5px;
+	display: flex;
+	flex-direction: column;
+	overflow-y: scroll;
+	overflow-x: hidden;
+	flex-grow: 0;
+	height: calc(50vh - 100px);
+	background-color: var(--bg-secondary);
+	border-radius: 5px;
+	margin-bottom: 5px;
 }
 
 .nav-secondary-content {
-  display: flex;
-  flex-direction: column;
-  flex-grow: 0 !important;
-  height: calc(40vh - 100px);
-  margin-bottom: 20px;
-  gap: 10px;
+	display: flex;
+	flex-direction: column;
+	flex-grow: 0 !important;
+	height: calc(40vh - 100px);
+	margin-bottom: 20px;
+	gap: 10px;
 }
 
 .game-pgn {
-  flex-basis: calc(50% - 5px);
-  overflow-y: scroll;
-  overflow-x: hidden;
+	flex-basis: calc(50% - 5px);
+	overflow-y: scroll;
+	overflow-x: hidden;
 }
 
 .analysis-graph {
-  flex-basis: calc(45% - 5px);
-  /* background-color: #ae9b9b; */
+	flex-basis: calc(45% - 5px);
+	/* background-color: #ae9b9b; */
 }
 
 .promotion-options {
-  position: absolute;
-  width: 20%;
-  height: auto;
-  background-color: rgba(0, 0, 0, 0.5);
+	position: absolute;
+	width: 20%;
+	height: auto;
+	background-color: rgba(0, 0, 0, 0.5);
 }
 
 #promotion-select {
-  display: flex;
-  justify-content: space-evenly;
-  align-items: center;
-  min-width: 5%;
-  padding: 5px;
+	display: flex;
+	justify-content: space-evenly;
+	align-items: center;
+	min-width: 5%;
+	padding: 5px;
 }
 
 #promotion-select button {
-  background-color: transparent;
-  border: none;
-  outline: none;
-  color: inherit;
-  border: none;
-  padding: 0;
-  font: inherit;
-  cursor: pointer;
-  outline: inherit;
-  z-index: 3;
+	background-color: transparent;
+	border: none;
+	outline: none;
+	color: inherit;
+	border: none;
+	padding: 0;
+	font: inherit;
+	cursor: pointer;
+	outline: inherit;
+	z-index: 3;
 }
 
 #promotion-select .piece {
-  width: 20%;
-  height: 5rem;
-  background-size: contain;
-  background-repeat: no-repeat;
-  display: inline-block;
+	width: 20%;
+	height: 5rem;
+	background-size: contain;
+	background-repeat: no-repeat;
+	display: inline-block;
 }
 
 .white-bishop {
-  background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0NSIgaGVpZ2h0PSI0NSI+PGcgZmlsbD0ibm9uZSIgZmlsbC1ydWxlPSJldmVub2RkIiBzdHJva2U9IiMwMDAiIHN0cm9rZS13aWR0aD0iMS41IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxnIGZpbGw9IiNmZmYiIHN0cm9rZS1saW5lY2FwPSJidXR0Ij48cGF0aCBkPSJNOSAzNmMzLjM5LS45NyAxMC4xMS40MyAxMy41LTIgMy4zOSAyLjQzIDEwLjExIDEuMDMgMTMuNSAyIDAgMCAxLjY1LjU0IDMgMi0uNjguOTctMS42NS45OS0zIC41LTMuMzktLjk3LTEwLjExLjQ2LTEzLjUtMS0zLjM5IDEuNDYtMTAuMTEuMDMtMTMuNSAxLTEuMzU0LjQ5LTIuMzIzLjQ3LTMtLjUgMS4zNTQtMS45NCAzLTIgMy0yeiIvPjxwYXRoIGQ9Ik0xNSAzMmMyLjUgMi41IDEyLjUgMi41IDE1IDAgLjUtMS41IDAtMiAwLTIgMC0yLjUtMi41LTQtMi41LTQgNS41LTEuNSA2LTExLjUtNS0xNS41LTExIDQtMTAuNSAxNC01IDE1LjUgMCAwLTIuNSAxLjUtMi41IDQgMCAwLS41LjUgMCAyeiIvPjxwYXRoIGQ9Ik0yNSA4YTIuNSAyLjUgMCAxIDEtNSAwIDIuNSAyLjUgMCAxIDEgNSAweiIvPjwvZz48cGF0aCBkPSJNMTcuNSAyNmgxME0xNSAzMGgxNW0tNy41LTE0LjV2NU0yMCAxOGg1IiBzdHJva2UtbGluZWpvaW49Im1pdGVyIi8+PC9nPjwvc3ZnPg==");
+	background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0NSIgaGVpZ2h0PSI0NSI+PGcgZmlsbD0ibm9uZSIgZmlsbC1ydWxlPSJldmVub2RkIiBzdHJva2U9IiMwMDAiIHN0cm9rZS13aWR0aD0iMS41IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxnIGZpbGw9IiNmZmYiIHN0cm9rZS1saW5lY2FwPSJidXR0Ij48cGF0aCBkPSJNOSAzNmMzLjM5LS45NyAxMC4xMS40MyAxMy41LTIgMy4zOSAyLjQzIDEwLjExIDEuMDMgMTMuNSAyIDAgMCAxLjY1LjU0IDMgMi0uNjguOTctMS42NS45OS0zIC41LTMuMzktLjk3LTEwLjExLjQ2LTEzLjUtMS0zLjM5IDEuNDYtMTAuMTEuMDMtMTMuNSAxLTEuMzU0LjQ5LTIuMzIzLjQ3LTMtLjUgMS4zNTQtMS45NCAzLTIgMy0yeiIvPjxwYXRoIGQ9Ik0xNSAzMmMyLjUgMi41IDEyLjUgMi41IDE1IDAgLjUtMS41IDAtMiAwLTIgMC0yLjUtMi41LTQtMi41LTQgNS41LTEuNSA2LTExLjUtNS0xNS41LTExIDQtMTAuNSAxNC01IDE1LjUgMCAwLTIuNSAxLjUtMi41IDQgMCAwLS41LjUgMCAyeiIvPjxwYXRoIGQ9Ik0yNSA4YTIuNSAyLjUgMCAxIDEtNSAwIDIuNSAyLjUgMCAxIDEgNSAweiIvPjwvZz48cGF0aCBkPSJNMTcuNSAyNmgxME0xNSAzMGgxNW0tNy41LTE0LjV2NU0yMCAxOGg1IiBzdHJva2UtbGluZWpvaW49Im1pdGVyIi8+PC9nPjwvc3ZnPg==");
 }
 
 .white-knight {
-  background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0NSIgaGVpZ2h0PSI0NSI+PGcgZmlsbD0ibm9uZSIgZmlsbC1ydWxlPSJldmVub2RkIiBzdHJva2U9IiMwMDAiIHN0cm9rZS13aWR0aD0iMS41IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxwYXRoIGQ9Ik0yMiAxMGMxMC41IDEgMTYuNSA4IDE2IDI5SDE1YzAtOSAxMC02LjUgOC0yMSIgZmlsbD0iI2ZmZiIvPjxwYXRoIGQ9Ik0yNCAxOGMuMzggMi45MS01LjU1IDcuMzctOCA5LTMgMi0yLjgyIDQuMzQtNSA0LTEuMDQyLS45NCAxLjQxLTMuMDQgMC0zLTEgMCAuMTkgMS4yMy0xIDItMSAwLTQuMDAzIDEtNC00IDAtMiA2LTEyIDYtMTJzMS44OS0xLjkgMi0zLjVjLS43My0uOTk0LS41LTItLjUtMyAxLTEgMyAyLjUgMyAyLjVoMnMuNzgtMS45OTIgMi41LTNjMSAwIDEgMyAxIDMiIGZpbGw9IiNmZmYiLz48cGF0aCBkPSJNOS41IDI1LjVhLjUuNSAwIDEgMS0xIDAgLjUuNSAwIDEgMSAxIDB6bTUuNDMzLTkuNzVhLjUgMS41IDMwIDEgMS0uODY2LS41LjUgMS41IDMwIDEgMSAuODY2LjV6IiBmaWxsPSIjMDAwIi8+PC9nPjwvc3ZnPg==");
+	background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0NSIgaGVpZ2h0PSI0NSI+PGcgZmlsbD0ibm9uZSIgZmlsbC1ydWxlPSJldmVub2RkIiBzdHJva2U9IiMwMDAiIHN0cm9rZS13aWR0aD0iMS41IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxwYXRoIGQ9Ik0yMiAxMGMxMC41IDEgMTYuNSA4IDE2IDI5SDE1YzAtOSAxMC02LjUgOC0yMSIgZmlsbD0iI2ZmZiIvPjxwYXRoIGQ9Ik0yNCAxOGMuMzggMi45MS01LjU1IDcuMzctOCA5LTMgMi0yLjgyIDQuMzQtNSA0LTEuMDQyLS45NCAxLjQxLTMuMDQgMC0zLTEgMCAuMTkgMS4yMy0xIDItMSAwLTQuMDAzIDEtNC00IDAtMiA2LTEyIDYtMTJzMS44OS0xLjkgMi0zLjVjLS43My0uOTk0LS41LTItLjUtMyAxLTEgMyAyLjUgMyAyLjVoMnMuNzgtMS45OTIgMi41LTNjMSAwIDEgMyAxIDMiIGZpbGw9IiNmZmYiLz48cGF0aCBkPSJNOS41IDI1LjVhLjUuNSAwIDEgMS0xIDAgLjUuNSAwIDEgMSAxIDB6bTUuNDMzLTkuNzVhLjUgMS41IDMwIDEgMS0uODY2LS41LjUgMS41IDMwIDEgMSAuODY2LjV6IiBmaWxsPSIjMDAwIi8+PC9nPjwvc3ZnPg==");
 }
 
 .white-rook {
-  background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0NSIgaGVpZ2h0PSI0NSI+PGcgZmlsbD0iI2ZmZiIgZmlsbC1ydWxlPSJldmVub2RkIiBzdHJva2U9IiMwMDAiIHN0cm9rZS13aWR0aD0iMS41IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxwYXRoIGQ9Ik05IDM5aDI3di0zSDl2M3ptMy0zdi00aDIxdjRIMTJ6bS0xLTIyVjloNHYyaDVWOWg1djJoNVY5aDR2NSIgc3Ryb2tlLWxpbmVjYXA9ImJ1dHQiLz48cGF0aCBkPSJNMzQgMTRsLTMgM0gxNGwtMy0zIi8+PHBhdGggZD0iTTMxIDE3djEyLjVIMTRWMTciIHN0cm9rZS1saW5lY2FwPSJidXR0IiBzdHJva2UtbGluZWpvaW49Im1pdGVyIi8+PHBhdGggZD0iTTMxIDI5LjVsMS41IDIuNWgtMjBsMS41LTIuNSIvPjxwYXRoIGQ9Ik0xMSAxNGgyMyIgZmlsbD0ibm9uZSIgc3Ryb2tlLWxpbmVqb2luPSJtaXRlciIvPjwvZz48L3N2Zz4=");
+	background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0NSIgaGVpZ2h0PSI0NSI+PGcgZmlsbD0iI2ZmZiIgZmlsbC1ydWxlPSJldmVub2RkIiBzdHJva2U9IiMwMDAiIHN0cm9rZS13aWR0aD0iMS41IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxwYXRoIGQ9Ik05IDM5aDI3di0zSDl2M3ptMy0zdi00aDIxdjRIMTJ6bS0xLTIyVjloNHYyaDVWOWg1djJoNVY5aDR2NSIgc3Ryb2tlLWxpbmVjYXA9ImJ1dHQiLz48cGF0aCBkPSJNMzQgMTRsLTMgM0gxNGwtMy0zIi8+PHBhdGggZD0iTTMxIDE3djEyLjVIMTRWMTciIHN0cm9rZS1saW5lY2FwPSJidXR0IiBzdHJva2UtbGluZWpvaW49Im1pdGVyIi8+PHBhdGggZD0iTTMxIDI5LjVsMS41IDIuNWgtMjBsMS41LTIuNSIvPjxwYXRoIGQ9Ik0xMSAxNGgyMyIgZmlsbD0ibm9uZSIgc3Ryb2tlLWxpbmVqb2luPSJtaXRlciIvPjwvZz48L3N2Zz4=");
 }
 
 .white-queen {
-  background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0NSIgaGVpZ2h0PSI0NSI+PGcgZmlsbD0iI2ZmZiIgZmlsbC1ydWxlPSJldmVub2RkIiBzdHJva2U9IiMwMDAiIHN0cm9rZS13aWR0aD0iMS41IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxwYXRoIGQ9Ik04IDEyYTIgMiAwIDEgMS00IDAgMiAyIDAgMSAxIDQgMHptMTYuNS00LjVhMiAyIDAgMSAxLTQgMCAyIDIgMCAxIDEgNCAwek00MSAxMmEyIDIgMCAxIDEtNCAwIDIgMiAwIDEgMSA0IDB6TTE2IDguNWEyIDIgMCAxIDEtNCAwIDIgMiAwIDEgMSA0IDB6TTMzIDlhMiAyIDAgMSAxLTQgMCAyIDIgMCAxIDEgNCAweiIvPjxwYXRoIGQ9Ik05IDI2YzguNS0xLjUgMjEtMS41IDI3IDBsMi0xMi03IDExVjExbC01LjUgMTMuNS0zLTE1LTMgMTUtNS41LTE0VjI1TDcgMTRsMiAxMnoiIHN0cm9rZS1saW5lY2FwPSJidXR0Ii8+PHBhdGggZD0iTTkgMjZjMCAyIDEuNSAyIDIuNSA0IDEgMS41IDEgMSAuNSAzLjUtMS41IDEtMS41IDIuNS0xLjUgMi41LTEuNSAxLjUuNSAyLjUuNSAyLjUgNi41IDEgMTYuNSAxIDIzIDAgMCAwIDEuNS0xIDAtMi41IDAgMCAuNS0xLjUtMS0yLjUtLjUtMi41LS41LTIgLjUtMy41IDEtMiAyLjUtMiAyLjUtNC04LjUtMS41LTE4LjUtMS41LTI3IDB6IiBzdHJva2UtbGluZWNhcD0iYnV0dCIvPjxwYXRoIGQ9Ik0xMS41IDMwYzMuNS0xIDE4LjUtMSAyMiAwTTEyIDMzLjVjNi0xIDE1LTEgMjEgMCIgZmlsbD0ibm9uZSIvPjwvZz48L3N2Zz4=");
+	background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0NSIgaGVpZ2h0PSI0NSI+PGcgZmlsbD0iI2ZmZiIgZmlsbC1ydWxlPSJldmVub2RkIiBzdHJva2U9IiMwMDAiIHN0cm9rZS13aWR0aD0iMS41IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxwYXRoIGQ9Ik04IDEyYTIgMiAwIDEgMS00IDAgMiAyIDAgMSAxIDQgMHptMTYuNS00LjVhMiAyIDAgMSAxLTQgMCAyIDIgMCAxIDEgNCAwek00MSAxMmEyIDIgMCAxIDEtNCAwIDIgMiAwIDEgMSA0IDB6TTE2IDguNWEyIDIgMCAxIDEtNCAwIDIgMiAwIDEgMSA0IDB6TTMzIDlhMiAyIDAgMSAxLTQgMCAyIDIgMCAxIDEgNCAweiIvPjxwYXRoIGQ9Ik05IDI2YzguNS0xLjUgMjEtMS41IDI3IDBsMi0xMi03IDExVjExbC01LjUgMTMuNS0zLTE1LTMgMTUtNS41LTE0VjI1TDcgMTRsMiAxMnoiIHN0cm9rZS1saW5lY2FwPSJidXR0Ii8+PHBhdGggZD0iTTkgMjZjMCAyIDEuNSAyIDIuNSA0IDEgMS41IDEgMSAuNSAzLjUtMS41IDEtMS41IDIuNS0xLjUgMi41LTEuNSAxLjUuNSAyLjUuNSAyLjUgNi41IDEgMTYuNSAxIDIzIDAgMCAwIDEuNS0xIDAtMi41IDAgMCAuNS0xLjUtMS0yLjUtLjUtMi41LS41LTIgLjUtMy41IDEtMiAyLjUtMiAyLjUtNC04LjUtMS41LTE4LjUtMS41LTI3IDB6IiBzdHJva2UtbGluZWNhcD0iYnV0dCIvPjxwYXRoIGQ9Ik0xMS41IDMwYzMuNS0xIDE4LjUtMSAyMiAwTTEyIDMzLjVjNi0xIDE1LTEgMjEgMCIgZmlsbD0ibm9uZSIvPjwvZz48L3N2Zz4=");
 }
 </style>

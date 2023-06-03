@@ -1,20 +1,11 @@
-<script lang="ts">
-import { defineComponent } from "vue";
+<script setup lang="ts">
 import { formatEval, formatNumber, formatTime } from "@/ts/FormatData";
 
-export default defineComponent({
-  props: {
-    engineInfo: {
-      type: Object,
-      required: true,
-    },
-  },
-  methods: {
-    formatEval,
-    formatNumber,
-    formatTime,
-  },
-});
+import type { EngineInfo } from "@/ts/UciParsing";
+
+defineProps<{
+  engineInfo: EngineInfo;
+}>();
 </script>
 
 <template>
@@ -22,20 +13,22 @@ export default defineComponent({
     <div class="engine-stats">
       <div class="engine-stat">
         <span class="engine-stat-value"
-          >{{ formatEval(engineInfo.score) }}
+          >{{ formatEval(engineInfo.score!) }}
         </span>
       </div>
       <div class="engine-stat">
-        <span class="engine-stat-value">{{ formatTime(engineInfo.time) }}</span>
+        <span class="engine-stat-value">{{
+          formatTime(engineInfo.time!)
+        }}</span>
       </div>
       <div class="engine-stat">
         <span class="engine-stat-value"
-          >{{ formatNumber(engineInfo.nps) }} nps</span
+          >{{ formatNumber(engineInfo.nps!) }} nps</span
         >
       </div>
       <div class="engine-stat">
         <span class="engine-stat-value">{{
-          formatNumber(engineInfo.nodes)
+          formatNumber(engineInfo.nodes!)
         }}</span>
         <span class="engine-stat-label">nodes</span>
       </div>

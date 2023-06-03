@@ -7,19 +7,12 @@
   </div>
 </template>
 
-<script>
-import { defineComponent } from "vue";
+<script setup lang="ts">
+defineProps<{
+  text: string;
+}>();
 
-export default defineComponent({
-  name: "AppBtn",
-  props: {
-    text: {
-      type: String,
-      required: true,
-    },
-  },
-  inheritAttrs: false,
-});
+inheritAttrs: false;
 </script>
 
 <style scoped>

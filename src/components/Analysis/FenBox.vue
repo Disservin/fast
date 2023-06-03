@@ -1,21 +1,16 @@
-<script>
-export default {
-  props: {
-    fen: {
-      type: String,
-      required: true,
-    },
-  },
-  data() {
-    return {
-      currentFen: this.fen,
-    };
-  },
-  methods: {
-    updatePosition() {
-      this.$emit("update-position", this.currentFen);
-    },
-  },
+<script setup lang="ts">
+import { ref } from "vue";
+
+const props = defineProps<{
+  fen: string;
+}>();
+
+const emit = defineEmits(["update-position"]);
+
+const currentFen = ref(props.fen);
+
+const updatePosition = () => {
+  emit("update-position", currentFen.value);
 };
 </script>
 
