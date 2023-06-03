@@ -3,7 +3,7 @@ import { onMounted } from "vue";
 import { ref } from "vue";
 
 const props = defineProps<{
-	status: boolean;
+	status: boolean | undefined;
 	go: boolean;
 }>();
 

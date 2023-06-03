@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// Components
 import Sidebar from "@/components/AppSideBar.vue";
 import AppBtn from "@/components/AppBtn.vue";
 import AppCopyBtn from "@/components/AppCopyBtn.vue";
@@ -9,69 +10,20 @@ import EngineLines from "@/components/Analysis/EngineLines.vue";
 import PgnBox from "@/components/Analysis/PgnBox.vue";
 import ChessGroundBoard from "@/components/Analysis/Board/BigBoard.vue";
 
+// Ts
 import { extractScore } from "@/ts/ExtractData";
 import { filterUCIInfo } from "@/ts/UciParsing";
 import { getPV } from "@/ts/PrincipalVariation";
 import ChessProcess from "@/ts/ChessProcess";
 
+// Utilities
+import { ref, computed, onMounted, onUnmounted } from "vue";
+
+// Types
 import type { EngineInfo } from "@/ts/UciParsing";
 import type { PV } from "@/ts/PrincipalVariation";
-import { ref } from "vue";
-import { computed } from "vue";
-import { onMounted } from "vue";
-import { onBeforeMount } from "vue";
-import { onUnmounted } from "vue";
 
-const startpos = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
-
-const chessProcess = ref<ChessProcess | null>(null);
-const activeTabIndex = ref(0);
-
-const smallNavbar = [
-	{
-		id: "engine-lines",
-		name: "Engine Lines",
-	},
-	{
-		id: "prompt",
-		name: "Prompt",
-	},
-];
-
-const engine_info = ref<EngineInfo>({
-	score: "0",
-	nodes: "0",
-	nps: "0",
-	depth: "0",
-	time: "0",
-	tbhits: "0",
-	hashfull: "0",
-});
-
-const chessGroundBoardRef = ref();
-
-const moveHistoryLan = ref<string[]>([]);
-const moveHistorySan = ref<string[]>([]);
-
-const engineLines = ref<Map<string, PV>>(new Map());
-
-const startFen = ref(startpos);
-const currentFen = ref(startpos);
-
-const status = ref("IDLE");
-const sideToMove = ref("white");
-
-const evalHistory = ref<number[]>([]);
-const graphTimer = ref<number | null>(null);
-
-const series = ref([
-	{
-		name: "series-1",
-		data: [] as number[],
-	},
-]);
-
-const options = ref({
+const options = {
 	colors: ["#1D4ED8"],
 	stroke: {
 		curve: "straight",
@@ -119,7 +71,57 @@ const options = ref({
 		},
 		opacity: 0,
 	},
+};
+
+const startpos = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+
+let startFen = startpos;
+let graphTimer: number | null = null;
+
+const chessProcess = ref<ChessProcess | null>(null);
+const activeTabIndex = ref(0);
+
+const smallNavbar = [
+	{
+		id: "engine-lines",
+		name: "Engine Lines",
+	},
+	{
+		id: "prompt",
+		name: "Prompt",
+	},
+];
+
+const engineInfo = ref<EngineInfo>({
+	score: "0",
+	nodes: "0",
+	nps: "0",
+	depth: "0",
+	time: "0",
+	tbhits: "0",
+	hashfull: "0",
 });
+
+const chessGroundBoardRef = ref();
+
+const moveHistoryLan = ref<string[]>([]);
+const moveHistorySan = ref<string[]>([]);
+
+const engineLines = ref<Map<string, PV>>(new Map());
+
+const currentFen = ref(startpos);
+
+const status = ref("IDLE");
+const sideToMove = ref("white");
+
+const evalHistory = ref<number[]>([]);
+
+const series = ref([
+	{
+		name: "series-1",
+		data: [] as number[],
+	},
+]);
 
 const activeTab = computed(() => {
 	return smallNavbar[activeTabIndex.value].id;
@@ -146,7 +148,7 @@ const currentPgn = computed(() => {
 onMounted(() => {
 	initEngine();
 
-	graphTimer.value = setInterval(() => {
+	graphTimer = setInterval(() => {
 		const copy = [...evalHistory.value];
 		series.value[0].data = copy;
 	}, 50);
@@ -155,8 +157,8 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-	if (graphTimer.value !== null) {
-		clearInterval(graphTimer.value!);
+	if (graphTimer !== null) {
+		clearInterval(graphTimer!);
 	}
 
 	window.removeEventListener("keydown", handleKeydown);
@@ -212,7 +214,7 @@ const updatedBoard = async (data: any) => {
 		await sendEngineCommand("stop");
 	}
 
-	const score = extractScore(engine_info.value.score, sideToMove.value) / 100;
+	const score = extractScore(engineInfo.value.score, sideToMove.value) / 100;
 	evalHistory.value.push(evalFunction(normalizePerspectiveScore(score)));
 
 	shiftInfoStats();
@@ -270,7 +272,7 @@ const handleKeydown = async (event: KeyboardEvent) => {
 const clearInfoStats = () => {
 	engineLines.value.clear();
 
-	engine_info.value = {
+	engineInfo.value = {
 		nodes: "0",
 		nps: "0",
 		depth: "0",
@@ -297,24 +299,24 @@ const updateInfoStats = async (line: string) => {
 	filtered.score = normalizeScoreStr(filtered.score);
 
 	if (filtered.score === "") {
-		filtered.score = engine_info.value.score;
+		filtered.score = engineInfo.value.score;
 	}
 
 	// only update changed values
-	engine_info.value = { ...engine_info.value, ...filtered };
+	engineInfo.value = { ...engineInfo.value, ...filtered };
 
 	if (
-		engine_info.value.pv &&
-		engine_info.value.pv.length > 0 &&
-		engine_info.value.pv[0].orig !== "" &&
-		engine_info.value.pv[0].dest !== "" &&
+		engineInfo.value.pv &&
+		engineInfo.value.pv.length > 0 &&
+		engineInfo.value.pv[0].orig !== "" &&
+		engineInfo.value.pv[0].dest !== "" &&
 		chessProcess.value!.getIsAlive()
 	) {
-		(chessGroundBoardRef.value as any).drawMove(engine_info.value.pv[0]);
+		(chessGroundBoardRef.value as any).drawMove(engineInfo.value.pv[0]);
 	}
 
-	if (engine_info.value.score) {
-		const score = extractScore(engine_info.value.score, sideToMove.value) / 100;
+	if (engineInfo.value.score) {
+		const score = extractScore(engineInfo.value.score, sideToMove.value) / 100;
 		const lastIndex = Math.max(0, evalHistory.value.length - 1);
 		evalHistory.value[lastIndex] = evalFunction(
 			normalizePerspectiveScore(score)
@@ -360,7 +362,7 @@ const shiftInfoStats = () => {
 
 const newPosition = async (fen: string) => {
 	clearInfoStats();
-	startFen.value = fen;
+	startFen = fen;
 
 	moveHistoryLan.value = [];
 	moveHistorySan.value = [];
@@ -420,15 +422,12 @@ const sendEngineCommand = async (command: string) => {
 			await initEngine();
 		}
 
-		if (startFen.value === startpos && getUciMoves() === "") {
+		if (startFen === startpos && getUciMoves() === "") {
 			await chessProcess.value?.sendStartpos();
-		} else if (startFen.value === startpos) {
+		} else if (startFen === startpos) {
 			await chessProcess.value?.sendStartposMoves(getUciMoves());
 		} else {
-			await chessProcess.value?.sendPositionMoves(
-				startFen.value,
-				getUciMoves()
-			);
+			await chessProcess.value?.sendPositionMoves(startFen, getUciMoves());
 		}
 		await chessProcess.value?.sendGo();
 	} else if (command === "stop") {
@@ -469,7 +468,7 @@ const sendEngineCommand = async (command: string) => {
 						>{{ updateAnalysisStatus(status) }}</span
 					>
 				</div>
-				<EngineStats :engine-info="engine_info" :side-to-move="sideToMove" />
+				<EngineStats :engine-info="engineInfo" :side-to-move="sideToMove" />
 
 				<div style="margin-top: 5px; margin-bottom: 5px">
 					<v-tabs v-model="activeTabIndex" class="info-nav">
