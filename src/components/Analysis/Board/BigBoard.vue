@@ -7,6 +7,7 @@ import { Chess, SQUARES } from "chess.js";
 import type { MoveStr } from "@/ts/UciParsing";
 import type { Square, Move } from "chess.js";
 import type { Color, Key } from "chessground/types";
+import { onUnmounted } from "vue";
 
 type ChessgroundInstance = ReturnType<typeof Chessground>;
 
@@ -57,7 +58,7 @@ onMounted(() => {
 	newPositionFen(startpos);
 });
 
-onBeforeMount(() => {
+onUnmounted(() => {
 	window.removeEventListener("resize", calculateSquareSize);
 });
 
@@ -65,7 +66,7 @@ const calculateSquareSize = () => {
 	const bs = boardSpace.value as HTMLElement;
 
 	// Lets get the width/height without padding and borders
-	const cs = window.getComputedStyle(bs);
+	const cs = window.getComputedStyle(boardSpace.value);
 
 	const paddingX = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
 	const paddingY = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);

@@ -23,57 +23,9 @@ import { ref, computed, onMounted, onUnmounted } from "vue";
 import type { EngineInfo } from "@/ts/UciParsing";
 import type { PV } from "@/ts/PrincipalVariation";
 
-const options = {
-	colors: ["#1D4ED8"],
-	stroke: {
-		curve: "straight",
-		width: 2.5,
-	},
-	markers: {
-		size: 0,
-		hover: {
-			size: null,
-			sizeOffset: 0,
-		},
-	},
-	chart: {
-		toolbar: {
-			show: false,
-		},
-		zoom: {
-			enabled: false,
-		},
-		animations: {
-			enabled: false,
-		},
-	},
-	legend: {
-		show: false,
-		onItemHover: {
-			highlightDataSeries: false,
-		},
-	},
-	tooltip: {
-		enabled: false,
-	},
-	xaxis: {
-		labels: {
-			show: false,
-		},
-		type: "numeric",
-	},
-	yaxis: {
-		tickAmount: 2,
-		min: -5,
-		max: 5,
-		labels: {
-			show: false,
-		},
-		opacity: 0,
-	},
-};
-
-const startpos = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+// Constants
+import { options } from "@/ts/Constants/GraphOptions";
+import { startpos } from "@/ts/Constants/StartPosition";
 
 let startFen = startpos;
 let graphTimer: number | null = null;
@@ -442,7 +394,12 @@ const sendEngineCommand = async (command: string) => {
 		await chessProcess.value?.sendQuit();
 		await initEngine();
 	}
-	localStorage.setItem("status", chessProcess.value!.getIsRunning().toString());
+	if (chessProcess.value) {
+		localStorage.setItem(
+			"status",
+			chessProcess.value.getIsRunning().toString()
+		);
+	}
 };
 </script>
 

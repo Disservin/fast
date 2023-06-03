@@ -1,13 +1,14 @@
 <script setup lang="ts">
+// Utilities
 import { open } from "@tauri-apps/api/dialog";
+import { onBeforeUnmount, onMounted, ref } from "vue";
 
-import ChessProcess from "../ts/ChessProcess";
+// Types
 import type { Option, Engine } from "@/ts/FastTypes";
-import { ref } from "vue";
-import { onMounted } from "vue";
-import { onBeforeUnmount } from "vue";
 
-const chessProcess = ref(null as ChessProcess | null);
+// JS
+import ChessProcess from "../ts/ChessProcess";
+
 const engines = ref([] as Engine[]);
 const editingIndex = ref(null as number | null);
 const editedEngine = ref(null as Engine | null);
@@ -18,10 +19,6 @@ onMounted(() => {
 	if (enginesData) {
 		engines.value = JSON.parse(enginesData) as Engine[];
 	}
-});
-
-onBeforeUnmount(() => {
-	chessProcess.value?.sendQuit();
 });
 
 // Update an engine setting with a file path
@@ -46,9 +43,9 @@ const selectEngine = async (index: number) => {
 		engines.value[index]!.settings = [];
 		editingIndex.value = index;
 
-		chessProcess.value = new ChessProcess(result, (line) => {
+		const chessProcess = new ChessProcess(result, (line) => {
 			if (line.trim() == "uciok") {
-				chessProcess.value?.sendQuit();
+				chessProcess?.sendQuit();
 				return;
 			}
 
@@ -106,7 +103,7 @@ const selectEngine = async (index: number) => {
 			localStorage.setItem("engines", JSON.stringify(engines.value));
 		});
 
-		await chessProcess.value.start();
+		await chessProcess.start();
 	}
 };
 

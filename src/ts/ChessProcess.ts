@@ -12,12 +12,12 @@ class ChessProcess {
 	constructor(cmd: string, callback: (data: string) => void) {
 		this.callback = callback;
 		this.command = new Command(cmd);
-		this.command.on("close", (data) => {});
-		this.command.on("error", (error) =>
+		this.command.on("close", (data: string) => {});
+		this.command.on("error", (error: string) =>
 			console.error(`command error: "${error}"`)
 		);
-		this.command.stdout.on("data", (line) => this.callback(line));
-		this.command.stderr.on("data", (line) =>
+		this.command.stdout.on("data", (line: string) => this.callback(line));
+		this.command.stderr.on("data", (line: string) =>
 			console.error(`command stderr: "${line}"`)
 		);
 	}
