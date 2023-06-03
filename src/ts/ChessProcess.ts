@@ -6,8 +6,8 @@ class ChessProcess {
 	private command: Command;
 	private callback: (data: string) => void;
 	private child: Child | undefined;
-	private isRunning: boolean = false;
-	private isAlive: boolean = false;
+	private isRunning = false;
+	private isAlive = false;
 
 	constructor(cmd: string, callback: (data: string) => void) {
 		this.callback = callback;

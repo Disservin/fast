@@ -1,5 +1,8 @@
 <template>
-	<AppBtn @click="copyToClipBoard(copy)" :text="'copy pgn'" />
+  <AppBtn
+    @click="copyToClipBoard(copy)"
+    :text="'copy pgn'"
+  />
 </template>
 
 <script setup lang="ts">

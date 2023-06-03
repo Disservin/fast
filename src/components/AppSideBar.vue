@@ -4,7 +4,10 @@
   <nav class="navbar">
     <ul class="navbar-nav">
       <li class="logo">
-        <router-link to="/" class="nav-link">
+        <router-link
+          to="/"
+          class="nav-link"
+        >
           <span class="link-text logo-text">fast</span>
         </router-link>
       </li>
@@ -19,13 +22,21 @@
         </router-link>
       </li>
       <li class="nav-item">
-        <router-link to="/engines" class="nav-link" exact-active-class="active">
+        <router-link
+          to="/engines"
+          class="nav-link"
+          exact-active-class="active"
+        >
           <font-awesome-icon icon="fa-solid fa-list" />
           <span class="link-text">Engines</span>
         </router-link>
       </li>
       <li class="nav-item">
-        <router-link to="/info" class="nav-link" exact-active-class="active">
+        <router-link
+          to="/info"
+          class="nav-link"
+          exact-active-class="active"
+        >
           <font-awesome-icon icon="fa-solid fa-circle-info" />
           <span class="link-text">Info</span>
         </router-link>

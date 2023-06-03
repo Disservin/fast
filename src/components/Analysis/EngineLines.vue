@@ -96,41 +96,49 @@ const sendMoves = (pvIndex: number, moveIndex: number) => {
 </script>
 
 <template>
-	<div class="container">
-		<div
-			:class="{ active: value.active }"
-			class="line"
-			v-for="(value, index) in engineLinesSorted"
-			:key="value.pv[0]"
-		>
-			<div class="eval-depth">
-				<span :class="{ active: value.active }" class="stats">
-					{{ formatEval(value.score) }}/{{ value.depth }}
-				</span>
-			</div>
-			<div class="pv">
-				<span
-					class="pv-move"
-					v-for="(move, indexMove) in formatPv(value.pv)"
-					:key="move.id"
-					@click="sendMoves(index, indexMove)"
-				>
-					<span
-						@mouseover="showBoard = [index, indexMove]"
-						@mouseleave="showBoard = [-1, -1]"
-					>
-						{{ move.value }}&nbsp;
-					</span>
-					<SmallBoard
-						v-if="showBoard[0] === index && showBoard[1] === indexMove"
-						:fen="getFenForMove(index, indexMove)"
-						style="left: 0"
-					/>
-				</span>
-			</div>
-		</div>
-		<div v-for="n in 5" :key="n" class="empty-line" style="height: 50px"></div>
-	</div>
+  <div class="container">
+    <div
+      :class="{ active: value.active }"
+      class="line"
+      v-for="(value, index) in engineLinesSorted"
+      :key="value.pv[0]"
+    >
+      <div class="eval-depth">
+        <span
+          :class="{ active: value.active }"
+          class="stats"
+        >
+          {{ formatEval(value.score) }}/{{ value.depth }}
+        </span>
+      </div>
+      <div class="pv">
+        <span
+          class="pv-move"
+          v-for="(move, indexMove) in formatPv(value.pv)"
+          :key="move.id"
+          @click="sendMoves(index, indexMove)"
+        >
+          <span
+            @mouseover="showBoard = [index, indexMove]"
+            @mouseleave="showBoard = [-1, -1]"
+          >
+            {{ move.value }}&nbsp;
+          </span>
+          <SmallBoard
+            v-if="showBoard[0] === index && showBoard[1] === indexMove"
+            :fen="getFenForMove(index, indexMove)"
+            style="left: 0"
+          />
+        </span>
+      </div>
+    </div>
+    <div
+      v-for="n in 5"
+      :key="n"
+      class="empty-line"
+      style="height: 50px"
+    />
+  </div>
 </template>
 
 <style scoped>

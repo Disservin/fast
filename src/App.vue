@@ -5,25 +5,25 @@ import { onMounted } from "vue";
 import { onBeforeUnmount } from "vue";
 
 const handleKeydown = async (event: KeyboardEvent) => {
-  if (event.key === "w" && event.ctrlKey) {
-    await exit(0);
-  }
+	if (event.key === "w" && event.ctrlKey) {
+		await exit(0);
+	}
 };
 
 onMounted(() => {
-  window.addEventListener("keydown", handleKeydown);
+	window.addEventListener("keydown", handleKeydown);
 });
 
 onBeforeUnmount(() => {
-  window.removeEventListener("keydown", handleKeydown);
+	window.removeEventListener("keydown", handleKeydown);
 });
 </script>
 
 <template>
-  <div id="app">
-    <Sidebar />
-    <router-view />
-  </div>
+	<div id="app">
+		<Sidebar />
+		<router-view />
+	</div>
 </template>
 
 <style scoped></style>

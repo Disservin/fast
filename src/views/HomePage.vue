@@ -10,9 +10,10 @@
         <span>
           This is a work in progress Chess GUI. You can contribute to the
           project on
-          <a href="https://github.com/Disservin/fast-chess" target="_blank"
-            >Github</a
-          >.
+          <a
+            href="https://github.com/Disservin/fast-chess"
+            target="_blank"
+          >Github</a>.
         </span>
       </div>
     </div>

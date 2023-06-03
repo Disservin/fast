@@ -1,14 +1,14 @@
 <template>
-	<div class="pgn-display">
-		<div
-			class="pgn-move"
-			v-for="(move, index) in formattedPgn"
-			:key="move.id"
-			@click="sendPGNMoves(index)"
-		>
-			{{ move.value }}
-		</div>
-	</div>
+  <div class="pgn-display">
+    <div
+      class="pgn-move"
+      v-for="(move, index) in formattedPgn"
+      :key="move.id"
+      @click="sendPGNMoves(index)"
+    >
+      {{ move.value }}
+    </div>
+  </div>
 </template>
 
 <script setup lang="ts">

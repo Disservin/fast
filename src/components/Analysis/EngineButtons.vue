@@ -36,46 +36,49 @@ const sendEngineCommand = (command: string) => {
 </script>
 
 <template lang="">
-	<div class="buttons">
-		<v-row justify="center" class="mt-4 mb-4 mx-2">
-			<v-col cols="4">
-				<v-btn
-					class="mr-2"
-					outlined
-					color="primary"
-					block
-					:disabled="isRunning || disabledGo"
-					@click="sendEngineCommand('go')"
-				>
-					Go Infinite
-				</v-btn>
-			</v-col>
-			<v-col cols="4">
-				<v-btn
-					class="mr-2"
-					outlined
-					color="primary"
-					block
-					:disabled="!isRunning"
-					@click="sendEngineCommand('stop')"
-				>
-					Stop
-				</v-btn>
-			</v-col>
-			<v-col cols="4">
-				<v-btn
-					id="restart-button"
-					outlined
-					color="primary"
-					block
-					:disabled="isRunning || disabled"
-					@click="sendEngineCommand('restart')"
-				>
-					Restart
-				</v-btn>
-			</v-col>
-		</v-row>
-	</div>
+  <div class="buttons">
+    <v-row
+      justify="center"
+      class="mt-4 mb-4 mx-2"
+    >
+      <v-col cols="4">
+        <v-btn
+          class="mr-2"
+          outlined
+          color="primary"
+          block
+          :disabled="isRunning || disabledGo"
+          @click="sendEngineCommand('go')"
+        >
+          Go Infinite
+        </v-btn>
+      </v-col>
+      <v-col cols="4">
+        <v-btn
+          class="mr-2"
+          outlined
+          color="primary"
+          block
+          :disabled="!isRunning"
+          @click="sendEngineCommand('stop')"
+        >
+          Stop
+        </v-btn>
+      </v-col>
+      <v-col cols="4">
+        <v-btn
+          id="restart-button"
+          outlined
+          color="primary"
+          block
+          :disabled="isRunning || disabled"
+          @click="sendEngineCommand('restart')"
+        >
+          Restart
+        </v-btn>
+      </v-col>
+    </v-row>
+  </div>
 </template>
 
 <style scoped>

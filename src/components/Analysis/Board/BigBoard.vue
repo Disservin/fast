@@ -335,29 +335,38 @@ defineExpose({
 </script>
 
 <template>
-	<div class="board-space" ref="boardSpace">
-		<div class="board" ref="board"></div>
-		<div class="promotion-options" v-if="showPromotion">
-			<div id="promotion-select">
-				<button
-					class="piece white-queen"
-					@click="makePromotionMove('q')"
-				></button>
-				<button
-					class="piece white-rook"
-					@click="makePromotionMove('r')"
-				></button>
-				<button
-					class="piece white-bishop"
-					@click="makePromotionMove('b')"
-				></button>
-				<button
-					class="piece white-knight"
-					@click="makePromotionMove('n')"
-				></button>
-			</div>
-		</div>
-	</div>
+  <div
+    class="board-space"
+    ref="boardSpace"
+  >
+    <div
+      class="board"
+      ref="board"
+    />
+    <div
+      class="promotion-options"
+      v-if="showPromotion"
+    >
+      <div id="promotion-select">
+        <button
+          class="piece white-queen"
+          @click="makePromotionMove('q')"
+        />
+        <button
+          class="piece white-rook"
+          @click="makePromotionMove('r')"
+        />
+        <button
+          class="piece white-bishop"
+          @click="makePromotionMove('b')"
+        />
+        <button
+          class="piece white-knight"
+          @click="makePromotionMove('n')"
+        />
+      </div>
+    </div>
+  </div>
 </template>
 
 <style>

@@ -16,16 +16,16 @@ const updatePosition = () => {
 </script>
 
 <template>
-	<div>
-		<div class="fen-input">
-			<v-text-field
-				id="fen-input"
-				v-model="currentFen"
-				hide-details="auto"
-				@input="updatePosition"
-			></v-text-field>
-		</div>
-	</div>
+  <div>
+    <div class="fen-input">
+      <v-text-field
+        id="fen-input"
+        v-model="currentFen"
+        hide-details="auto"
+        @input="updatePosition"
+      />
+    </div>
+  </div>
 </template>
 
 <style scoped>

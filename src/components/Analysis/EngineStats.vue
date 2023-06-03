@@ -9,45 +9,42 @@ defineProps<{
 </script>
 
 <template>
-	<div>
-		<div class="engine-stats">
-			<div class="engine-stat">
-				<span class="engine-stat-value"
-					>{{ formatEval(engineInfo.score!) }}
-				</span>
-			</div>
-			<div class="engine-stat">
-				<span class="engine-stat-value">{{
-					formatTime(engineInfo.time!)
-				}}</span>
-			</div>
-			<div class="engine-stat">
-				<span class="engine-stat-value"
-					>{{ formatNumber(engineInfo.nps!) }} nps</span
-				>
-			</div>
-			<div class="engine-stat">
-				<span class="engine-stat-value">{{
-					formatNumber(engineInfo.nodes!)
-				}}</span>
-				<span class="engine-stat-label">nodes</span>
-			</div>
+  <div>
+    <div class="engine-stats">
+      <div class="engine-stat">
+        <span class="engine-stat-value">{{ formatEval(engineInfo.score!) }}
+        </span>
+      </div>
+      <div class="engine-stat">
+        <span class="engine-stat-value">{{
+          formatTime(engineInfo.time!)
+        }}</span>
+      </div>
+      <div class="engine-stat">
+        <span class="engine-stat-value">{{ formatNumber(engineInfo.nps!) }} nps</span>
+      </div>
+      <div class="engine-stat">
+        <span class="engine-stat-value">{{
+          formatNumber(engineInfo.nodes!)
+        }}</span>
+        <span class="engine-stat-label">nodes</span>
+      </div>
 
-			<div class="engine-stat">
-				<span class="engine-stat-value">{{ engineInfo.depth }}</span>
-				<span class="engine-stat-label">depth</span>
-			</div>
+      <div class="engine-stat">
+        <span class="engine-stat-value">{{ engineInfo.depth }}</span>
+        <span class="engine-stat-label">depth</span>
+      </div>
 
-			<div class="engine-stat-advanced">
-				<span class="engine-stat-value">{{ engineInfo.tbhits }}</span>
-				<span class="engine-stat-label">tbhits</span>
-			</div>
-			<div class="engine-stat-advanced">
-				<span class="engine-stat-value">{{ engineInfo.hashfull }}</span>
-				<span class="engine-stat-label">hashfull</span>
-			</div>
-		</div>
-	</div>
+      <div class="engine-stat-advanced">
+        <span class="engine-stat-value">{{ engineInfo.tbhits }}</span>
+        <span class="engine-stat-label">tbhits</span>
+      </div>
+      <div class="engine-stat-advanced">
+        <span class="engine-stat-value">{{ engineInfo.hashfull }}</span>
+        <span class="engine-stat-label">hashfull</span>
+      </div>
+    </div>
+  </div>
 </template>
 
 <style>

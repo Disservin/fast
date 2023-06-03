@@ -1,5 +1,8 @@
 <template>
-	<div id="hover-board" ref="smallBoard"></div>
+  <div
+    id="hover-board"
+    ref="smallBoard"
+  />
 </template>
 
 <script setup lang="ts">

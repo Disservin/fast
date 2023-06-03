@@ -404,79 +404,90 @@ const sendEngineCommand = async (command: string) => {
 </script>
 
 <template>
-	<div>
-		<main class="analysis">
-			<div class="game">
-				<ChessGroundBoard
-					ref="chessGroundBoardRef"
-					@updated-board="updatedBoard"
-				/>
-			</div>
-			<div class="analysis-info">
-				<FenBox
-					:fen="currentFen"
-					:key="currentFen"
-					@update-position="newPosition"
-				/>
-				<div class="engine-status">
-					<span
-						class="engine-stat-value"
-						:class="{ active: chessProcess?.getIsRunning() }"
-						>{{ updateAnalysisStatus(status) }}</span
-					>
-				</div>
-				<EngineStats :engine-info="engineInfo" :side-to-move="sideToMove" />
+  <div>
+    <main class="analysis">
+      <div class="game">
+        <ChessGroundBoard
+          ref="chessGroundBoardRef"
+          @updated-board="updatedBoard"
+        />
+      </div>
+      <div class="analysis-info">
+        <FenBox
+          :fen="currentFen"
+          :key="currentFen"
+          @update-position="newPosition"
+        />
+        <div class="engine-status">
+          <span
+            class="engine-stat-value"
+            :class="{ active: chessProcess?.getIsRunning() }"
+          >{{ updateAnalysisStatus(status) }}</span>
+        </div>
+        <EngineStats
+          :engine-info="engineInfo"
+          :side-to-move="sideToMove"
+        />
 
-				<div style="margin-top: 5px; margin-bottom: 5px">
-					<v-tabs v-model="activeTabIndex" class="info-nav">
-						<v-tab v-for="element in smallNavbar" :key="element.id">
-							{{ element.name }}
-						</v-tab>
-					</v-tabs>
-				</div>
-				<div class="info-content">
-					<div class="nav-main-content">
-						<EngineLines
-							v-show="activeTab == 'engine-lines'"
-							@send-moves="playMoves"
-							:engine-lines="engineLines"
-							:fen="currentFen"
-						/>
-						<EngineButtons
-							v-if="activeTab == 'prompt'"
-							@engine-command="sendEngineCommand"
-							:go="status === '' || status === 'IDLE'"
-							:status="chessProcess?.getIsRunning()"
-							:key="chessProcess?.getIsRunning().toString()"
-						/>
-						<AppBtn
-							:text="'paste pgn'"
-							v-if="activeTab == 'prompt'"
-							@click="parsePgnFromClipboard"
-						/>
-						<AppCopyBtn :copy="currentPgn" v-if="activeTab == 'prompt'" />
-					</div>
-					<div class="nav-secondary-content">
-						<PgnBox
-							class="game-pgn"
-							@send-pgn-moves="parsePgn"
-							:movehistory="moveHistorySan"
-							:key="currentFen"
-						/>
-						<div class="analysis-graph">
-							<apexchart
-								height="100%"
-								:options="options"
-								:series="series"
-								type="line"
-							/>
-						</div>
-					</div>
-				</div>
-			</div>
-		</main>
-		<Sidebar />
-	</div>
+        <div style="margin-top: 5px; margin-bottom: 5px">
+          <v-tabs
+            v-model="activeTabIndex"
+            class="info-nav"
+          >
+            <v-tab
+              v-for="element in smallNavbar"
+              :key="element.id"
+            >
+              {{ element.name }}
+            </v-tab>
+          </v-tabs>
+        </div>
+        <div class="info-content">
+          <div class="nav-main-content">
+            <EngineLines
+              v-show="activeTab == 'engine-lines'"
+              @send-moves="playMoves"
+              :engine-lines="engineLines"
+              :fen="currentFen"
+            />
+            <EngineButtons
+              v-if="activeTab == 'prompt'"
+              @engine-command="sendEngineCommand"
+              :go="status === '' || status === 'IDLE'"
+              :status="chessProcess?.getIsRunning()"
+              :key="chessProcess?.getIsRunning().toString()"
+            />
+            <AppBtn
+              :text="'paste pgn'"
+              v-if="activeTab == 'prompt'"
+              @click="parsePgnFromClipboard"
+            />
+            <AppCopyBtn
+              :copy="currentPgn"
+              v-if="activeTab == 'prompt'"
+            />
+          </div>
+          <div class="nav-secondary-content">
+            <PgnBox
+              class="game-pgn"
+              @send-pgn-moves="parsePgn"
+              :movehistory="moveHistorySan"
+              :key="currentFen"
+            />
+            <div class="analysis-graph">
+              <apexchart
+                height="100%"
+                :options="options"
+                :series="series"
+                type="line"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+    <Sidebar />
+  </div>
 </template>
 
 <style>

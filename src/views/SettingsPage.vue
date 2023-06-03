@@ -2,7 +2,9 @@
 
 <template>
   <main>
-    <h1 class="text-center ma-10">Settings</h1>
+    <h1 class="text-center ma-10">
+      Settings
+    </h1>
   </main>
 </template>
 
