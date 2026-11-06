@@ -23,7 +23,7 @@ pub struct TextField {
 pub fn text_input(state: &Entity<InputState>) -> TextField {
     TextField {
         state: state.clone(),
-        height: 36.,
+        height: 34.,
         suffix: None,
     }
 }
@@ -55,7 +55,7 @@ impl RenderOnce for TextField {
             .child(
                 Input::new(&self.state)
                     .appearance(false)
-                    .text_size(px(14.))
+                    .text_size(px(13.))
                     .when_some(self.suffix, |input, suffix| {
                         input.suffix(
                             div()
@@ -104,7 +104,7 @@ pub fn select_el(state: &TextSelect) -> impl IntoElement + use<> {
         .bg(rgb(T.bg))
         .rounded(px(4.))
         .text_size(px(14.))
-        .child(Select::new(state))
+        .child(Select::new(state).h(px(34.)).text_size(px(13.5)))
 }
 
 /// A small form label above a field.
@@ -112,11 +112,11 @@ pub fn field(label: impl Into<SharedString>, control: impl IntoElement) -> Div {
     div()
         .flex()
         .flex_col()
-        .gap(px(6.))
+        .gap(px(4.))
         .min_w_0()
         .child(
             h_flex()
-                .text_size(px(13.))
+                .text_size(px(12.5))
                 .text_color(rgb(T.muted))
                 .child(label.into()),
         )

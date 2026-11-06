@@ -112,7 +112,7 @@ pub fn btn(id: impl Into<ElementId>, label: impl Into<SharedString>) -> Btn {
         full: false,
         flex: false,
         padding: px(13.),
-        text_size: px(14.),
+        text_size: px(13.),
         weight: FontWeight::MEDIUM,
         disabled: false,
         on_click: None,
@@ -373,8 +373,8 @@ impl RenderOnce for Check {
             .flex_none()
             .items_center()
             .justify_center()
-            .size(px(16.))
-            .mt(px(3.))
+            .size(px(17.))
+            .mt(px(2.))
             .rounded(px(3.))
             .border_1()
             .border_color(rgb(if checked { T.fg } else { T.bar }))

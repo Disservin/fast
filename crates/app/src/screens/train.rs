@@ -515,7 +515,7 @@ impl TrainScreen {
                             .mb(px(14.))
                             .child(
                                 div()
-                                    .text_size(px(17.))
+                                    .text_size(px(16.))
                                     .font_weight(FontWeight::SEMIBOLD)
                                     .child(SharedString::from(rep.name.clone())),
                             )
@@ -769,13 +769,13 @@ impl TrainScreen {
                         .child(
                             div()
                                 .font_family(MONO)
-                                .text_size(px(15.))
+                                .text_size(px(14.))
                                 .font_weight(FontWeight::SEMIBOLD)
                                 .child(title),
                         )
                         .child(
                             mono(format!("{games} games"))
-                                .text_size(px(15.))
+                                .text_size(px(14.))
                                 .text_color(rgb(if warn { T.warn } else { T.muted })),
                         ),
                 )
@@ -860,13 +860,13 @@ impl TrainScreen {
                         .items_baseline()
                         .child(
                             div()
-                                .text_size(px(17.))
+                                .text_size(px(16.))
                                 .font_weight(FontWeight::SEMIBOLD)
                                 .child("Leaks from your games"),
                         )
                         .child(
                             div()
-                                .text_size(px(13.))
+                                .text_size(px(12.))
                                 .text_color(rgb(T.muted))
                                 .child("Where you left the repertoire"),
                         ),

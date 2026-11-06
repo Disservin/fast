@@ -284,7 +284,7 @@ impl Workspace {
         btn(("mode", mode as u32), label)
             .h(31.)
             .pad(14.)
-            .text(15.)
+            .text(14.)
             .kind(if active {
                 BtnKind::Active
             } else {
@@ -337,7 +337,7 @@ impl Workspace {
         Some(
             btn("engines-status", label)
                 .pad(14.)
-                .text(14.)
+                .text(13.)
                 .dot(if ok && live_on { T.good } else { T.faint })
                 .tooltip(if ok && live_on {
                     "Engines running. Press Space to pause; click for engine settings."
@@ -437,13 +437,13 @@ impl Workspace {
                                 div()
                                     .font_family(SANS)
                                     .font_weight(FontWeight::BOLD)
-                                    .text_size(px(16.))
+                                    .text_size(px(15.))
                                     .text_color(rgb(T.fg))
                                     .child("Outpost"),
                             )
                             .child(
                                 div()
-                                    .text_size(px(14.))
+                                    .text_size(px(13.))
                                     .text_color(rgb(T.muted))
                                     .child(SharedString::from(format!("/ {crumb}"))),
                             ),

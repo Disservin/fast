@@ -31,7 +31,7 @@ const COLOURS: [&str; 3] = ["Any", "White", "Black"];
 const TIME_CONTROLS: [&str; 5] = ["Any", "Rapid + Classical", "Classical", "Rapid", "Blitz"];
 /// Rows fetched per page as the table scrolls.
 const PAGE: usize = 200;
-const ROW_H: f32 = 43.;
+const ROW_H: f32 = 37.5;
 
 // Column widths for the games table.
 const W_WHITE: f32 = 94.;
@@ -677,7 +677,7 @@ impl DatabaseScreen {
     fn render_left(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let this = cx.entity();
         let entries = self.model.read(cx).databases.clone();
-        let mut list = v_flex().mb(px(22.));
+        let mut list = v_flex().mb(px(20.));
         for (index, entry) in entries.iter().enumerate() {
             let selected = self.selected_db.as_ref() == Some(&entry.path);
             let path = entry.path.clone();
@@ -736,27 +736,29 @@ impl DatabaseScreen {
             .border_color(rgb(T.border))
             .child(section_label("Databases").mb(px(5.)))
             .child(list)
-            .child(section_label("Filter").mb(px(10.)))
-            .child(field("Player", text_input(&self.player)).mb(px(9.)))
+            .child(section_label("Filter").mb(px(8.)))
+            .child(field("Player", text_input(&self.player)).mb(px(7.)))
             .child(
                 div()
                     .grid()
                     .grid_cols(2)
                     .gap_x(px(10.))
-                    .gap_y(px(9.))
-                    .mb(px(12.))
+                    .gap_y(px(7.))
+                    .mb(px(10.))
                     .child(field("Colour", select_el(&self.colour)))
                     .child(field("ECO", text_input(&self.eco)))
                     .child(field("Opp. rating ≥", text_input(&self.opp_rating)))
                     .child(field("Time control", select_el(&self.time_control))),
             )
-            .child(div().mb(px(10.)).child(
-                check("reached", reached, "Reached the Analyse board position").on_change(
-                    move |value, _, cx| {
-                        reached_this.update(cx, |screen, cx| screen.toggle_reached(value, cx));
-                    },
+            .child(
+                div().mb(px(10.)).child(
+                    check("reached", reached, "Reached the Analyse board position")
+                        .text(13.)
+                        .on_change(move |value, _, cx| {
+                            reached_this.update(cx, |screen, cx| screen.toggle_reached(value, cx));
+                        }),
                 ),
-            ))
+            )
             .child(
                 div().mb(px(10.)).child(
                     check(
@@ -815,7 +817,7 @@ impl DatabaseScreen {
                     .items_baseline()
                     .child(
                         div()
-                            .text_size(px(21.))
+                            .text_size(px(20.))
                             .font_weight(FontWeight::SEMIBOLD)
                             .child(format!("{} games", format_count(self.stats.games))),
                     )
@@ -843,8 +845,8 @@ impl DatabaseScreen {
             v_flex()
                 .flex_1()
                 .px(px(16.))
-                .py(px(14.))
-                .gap(px(6.))
+                .py(px(12.))
+                .gap(px(2.))
                 .child(section_label(label))
                 .child(value)
         };
@@ -875,7 +877,7 @@ impl DatabaseScreen {
 
     fn render_table(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let header = h_flex()
-            .h(px(40.))
+            .h(px(35.))
             .flex_none()
             .px(px(12.))
             .bg(rgb(T.surface_2))
@@ -903,7 +905,7 @@ impl DatabaseScreen {
         .track_scroll(&self.scroll)
         .flex_1()
         .min_h_0();
-        let rows_height = (count as f32 * ROW_H).min(516.) + 40.;
+        let rows_height = (count as f32 * ROW_H).min(450.) + 35.;
         panel()
             .flex()
             .flex_col()
@@ -927,7 +929,7 @@ impl DatabaseScreen {
             .cursor_pointer()
             .border_b_1()
             .border_color(rgb(T.divider))
-            .text_size(px(14.))
+            .text_size(px(13.))
             .when(selected, |row| row.bg(rgb(T.selected)))
             .when(!selected, |row| row.hover(|style| style.bg(rgb(T.hover))))
             .on_click(move |_, _, cx| {
@@ -971,7 +973,7 @@ impl DatabaseScreen {
             mono(text)
                 .w(px(width))
                 .flex_none()
-                .text_size(px(14.))
+                .text_size(px(13.))
                 .text_color(rgb(color))
         };
         row_el
@@ -997,7 +999,7 @@ impl DatabaseScreen {
                         .map(|accuracy| format!("{accuracy:.1}"))
                         .unwrap_or_else(|| "—".to_owned()),
                 )
-                .text_size(px(14.))
+                .text_size(px(13.))
                 .text_color(rgb(T.fg)),
             )
     }
@@ -1022,14 +1024,14 @@ impl DatabaseScreen {
             column = column
                 .child(
                     div()
-                        .text_size(px(15.))
+                        .text_size(px(14.))
                         .font_weight(FontWeight::SEMIBOLD)
                         .mb(px(6.))
                         .child(format!("{} – {}", row.white, row.black)),
                 )
                 .child(
                     div()
-                        .text_size(px(13.))
+                        .text_size(px(12.))
                         .text_color(rgb(T.muted))
                         .mb(px(9.))
                         .child(meta.join(" · ")),
@@ -1158,9 +1160,6 @@ fn move_snippet(preview: &GameDetails, key: usize) -> impl IntoElement + use<> {
         .text_size(px(14.))
         .line_height(px(24.))
         .text_color(rgb(T.fg_2));
-    if start > 0 {
-        row = row.child("…");
-    }
     for (index, san) in preview.sans[start..end].iter().enumerate() {
         let ply = start + index;
         let label = if ply.is_multiple_of(2) {

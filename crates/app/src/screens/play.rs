@@ -862,12 +862,12 @@ impl PlayScreen {
                     .child(
                         div()
                             .font_weight(FontWeight::SEMIBOLD)
-                            .text_size(px(15.))
+                            .text_size(px(14.))
                             .child(name),
                     )
                     .children(
                         rating
-                            .map(|rating| mono(rating).text_size(px(14.)).text_color(rgb(T.muted))),
+                            .map(|rating| mono(rating).text_size(px(13.)).text_color(rgb(T.muted))),
                     )
                     .children(status.map(|text| {
                         div()
@@ -879,7 +879,7 @@ impl PlayScreen {
             .child(
                 div()
                     .font_family(MONO)
-                    .text_size(px(26.))
+                    .text_size(px(24.))
                     .font_weight(FontWeight::MEDIUM)
                     .px(px(9.))
                     .rounded(px(4.))

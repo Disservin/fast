@@ -1175,7 +1175,7 @@ impl AnalyseScreen {
                 h_flex()
                     .h(px(50.))
                     .px(px(16.))
-                    .text_size(px(17.))
+                    .text_size(px(16.))
                     .font_weight(FontWeight::SEMIBOLD)
                     .child("Moves from here"),
             )
@@ -1427,7 +1427,7 @@ impl Render for AnalyseScreen {
                                     div().bg(rgb(T.bg)).rounded(px(4.)).child(
                                         gpui_component::input::Textarea::new(&note)
                                             .h(px(64.))
-                                            .text_size(px(14.)),
+                                            .text_size(px(13.)),
                                     ),
                                 ),
                         ),

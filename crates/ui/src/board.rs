@@ -392,8 +392,8 @@ impl BoardView {
         match self.prefs.pieces {
             PieceSet::Classic => img(SharedString::from(format!("pieces/merida/{name}.svg")))
                 .id(id)
-                .size(cell * 0.8)
-                .m(cell * 0.1)
+                .size(cell * 0.74)
+                .m(cell * 0.13)
                 .into_any_element(),
             PieceSet::Flat => svg()
                 .path(SharedString::from(format!("pieces/merida/{name}.svg")))

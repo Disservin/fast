@@ -601,21 +601,19 @@ fn repertoire(today: i64) -> Repertoire {
     // Assign schedule states so coverage reads 71% known, 18% learning, 11% new
     // once the curated rows below have their own states.
     let mut counter = 0u32;
-    let mut due_left = 17;
+    let mut due_left = 19;
     fn walk(nodes: &mut [RepNode], today: i64, counter: &mut u32, due_left: &mut i32) {
         for node in nodes {
             if node.card.is_some() {
                 *counter += 1;
                 let slot = *counter % 100;
-                node.card = Some(if slot < 73 {
+                node.card = Some(if slot < 72 {
                     card_known(today)
-                } else if slot < 91 {
-                    if *due_left > 0 {
-                        *due_left -= 1;
-                        card_due(today, 1)
-                    } else {
-                        card_learning(today)
-                    }
+                } else if *due_left > 0 {
+                    *due_left -= 1;
+                    card_due(today, 1)
+                } else if slot < 90 {
+                    card_learning(today)
                 } else {
                     Card::default()
                 });
@@ -948,6 +946,22 @@ mod tests {
         assert_eq!(rows[4].label, "12…b4 13.Ne2");
         assert_eq!(rows[4].status, trainer::RepStatus::Due);
         let drills = rep.drills(today);
+        let due = drills
+            .iter()
+            .filter(|drill| {
+                let path: Vec<&str> = drill
+                    .path
+                    .iter()
+                    .map(String::as_str)
+                    .chain([drill.answer.as_str()])
+                    .collect();
+                rep.node(&path)
+                    .and_then(|node| node.card)
+                    .is_some_and(|card| card.is_due(today))
+            })
+            .count();
+        // With the 6 reviews already done, the session reads "7 of 24".
+        assert_eq!(due, 18);
         assert_eq!(drills[0].answer, "Ne2");
         assert_eq!(drills[0].path.len(), 24);
     }

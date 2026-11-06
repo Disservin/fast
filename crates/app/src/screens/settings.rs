@@ -567,7 +567,7 @@ impl SettingsScreen {
                     .rounded(px(4.))
                     .cursor_pointer()
                     .overflow_hidden()
-                    .text_size(px(15.))
+                    .text_size(px(14.))
                     .text_color(rgb(if selected { T.fg } else { T.fg_2 }))
                     .when(selected, |item| {
                         item.bg(rgb(T.selected))
@@ -1359,7 +1359,7 @@ fn detail_row(label: &str, hint: Option<&'static str>, control: impl IntoElement
                 .child(
                     div()
                         .font_weight(FontWeight::MEDIUM)
-                        .text_size(px(15.))
+                        .text_size(px(14.))
                         .child(SharedString::from(label.to_owned())),
                 )
                 .children(hint.map(|hint| {
