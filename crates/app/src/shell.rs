@@ -4,8 +4,9 @@ use std::collections::BTreeMap;
 
 use engine::EngineStatus;
 use gpui::{
-    Action, App, Context, Entity, FocusHandle, FontWeight, IntoElement, KeyBinding, Render,
-    SharedString, Subscription, Window, actions, deferred, div, prelude::*, px, rgb,
+    Action, App, Context, CursorStyle, Decorations, Entity, FocusHandle, FontWeight, IntoElement,
+    KeyBinding, MouseButton, Pixels, Render, ResizeEdge, SharedString, Subscription, Window,
+    actions, deferred, div, prelude::*, px, rgb,
 };
 use gpui_component::input::{InputEvent, InputState};
 use ui::{
@@ -37,6 +38,11 @@ actions!(
         SaveGame
     ]
 );
+
+const WINDOW_CONTROL_W: f32 = 36.;
+const WINDOW_CONTROLS_W: f32 = WINDOW_CONTROL_W * 3. + 4.;
+/// Half the width of the centered mode switch.
+const MODE_SWITCH_HALF_W: f32 = 165.;
 
 /// Key context present unless a text field has focus.
 pub const SHORTCUT_CONTEXT: &str = "OutpostShortcuts";
@@ -107,6 +113,8 @@ pub struct Workspace {
     path_input: Entity<InputState>,
     focus: FocusHandle,
     first_frame: bool,
+    /// Test switch: draw window controls regardless of what the system reports.
+    pub force_window_controls: bool,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -179,6 +187,7 @@ impl Workspace {
             path_input,
             focus,
             first_frame: true,
+            force_window_controls: false,
             _subscriptions: vec![search_sub, path_sub, model_sub],
         }
     }
@@ -320,6 +329,24 @@ impl Workspace {
             )
     }
 
+    /// The engine button's text, when the current mode shows one.
+    fn engine_button_label(&self, cx: &App) -> Option<String> {
+        (self.mode == Mode::Analyse).then(|| {
+            let names: Vec<String> = self
+                .model
+                .read(cx)
+                .analysis_engines()
+                .iter()
+                .map(|engine| engine.name.clone())
+                .collect();
+            if names.is_empty() {
+                "No engine".to_owned()
+            } else {
+                names.join(" · ")
+            }
+        })
+    }
+
     fn engine_button(&self, cx: &mut Context<Self>) -> Option<Btn> {
         let model = self.model.read(cx);
         let engines = model.analysis_engines();
@@ -356,13 +383,33 @@ impl Workspace {
         )
     }
 
-    fn right_controls(&self, narrow: bool, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+    fn right_controls(
+        &self,
+        viewport_w: f32,
+        controls: bool,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement + use<> {
         let this = cx.entity();
         let mut row = h_flex().gap(px(10.));
-        // Narrow windows keep the search box clear of the centered mode switch.
+        // The search box takes what is left beside the centered mode switch.
+        let engine_w = self
+            .engine_button_label(cx)
+            .map_or(0., |label| 60. + label.len() as f32 * 7.);
+        let others = match self.mode {
+            Mode::Analyse => engine_w + 10.,
+            Mode::Database => 72. + 10.,
+            _ => 0.,
+        } + 48.
+            + 10.
+            + if controls {
+                WINDOW_CONTROLS_W + 10.
+            } else {
+                0.
+            };
+        let free = viewport_w / 2. - MODE_SWITCH_HALF_W - 21. - others;
         let search_w = match self.mode {
-            Mode::Analyse | Mode::Database if narrow => Some(150.),
-            Mode::Analyse | Mode::Database => Some(260.),
+            Mode::Analyse | Mode::Database if free >= 120. => Some(free.min(260.)),
             _ => None,
         };
         if let Some(width) = search_w {
@@ -414,9 +461,18 @@ impl Workspace {
                     });
                 }),
         )
+        .when(controls, |row| row.child(window_controls(window)))
+        // Clicks here must not start a window drag.
+        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
     }
 
-    fn top_bar(&self, narrow: bool, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+    fn top_bar(
+        &self,
+        viewport_w: f32,
+        controls: bool,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement + use<> {
         let crumb = self.breadcrumb(cx);
         div()
             .relative()
@@ -426,6 +482,7 @@ impl Workspace {
             .bg(rgb(T.surface))
             .border_b_1()
             .border_color(rgb(T.border))
+            .when(controls, |bar| bar.child(drag_region()))
             .child(
                 h_flex()
                     .absolute()
@@ -451,7 +508,7 @@ impl Workspace {
                                     .child(SharedString::from(format!("/ {crumb}"))),
                             ),
                     )
-                    .child(self.right_controls(narrow, cx)),
+                    .child(self.right_controls(viewport_w, controls, window, cx)),
             )
             .child(
                 h_flex()
@@ -463,6 +520,7 @@ impl Workspace {
                     .justify_center()
                     .child(
                         h_flex()
+                            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                             .h(px(36.))
                             .px(px(2.))
                             .gap(px(2.))
@@ -506,6 +564,7 @@ impl Render for Workspace {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // The stack reads the previous frame, which does not exist on the first render.
         let stack = if std::mem::take(&mut self.first_frame) {
+            log::info!("window decorations: {:?}", window.window_decorations());
             Vec::new()
         } else {
             window.context_stack()
@@ -516,7 +575,9 @@ impl Render for Workspace {
                 .any(|name| context.contains(name))
         });
         let path_bar = self.path_bar(cx);
-        let narrow = window.viewport_size().width < px(1300.);
+        let viewport_w = f32::from(window.viewport_size().width);
+        let client_drawn = matches!(window.window_decorations(), Decorations::Client { .. });
+        let controls = client_drawn || self.force_window_controls;
         let on_button = stack
             .iter()
             .any(|context| context.contains("OutpostButton"));
@@ -551,7 +612,7 @@ impl Render for Workspace {
                     .text_color(rgb(T.fg))
                     .font_family(SANS)
                     .text_size(px(14.))
-                    .child(self.top_bar(narrow, cx))
+                    .child(self.top_bar(viewport_w, controls, window, cx))
                     .children(path_bar)
                     .child(div().flex_1().min_h_0().w_full().child(body)),
             )
@@ -593,5 +654,124 @@ impl Render for Workspace {
                 this.analyse.update(cx, |screen, cx| screen.save_game(cx));
             }))
             .child(self.toasts(cx))
+            .when(client_drawn && !window.is_maximized(), |root| {
+                root.children(resize_handles())
+            })
     }
+}
+
+/// Lets the top bar move the window when the app draws its own decorations.
+fn drag_region() -> impl IntoElement {
+    div()
+        .id("window-drag")
+        .absolute()
+        .inset_0()
+        .on_mouse_down(MouseButton::Left, |event, window, _| {
+            if event.click_count == 2 {
+                window.zoom_window();
+            } else {
+                window.start_window_move();
+            }
+        })
+        .on_mouse_down(MouseButton::Right, |event, window, _| {
+            window.show_window_menu(event.position);
+        })
+}
+
+/// Minimize, maximize and close, for systems that leave decorations to the app.
+fn window_controls(window: &Window) -> impl IntoElement {
+    let available = window.window_controls();
+    let maximized = window.is_maximized();
+    let control = |id: &'static str, icon: &'static str, tip: &'static str| {
+        icon_btn(id, icon)
+            .kind(BtnKind::Ghost)
+            .w(WINDOW_CONTROL_W)
+            .h(32.)
+            .tooltip(tip)
+    };
+    h_flex()
+        .gap(px(2.))
+        .when(available.minimize, |row| {
+            row.child(
+                control("window-minimize", "icons/minus.svg", "Minimize")
+                    .on_click(|window, _| window.minimize_window()),
+            )
+        })
+        .when(available.maximize, |row| {
+            row.child(
+                control(
+                    "window-maximize",
+                    "icons/square.svg",
+                    if maximized { "Restore" } else { "Maximize" },
+                )
+                .on_click(|window, _| window.zoom_window()),
+            )
+        })
+        .child(
+            control("window-close", "icons/x.svg", "Close")
+                .on_click(|window, _| window.remove_window()),
+        )
+}
+
+/// Invisible strips along the window edges for resizing.
+fn resize_handles() -> Vec<gpui::Stateful<gpui::Div>> {
+    const EDGE: Pixels = px(5.);
+    const CORNER: Pixels = px(10.);
+    let handle = |index: u32, edge: ResizeEdge, cursor: CursorStyle| {
+        div()
+            .id(("window-resize", index))
+            .absolute()
+            .occlude()
+            .cursor(cursor)
+            .on_mouse_down(MouseButton::Left, move |_, window, cx| {
+                window.start_window_resize(edge);
+                cx.stop_propagation();
+            })
+    };
+    vec![
+        handle(0, ResizeEdge::Top, CursorStyle::ResizeUpDown)
+            .top_0()
+            .left(CORNER)
+            .right(CORNER)
+            .h(EDGE),
+        handle(1, ResizeEdge::Bottom, CursorStyle::ResizeUpDown)
+            .bottom_0()
+            .left(CORNER)
+            .right(CORNER)
+            .h(EDGE),
+        handle(2, ResizeEdge::Left, CursorStyle::ResizeLeftRight)
+            .left_0()
+            .top(CORNER)
+            .bottom(CORNER)
+            .w(EDGE),
+        handle(3, ResizeEdge::Right, CursorStyle::ResizeLeftRight)
+            .right_0()
+            .top(CORNER)
+            .bottom(CORNER)
+            .w(EDGE),
+        handle(4, ResizeEdge::TopLeft, CursorStyle::ResizeUpLeftDownRight)
+            .top_0()
+            .left_0()
+            .size(CORNER),
+        handle(5, ResizeEdge::TopRight, CursorStyle::ResizeUpRightDownLeft)
+            .top_0()
+            .right_0()
+            .size(CORNER),
+        handle(
+            6,
+            ResizeEdge::BottomLeft,
+            CursorStyle::ResizeUpRightDownLeft,
+        )
+        .bottom_0()
+        .left_0()
+        .size(CORNER),
+        handle(
+            7,
+            ResizeEdge::BottomRight,
+            CursorStyle::ResizeUpLeftDownRight,
+        )
+        .bottom_0()
+        .right_0()
+        .size(CORNER),
+    ]
 }

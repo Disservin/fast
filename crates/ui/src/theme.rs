@@ -1,7 +1,7 @@
 //! Design tokens. Dark only for v1; every colour lives in this one struct.
 
 use gpui::{App, Hsla, rgb};
-use gpui_component::{ActiveTheme as _, Theme as ComponentTheme};
+use gpui_component::{Theme as ComponentTheme, ThemeTokens};
 
 pub const SANS: &str = "IBM Plex Sans";
 pub const MONO: &str = "IBM Plex Mono";
@@ -107,5 +107,6 @@ pub fn apply_component_theme(cx: &mut App) {
     c.danger_foreground = hsla(T.bg);
     c.info = hsla(T.fg);
     c.info_foreground = hsla(T.bg);
-    let _ = cx.theme();
+    // Components also read this derived copy (tooltips, popups); keep it in step.
+    theme.tokens = ThemeTokens::from(theme.colors);
 }

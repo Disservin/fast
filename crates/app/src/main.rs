@@ -9,7 +9,9 @@ mod model;
 mod screens;
 mod shell;
 
-use gpui::{App, AppContext as _, Bounds, WindowBounds, WindowOptions, px, size};
+use gpui::{
+    App, AppContext as _, Bounds, WindowBounds, WindowDecorations, WindowOptions, px, size,
+};
 use gpui_component::Root;
 
 use crate::{model::AppModel, shell::Workspace};
@@ -21,6 +23,8 @@ pub struct Cli {
     pub demo: bool,
     /// Initial screen: analyse, database, train, play, settings[:section].
     pub screen: Option<String>,
+    /// Draw the window controls even under server decorations (to test them on X11).
+    pub client_decorations: bool,
 }
 
 impl Cli {
@@ -31,6 +35,7 @@ impl Cli {
             match arg.as_str() {
                 "--demo" => cli.demo = true,
                 "--screen" => cli.screen = args.next(),
+                "--client-decorations" => cli.client_decorations = true,
                 other => log::warn!("ignoring unknown argument {other}"),
             }
         }
@@ -43,11 +48,17 @@ fn open_main_window(cli: Cli, cx: &mut App) -> anyhow::Result<()> {
     let options = WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(bounds)),
         window_min_size: Some(size(px(1100.), px(720.))),
+        // Native decorations where the system offers them; otherwise `Workspace` draws its own.
+        window_decorations: Some(WindowDecorations::Server),
         ..Default::default()
     };
     cx.open_window(options, move |window, cx| {
         let model = cx.new(|_| AppModel::load(cli.demo));
-        let workspace = cx.new(|cx| Workspace::new(model, cli.screen.as_deref(), window, cx));
+        let workspace = cx.new(|cx| {
+            let mut workspace = Workspace::new(model, cli.screen.as_deref(), window, cx);
+            workspace.force_window_controls = cli.client_decorations;
+            workspace
+        });
         cx.new(|cx| Root::new(workspace, window, cx))
     })?;
     Ok(())
@@ -91,7 +102,8 @@ mod tests {
             parse(&["outpost", "--demo", "--screen", "train"]),
             Cli {
                 demo: true,
-                screen: Some("train".to_owned())
+                screen: Some("train".to_owned()),
+                client_decorations: false,
             }
         );
     }

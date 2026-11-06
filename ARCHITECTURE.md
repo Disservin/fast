@@ -29,6 +29,13 @@ a separate Zed git rev, which would give two incompatible copies of GPUI. Bump t
 - `Workspace` routes between screens and owns global shortcuts. Its key context is dropped while
   a text field has focus, so typing never triggers shortcuts.
 
+## Window decorations
+
+The window asks for native decorations. Some Wayland compositors, including WSLg, decline, and
+GPUI then reports `Decorations::Client`. `Workspace` responds by adding minimize, maximize and
+close to the top bar, making its empty area drag the window, and placing resize strips on
+the edges. `--client-decorations` forces the controls on, to test them elsewhere.
+
 ## Threads
 
 The UI thread never blocks on engines or databases.

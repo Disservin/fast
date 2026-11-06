@@ -20,6 +20,9 @@ In normal mode, add a UCI engine under **Settings › Engines › Add from file*
 with **Database › Import**. Set your name under **Settings › Databases** so Outpost can tell which
 games are yours.
 
+On a shell without a Wayland session variable set correctly (some WSLg terminals), set
+`XDG_RUNTIME_DIR=/mnt/wslg/runtime-dir`, or unset `WAYLAND_DISPLAY` to run through X11 instead.
+
 ### Linux build dependencies
 
 ```sh
