@@ -7,7 +7,7 @@ use gpui::{
     Action, App, Context, Entity, FocusHandle, FontWeight, IntoElement, KeyBinding, Render,
     SharedString, Subscription, Window, actions, deferred, div, prelude::*, px, rgb,
 };
-use gpui_component::input::{Input, InputEvent, InputState};
+use gpui_component::input::{InputEvent, InputState};
 use ui::{
     SANS, T,
     widgets::{Btn, BtnKind, btn, h_flex, icon_btn, v_flex},
@@ -119,7 +119,7 @@ impl Workspace {
         let shortcuts = model.read(cx).config.shortcuts.clone();
         bind_shortcuts(&shortcuts, cx);
         let this = cx.entity().downgrade();
-        let analyse = cx.new(|cx| AnalyseScreen::new(model.clone(), this.clone(), window, cx));
+        let analyse = cx.new(|cx| AnalyseScreen::new(model.clone(), window, cx));
         let database = cx.new(|cx| DatabaseScreen::new(model.clone(), this.clone(), window, cx));
         let train = cx.new(|cx| TrainScreen::new(model.clone(), this.clone(), window, cx));
         let play = cx.new(|cx| PlayScreen::new(model.clone(), this.clone(), window, cx));
@@ -275,14 +275,7 @@ impl Workspace {
         };
         if let Some(width) = search_w {
             row = row.child(
-                div()
-                    .w(px(width))
-                    .h(px(34.))
-                    .flex()
-                    .items_center()
-                    .bg(rgb(T.bg))
-                    .rounded(px(4.))
-                    .child(Input::new(&self.search).appearance(true).h(px(34.)).text_size(px(14.))),
+                div().w(px(width)).child(crate::controls::text_input(&self.search).height(34.)),
             );
         }
         match self.mode {

@@ -403,7 +403,8 @@ fn repertoire(today: i64) -> Repertoire {
         format!("{ENGLISH_ATTACK} e6"),
         format!("{ENGLISH_ATTACK} Ng4 Bc1"),
         format!("{ENGLISH_ATTACK} e5 Nb3 Be6 f3 Be7 g4"),
-        "e4 c5 Nf3 e6 d4 a6".to_owned(),
+        // The book deliberately ends here: games reach this as an unanswered gap.
+        "e4 c5 Nf3 e6 d4 ".to_owned(),
     ];
     let mut guard = 0;
     while rep.positions() < 412 && guard < 5_000 {
@@ -415,7 +416,9 @@ fn repertoire(today: i64) -> Repertoire {
         for san in line.iter().take(cut) {
             play_san(&mut pos, &mut path, san);
         }
-        for _ in 0..2 {
+        // A move and its reply, or a single move when that would overshoot the target.
+        let plies = if rep.positions() >= 411 { 1 } else { 2 };
+        for _ in 0..plies {
             let moves = pos.legal_moves();
             if moves.is_empty() {
                 break;
@@ -433,7 +436,8 @@ fn repertoire(today: i64) -> Repertoire {
             base.push(path);
         }
     }
-    // Assign schedule states in proportion: 71% known, 18% learning, 11% new.
+    // Assign schedule states so coverage reads 71% known, 18% learning, 11% new
+    // once the curated rows below have their own states.
     let mut counter = 0u32;
     let mut due_left = 17;
     fn walk(
@@ -446,9 +450,9 @@ fn repertoire(today: i64) -> Repertoire {
             if node.card.is_some() {
                 *counter += 1;
                 let slot = *counter % 100;
-                node.card = Some(if slot < 71 {
+                node.card = Some(if slot < 73 {
                     card_known(today)
-                } else if slot < 89 {
+                } else if slot < 91 {
                     if *due_left > 0 {
                         *due_left -= 1;
                         card_due(today, 1)

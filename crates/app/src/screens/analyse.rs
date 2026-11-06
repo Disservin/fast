@@ -10,7 +10,7 @@ use db::{Database, ImportControl, MoveStat, import_games};
 use engine::{Score, Wdl};
 use gpui::{
     AppContext as _, ClipboardItem, Context, Entity, FontWeight, IntoElement, MouseButton, Pixels,
-    Point, Render, ScrollHandle, SharedString, Subscription, Task, WeakEntity, Window, anchored,
+    Point, Render, ScrollHandle, SharedString, Subscription, Task, Window, anchored,
     deferred, div, prelude::*, px, rgb,
 };
 use gpui_component::input::{InputEvent, InputState, TextareaState};
@@ -25,7 +25,6 @@ use crate::{
     controls::text_input,
     live::{LiveAnalysis, LiveEvent},
     model::{AppModel, ModelEvent},
-    shell::{Mode, Workspace},
 };
 
 /// One candidate move merged from engines, databases and the repertoire.
@@ -60,6 +59,7 @@ pub fn merge_rows(
     mine: Vec<MoveStat>,
     rep_moves: &[(String, bool)],
     white_to_move: bool,
+    user_to_move: bool,
 ) -> Vec<MoveRow> {
     fn clean(san: &str) -> &str {
         san.trim_end_matches(['+', '#'])
@@ -89,8 +89,8 @@ pub fn merge_rows(
         let index = upsert(&mut rows, san);
         rows[index].rep = if *main { RepTag::Main } else { RepTag::Side };
     }
-    // Playing something the repertoire does not cover, when it has an answer.
-    if !rep_moves.is_empty() {
+    // The user played something the repertoire does not cover, when it has an answer.
+    if user_to_move && !rep_moves.is_empty() {
         for row in &mut rows {
             if row.rep == RepTag::None && row.mine.is_some() {
                 row.rep = RepTag::Deviate;
@@ -118,7 +118,6 @@ pub fn merge_rows(
 
 pub struct AnalyseScreen {
     model: Entity<AppModel>,
-    workspace: WeakEntity<Workspace>,
     pub tree: GameTree,
     pub current: NodeId,
     board: Entity<BoardView>,
@@ -144,8 +143,7 @@ pub struct AnalyseScreen {
 impl AnalyseScreen {
     pub fn new(
         model: Entity<AppModel>,
-        workspace: WeakEntity<Workspace>,
-        window: &mut Window,
+            window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
         let board = cx.new(|_| BoardView::new("analyse-board"));
@@ -210,7 +208,6 @@ impl AnalyseScreen {
         board.update(cx, |board, cx| board.set_prefs(prefs, cx));
         let mut this = Self {
             model,
-            workspace,
             tree,
             current,
             board,
@@ -385,6 +382,7 @@ impl AnalyseScreen {
             self.mine.clone(),
             &rep_moves,
             white_to_move,
+            white_to_move == model.repertoire.white,
         );
         if self.selected_san.is_none()
             && let Some(first) = self.rows.first().filter(|row| !row.pv.is_empty())
@@ -925,9 +923,9 @@ impl AnalyseScreen {
             .unwrap_or_else(|| "Reference".to_owned());
         const COL_MOVE: f32 = 64.;
         const COL_SF: f32 = 56.;
-        const COL_WDL: f32 = 92.;
+        const COL_WDL: f32 = 88.;
         const COL_REF: f32 = 84.;
-        const COL_MY: f32 = 72.;
+        const COL_MY: f32 = 80.;
         let header = h_flex()
             .h(px(32.))
             .px(px(16.))
@@ -980,6 +978,7 @@ impl AnalyseScreen {
                     .border_color(rgb(T.divider))
                     .text_size(px(14.))
                     .font_family(MONO)
+                    .whitespace_nowrap()
                     .when(selected, |row_el| row_el.bg(rgb(T.selected)))
                     .when(!selected, |row_el| row_el.hover(|style| style.bg(rgb(T.hover))))
                     .on_click(move |_, _, cx| {
@@ -1201,13 +1200,6 @@ impl AnalyseScreen {
             ),
         ))
     }
-
-    /// Opens a finished game in Analyse and switches to it.
-    pub fn open_in_workspace(&self, cx: &mut Context<Self>) {
-        if let Some(workspace) = self.workspace.upgrade() {
-            workspace.update(cx, |workspace, cx| workspace.set_mode(Mode::Analyse, cx));
-        }
-    }
 }
 
 fn short_engine(name: &str) -> String {
@@ -1330,6 +1322,7 @@ mod tests {
             vec![stat("h4", 9)],
             &[("f4".to_owned(), true), ("Ng3".to_owned(), false)],
             true,
+            true,
         );
         let order: Vec<&str> = rows.iter().map(|row| row.san.as_str()).collect();
         assert_eq!(order, vec!["f4", "h4", "Kb1", "Ng3"]);
@@ -1342,19 +1335,22 @@ mod tests {
 
     #[test]
     fn black_prefers_lower_white_relative_scores() {
-        let rows = merge_rows(vec![line("a", 50), line("b", -50)], vec![], vec![], &[], false);
+        let rows = merge_rows(vec![line("a", 50), line("b", -50)], vec![], vec![], &[], false, false);
         assert_eq!(rows[0].san, "b");
     }
 
     #[test]
     fn check_suffixes_merge_with_database_moves() {
-        let rows = merge_rows(vec![line("Qh5+", 10)], vec![stat("Qh5", 3)], vec![], &[], true);
+        let rows = merge_rows(vec![line("Qh5+", 10)], vec![stat("Qh5", 3)], vec![], &[], true, true);
         assert_eq!(rows.len(), 1);
     }
 
     #[test]
     fn no_repertoire_means_no_deviation_tag() {
-        let rows = merge_rows(vec![], vec![], vec![stat("e4", 3)], &[], true);
+        let rows = merge_rows(vec![], vec![], vec![stat("e4", 3)], &[], true, true);
         assert_eq!(rows[0].rep, RepTag::None);
+        // Nor on the opponent's turn, where the moves are not the user's choices.
+        let rows = merge_rows(vec![], vec![], vec![stat("e5", 3)], &[("c5".to_owned(), true)], false, false);
+        assert_eq!(rows.iter().find(|row| row.san == "e5").unwrap().rep, RepTag::None);
     }
 }

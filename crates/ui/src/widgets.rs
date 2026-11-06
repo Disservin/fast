@@ -367,7 +367,7 @@ impl RenderOnce for Check {
             .items_center()
             .justify_center()
             .size(px(16.))
-            .mt(px(2.))
+            .mt(px(3.))
             .rounded(px(3.))
             .border_1()
             .border_color(rgb(if checked { T.fg } else { T.bar }))

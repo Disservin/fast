@@ -1,8 +1,7 @@
 //! Thin wrappers styling the component library's stateful inputs for Outpost.
 
-use gpui::{App, Div, Entity, IntoElement, SharedString, Window, div, prelude::*, px, rgb};
+use gpui::{App, Div, Entity, Focusable as _, IntoElement, RenderOnce, SharedString, Window, div, prelude::*, px, rgb};
 use gpui_component::{
-    Sizable as _,
     input::{Input, InputState},
     select::{SearchableVec, Select, SelectState},
 };
@@ -10,16 +9,55 @@ use ui::{T, widgets::h_flex};
 
 pub type TextSelect = Entity<SelectState<SearchableVec<SharedString>>>;
 
-/// A single-line input in a dark well, 36px tall, radius 4.
-pub fn text_input(state: &Entity<InputState>) -> impl IntoElement + use<> {
-    div()
-        .h(px(36.))
-        .w_full()
-        .flex()
-        .items_center()
-        .rounded(px(4.))
-        .bg(rgb(T.bg))
-        .child(Input::new(state).appearance(true).h(px(36.)).text_size(px(14.)))
+/// A single-line input in a dark well: 36px tall, radius 4, fg border when focused.
+#[derive(IntoElement)]
+pub struct TextField {
+    state: Entity<InputState>,
+    height: f32,
+    suffix: Option<&'static str>,
+}
+
+pub fn text_input(state: &Entity<InputState>) -> TextField {
+    TextField {
+        state: state.clone(),
+        height: 36.,
+        suffix: None,
+    }
+}
+
+impl TextField {
+    pub fn height(mut self, height: f32) -> Self {
+        self.height = height;
+        self
+    }
+
+    pub fn suffix(mut self, suffix: Option<&'static str>) -> Self {
+        self.suffix = suffix;
+        self
+    }
+}
+
+impl RenderOnce for TextField {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let focused = self.state.read(cx).focus_handle(cx).is_focused(window);
+        div()
+            .h(px(self.height))
+            .w_full()
+            .flex()
+            .items_center()
+            .rounded(px(4.))
+            .bg(rgb(T.bg))
+            .border_1()
+            .border_color(rgb(if focused { T.fg } else { T.border_strong }))
+            .child(
+                Input::new(&self.state)
+                    .appearance(false)
+                    .text_size(px(14.))
+                    .when_some(self.suffix, |input, suffix| {
+                        input.suffix(div().text_size(px(13.)).text_color(rgb(T.muted)).child(suffix))
+                    }),
+            )
+    }
 }
 
 pub fn new_input(
