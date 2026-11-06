@@ -35,12 +35,12 @@ const ROW_H: f32 = 37.5;
 
 // Column widths for the games table.
 const W_WHITE: f32 = 94.;
-const W_BLACK: f32 = 179.;
 const W_RESULT: f32 = 82.;
 const W_LEFT: f32 = 99.;
 const W_MOVES: f32 = 78.;
 const W_DATE: f32 = 116.;
 const W_SOURCE: f32 = 87.;
+const W_ACC: f32 = 44.;
 
 struct Importing {
     control: ImportControl,
@@ -551,7 +551,7 @@ impl DatabaseScreen {
                 this.model.update(cx, |model, cx| {
                     model.toast(message, cx);
                     model.refresh_databases();
-                    model.refresh_leaks();
+                    model.refresh_leaks(cx);
                     cx.emit(ModelEvent::Databases);
                 });
             });
@@ -884,13 +884,13 @@ impl DatabaseScreen {
             .border_b_1()
             .border_color(rgb(T.border))
             .child(div().w(px(W_WHITE)).child(section_label("White")))
-            .child(div().w(px(W_BLACK)).child(section_label("Black")))
+            .child(div().flex_1().min_w_0().child(section_label("Black")))
             .child(div().w(px(W_RESULT)).child(section_label("Result")))
             .child(div().w(px(W_LEFT)).child(section_label("Left rep.")))
             .child(div().w(px(W_MOVES)).child(section_label("Moves")))
             .child(div().w(px(W_DATE)).child(section_label("Date")))
             .child(div().w(px(W_SOURCE)).child(section_label("Source")))
-            .child(div().flex_1().child(section_label("Acc.")));
+            .child(div().w(px(W_ACC)).flex_none().child(section_label("Acc.")));
         let count = self.ids.len();
         let list = uniform_list(
             "games-table",
@@ -949,10 +949,8 @@ impl DatabaseScreen {
         let Some(game) = self.rows.get(&id) else {
             return row_el.child(div().text_color(rgb(T.faint)).child("…"));
         };
-        let name = |name: &str, elo: Option<i64>, winner: bool, width: f32| {
+        let name = |name: &str, elo: Option<i64>, winner: bool| {
             h_flex()
-                .w(px(width))
-                .flex_none()
                 .gap(px(5.))
                 .overflow_hidden()
                 .child(
@@ -977,8 +975,16 @@ impl DatabaseScreen {
                 .text_color(rgb(color))
         };
         row_el
-            .child(name(&game.white, game.white_elo, white_won, W_WHITE))
-            .child(name(&game.black, game.black_elo, black_won, W_BLACK))
+            .child(
+                name(&game.white, game.white_elo, white_won)
+                    .w(px(W_WHITE))
+                    .flex_none(),
+            )
+            .child(
+                name(&game.black, game.black_elo, black_won)
+                    .flex_1()
+                    .min_w_0(),
+            )
             .child(mono_cell(result_text(&game.result), W_RESULT, T.fg))
             .child(match &game.left_rep {
                 Some(left) => mono_cell(left.clone(), W_LEFT, T.warn),
@@ -999,6 +1005,8 @@ impl DatabaseScreen {
                         .map(|accuracy| format!("{accuracy:.1}"))
                         .unwrap_or_else(|| "—".to_owned()),
                 )
+                .w(px(W_ACC))
+                .flex_none()
                 .text_size(px(13.))
                 .text_color(rgb(T.fg)),
             )
@@ -1314,7 +1322,9 @@ pub fn review_games(
 }
 
 impl Render for DatabaseScreen {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // The table needs its fixed columns, so the preview makes way on narrow windows.
+        let show_preview = window.viewport_size().width >= px(1320.);
         let left = self.render_left(cx);
         let header = self.render_main_header(cx);
         let stats = self.render_stats();
@@ -1340,7 +1350,9 @@ impl Render for DatabaseScreen {
                         .min_h_0()
                         .gap(px(16.))
                         .child(div().flex_1().min_w_0().h_full().child(table))
-                        .child(panel().w(px(293.)).flex_none().child(preview)),
+                        .when(show_preview, |row| {
+                            row.child(panel().w(px(293.)).flex_none().child(preview))
+                        }),
                 ),
         )
     }

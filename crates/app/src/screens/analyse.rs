@@ -139,6 +139,8 @@ pub struct AnalyseScreen {
     scoresheet_scroll: ScrollHandle,
     db_task: Option<Task<()>>,
     visible: bool,
+    /// The W/D/L column is dropped when the window is too narrow for it.
+    show_wdl: bool,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -229,6 +231,7 @@ impl AnalyseScreen {
             scoresheet_scroll: ScrollHandle::new(),
             db_task: None,
             visible: true,
+            show_wdl: true,
             _subscriptions: subscriptions,
         };
         this.position_changed(false, window, cx);
@@ -631,7 +634,7 @@ impl AnalyseScreen {
             .update(cx, |model, cx| match model.repertoire.add_line(&refs) {
                 Ok(()) => {
                     model.save_repertoire(cx);
-                    model.refresh_leaks();
+                    model.refresh_leaks(cx);
                     model.toast("Added to the repertoire.", cx);
                 }
                 Err(err) => model.toast(format!("Could not add the line: {err}"), cx),
@@ -802,6 +805,8 @@ impl AnalyseScreen {
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
         let this = cx.entity();
+        let compact = board_size < px(390.);
+        let nav_width = if compact { 34. } else { 42. };
         let node = self.tree.node(self.current);
         let turn = if node.pos.turn().is_white() {
             "White"
@@ -840,13 +845,14 @@ impl AnalyseScreen {
                    this: Entity<Self>,
                    action: fn(&mut Self, &mut Window, &mut Context<Self>)| {
             icon_btn(id, icon)
-                .w(42.)
+                .w(nav_width)
                 .tooltip(tip)
                 .on_click(move |window, cx| {
                     this.update(cx, |screen, cx| action(screen, window, cx));
                 })
         };
         let fen = self.tree.fen(self.current);
+        let tool_pad = if compact { 5. } else { 13. };
         v_flex()
             .flex_none()
             .w(board_size)
@@ -937,11 +943,11 @@ impl AnalyseScreen {
                     .child(
                         h_flex()
                             .gap(px(6.))
-                            .child(btn("flip", "Flip").on_click({
+                            .child(btn("flip", "Flip").pad(tool_pad).on_click({
                                 let this = this.clone();
                                 move |_, cx| this.update(cx, |screen, cx| screen.flip(cx))
                             }))
-                            .child(btn("setup", "Set up").on_click({
+                            .child(btn("setup", "Set up").pad(tool_pad).on_click({
                                 let this = this.clone();
                                 move |window, cx| {
                                     this.update(cx, |screen, cx| {
@@ -955,7 +961,7 @@ impl AnalyseScreen {
                                     });
                                 }
                             }))
-                            .child(btn("copy-fen", "Copy FEN").on_click({
+                            .child(btn("copy-fen", "Copy FEN").pad(tool_pad).on_click({
                                 let this = this.clone();
                                 move |_, cx| {
                                     cx.write_to_clipboard(ClipboardItem::new_string(fen.clone()));
@@ -995,6 +1001,7 @@ impl AnalyseScreen {
             .reference_db()
             .map(|entry| reference_column_title(&entry.name))
             .unwrap_or_else(|| "Reference".to_owned());
+        let show_wdl = self.show_wdl;
         const COL_MOVE: f32 = 64.;
         const COL_SF: f32 = 56.;
         const COL_WDL: f32 = 88.;
@@ -1018,12 +1025,14 @@ impl AnalyseScreen {
                     .flex_none()
                     .child(section_label(&eval_title)),
             )
-            .child(
-                div()
-                    .w(px(COL_WDL))
-                    .flex_none()
-                    .child(section_label(&wdl_title)),
-            )
+            .when(show_wdl, |header| {
+                header.child(
+                    div()
+                        .w(px(COL_WDL))
+                        .flex_none()
+                        .child(section_label(&wdl_title)),
+                )
+            })
             .child(
                 div()
                     .w(px(COL_REF))
@@ -1118,13 +1127,15 @@ impl AnalyseScreen {
                             .text_color(rgb(T.fg_2))
                             .child(score),
                     )
-                    .child(
-                        div()
-                            .w(px(COL_WDL))
-                            .flex_none()
-                            .pr(px(12.))
-                            .child(wdl_bar(row.wdl)),
-                    )
+                    .when(show_wdl, |row_el| {
+                        row_el.child(
+                            div()
+                                .w(px(COL_WDL))
+                                .flex_none()
+                                .pr(px(12.))
+                                .child(wdl_bar(row.wdl)),
+                        )
+                    })
                     .child(
                         div()
                             .w(px(COL_REF))
@@ -1257,6 +1268,7 @@ impl AnalyseScreen {
             )
             .child(
                 h_flex()
+                    .flex_wrap()
                     .gap(px(6.))
                     .child(
                         btn("play-line", "Play line on board")
@@ -1393,9 +1405,12 @@ fn wdl_bar(wdl: Option<Wdl>) -> impl IntoElement {
 impl Render for AnalyseScreen {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let viewport = window.viewport_size();
+        // The side column keeps room for its table, so the board gives way first.
         let board_size = (viewport.height - px(324.))
-            .min(viewport.width - px(720.))
+            .min(viewport.width - px(820.))
             .max(px(320.));
+        let side_width = viewport.width - board_size - px(300. + 56. + 24.);
+        self.show_wdl = side_width >= px(450.);
         let scoresheet = self.render_scoresheet(cx);
         let board_column = self.render_board_column(board_size, cx);
         let table = self.render_moves_table(cx);

@@ -647,16 +647,18 @@ impl Render for BoardView {
         let capture = entity.clone();
         root = root.child(
             canvas(
-                move |bounds, _, cx| {
-                    capture.update(cx, |board, cx| {
-                        if board.bounds != bounds {
-                            let first_layout = board.bounds.size != bounds.size;
-                            board.bounds = bounds;
-                            if first_layout {
-                                cx.notify();
-                            }
-                        }
+                move |bounds, window, cx| {
+                    let resized = capture.update(cx, |board, _| {
+                        let resized = board.bounds.size != bounds.size;
+                        board.bounds = bounds;
+                        resized
                     });
+                    // Pieces are laid out from the size, known only now. A notify during
+                    // this frame would be lost, so it goes out after the frame.
+                    if resized {
+                        let capture = capture.clone();
+                        window.on_next_frame(move |_, cx| capture.update(cx, |_, cx| cx.notify()));
+                    }
                 },
                 {
                     let entity = entity.clone();

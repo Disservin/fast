@@ -119,6 +119,7 @@ impl Workspace {
     ) -> Self {
         let shortcuts = model.read(cx).config.shortcuts.clone();
         bind_shortcuts(&shortcuts, cx);
+        model.update(cx, |model, cx| model.refresh_leaks(cx));
         let this = cx.entity().downgrade();
         let analyse = cx.new(|cx| AnalyseScreen::new(model.clone(), window, cx));
         let database = cx.new(|cx| DatabaseScreen::new(model.clone(), this.clone(), window, cx));
@@ -355,10 +356,12 @@ impl Workspace {
         )
     }
 
-    fn right_controls(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+    fn right_controls(&self, narrow: bool, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let this = cx.entity();
         let mut row = h_flex().gap(px(10.));
+        // Narrow windows keep the search box clear of the centered mode switch.
         let search_w = match self.mode {
+            Mode::Analyse | Mode::Database if narrow => Some(150.),
             Mode::Analyse | Mode::Database => Some(260.),
             _ => None,
         };
@@ -413,7 +416,7 @@ impl Workspace {
         )
     }
 
-    fn top_bar(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+    fn top_bar(&self, narrow: bool, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let crumb = self.breadcrumb(cx);
         div()
             .relative()
@@ -448,7 +451,7 @@ impl Workspace {
                                     .child(SharedString::from(format!("/ {crumb}"))),
                             ),
                     )
-                    .child(self.right_controls(cx)),
+                    .child(self.right_controls(narrow, cx)),
             )
             .child(
                 h_flex()
@@ -513,6 +516,7 @@ impl Render for Workspace {
                 .any(|name| context.contains(name))
         });
         let path_bar = self.path_bar(cx);
+        let narrow = window.viewport_size().width < px(1300.);
         let on_button = stack
             .iter()
             .any(|context| context.contains("OutpostButton"));
@@ -547,7 +551,7 @@ impl Render for Workspace {
                     .text_color(rgb(T.fg))
                     .font_family(SANS)
                     .text_size(px(14.))
-                    .child(self.top_bar(cx))
+                    .child(self.top_bar(narrow, cx))
                     .children(path_bar)
                     .child(div().flex_1().min_h_0().w_full().child(body)),
             )

@@ -342,7 +342,7 @@ impl TrainScreen {
             let result = model.repertoire.add_line(&refs);
             if result.is_ok() {
                 model.save_repertoire(cx);
-                model.refresh_leaks();
+                model.refresh_leaks(cx);
             }
             result
         });
@@ -421,7 +421,7 @@ impl TrainScreen {
                         }
                     }
                     model.save_repertoire(cx);
-                    model.refresh_leaks();
+                    model.refresh_leaks(cx);
                 });
                 self.reload_queue(cx);
                 format!("Added {added} lines to the repertoire.")
@@ -868,6 +868,10 @@ impl TrainScreen {
                             div()
                                 .text_size(px(12.))
                                 .text_color(rgb(T.muted))
+                                .min_w_0()
+                                .overflow_hidden()
+                                .whitespace_nowrap()
+                                .text_ellipsis()
                                 .child("Where you left the repertoire"),
                         ),
                 ),

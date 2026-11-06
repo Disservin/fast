@@ -163,7 +163,7 @@ impl SettingsScreen {
                         if model.config.player_name != name && !name.is_empty() {
                             model.config.player_name = name;
                             model.save_config(cx);
-                            model.refresh_leaks();
+                            model.refresh_leaks(cx);
                             cx.emit(ModelEvent::Databases);
                         }
                     });
@@ -910,10 +910,11 @@ impl SettingsScreen {
                             .on_click(|_, cx| cx.open_url("https://stockfishchess.org/download/")),
                     ),
             );
-        const COL_ENGINE: f32 = 468.;
-        const COL_PROTOCOL: f32 = 102.;
-        const COL_RUNS: f32 = 102.;
-        const COL_USED: f32 = 339.;
+        // Fractions of the table so it fits any window width.
+        let col_engine = gpui::relative(0.40);
+        let col_protocol = gpui::relative(0.115);
+        let col_runs = gpui::relative(0.10);
+        let col_used = gpui::relative(0.295);
         let mut table = panel().overflow_hidden().child(
             h_flex()
                 .h(px(32.))
@@ -921,10 +922,10 @@ impl SettingsScreen {
                 .bg(rgb(T.surface_2))
                 .border_b_1()
                 .border_color(rgb(T.border))
-                .child(div().w(px(COL_ENGINE)).child(section_label("Engine")))
-                .child(div().w(px(COL_PROTOCOL)).child(section_label("Protocol")))
-                .child(div().w(px(COL_RUNS)).child(section_label("Runs on")))
-                .child(div().w(px(COL_USED)).child(section_label("Used for")))
+                .child(div().w(col_engine).child(section_label("Engine")))
+                .child(div().w(col_protocol).child(section_label("Protocol")))
+                .child(div().w(col_runs).child(section_label("Runs on")))
+                .child(div().w(col_used).child(section_label("Used for")))
                 .child(section_label("Status")),
         );
         for (index, engine) in model.config.engines.iter().enumerate() {
@@ -970,7 +971,7 @@ impl SettingsScreen {
                     })
                     .child(
                         h_flex()
-                            .w(px(COL_ENGINE))
+                            .w(col_engine)
                             .gap(px(4.))
                             .child(
                                 div()
@@ -985,19 +986,19 @@ impl SettingsScreen {
                     )
                     .child(
                         mono("UCI")
-                            .w(px(COL_PROTOCOL))
+                            .w(col_protocol)
                             .text_size(px(13.))
                             .text_color(rgb(T.fg_2)),
                     )
                     .child(
                         div()
-                            .w(px(COL_RUNS))
+                            .w(col_runs)
                             .text_color(rgb(T.fg_2))
                             .child(if engine.runs_on_gpu { "GPU" } else { "CPU" }),
                     )
                     .child(
                         div()
-                            .w(px(COL_USED))
+                            .w(col_used)
                             .text_color(rgb(T.fg_2))
                             .child(engine.used_for()),
                     )

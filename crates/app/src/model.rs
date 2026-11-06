@@ -9,7 +9,9 @@ use anyhow::Result;
 use chess_core::notation::numbered;
 use db::{Database, NoteStore};
 use engine::{EngineConfig, EngineId, EngineManager, EngineStatus};
-use gpui::{App, AppContext as _, Context, Entity, EventEmitter, PathPromptOptions, SharedString};
+use gpui::{
+    App, AppContext as _, Context, Entity, EventEmitter, PathPromptOptions, SharedString, Task,
+};
 use trainer::{BookGap, GameLine, Leak, Repertoire, deviation, find_book_gaps, find_leaks};
 
 use crate::config::{Config, Paths};
@@ -56,6 +58,7 @@ pub struct AppModel {
     pub toasts: Vec<Toast>,
     next_toast: u64,
     pub pending_path: Option<PendingPath>,
+    leak_task: Option<Task<()>>,
     pub manager: EngineManager,
     pub engine_status: std::collections::BTreeMap<EngineId, EngineStatus>,
 }
@@ -164,11 +167,11 @@ impl AppModel {
             toasts: Vec::new(),
             next_toast: 0,
             pending_path: None,
+            leak_task: None,
             manager: EngineManager::default(),
             engine_status,
         };
         model.refresh_databases();
-        model.refresh_leaks();
         model
     }
 
@@ -285,21 +288,32 @@ impl AppModel {
         }
     }
 
-    /// Recomputes `left_rep` for the user's games and the leak lists.
-    pub fn refresh_leaks(&mut self) {
+    /// Recomputes `left_rep` for the user's games and the leak lists on a background
+    /// thread, then tells screens to re-read. Collections can be large.
+    pub fn refresh_leaks(&mut self, cx: &mut Context<Self>) {
         let path = self.my_games_path();
         if !path.exists() {
             self.leaks.clear();
             self.gaps.clear();
             return;
         }
-        match compute_leaks(&path, &self.config.player_name, &self.repertoire) {
-            Ok((leaks, gaps)) => {
-                self.leaks = leaks;
-                self.gaps = gaps;
-            }
-            Err(err) => log::error!("leak detection failed: {err:#}"),
-        }
+        let player = self.config.player_name.clone();
+        let repertoire = self.repertoire.clone();
+        let task = cx.background_spawn(async move { compute_leaks(&path, &player, &repertoire) });
+        self.leak_task = Some(cx.spawn(async move |this, cx| {
+            let result = task.await;
+            let _ = this.update(cx, |model, cx| {
+                match result {
+                    Ok((leaks, gaps)) => {
+                        model.leaks = leaks;
+                        model.gaps = gaps;
+                    }
+                    Err(err) => log::error!("leak detection failed: {err:#}"),
+                }
+                cx.emit(ModelEvent::Databases);
+                cx.notify();
+            });
+        }));
     }
 
     pub fn engine(&self, id: EngineId) -> Option<&EngineConfig> {
