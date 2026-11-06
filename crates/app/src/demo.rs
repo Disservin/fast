@@ -223,7 +223,7 @@ fn my_games(path: &Path, rng: &mut Rng) {
     }
     // The rest of the collection: games as Black, which a White repertoire ignores.
     let openings = ["d4 Nf6 c4 g6", "Nf3 d5 d4 Nf6", "c4 e5 Nc3 Nf6", "e4 e5 Nf3 Nc6", "d4 d5 c4 e6"];
-    for index in 0..3070 {
+    for index in 0..3075 {
         let result = ["1-0", "0-1", "1/2-1/2"][rng.below(3)];
         write_game(
             &mut pgn,
@@ -397,6 +397,14 @@ fn repertoire(today: i64) -> Repertoire {
         .iter()
         .map(|line| line.iter().map(|san| (*san).to_owned()).collect())
         .collect();
+    let forbidden = [
+        format!("{LINE} h4"),
+        format!("{LINE} Kb1"),
+        format!("{ENGLISH_ATTACK} e6"),
+        format!("{ENGLISH_ATTACK} Ng4 Bc1"),
+        format!("{ENGLISH_ATTACK} e5 Nb3 Be6 f3 Be7 g4"),
+        "e4 c5 Nf3 e6 d4 a6".to_owned(),
+    ];
     let mut guard = 0;
     while rep.positions() < 412 && guard < 5_000 {
         guard += 1;
@@ -414,6 +422,11 @@ fn repertoire(today: i64) -> Repertoire {
             }
             let mv = moves[rng.below(moves.len())].clone();
             path.push(SanPlus::from_move_and_play_unchecked(&mut pos, mv).to_string());
+        }
+        // Keep filler clear of the lines the demo games use to leave the book.
+        let joined = path.join(" ");
+        if forbidden.iter().any(|prefix| joined.starts_with(prefix.as_str())) {
+            continue;
         }
         let refs: Vec<&str> = path.iter().map(String::as_str).collect();
         if rep.add_line(&refs).is_ok() && path.len() % 7 == 0 {

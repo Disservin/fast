@@ -58,7 +58,7 @@ pub fn select_el(state: &TextSelect) -> impl IntoElement + use<> {
         .bg(rgb(T.bg))
         .rounded(px(4.))
         .text_size(px(14.))
-        .child(Select::new(state).with_size(gpui_component::Size::Medium))
+        .child(Select::new(state))
 }
 
 /// A small form label above a field.

@@ -380,6 +380,8 @@ impl RenderOnce for Check {
             .key_context("OutpostButton")
             .track_focus(&focus)
             .flex()
+            .w_full()
+            .min_w_0()
             .items_start()
             .gap(px(10.))
             .cursor_pointer()
@@ -404,7 +406,7 @@ impl RenderOnce for Check {
                 }
             })
             .child(mark)
-            .children(self.label.map(|label| div().flex_1().child(label)))
+            .children(self.label.map(|label| div().flex_1().min_w_0().child(label)))
     }
 }
 

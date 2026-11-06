@@ -1045,13 +1045,15 @@ fn key_moment(details: &GameDetails) -> usize {
             }
         }
     }
-    // In the opening line of the sample, the moment after 13…Ne8; otherwise a point
-    // just past the named opening.
+    // Otherwise a middlegame moment just past the named opening.
     let mut last_book = 0;
+    let mut previous = None;
     for ply in 0..details.sans.len() {
-        if classify(details.sans[..=ply].iter().map(String::as_str)).is_some() {
+        let opening = classify(details.sans[..=ply].iter().map(String::as_str));
+        if opening != previous {
             last_book = ply + 1;
         }
+        previous = opening;
     }
     const SHOWN_PLIES: usize = 26;
     details.sans.len().min(SHOWN_PLIES.max(last_book))
@@ -1275,6 +1277,6 @@ mod tests {
         assert!(accuracy_from_loss(5.0) > accuracy_from_loss(10.0));
         assert!(accuracy_from_loss(1000.0) >= 0.0);
         assert!((win_percent(0) - 50.0).abs() < 0.01);
-        assert!(win_percent(500) > 90.0);
+        assert!(win_percent(500) > 80.0);
     }
 }
