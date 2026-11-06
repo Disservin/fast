@@ -19,9 +19,21 @@ const OPENINGS: &[(&str, &str, &str)] = &[
     ("e4 e5 Nf3 Nc6 Bb5 Nf6", "C65", "Ruy Lopez, Berlin Defence"),
     ("e4 e5 Nf3 Nc6 Bc4", "C50", "Italian Game"),
     ("e4 e5 Nf3 Nc6 Bc4 Bc5", "C50", "Italian Game, Giuoco Piano"),
-    ("e4 e5 Nf3 Nc6 Bc4 Nf6", "C55", "Italian Game, Two Knights Defence"),
-    ("e4 e5 Nf3 Nc6 Bc4 Bc5 c3", "C53", "Italian Game, Giuoco Piano"),
-    ("e4 e5 Nf3 Nc6 Bc4 Bc5 c3 Nf6", "C54", "Italian Game, Giuoco Pianissimo"),
+    (
+        "e4 e5 Nf3 Nc6 Bc4 Nf6",
+        "C55",
+        "Italian Game, Two Knights Defence",
+    ),
+    (
+        "e4 e5 Nf3 Nc6 Bc4 Bc5 c3",
+        "C53",
+        "Italian Game, Giuoco Piano",
+    ),
+    (
+        "e4 e5 Nf3 Nc6 Bc4 Bc5 c3 Nf6",
+        "C54",
+        "Italian Game, Giuoco Pianissimo",
+    ),
     ("e4 c5", "B20", "Sicilian Defence"),
     ("e4 c5 c3", "B22", "Sicilian, Alapin Variation"),
     ("e4 c5 Nc3", "B23", "Sicilian, Closed"),
@@ -31,13 +43,41 @@ const OPENINGS: &[(&str, &str, &str)] = &[
     ("e4 c5 Nf3 e6", "B40", "Sicilian Defence"),
     ("e4 c5 Nf3 e6 d4 cxd4 Nxd4 a6", "B41", "Sicilian, Kan"),
     ("e4 c5 Nf3 d6", "B50", "Sicilian Defence"),
-    ("e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3", "B56", "Sicilian Defence"),
-    ("e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 Nc6", "B56", "Sicilian, Classical"),
-    ("e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 g6", "B70", "Sicilian, Dragon"),
-    ("e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 e6", "B80", "Sicilian, Scheveningen"),
-    ("e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6", "B90", "Sicilian Najdorf"),
-    ("e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6 Be3", "B90", "Sicilian Najdorf, English Attack"),
-    ("e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6 Bg5", "B94", "Sicilian Najdorf, Bg5"),
+    (
+        "e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3",
+        "B56",
+        "Sicilian Defence",
+    ),
+    (
+        "e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 Nc6",
+        "B56",
+        "Sicilian, Classical",
+    ),
+    (
+        "e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 g6",
+        "B70",
+        "Sicilian, Dragon",
+    ),
+    (
+        "e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 e6",
+        "B80",
+        "Sicilian, Scheveningen",
+    ),
+    (
+        "e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6",
+        "B90",
+        "Sicilian Najdorf",
+    ),
+    (
+        "e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6 Be3",
+        "B90",
+        "Sicilian Najdorf, English Attack",
+    ),
+    (
+        "e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6 Bg5",
+        "B94",
+        "Sicilian Najdorf, Bg5",
+    ),
     ("e4 c6", "B10", "Caro-Kann Defence"),
     ("e4 e6", "C00", "French Defence"),
     ("e4 d6", "B07", "Pirc Defence"),
@@ -88,7 +128,12 @@ mod tests {
         let opening = classify(najdorf.split(' ')).unwrap();
         assert_eq!(opening.eco, "B90");
         assert_eq!(opening.name, "Sicilian Najdorf, English Attack");
-        assert_eq!(classify("e4 e5 Nf3 Nc6 Bc4 Bc5 c3 Nf6".split(' ')).unwrap().eco, "C54");
+        assert_eq!(
+            classify("e4 e5 Nf3 Nc6 Bc4 Bc5 c3 Nf6".split(' '))
+                .unwrap()
+                .eco,
+            "C54"
+        );
         assert!(classify("a4".split(' ')).is_none());
     }
 }

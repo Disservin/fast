@@ -65,6 +65,7 @@ pub fn icon(path: &'static str, size: Pixels, color: u32) -> impl IntoElement {
 }
 
 type ClickHandler = Rc<dyn Fn(&mut Window, &mut App)>;
+type ChangeHandler = Rc<dyn Fn(bool, &mut Window, &mut App)>;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum BtnKind {
@@ -207,7 +208,9 @@ impl Btn {
 impl RenderOnce for Btn {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let focus = window
-            .use_keyed_state(self.id.clone(), cx, |_, cx| cx.focus_handle().tab_stop(true))
+            .use_keyed_state(self.id.clone(), cx, |_, cx| {
+                cx.focus_handle().tab_stop(true)
+            })
             .read(cx)
             .clone();
         let (bg, hover, fg, border): (Option<u32>, u32, u32, Option<u32>) = match self.kind {
@@ -279,7 +282,9 @@ impl RenderOnce for Btn {
         }
         el = el.focus_visible(|style| style.border_2().border_color(rgb(T.fg)));
         if let Some(color) = self.dot {
-            el = el.gap(px(8.)).child(div().size(px(8.)).rounded_full().bg(rgb(color)));
+            el = el
+                .gap(px(8.))
+                .child(div().size(px(8.)).rounded_full().bg(rgb(color)));
         }
         if let Some(path) = self.icon {
             el = el.child(icon(path, px(16.), fg));
@@ -326,7 +331,7 @@ pub struct Check {
     id: ElementId,
     checked: bool,
     label: Option<SharedString>,
-    on_change: Option<Rc<dyn Fn(bool, &mut Window, &mut App)>>,
+    on_change: Option<ChangeHandler>,
     text_size: Pixels,
 }
 
@@ -355,7 +360,9 @@ impl Check {
 impl RenderOnce for Check {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let focus = window
-            .use_keyed_state(self.id.clone(), cx, |_, cx| cx.focus_handle().tab_stop(true))
+            .use_keyed_state(self.id.clone(), cx, |_, cx| {
+                cx.focus_handle().tab_stop(true)
+            })
             .read(cx)
             .clone();
         let checked = self.checked;
@@ -406,7 +413,10 @@ impl RenderOnce for Check {
                 }
             })
             .child(mark)
-            .children(self.label.map(|label| div().flex_1().min_w_0().child(label)))
+            .children(
+                self.label
+                    .map(|label| div().flex_1().min_w_0().child(label)),
+            )
     }
 }
 

@@ -97,13 +97,17 @@ impl Repertoire {
     }
 
     pub fn user_color(&self) -> Color {
-        if self.white { Color::White } else { Color::Black }
+        if self.white {
+            Color::White
+        } else {
+            Color::Black
+        }
     }
 
     /// Whether the node at this depth (0 = White's first move) is the user's move.
     /// Assumes games start from the initial position, as repertoire lines do.
     fn is_user_move(&self, depth: usize) -> bool {
-        (depth % 2 == 0) == self.white
+        depth.is_multiple_of(2) == self.white
     }
 
     /// Inserts a SAN line, reusing existing moves. Validates legality.
@@ -111,7 +115,9 @@ impl Repertoire {
         let mut pos = Chess::default();
         for san in sans {
             let parsed: San = san.parse().map_err(|err| format!("{san}: {err}"))?;
-            let mv = parsed.to_move(&pos).map_err(|err| format!("{san}: {err}"))?;
+            let mv = parsed
+                .to_move(&pos)
+                .map_err(|err| format!("{san}: {err}"))?;
             pos = pos.play(mv).map_err(|err| format!("{san}: {err}"))?;
         }
         let white = self.white;
@@ -137,9 +143,15 @@ impl Repertoire {
     /// Finds a node by its SAN path from the start position.
     pub fn node(&self, path: &[impl AsRef<str>]) -> Option<&RepNode> {
         let (first, rest) = path.split_first()?;
-        let mut node = self.roots.iter().find(|node| node.san == clean(first.as_ref()))?;
+        let mut node = self
+            .roots
+            .iter()
+            .find(|node| node.san == clean(first.as_ref()))?;
         for san in rest {
-            node = node.children.iter().find(|child| child.san == clean(san.as_ref()))?;
+            node = node
+                .children
+                .iter()
+                .find(|child| child.san == clean(san.as_ref()))?;
         }
         Some(node)
     }
@@ -227,7 +239,9 @@ impl Repertoire {
     /// The tree as rows: unbranched chains collapse into one row, branches indent.
     pub fn tree_rows(&self, today: i64) -> Vec<TreeRow> {
         fn has_curated(nodes: &[RepNode]) -> bool {
-            nodes.iter().any(|node| node.row.is_some() || has_curated(&node.children))
+            nodes
+                .iter()
+                .any(|node| node.row.is_some() || has_curated(&node.children))
         }
         /// A node's status, looking one move ahead when it is an opponent move.
         fn own_status(node: &RepNode, today: i64) -> RepStatus {
@@ -240,12 +254,7 @@ impl Repertoire {
                 None => RepStatus::Known,
             }
         }
-        fn curated(
-            nodes: &[RepNode],
-            path: &mut Vec<String>,
-            today: i64,
-            rows: &mut Vec<TreeRow>,
-        ) {
+        fn curated(nodes: &[RepNode], path: &mut Vec<String>, today: i64, rows: &mut Vec<TreeRow>) {
             for node in nodes {
                 if let Some(row) = &node.row {
                     let mut row_path = path.clone();
@@ -282,8 +291,11 @@ impl Repertoire {
                     last = &last.children[0];
                     chain.push(last);
                 }
-                let shown: Vec<String> =
-                    chain.iter().take(MAX_ROW_PLIES).map(|n| n.san.clone()).collect();
+                let shown: Vec<String> = chain
+                    .iter()
+                    .take(MAX_ROW_PLIES)
+                    .map(|n| n.san.clone())
+                    .collect();
                 let mut label = chess_core::format_pv(start_len as u32, &shown);
                 if chain.len() > MAX_ROW_PLIES {
                     label.push_str(" …");
@@ -351,7 +363,14 @@ impl Repertoire {
         }
         let mut due = Vec::new();
         let mut new = Vec::new();
-        walk(self, &self.roots, &mut Vec::new(), today, &mut due, &mut new);
+        walk(
+            self,
+            &self.roots,
+            &mut Vec::new(),
+            today,
+            &mut due,
+            &mut new,
+        );
         due.sort_by_key(|(day, _)| *day);
         due.into_iter().map(|(_, drill)| drill).chain(new).collect()
     }
@@ -380,15 +399,16 @@ impl Repertoire {
 
     /// Hash → repertoire moves, for fast lookups by position (handles transpositions).
     pub fn position_index(&self) -> HashMap<u64, Vec<(String, bool)>> {
-        fn walk(
-            nodes: &[RepNode],
-            pos: &Chess,
-            index: &mut HashMap<u64, Vec<(String, bool)>>,
-        ) {
+        fn walk(nodes: &[RepNode], pos: &Chess, index: &mut HashMap<u64, Vec<(String, bool)>>) {
             let hash = chess_core::position_hash(pos);
             for (rank, node) in nodes.iter().enumerate() {
-                index.entry(hash).or_default().push((node.san.clone(), rank == 0));
-                let Ok(san) = node.san.parse::<San>() else { continue };
+                index
+                    .entry(hash)
+                    .or_default()
+                    .push((node.san.clone(), rank == 0));
+                let Ok(san) = node.san.parse::<San>() else {
+                    continue;
+                };
                 let Ok(mv) = san.to_move(pos) else { continue };
                 let mut next = pos.clone();
                 let _ = SanPlus::from_move_and_play_unchecked(&mut next, mv);
@@ -467,10 +487,24 @@ mod tests {
     #[test]
     fn grading_updates_status_and_coverage() {
         let mut rep = sample();
-        assert_eq!(rep.coverage(0), Coverage { known: 0, learning: 0, new: 4 });
+        assert_eq!(
+            rep.coverage(0),
+            Coverage {
+                known: 0,
+                learning: 0,
+                new: 4
+            }
+        );
         rep.grade(&["e4"], Grade::Easy, 0);
         rep.grade(&["e4", "c5", "Nf3"], Grade::Hard, 0);
-        assert_eq!(rep.coverage(0), Coverage { known: 1, learning: 1, new: 2 });
+        assert_eq!(
+            rep.coverage(0),
+            Coverage {
+                known: 1,
+                learning: 1,
+                new: 2
+            }
+        );
         assert_eq!(
             Repertoire::card_status(rep.node(&["e4"]).unwrap().card.as_ref(), 11),
             RepStatus::Due
@@ -495,8 +529,10 @@ mod tests {
     fn automatic_rows_collapse_chains_and_indent_branches() {
         let rep = sample();
         let rows = rep.tree_rows(0);
-        let labels: Vec<(&str, usize)> =
-            rows.iter().map(|row| (row.label.as_str(), row.depth)).collect();
+        let labels: Vec<(&str, usize)> = rows
+            .iter()
+            .map(|row| (row.label.as_str(), row.depth))
+            .collect();
         assert_eq!(
             labels,
             vec![
@@ -513,7 +549,10 @@ mod tests {
     #[test]
     fn curated_rows_replace_the_automatic_listing() {
         let mut rep = sample();
-        rep.roots[0].row = Some(CuratedRow { depth: 0, label: "King's pawn".to_owned() });
+        rep.roots[0].row = Some(CuratedRow {
+            depth: 0,
+            label: "King's pawn".to_owned(),
+        });
         let rows = rep.tree_rows(0);
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].label, "King's pawn");

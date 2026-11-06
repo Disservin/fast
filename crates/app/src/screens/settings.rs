@@ -3,11 +3,13 @@
 use std::{collections::HashMap, path::PathBuf, process::Command};
 
 use chess_core::Notation;
-use engine::{EngineConfig, EngineEvent, EngineHandle, EngineId, EngineStatus, Limits, OptionKind, SearchRequest, UciOption};
+use engine::{
+    EngineConfig, EngineEvent, EngineHandle, EngineId, EngineStatus, Limits, OptionKind,
+    SearchRequest, UciOption,
+};
 use gpui::{
     AppContext as _, Context, Div, Entity, FocusHandle, FontWeight, IntoElement, KeyDownEvent,
-    PathPromptOptions, Render, SharedString, Subscription, Window, div, img, prelude::*, px, rgb,
-    svg,
+    Render, SharedString, Subscription, Window, div, img, prelude::*, px, rgb, svg,
 };
 use gpui_component::{
     input::{InputEvent, InputState},
@@ -22,7 +24,7 @@ use ui::{
 use crate::{
     config::{SavedCoordinates, SavedPieces, SavedTheme},
     controls::{TextSelect, new_input, new_select, select_el, text_input},
-    model::{AppModel, ModelEvent, split_engine_name},
+    model::{AppModel, ModelEvent, pick_path, split_engine_name},
     screens::database::format_count,
     shell,
 };
@@ -75,10 +77,19 @@ const SHORTCUT_ROWS: [(&str, &str); 8] = [
 fn option_label(name: &str) -> (String, Option<&'static str>) {
     match name {
         "Threads" => ("Threads".to_owned(), Some("CPU cores to use")),
-        "Hash" => ("Hash".to_owned(), Some("Memory for the transposition table")),
+        "Hash" => (
+            "Hash".to_owned(),
+            Some("Memory for the transposition table"),
+        ),
         "MultiPV" => ("MultiPV".to_owned(), Some("Lines shown in Moves from here")),
-        "SyzygyPath" => ("Syzygy path".to_owned(), Some("Endgame tablebases, 3–6 pieces")),
-        "UCI_ShowWDL" => ("Show WDL".to_owned(), Some("Win / draw / loss odds next to the eval")),
+        "SyzygyPath" => (
+            "Syzygy path".to_owned(),
+            Some("Endgame tablebases, 3–6 pieces"),
+        ),
+        "UCI_ShowWDL" => (
+            "Show WDL".to_owned(),
+            Some("Win / draw / loss odds next to the eval"),
+        ),
         "WeightsFile" => ("Weights file".to_owned(), Some("Lc0 network file")),
         other => (other.to_owned(), None),
     }
@@ -86,15 +97,25 @@ fn option_label(name: &str) -> (String, Option<&'static str>) {
 
 /// Well-known options first, in a stable order.
 fn option_rank(name: &str) -> usize {
-    ["Threads", "Hash", "MultiPV", "WeightsFile", "SyzygyPath", "UCI_ShowWDL"]
-        .iter()
-        .position(|known| *known == name)
-        .unwrap_or(usize::MAX)
+    [
+        "Threads",
+        "Hash",
+        "MultiPV",
+        "WeightsFile",
+        "SyzygyPath",
+        "UCI_ShowWDL",
+    ]
+    .iter()
+    .position(|known| *known == name)
+    .unwrap_or(usize::MAX)
 }
 
 /// Options the app itself drives, so they are not offered as settings.
 fn option_is_hidden(name: &str) -> bool {
-    matches!(name, "UCI_LimitStrength" | "UCI_Elo" | "UCI_AnalyseMode" | "UCI_Chess960" | "Ponder")
+    matches!(
+        name,
+        "UCI_LimitStrength" | "UCI_Elo" | "UCI_AnalyseMode" | "UCI_Chess960" | "Ponder"
+    )
 }
 
 pub struct SettingsScreen {
@@ -119,7 +140,11 @@ impl SettingsScreen {
         let language = new_select(vec!["English".into()], 0, window, cx);
         let current_ms = model.read(cx).config.board.animation_ms;
         let animation = cx.new(|_| {
-            SliderState::new().min(0.).max(400.).step(10.).default_value(current_ms as f32)
+            SliderState::new()
+                .min(0.)
+                .max(400.)
+                .step(10.)
+                .default_value(current_ms as f32)
         });
         let name = model.read(cx).config.player_name.clone();
         let player_name = new_input(name, "Your name in game headers", window, cx);
@@ -139,14 +164,19 @@ impl SettingsScreen {
                             model.config.player_name = name;
                             model.save_config(cx);
                             model.refresh_leaks();
-                            cx.emit(ModelEvent::DatabasesChanged);
+                            cx.emit(ModelEvent::Databases);
                         }
                     });
                 }
             }),
             cx.observe(&model, |_, _, cx| cx.notify()),
         ];
-        let selected_engine = model.read(cx).config.engines.first().map(|engine| engine.id);
+        let selected_engine = model
+            .read(cx)
+            .config
+            .engines
+            .first()
+            .map(|engine| engine.id);
         let mut this = Self {
             model,
             page: SettingsPage::General,
@@ -177,11 +207,15 @@ impl SettingsScreen {
         cx.notify();
     }
 
-    fn update_board(&self, cx: &mut Context<Self>, change: impl FnOnce(&mut crate::config::BoardConfig)) {
+    fn update_board(
+        &self,
+        cx: &mut Context<Self>,
+        change: impl FnOnce(&mut crate::config::BoardConfig),
+    ) {
         self.model.update(cx, |model, cx| {
             change(&mut model.config.board);
             model.save_config(cx);
-            cx.emit(ModelEvent::BoardPrefsChanged);
+            cx.emit(ModelEvent::BoardPrefs);
         });
     }
 
@@ -203,14 +237,27 @@ impl SettingsScreen {
             let current = config.options.get(&option.name).cloned();
             match &option.kind {
                 OptionKind::Spin { default, .. } => {
-                    self.add_text_option(&option.name, current.unwrap_or(default.to_string()), window, cx);
+                    self.add_text_option(
+                        &option.name,
+                        current.unwrap_or(default.to_string()),
+                        window,
+                        cx,
+                    );
                 }
                 OptionKind::String { default } => {
-                    self.add_text_option(&option.name, current.unwrap_or(default.clone()), window, cx);
+                    self.add_text_option(
+                        &option.name,
+                        current.unwrap_or(default.clone()),
+                        window,
+                        cx,
+                    );
                 }
                 OptionKind::Combo { default, choices } => {
                     let value = current.unwrap_or(default.clone());
-                    let index = choices.iter().position(|choice| *choice == value).unwrap_or(0);
+                    let index = choices
+                        .iter()
+                        .position(|choice| *choice == value)
+                        .unwrap_or(0);
                     let items: Vec<SharedString> =
                         choices.iter().map(|choice| choice.clone().into()).collect();
                     let select = new_select(items, index, window, cx);
@@ -219,7 +266,10 @@ impl SettingsScreen {
                     self._option_subscriptions.push(cx.subscribe(
                         &select,
                         move |this, state, _: &gpui_component::select::SelectEvent<_>, cx| {
-                            let index = state.read(cx).selected_index(cx).map_or(0, |index| index.row);
+                            let index = state
+                                .read(cx)
+                                .selected_index(cx)
+                                .map_or(0, |index| index.row);
                             if let Some(value) = choices.get(index) {
                                 this.set_engine_option(&name, value.clone(), cx);
                             }
@@ -233,7 +283,13 @@ impl SettingsScreen {
         cx.notify();
     }
 
-    fn add_text_option(&mut self, name: &str, value: String, window: &mut Window, cx: &mut Context<Self>) {
+    fn add_text_option(
+        &mut self,
+        name: &str,
+        value: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let input = cx.new(|cx| {
             let mut state = InputState::new(window, cx);
             state.set_value(value, window, cx);
@@ -255,9 +311,13 @@ impl SettingsScreen {
 
     /// Persists an option and applies it to the engine if running.
     fn set_engine_option(&mut self, name: &str, value: String, cx: &mut Context<Self>) {
-        let Some(id) = self.selected_engine else { return };
+        let Some(id) = self.selected_engine else {
+            return;
+        };
         self.model.update(cx, |model, cx| {
-            let Some(config) = model.engine_mut(id) else { return };
+            let Some(config) = model.engine_mut(id) else {
+                return;
+            };
             if config.options.get(name) == Some(&value) {
                 return;
             }
@@ -266,43 +326,45 @@ impl SettingsScreen {
                 handle.set_option(name, Some(value));
             }
             model.save_config(cx);
-            cx.emit(ModelEvent::EnginesChanged);
+            cx.emit(ModelEvent::Engines);
         });
     }
 
     fn set_engine_use(&mut self, change: impl FnOnce(&mut EngineConfig), cx: &mut Context<Self>) {
-        let Some(id) = self.selected_engine else { return };
+        let Some(id) = self.selected_engine else {
+            return;
+        };
         self.model.update(cx, |model, cx| {
-            let Some(config) = model.engine_mut(id) else { return };
+            let Some(config) = model.engine_mut(id) else {
+                return;
+            };
             change(config);
             config.enabled = config.use_analysis || config.use_review || config.use_play;
-            let status = if config.enabled { EngineStatus::Ready } else { EngineStatus::Disabled };
+            let status = if config.enabled {
+                EngineStatus::Ready
+            } else {
+                EngineStatus::Disabled
+            };
             model.engine_status.insert(id, status);
             model.save_config(cx);
-            cx.emit(ModelEvent::EnginesChanged);
+            cx.emit(ModelEvent::Engines);
         });
     }
 
     fn add_from_file(&mut self, cx: &mut Context<Self>) {
-        let paths = cx.prompt_for_paths(PathPromptOptions {
-            files: true,
-            directories: false,
-            multiple: false,
-            prompt: Some("Add engine".into()),
-        });
-        cx.spawn(async move |this, cx| {
-            let Ok(Ok(Some(paths))) = paths.await else { return };
-            let Some(path) = paths.into_iter().next() else { return };
-            let _ = this.update(cx, |this, cx| this.register_engine(path, cx));
-        })
-        .detach();
+        let this = cx.entity().downgrade();
+        pick_path(
+            self.model.clone(),
+            "Add engine",
+            None,
+            cx,
+            move |path, cx| {
+                let _ = this.update(cx, |this, cx| this.register_engine(path, cx));
+            },
+        );
     }
 
-    fn register_engine(
-        &mut self,
-        path: PathBuf,
-        cx: &mut Context<Self>,
-    ) {
+    fn register_engine(&mut self, path: PathBuf, cx: &mut Context<Self>) {
         let handle = EngineHandle::spawn(path.clone(), Vec::new(), Vec::new());
         let events = handle.events();
         let this = cx.entity().downgrade();
@@ -335,7 +397,10 @@ impl SettingsScreen {
                         .map(|stem| stem.to_string_lossy().into_owned())
                         .unwrap_or_else(|| "Engine".to_owned());
                     let (name, version) = split_engine_name(&info.name, &fallback);
-                    let wdl = info.options.iter().any(|option| option.name == "UCI_ShowWDL");
+                    let wdl = info
+                        .options
+                        .iter()
+                        .any(|option| option.name == "UCI_ShowWDL");
                     let mut options = std::collections::BTreeMap::new();
                     if wdl {
                         options.insert("UCI_ShowWDL".to_owned(), "true".to_owned());
@@ -358,7 +423,7 @@ impl SettingsScreen {
                     });
                     model.engine_status.insert(id, EngineStatus::Ready);
                     model.save_config(cx);
-                    cx.emit(ModelEvent::EnginesChanged);
+                    cx.emit(ModelEvent::Engines);
                     Some(id)
                 }
                 Err(reason) => {
@@ -367,7 +432,7 @@ impl SettingsScreen {
                 }
             });
             if let (Some(id), Some(this)) = (added, this.upgrade()) {
-                let _ = cx.update(|cx| {
+                cx.update(|cx| {
                     if let Some(window) = cx.active_window() {
                         let _ = window.update(cx, |_, window, cx| {
                             this.update(cx, |this, cx| {
@@ -382,23 +447,36 @@ impl SettingsScreen {
     }
 
     fn remove_engine(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(id) = self.selected_engine else { return };
+        let Some(id) = self.selected_engine else {
+            return;
+        };
         self.model.update(cx, |model, cx| {
             model.manager.shutdown(id);
             model.config.engines.retain(|engine| engine.id != id);
             model.engine_status.remove(&id);
             model.save_config(cx);
-            cx.emit(ModelEvent::EnginesChanged);
+            cx.emit(ModelEvent::Engines);
         });
-        let next = self.model.read(cx).config.engines.first().map(|engine| engine.id);
+        let next = self
+            .model
+            .read(cx)
+            .config
+            .engines
+            .first()
+            .map(|engine| engine.id);
         self.select_engine(next, window, cx);
     }
 
     fn run_benchmark(&mut self, cx: &mut Context<Self>) {
-        let Some(id) = self.selected_engine else { return };
-        let Some(config) = self.model.read(cx).engine(id).cloned() else { return };
+        let Some(id) = self.selected_engine else {
+            return;
+        };
+        let Some(config) = self.model.read(cx).engine(id).cloned() else {
+            return;
+        };
         if self.model.read(cx).demo {
-            self.benchmark = Some("Benchmark needs a real engine; demo mode only has scripted lines.".into());
+            self.benchmark =
+                Some("Benchmark needs a real engine; demo mode only has scripted lines.".into());
             cx.notify();
             return;
         }
@@ -416,11 +494,13 @@ impl SettingsScreen {
     }
 
     fn restart_engine(&mut self, cx: &mut Context<Self>) {
-        let Some(id) = self.selected_engine else { return };
+        let Some(id) = self.selected_engine else {
+            return;
+        };
         self.model.update(cx, |model, cx| {
             model.manager.shutdown(id);
             model.engine_status.insert(id, EngineStatus::Ready);
-            cx.emit(ModelEvent::EnginesChanged);
+            cx.emit(ModelEvent::Engines);
             cx.notify();
         });
     }
@@ -434,7 +514,10 @@ impl SettingsScreen {
             return;
         }
         // Modifiers alone do not make a shortcut.
-        if matches!(keystroke.key.as_str(), "shift" | "control" | "alt" | "platform" | "function") {
+        if matches!(
+            keystroke.key.as_str(),
+            "shift" | "control" | "alt" | "platform" | "function"
+        ) {
             return;
         }
         let mut text = String::new();
@@ -456,7 +539,10 @@ impl SettingsScreen {
             if let Some(old) = model.config.shortcuts.get(action).cloned() {
                 shell::unbind_shortcut(&old, action, cx);
             }
-            model.config.shortcuts.insert(action.to_owned(), text.clone());
+            model
+                .config
+                .shortcuts
+                .insert(action.to_owned(), text.clone());
             let single: std::collections::BTreeMap<String, String> =
                 [(action.to_owned(), text)].into_iter().collect();
             shell::bind_shortcuts(&single, cx);
@@ -488,7 +574,15 @@ impl SettingsScreen {
                             .border_1()
                             .border_color(rgb(T.border_strong))
                             .font_weight(FontWeight::SEMIBOLD)
-                            .child(div().absolute().left_0().top_0().bottom_0().w(px(3.)).bg(rgb(T.fg)))
+                            .child(
+                                div()
+                                    .absolute()
+                                    .left_0()
+                                    .top_0()
+                                    .bottom_0()
+                                    .w(px(3.))
+                                    .bg(rgb(T.fg)),
+                            )
                     })
                     .when(!selected, |item| item.hover(|style| style.bg(rgb(T.hover))))
                     .on_click(move |_, window, cx| {
@@ -506,7 +600,12 @@ impl SettingsScreen {
             .bg(rgb(T.surface))
             .border_r_1()
             .border_color(rgb(T.border))
-            .child(div().px(px(12.)).mb(px(14.)).child(section_label("Settings")))
+            .child(
+                div()
+                    .px(px(12.))
+                    .mb(px(14.))
+                    .child(section_label("Settings")),
+            )
             .child(nav)
     }
 
@@ -518,10 +617,26 @@ impl SettingsScreen {
                 h_flex()
                     .gap(px(6.))
                     .child(btn("theme-dark", "Dark").pad(10.).h(30.).selected(true))
-                    .child(btn("theme-light", "Light").pad(10.).h(30.).disabled(true).tooltip("Light theme is not available yet"))
-                    .child(btn("theme-system", "Match system").pad(10.).h(30.).disabled(true).tooltip("Light theme is not available yet")),
+                    .child(
+                        btn("theme-light", "Light")
+                            .pad(10.)
+                            .h(30.)
+                            .disabled(true)
+                            .tooltip("Light theme is not available yet"),
+                    )
+                    .child(
+                        btn("theme-system", "Match system")
+                            .pad(10.)
+                            .h(30.)
+                            .disabled(true)
+                            .tooltip("Light theme is not available yet"),
+                    ),
             ))
-            .child(option_row("Language", None, div().w(px(190.)).child(select_el(&self.language))))
+            .child(option_row(
+                "Language",
+                None,
+                div().w(px(190.)).child(select_el(&self.language)),
+            ))
     }
 
     fn render_board_section(&mut self, cx: &mut Context<Self>) -> Div {
@@ -602,10 +717,34 @@ impl SettingsScreen {
         let notation_this = this.clone();
         let check_row = h_flex()
             .gap(px(24.))
-            .child(board_check("legal", config.show_legal, "Show legal moves", this.clone(), |b, v| b.show_legal = v))
-            .child(board_check("last", config.highlight_last, "Highlight last move", this.clone(), |b, v| b.highlight_last = v))
-            .child(board_check("queen", config.auto_queen, "Auto-promote to queen", this.clone(), |b, v| b.auto_queen = v))
-            .child(board_check("sounds", config.move_sounds, "Move sounds", this.clone(), |b, v| b.move_sounds = v));
+            .child(board_check(
+                "legal",
+                config.show_legal,
+                "Show legal moves",
+                this.clone(),
+                |b, v| b.show_legal = v,
+            ))
+            .child(board_check(
+                "last",
+                config.highlight_last,
+                "Highlight last move",
+                this.clone(),
+                |b, v| b.highlight_last = v,
+            ))
+            .child(board_check(
+                "queen",
+                config.auto_queen,
+                "Auto-promote to queen",
+                this.clone(),
+                |b, v| b.auto_queen = v,
+            ))
+            .child(board_check(
+                "sounds",
+                config.move_sounds,
+                "Move sounds",
+                this.clone(),
+                |b, v| b.move_sounds = v,
+            ));
         section("Board & pieces")
             .child(option_row("Board", None, boards))
             .child(option_row("Pieces", None, pieces))
@@ -632,42 +771,42 @@ impl SettingsScreen {
                 None,
                 h_flex()
                     .gap(px(10.))
-                    .child(div().w(px(160.)).child(Slider::new(&self.animation).bg(rgb(T.fg))))
+                    .child(
+                        div()
+                            .w(px(160.))
+                            .child(Slider::new(&self.animation).bg(rgb(T.fg))),
+                    )
                     .child(
                         mono(format!("{} ms", config.animation_ms))
                             .text_size(px(13.))
                             .text_color(rgb(T.muted)),
                     ),
             ))
-            .child(option_row(
-                "Notation",
-                None,
+            .child(option_row("Notation", None, {
+                let mut row = h_flex().gap(px(6.));
+                for (index, (value, label)) in [
+                    (Notation::San, "Nf3"),
+                    (Notation::Figurine, "♘f3"),
+                    (Notation::Long, "g1-f3"),
+                ]
+                .into_iter()
+                .enumerate()
                 {
-                    let mut row = h_flex().gap(px(6.));
-                    for (index, (value, label)) in [
-                        (Notation::San, "Nf3"),
-                        (Notation::Figurine, "♘f3"),
-                        (Notation::Long, "g1-f3"),
-                    ]
-                    .into_iter()
-                    .enumerate()
-                    {
-                        let this = notation_this.clone();
-                        row = row.child(
-                            btn(("notation", index), label)
-                                .mono()
-                                .pad(10.)
-                                .selected(config.notation == value)
-                                .on_click(move |_, cx| {
-                                    this.update(cx, |screen, cx| {
-                                        screen.update_board(cx, |board| board.notation = value);
-                                    });
-                                }),
-                        );
-                    }
-                    row
-                },
-            ))
+                    let this = notation_this.clone();
+                    row = row.child(
+                        btn(("notation", index), label)
+                            .mono()
+                            .pad(10.)
+                            .selected(config.notation == value)
+                            .on_click(move |_, cx| {
+                                this.update(cx, |screen, cx| {
+                                    screen.update_board(cx, |board| board.notation = value);
+                                });
+                            }),
+                    );
+                }
+                row
+            }))
             .child(option_row("Board behaviour", None, check_row))
     }
 
@@ -680,22 +819,54 @@ impl SettingsScreen {
                 .h(px(32.))
                 .border_b_1()
                 .border_color(rgb(T.divider))
-                .child(div().w(px(232.)).flex_none().font_weight(FontWeight::MEDIUM).child(left))
+                .child(
+                    div()
+                        .w(px(232.))
+                        .flex_none()
+                        .font_weight(FontWeight::MEDIUM)
+                        .child(left),
+                )
                 .child(div().w(px(352.)).flex_none().child(a))
-                .child(div().w(px(232.)).flex_none().font_weight(FontWeight::MEDIUM).child(right))
+                .child(
+                    div()
+                        .w(px(232.))
+                        .flex_none()
+                        .font_weight(FontWeight::MEDIUM)
+                        .child(right),
+                )
                 .child(b)
         };
-        let pair = |first: &str, second: &str| {
-            h_flex().gap(px(4.)).child(keys(first)).child(keys(second))
-        };
+        let pair =
+            |first: &str, second: &str| h_flex().gap(px(4.)).child(keys(first)).child(keys(second));
         section("Keyboard shortcuts")
-            .child(row("Previous / next move", pair("prev_move", "next_move"), "Start / end of game", pair("first_move", "last_move")))
-            .child(row("Engine on / off", keys("toggle_engine"), "Flip board", keys("flip_board")))
-            .child(row("Search", keys("search"), "Save game", keys("save_game")))
+            .child(row(
+                "Previous / next move",
+                pair("prev_move", "next_move"),
+                "Start / end of game",
+                pair("first_move", "last_move"),
+            ))
+            .child(row(
+                "Engine on / off",
+                keys("toggle_engine"),
+                "Flip board",
+                keys("flip_board"),
+            ))
+            .child(row(
+                "Search",
+                keys("search"),
+                "Save game",
+                keys("save_game"),
+            ))
             .child(
-                h_flex().mt(px(12.)).child(btn("edit-shortcuts", "Edit shortcuts").h(30.).on_click(move |window, cx| {
-                    this.update(cx, |screen, cx| screen.set_page(SettingsPage::Shortcuts, window, cx));
-                })),
+                h_flex().mt(px(12.)).child(
+                    btn("edit-shortcuts", "Edit shortcuts")
+                        .h(30.)
+                        .on_click(move |window, cx| {
+                            this.update(cx, |screen, cx| {
+                                screen.set_page(SettingsPage::Shortcuts, window, cx)
+                            });
+                        }),
+                ),
             )
     }
 
@@ -715,7 +886,11 @@ impl SettingsScreen {
             .child(self.render_board_section(cx))
     }
 
-    fn render_engines(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+    fn render_engines(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement + use<> {
         let this = cx.entity();
         let add_this = this.clone();
         let model = self.model.read(cx);
@@ -756,7 +931,11 @@ impl SettingsScreen {
             let selected = self.selected_engine == Some(engine.id);
             let id = engine.id;
             let select_this = this.clone();
-            let status = model.engine_status.get(&id).copied().unwrap_or(EngineStatus::Ready);
+            let status = model
+                .engine_status
+                .get(&id)
+                .copied()
+                .unwrap_or(EngineStatus::Ready);
             let (status_text, status_color) = match status {
                 EngineStatus::Ready => ("Ready", T.good),
                 EngineStatus::Disabled => ("Disabled", T.muted),
@@ -779,16 +958,37 @@ impl SettingsScreen {
                         });
                     })
                     .when(selected, |row| {
-                        row.child(div().absolute().left_0().top_0().bottom_0().w(px(3.)).bg(rgb(T.fg)))
+                        row.child(
+                            div()
+                                .absolute()
+                                .left_0()
+                                .top_0()
+                                .bottom_0()
+                                .w(px(3.))
+                                .bg(rgb(T.fg)),
+                        )
                     })
                     .child(
                         h_flex()
                             .w(px(COL_ENGINE))
                             .gap(px(4.))
-                            .child(div().font_weight(FontWeight::BOLD).child(SharedString::from(engine.name.clone())))
-                            .child(mono(engine.version.clone()).text_size(px(13.)).text_color(rgb(T.muted))),
+                            .child(
+                                div()
+                                    .font_weight(FontWeight::BOLD)
+                                    .child(SharedString::from(engine.name.clone())),
+                            )
+                            .child(
+                                mono(engine.version.clone())
+                                    .text_size(px(13.))
+                                    .text_color(rgb(T.muted)),
+                            ),
                     )
-                    .child(mono("UCI").w(px(COL_PROTOCOL)).text_size(px(13.)).text_color(rgb(T.fg_2)))
+                    .child(
+                        mono("UCI")
+                            .w(px(COL_PROTOCOL))
+                            .text_size(px(13.))
+                            .text_color(rgb(T.fg_2)),
+                    )
                     .child(
                         div()
                             .w(px(COL_RUNS))
@@ -823,7 +1023,11 @@ impl SettingsScreen {
             .selected_engine
             .and_then(|id| model.engine(id).cloned())
             .map(|config| self.render_engine_detail(&config, window, cx));
-        v_flex().gap(px(21.)).child(header).child(table).children(detail)
+        v_flex()
+            .gap(px(21.))
+            .child(header)
+            .child(table)
+            .children(detail)
     }
 
     fn render_engine_detail(
@@ -851,7 +1055,9 @@ impl SettingsScreen {
             let (label, hint) = option_label(&option.name);
             let control: gpui::AnyElement = match &option.kind {
                 OptionKind::Spin { .. } | OptionKind::String { .. } => {
-                    let Some(input) = self.option_inputs.get(&option.name) else { continue };
+                    let Some(input) = self.option_inputs.get(&option.name) else {
+                        continue;
+                    };
                     let suffix = (option.name == "Hash").then_some("MB");
                     div()
                         .w(px(320.))
@@ -859,8 +1065,13 @@ impl SettingsScreen {
                         .into_any_element()
                 }
                 OptionKind::Combo { .. } => {
-                    let Some(select) = self.option_selects.get(&option.name) else { continue };
-                    div().w(px(320.)).child(select_el(select)).into_any_element()
+                    let Some(select) = self.option_selects.get(&option.name) else {
+                        continue;
+                    };
+                    div()
+                        .w(px(320.))
+                        .child(select_el(select))
+                        .into_any_element()
                 }
                 OptionKind::Check { default } => {
                     let current = config
@@ -883,7 +1094,9 @@ impl SettingsScreen {
                         .border_color(rgb(T.border_strong))
                         .on_click(move |_, _, cx| {
                             let value = (!current).to_string();
-                            this.update(cx, |screen, cx| screen.set_engine_option(&name, value, cx));
+                            this.update(cx, |screen, cx| {
+                                screen.set_engine_option(&name, value, cx)
+                            });
                         })
                         .child(if current { "On" } else { "Off" })
                         .into_any_element()
@@ -892,19 +1105,26 @@ impl SettingsScreen {
                     let name = option.name.clone();
                     let model = self.model.clone();
                     let id = config.id;
-                    btn(SharedString::from(format!("button-{}", option.name)), option.name.clone())
-                        .h(30.)
-                        .on_click(move |_, cx| {
-                            if let Some(handle) = model.read(cx).manager.get(id) {
-                                handle.set_option(name.clone(), None);
-                            }
-                        })
-                        .into_any_element()
+                    btn(
+                        SharedString::from(format!("button-{}", option.name)),
+                        option.name.clone(),
+                    )
+                    .h(30.)
+                    .on_click(move |_, cx| {
+                        if let Some(handle) = model.read(cx).manager.get(id) {
+                            handle.set_option(name.clone(), None);
+                        }
+                    })
+                    .into_any_element()
                 }
             };
             body = body.child(detail_row(&label, hint, control));
         }
-        let usage_check = |id: &'static str, value: bool, label: &'static str, this: Entity<Self>, set: fn(&mut EngineConfig, bool)| {
+        let usage_check = |id: &'static str,
+                           value: bool,
+                           label: &'static str,
+                           this: Entity<Self>,
+                           set: fn(&mut EngineConfig, bool)| {
             div().child(check(id, value, label).on_change(move |value, _, cx| {
                 this.update(cx, |screen, cx| {
                     screen.set_engine_use(|config| set(config, value), cx);
@@ -988,8 +1208,16 @@ impl SettingsScreen {
                     .justify_between()
                     .border_b_1()
                     .border_color(rgb(T.divider))
-                    .child(div().font_weight(FontWeight::MEDIUM).child(entry.name.clone()))
-                    .child(mono(format_count(entry.games)).text_size(px(14.)).text_color(rgb(T.muted))),
+                    .child(
+                        div()
+                            .font_weight(FontWeight::MEDIUM)
+                            .child(entry.name.clone()),
+                    )
+                    .child(
+                        mono(format_count(entry.games))
+                            .text_size(px(14.))
+                            .text_color(rgb(T.muted)),
+                    ),
             );
         }
         if model.databases.is_empty() {
@@ -1004,23 +1232,19 @@ impl SettingsScreen {
         v_flex()
             .gap(px(16.))
             .child(page_title("Databases"))
+            .child(section("You").child(option_row(
+                "Player name",
+                Some("How you appear in PGN headers. Used for My games and leak detection."),
+                div().w(px(320.)).child(text_input(&self.player_name)),
+            )))
             .child(
-                section("You").child(option_row(
-                    "Player name",
-                    Some("How you appear in PGN headers. Used for My games and leak detection."),
-                    div().w(px(320.)).child(text_input(&self.player_name)),
-                )),
-            )
-            .child(
-                section("Files")
-                    .child(rows)
-                    .child(
-                        div()
-                            .mt(px(10.))
-                            .text_size(px(13.))
-                            .text_color(rgb(T.muted))
-                            .child(format!("Stored in {location}")),
-                    ),
+                section("Files").child(rows).child(
+                    div()
+                        .mt(px(10.))
+                        .text_size(px(13.))
+                        .text_color(rgb(T.muted))
+                        .child(format!("Stored in {location}")),
+                ),
             )
     }
 
@@ -1050,13 +1274,15 @@ impl SettingsScreen {
                             } else {
                                 keycaps(model.config.shortcuts.get(action))
                             })
-                            .child(btn(("rebind", index), "Change").h(30.).on_click(move |window, cx| {
-                                capture_focus.focus(window, cx);
-                                this.update(cx, |screen, cx| {
-                                    screen.capturing = Some(action);
-                                    cx.notify();
-                                });
-                            })),
+                            .child(btn(("rebind", index), "Change").h(30.).on_click(
+                                move |window, cx| {
+                                    capture_focus.focus(window, cx);
+                                    this.update(cx, |screen, cx| {
+                                        screen.capturing = Some(action);
+                                        cx.notify();
+                                    });
+                                },
+                            )),
                     ),
             );
         }
@@ -1067,35 +1293,29 @@ impl SettingsScreen {
     }
 
     fn render_accounts(&mut self) -> impl IntoElement + use<> {
-        v_flex()
-            .gap(px(16.))
-            .child(page_title("Accounts"))
-            .child(
-                section("Offline by design").child(
-                    div()
-                        .text_color(rgb(T.fg_2))
-                        .child("Outpost has no accounts or cloud sync: everything stays on this computer."),
-                ),
-            )
+        v_flex().gap(px(16.)).child(page_title("Accounts")).child(
+            section("Offline by design").child(div().text_color(rgb(T.fg_2)).child(
+                "Outpost has no accounts or cloud sync: everything stays on this computer.",
+            )),
+        )
     }
 }
 
 fn section(title: &'static str) -> Div {
-    panel()
-        .flex()
-        .flex_col()
-        .p(px(16.))
-        .child(
-            div()
-                .mb(px(10.))
-                .text_size(px(15.))
-                .font_weight(FontWeight::BOLD)
-                .child(title),
-        )
+    panel().flex().flex_col().p(px(16.)).child(
+        div()
+            .mb(px(10.))
+            .text_size(px(15.))
+            .font_weight(FontWeight::BOLD)
+            .child(title),
+    )
 }
 
 fn page_title(title: &'static str) -> Div {
-    div().text_size(px(24.)).font_weight(FontWeight::SEMIBOLD).child(title)
+    div()
+        .text_size(px(24.))
+        .font_weight(FontWeight::SEMIBOLD)
+        .child(title)
 }
 
 /// Two-column option row: label + hint on the left, control on the right.
@@ -1109,9 +1329,18 @@ fn option_row(label: &'static str, hint: Option<&'static str>, control: impl Int
             v_flex()
                 .w(px(232.))
                 .flex_none()
-                .child(div().font_weight(FontWeight::SEMIBOLD).text_size(px(14.)).child(label))
+                .child(
+                    div()
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_size(px(14.))
+                        .child(label),
+                )
                 .children(hint.map(|hint| {
-                    div().text_size(px(13.)).text_color(rgb(T.muted)).pr(px(12.)).child(hint)
+                    div()
+                        .text_size(px(13.))
+                        .text_color(rgb(T.muted))
+                        .pr(px(12.))
+                        .child(hint)
                 })),
         )
         .child(control)
@@ -1134,7 +1363,10 @@ fn detail_row(label: &str, hint: Option<&'static str>, control: impl IntoElement
                         .child(SharedString::from(label.to_owned())),
                 )
                 .children(hint.map(|hint| {
-                    div().text_size(px(13.)).text_color(rgb(T.muted)).child(hint)
+                    div()
+                        .text_size(px(13.))
+                        .text_color(rgb(T.muted))
+                        .child(hint)
                 })),
         )
         .child(div().flex_1().min_w_0().child(control))
@@ -1176,7 +1408,9 @@ fn board_check(
 /// Renders "ctrl-k" as separate caps, with friendly names.
 fn keycaps(keystroke: Option<&String>) -> Div {
     let mut row = h_flex().gap(px(4.));
-    let Some(keystroke) = keystroke else { return row };
+    let Some(keystroke) = keystroke else {
+        return row;
+    };
     for part in keystroke.split('-') {
         let text = match part {
             "left" => "←".to_owned(),
@@ -1218,7 +1452,11 @@ fn benchmark(config: &EngineConfig) -> String {
         "r1bq1rk1/2p1bppp/p1np1n2/1p2p3/4P3/1BP2N1P/PP1P1PP1/RNBQR1K1 b - - 0 9",
         "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1",
     ];
-    let options = config.options.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+    let options = config
+        .options
+        .iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
     let handle = EngineHandle::spawn(config.path.clone(), Vec::new(), options);
     let events = handle.events();
     let mut speeds = Vec::new();
@@ -1237,7 +1475,9 @@ fn benchmark(config: &EngineConfig) -> String {
         loop {
             match smol::block_on(events.recv()) {
                 Ok(EngineEvent::Analysis { update, .. }) => speed = update.nps.or(speed),
-                Ok(EngineEvent::BestMove { search_id: done, .. }) if done == search_id => break,
+                Ok(EngineEvent::BestMove {
+                    search_id: done, ..
+                }) if done == search_id => break,
                 Ok(EngineEvent::Crashed(reason)) => return format!("Benchmark failed: {reason}"),
                 Ok(_) => {}
                 Err(_) => return "Benchmark failed: engine closed".to_owned(),
@@ -1254,7 +1494,10 @@ fn benchmark(config: &EngineConfig) -> String {
 }
 
 fn parse_bench(text: &str) -> Option<String> {
-    let line = text.lines().rev().find(|line| line.contains("Nodes/second"))?;
+    let line = text
+        .lines()
+        .rev()
+        .find(|line| line.contains("Nodes/second"))?;
     let value: u64 = line.split(':').nth(1)?.trim().parse().ok()?;
     Some(format!("bench: {} n/s", format_count(value)))
 }
@@ -1270,24 +1513,20 @@ impl Render for SettingsScreen {
             SettingsPage::Shortcuts => self.render_shortcuts(cx).into_any_element(),
             SettingsPage::Accounts => self.render_accounts().into_any_element(),
         };
-        h_flex()
-            .items_start()
-            .size_full()
-            .child(nav)
-            .child(
-                div()
-                    .id("settings-content")
-                    .track_focus(&self.capture_focus)
-                    .on_key_down(cx.listener(|this, event, _, cx| this.on_capture_key(event, cx)))
-                    .flex_1()
-                    .min_w_0()
-                    .h_full()
-                    .overflow_y_scroll()
-                    .px(px(28.))
-                    .pt(px(24.))
-                    .pb(px(24.))
-                    .child(div().max_w(px(1180.)).child(content)),
-            )
+        h_flex().items_start().size_full().child(nav).child(
+            div()
+                .id("settings-content")
+                .track_focus(&self.capture_focus)
+                .on_key_down(cx.listener(|this, event, _, cx| this.on_capture_key(event, cx)))
+                .flex_1()
+                .min_w_0()
+                .h_full()
+                .overflow_y_scroll()
+                .px(px(28.))
+                .pt(px(24.))
+                .pb(px(24.))
+                .child(div().max_w(px(1180.)).child(content)),
+        )
     }
 }
 
@@ -1297,7 +1536,8 @@ mod tests {
 
     #[test]
     fn bench_output_is_parsed() {
-        let text = "stuff\nTotal time (ms) : 100\nNodes searched  : 1000\nNodes/second    : 123456\n";
+        let text =
+            "stuff\nTotal time (ms) : 100\nNodes searched  : 1000\nNodes/second    : 123456\n";
         assert_eq!(parse_bench(text).as_deref(), Some("bench: 123,456 n/s"));
         assert_eq!(parse_bench("no numbers"), None);
     }

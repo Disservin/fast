@@ -6,7 +6,9 @@ mod queries;
 
 pub use import::{ImportControl, ImportProgress, ImportSummary, import_games};
 pub use notes::NoteStore;
-pub use queries::{Filter, FilterStats, GameDetails, GameRow, MoveStat, SideFilter, TimeClass};
+pub use queries::{
+    Filter, FilterStats, GameDetails, GameRow, MoveStat, PlayerLine, SideFilter, TimeClass,
+};
 
 use std::path::{Path, PathBuf};
 
@@ -82,7 +84,9 @@ impl Database {
     pub fn name(&self) -> Result<String> {
         let stored: Option<String> = self
             .conn
-            .query_row("SELECT value FROM meta WHERE key = 'name'", [], |row| row.get(0))
+            .query_row("SELECT value FROM meta WHERE key = 'name'", [], |row| {
+                row.get(0)
+            })
             .optional()?;
         Ok(stored.unwrap_or_else(|| {
             self.path

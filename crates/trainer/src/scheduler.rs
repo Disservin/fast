@@ -120,7 +120,12 @@ mod tests {
         let intervals = Card::default().intervals();
         assert_eq!(
             intervals,
-            Intervals { again: 0, hard: 1, good: 4, easy: 11 }
+            Intervals {
+                again: 0,
+                hard: 1,
+                good: 4,
+                easy: 11
+            }
         );
     }
 
@@ -142,7 +147,9 @@ mod tests {
 
     #[test]
     fn again_resets_interval_and_lowers_ease() {
-        let card = Card::default().answered(Grade::Good, 0).answered(Grade::Again, 4);
+        let card = Card::default()
+            .answered(Grade::Good, 0)
+            .answered(Grade::Again, 4);
         assert_eq!(card.interval_days, 0);
         assert_eq!(card.state, CardState::Learning);
         assert_eq!(card.lapses, 1);
@@ -167,7 +174,11 @@ mod tests {
 
     #[test]
     fn hard_never_shrinks_a_review_interval() {
-        let card = Card { state: CardState::Review, interval_days: 10, ..Card::default() };
+        let card = Card {
+            state: CardState::Review,
+            interval_days: 10,
+            ..Card::default()
+        };
         assert!(card.intervals().hard > 10);
         assert!(card.intervals().good > card.intervals().hard);
         assert!(card.intervals().easy > card.intervals().good);

@@ -2,7 +2,7 @@
 
 use std::rc::Rc;
 
-use chess_core::{GameTree, Notation, NodeId, display_san, nag_symbol};
+use chess_core::{GameTree, NodeId, Notation, display_san, nag_symbol};
 use gpui::{
     App, Div, FontWeight, Hsla, IntoElement, MouseButton, MouseDownEvent, SharedString,
     StatefulInteractiveElement, Window, div, prelude::*, px, rgb,
@@ -62,12 +62,8 @@ fn move_cell(tree: &GameTree, id: NodeId, props: &ScoresheetProps) -> impl IntoE
                 .flex()
                 .items_center()
                 .rounded(px(4.))
-                .when(current, |pill| {
-                    pill.bg(rgb(T.fg)).text_color(rgb(T.bg))
-                })
-                .when(!current, |pill| {
-                    pill.hover(move |style| style.bg(hover))
-                })
+                .when(current, |pill| pill.bg(rgb(T.fg)).text_color(rgb(T.bg)))
+                .when(!current, |pill| pill.hover(move |style| style.bg(hover)))
                 .child(text),
         )
         .children(nag_text(&node.nags).map(|nags| {
@@ -170,7 +166,6 @@ fn comment(text: &str) -> Div {
 pub fn scoresheet_body(tree: &GameTree, props: &ScoresheetProps) -> impl IntoElement + use<> {
     let mut body = v_flex().w_full().font_family(MONO).text_size(px(14.));
     let main = tree.mainline();
-    let root_ply = tree.node(GameTree::ROOT).ply;
     let mut index = 0;
 
     let row = |number: u32| {
@@ -209,7 +204,10 @@ pub fn scoresheet_body(tree: &GameTree, props: &ScoresheetProps) -> impl IntoEle
         };
         cells = match white_id {
             Some(white) => cells.child(
-                div().w(px(MOVE_W)).flex_none().child(move_cell(tree, white, props)),
+                div()
+                    .w(px(MOVE_W))
+                    .flex_none()
+                    .child(move_cell(tree, white, props)),
             ),
             None => cells.child(
                 div()
@@ -222,6 +220,9 @@ pub fn scoresheet_body(tree: &GameTree, props: &ScoresheetProps) -> impl IntoEle
         };
         if let Some(black) = black_id {
             cells = cells.child(move_cell(tree, black, props));
+        } else if !node.pos.is_game_over_like() {
+            // Black to reply: the prompt shares White's row.
+            cells = cells.child(div().pl(px(6.)).text_color(rgb(T.faint)).child("?"));
         }
         body = body.child(cells);
         index += 1;
@@ -248,38 +249,24 @@ pub fn scoresheet_body(tree: &GameTree, props: &ScoresheetProps) -> impl IntoEle
         }
     }
 
-    // A pending row showing whose move it is.
+    // White to move next gets a fresh row with the prompt. After a Black start position
+    // with no moves yet, the prompt follows an ellipsis instead.
     let end = main.last().copied().unwrap_or(GameTree::ROOT);
     let end_node = tree.node(end);
-    if !end_node.pos.is_game_over_like() {
-        let next_ply = end_node.ply + 1;
-        let number = next_ply.div_ceil(2);
-        let question = div().pl(px(6.)).text_color(rgb(T.faint)).child("?");
-        let mut cells = h_flex()
-            .w_full()
-            .h(px(ROW_H))
-            .flex_none()
-            .pl(px(18.))
-            .child(
+    let next_ply = end_node.ply + 1;
+    if !end_node.pos.is_game_over_like() && (next_ply % 2 == 1 || main.is_empty()) {
+        let mut cells = row(next_ply.div_ceil(2)).border_b_0();
+        if next_ply.is_multiple_of(2) {
+            cells = cells.child(
                 div()
-                    .w(px(NUMBER_W - 4.))
+                    .w(px(MOVE_W))
                     .flex_none()
+                    .pl(px(6.))
                     .text_color(rgb(T.faint))
-                    .child(format!("{number}.")),
+                    .child("…"),
             );
-        if next_ply % 2 == 1 {
-            cells = cells.child(question);
-        } else if main.is_empty() || root_ply % 2 == 1 {
-            cells = cells
-                .child(div().w(px(MOVE_W)).flex_none().pl(px(6.)).text_color(rgb(T.faint)).child("…"))
-                .child(question);
-        } else {
-            // Black to move: the white half is the row above, so only show the marker.
-            cells = cells
-                .child(div().w(px(MOVE_W)).flex_none().pl(px(6.)).text_color(rgb(T.faint)).child("…"))
-                .child(question);
         }
-        body = body.child(cells);
+        body = body.child(cells.child(div().pl(px(6.)).text_color(rgb(T.faint)).child("?")));
     }
     body
 }

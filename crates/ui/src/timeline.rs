@@ -13,12 +13,14 @@ use crate::theme::T;
 /// readable while a won position simply fills the bar.
 const CURVE: f32 = 2.37;
 
+pub type ScrubHandler = Rc<dyn Fn(usize, &mut Window, &mut App)>;
+
 pub struct TimelineProps {
     /// White-relative centipawns per ply; `None` when not yet analysed.
     pub evals: Vec<Option<i32>>,
     /// Index of the current ply into `evals`.
     pub current: Option<usize>,
-    pub on_scrub: Rc<dyn Fn(usize, &mut Window, &mut App)>,
+    pub on_scrub: ScrubHandler,
 }
 
 /// Height in px of a bar for an eval. Unevaluated plies get a small stub.
@@ -30,11 +32,18 @@ fn bar_height(eval: Option<i32>, half: f32) -> f32 {
     ((1.0 - (-pawns * CURVE).exp()) * half).max(3.0)
 }
 
+/// Bar slots stay this wide at most, so short games do not stretch across the box.
+const MAX_SLOT: f32 = 22.0;
+
+fn slot_width(width: f32, count: usize) -> f32 {
+    (width / count.max(1) as f32).min(MAX_SLOT)
+}
+
 fn index_at(position: f32, bounds: Bounds<Pixels>, count: usize) -> usize {
     let left = f32::from(bounds.origin.x);
-    let width = f32::from(bounds.size.width).max(1.0);
-    let fraction = ((position - left) / width).clamp(0.0, 0.9999);
-    ((fraction * count as f32) as usize).min(count.saturating_sub(1))
+    let slot = slot_width(f32::from(bounds.size.width).max(1.0), count);
+    let offset = (position - left).max(0.0);
+    ((offset / slot) as usize).min(count.saturating_sub(1))
 }
 
 /// The timeline element. Dragging keeps scrubbing even if the pointer leaves it.
@@ -66,7 +75,7 @@ pub fn timeline(props: TimelineProps) -> impl IntoElement {
                     let width = f32::from(bounds.size.width);
                     let height = f32::from(bounds.size.height);
                     let baseline = height * 0.52;
-                    let slot = width / count as f32;
+                    let slot = slot_width(width, count);
                     let gap = (slot * 0.06).clamp(0.5, 1.5);
                     // The largest reach upward and downward.
                     let up = baseline;

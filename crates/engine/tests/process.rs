@@ -58,7 +58,13 @@ fn analysis_then_cancellation_on_new_position() {
 
     // The new position cancels the running search; its stale "cp 99" output and
     // bestmove are dropped, and the next event belongs to search 2.
-    engine.search(request(2, Some(Limits { depth: Some(1), ..Default::default() })));
+    engine.search(request(
+        2,
+        Some(Limits {
+            depth: Some(1),
+            ..Default::default()
+        }),
+    ));
     let EngineEvent::Analysis { search_id, .. } = next(&events) else {
         panic!("expected analysis from the second search");
     };
@@ -76,7 +82,13 @@ fn options_are_applied_after_handshake() {
     let engine = EngineHandle::spawn(fixture(), Vec::new(), options);
     let events = engine.events();
     assert!(matches!(next(&events), EngineEvent::Ready(_)));
-    engine.search(request(1, Some(Limits { depth: Some(1), ..Default::default() })));
+    engine.search(request(
+        1,
+        Some(Limits {
+            depth: Some(1),
+            ..Default::default()
+        }),
+    ));
     let EngineEvent::Analysis { update, .. } = next(&events) else {
         panic!("expected analysis");
     };

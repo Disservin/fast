@@ -5,9 +5,7 @@ use std::time::{Duration, Instant};
 use chess_core::{
     Chess, Color, GameTree, Move, NodeId, Position, classify, shakmaty::uci::UciMove,
 };
-use engine::{
-    EngineConfig, EngineEvent, EngineHandle, Limits, OptionKind, SearchRequest,
-};
+use engine::{EngineConfig, EngineEvent, EngineHandle, Limits, OptionKind, SearchRequest};
 use gpui::{
     AppContext as _, Context, Entity, FontWeight, IntoElement, Pixels, Render, SharedString,
     Subscription, Task, WeakEntity, Window, div, prelude::*, px, rgb,
@@ -108,20 +106,28 @@ impl PlayScreen {
         let names = opponent_names(&opponents);
         let opponent = new_select(names, 0, window, cx);
         let start_from = new_select(
-            ["Starting position", "Current Analyse position", "Repertoire line"]
-                .map(SharedString::from)
-                .to_vec(),
+            [
+                "Starting position",
+                "Current Analyse position",
+                "Repertoire line",
+            ]
+            .map(SharedString::from)
+            .to_vec(),
             0,
             window,
             cx,
         );
         let strength = cx.new(|_| {
-            SliderState::new().min(1320.).max(3190.).step(10.).default_value(1800.)
+            SliderState::new()
+                .min(1320.)
+                .max(3190.)
+                .step(10.)
+                .default_value(1800.)
         });
         let custom_time = new_input("", "12+3", window, cx);
         let subscriptions = vec![
             cx.subscribe_in(&board, window, |this, _, event, _, cx| match event {
-                BoardEvent::Moved(mv) => this.user_move(mv.clone(), cx),
+                BoardEvent::Moved(mv) => this.user_move(*mv, cx),
             }),
             cx.subscribe(&strength, |this, _, event: &SliderEvent, cx| {
                 if let SliderEvent::Change(value) = event {
@@ -130,19 +136,24 @@ impl PlayScreen {
                 }
             }),
             cx.subscribe(&opponent, |_, _, _: &SelectEvent<_>, cx| cx.notify()),
-            cx.subscribe_in(&model, window, |this, model, event, window, cx| match event {
-                ModelEvent::BoardPrefsChanged => {
-                    let prefs = model.read(cx).config.board.prefs();
-                    this.board.update(cx, |board, cx| board.set_prefs(prefs, cx));
-                }
-                ModelEvent::EnginesChanged => {
-                    this.opponents = model.read(cx).play_engines();
-                    let names = opponent_names(&this.opponents);
-                    this.opponent = new_select(names, 0, window, cx);
-                    cx.notify();
-                }
-                _ => {}
-            }),
+            cx.subscribe_in(
+                &model,
+                window,
+                |this, model, event, window, cx| match event {
+                    ModelEvent::BoardPrefs => {
+                        let prefs = model.read(cx).config.board.prefs();
+                        this.board
+                            .update(cx, |board, cx| board.set_prefs(prefs, cx));
+                    }
+                    ModelEvent::Engines => {
+                        this.opponents = model.read(cx).play_engines();
+                        let names = opponent_names(&this.opponents);
+                        this.opponent = new_select(names, 0, window, cx);
+                        cx.notify();
+                    }
+                    _ => {}
+                },
+            ),
         ];
         let demo = model.read(cx).demo;
         let mut this = Self {
@@ -230,7 +241,11 @@ impl PlayScreen {
     }
 
     fn start_tree(&self, window: &mut Window, cx: &mut Context<Self>) -> GameTree {
-        let choice = self.start_from.read(cx).selected_index(cx).map_or(0, |index| index.row);
+        let choice = self
+            .start_from
+            .read(cx)
+            .selected_index(cx)
+            .map_or(0, |index| index.row);
         let _ = window;
         match choice {
             1 => self
@@ -272,7 +287,11 @@ impl PlayScreen {
             return;
         };
         let tree = self.start_tree(window, cx);
-        let current = tree.line_from(GameTree::ROOT).last().copied().unwrap_or(GameTree::ROOT);
+        let current = tree
+            .line_from(GameTree::ROOT)
+            .last()
+            .copied()
+            .unwrap_or(GameTree::ROOT);
         let user = match self.colour {
             ColourChoice::White => Color::White,
             ColourChoice::Black => Color::Black,
@@ -280,8 +299,7 @@ impl PlayScreen {
                 if std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .map_or(0, |elapsed| elapsed.subsec_nanos())
-                    % 2
-                    == 0
+                    .is_multiple_of(2)
                 {
                     Color::White
                 } else {
@@ -310,9 +328,11 @@ impl PlayScreen {
             _clock: None,
         };
         if !demo {
+            // Analysis-only settings would just weaken or slow the opponent's search.
             let mut options: Vec<(String, String)> = config
                 .options
                 .iter()
+                .filter(|(name, _)| !matches!(name.as_str(), "MultiPV" | "UCI_ShowWDL"))
                 .map(|(name, value)| (name.clone(), value.clone()))
                 .collect();
             if limited {
@@ -327,7 +347,8 @@ impl PlayScreen {
         if let Some(old) = self.game.replace(game).and_then(|game| game.engine) {
             old.quit();
         }
-        self.board.update(cx, |board, cx| board.set_flipped(user == Color::Black, cx));
+        self.board
+            .update(cx, |board, cx| board.set_flipped(user == Color::Black, cx));
         self.sync_board(false, cx);
         self.start_clock(cx);
         self.maybe_request_engine_move(cx);
@@ -360,7 +381,9 @@ impl PlayScreen {
         game.last_tick = Instant::now();
         game._clock = Some(cx.spawn(async move |this, cx| {
             loop {
-                cx.background_executor().timer(Duration::from_millis(200)).await;
+                cx.background_executor()
+                    .timer(Duration::from_millis(200))
+                    .await;
                 let keep_going = this.update(cx, |this, cx| this.tick(cx)).unwrap_or(false);
                 if !keep_going {
                     return;
@@ -370,7 +393,9 @@ impl PlayScreen {
     }
 
     fn tick(&mut self, cx: &mut Context<Self>) -> bool {
-        let Some(game) = &mut self.game else { return false };
+        let Some(game) = &mut self.game else {
+            return false;
+        };
         if game.result.is_some() {
             return false;
         }
@@ -378,11 +403,19 @@ impl PlayScreen {
         let elapsed = now.duration_since(game.last_tick).as_millis() as u64;
         game.last_tick = now;
         let turn = game.tree.node(game.current).pos.turn();
-        let clock = if turn == Color::White { &mut game.white_ms } else { &mut game.black_ms };
+        let clock = if turn == Color::White {
+            &mut game.white_ms
+        } else {
+            &mut game.black_ms
+        };
         *clock = clock.saturating_sub(elapsed);
         let flagged = *clock == 0;
         if flagged {
-            let text = if turn == Color::White { "Black wins on time" } else { "White wins on time" };
+            let text = if turn == Color::White {
+                "Black wins on time"
+            } else {
+                "White wins on time"
+            };
             self.finish(text.to_owned(), cx);
             return false;
         }
@@ -412,7 +445,8 @@ impl PlayScreen {
             engine.quit();
         }
         self.demo_task = None;
-        self.board.update(cx, |board, cx| board.set_interactive(false, cx));
+        self.board
+            .update(cx, |board, cx| board.set_interactive(false, cx));
         cx.notify();
     }
 
@@ -486,7 +520,9 @@ impl PlayScreen {
                 return;
             };
             self.demo_task = Some(cx.spawn(async move |this, cx| {
-                cx.background_executor().timer(Duration::from_millis(900)).await;
+                cx.background_executor()
+                    .timer(Duration::from_millis(900))
+                    .await;
                 let _ = this.update(cx, |this, cx| this.apply_move(mv, cx));
             }));
             return;
@@ -497,7 +533,7 @@ impl PlayScreen {
             .tree
             .path_to(game.current)
             .iter()
-            .filter_map(|&id| game.tree.node(id).mv.clone())
+            .filter_map(|&id| game.tree.node(id).mv)
             .map(|mv| UciMove::from_standard(mv).to_string())
             .collect();
         engine.search(SearchRequest {
@@ -535,7 +571,11 @@ impl PlayScreen {
 
     fn resign(&mut self, cx: &mut Context<Self>) {
         let Some(game) = &self.game else { return };
-        let text = if game.user == Color::White { "Black wins by resignation" } else { "White wins by resignation" };
+        let text = if game.user == Color::White {
+            "Black wins by resignation"
+        } else {
+            "White wins by resignation"
+        };
         self.finish(text.to_owned(), cx);
     }
 
@@ -639,13 +679,20 @@ impl PlayScreen {
                     });
                 }),
         );
-        let colour_button = |id: &'static str, label: &'static str, choice: ColourChoice, current: ColourChoice, this: Entity<Self>| {
-            btn(id, label).flex_1().selected(choice == current).on_click(move |_, cx| {
-                this.update(cx, |screen, cx| {
-                    screen.colour = choice;
-                    cx.notify();
-                });
-            })
+        let colour_button = |id: &'static str,
+                             label: &'static str,
+                             choice: ColourChoice,
+                             current: ColourChoice,
+                             this: Entity<Self>| {
+            btn(id, label)
+                .flex_1()
+                .selected(choice == current)
+                .on_click(move |_, cx| {
+                    this.update(cx, |screen, cx| {
+                        screen.colour = choice;
+                        cx.notify();
+                    });
+                })
         };
         let hide_this = this.clone();
         let takeback_this = this.clone();
@@ -685,37 +732,56 @@ impl PlayScreen {
                     "Colour",
                     h_flex()
                         .gap(px(6.))
-                        .child(colour_button("white", "White", ColourChoice::White, self.colour, this.clone()))
-                        .child(colour_button("random", "Random", ColourChoice::Random, self.colour, this.clone()))
-                        .child(colour_button("black", "Black", ColourChoice::Black, self.colour, this.clone())),
+                        .child(colour_button(
+                            "white",
+                            "White",
+                            ColourChoice::White,
+                            self.colour,
+                            this.clone(),
+                        ))
+                        .child(colour_button(
+                            "random",
+                            "Random",
+                            ColourChoice::Random,
+                            self.colour,
+                            this.clone(),
+                        ))
+                        .child(colour_button(
+                            "black",
+                            "Black",
+                            ColourChoice::Black,
+                            self.colour,
+                            this.clone(),
+                        )),
                 )
                 .mb(px(14.)),
             )
             .child(field("Start from", select_el(&self.start_from)).mb(px(20.)))
             .child(
                 div().mb(px(12.)).child(
-                    check("hide-eval", self.hide_eval, "Hide evaluation during the game").on_change(
-                        move |value, _, cx| {
-                            hide_this.update(cx, |screen, cx| {
-                                screen.hide_eval = value;
-                                cx.notify();
-                            });
-                        },
-                    ),
+                    check(
+                        "hide-eval",
+                        self.hide_eval,
+                        "Hide evaluation during the game",
+                    )
+                    .on_change(move |value, _, cx| {
+                        hide_this.update(cx, |screen, cx| {
+                            screen.hide_eval = value;
+                            cx.notify();
+                        });
+                    }),
                 ),
             )
-            .child(
-                div().mb(px(20.)).child(
-                    check("takebacks", self.allow_takebacks, "Allow takebacks").on_change(
-                        move |value, _, cx| {
-                            takeback_this.update(cx, |screen, cx| {
-                                screen.allow_takebacks = value;
-                                cx.notify();
-                            });
-                        },
-                    ),
+            .child(div().mb(px(20.)).child(
+                check("takebacks", self.allow_takebacks, "Allow takebacks").on_change(
+                    move |value, _, cx| {
+                        takeback_this.update(cx, |screen, cx| {
+                            screen.allow_takebacks = value;
+                            cx.notify();
+                        });
+                    },
                 ),
-            )
+            ))
             .child(
                 btn("start-game", "Start game")
                     .primary()
@@ -741,7 +807,13 @@ impl PlayScreen {
         let game = self.game.as_ref();
         let turn = game.map(|game| game.tree.node(game.current).pos.turn());
         let finished = game.is_some_and(|game| game.result.is_some());
-        let side = game.map(|game| if opponent { game.user.other() } else { game.user });
+        let side = game.map(|game| {
+            if opponent {
+                game.user.other()
+            } else {
+                game.user
+            }
+        });
         let active = !finished && game.is_some() && turn == side;
         let ms = game.map_or(0, |game| match side {
             Some(Color::White) => game.white_ms,
@@ -756,9 +828,14 @@ impl PlayScreen {
             (false, _) => "You".into(),
         };
         let rating = if opponent {
-            game.and_then(|game| game.opponent_rating).map(|rating| rating.to_string())
+            game.and_then(|game| game.opponent_rating)
+                .map(|rating| rating.to_string())
         } else {
-            self.model.read(cx).config.player_rating.map(|rating| rating.to_string())
+            self.model
+                .read(cx)
+                .config
+                .player_rating
+                .map(|rating| rating.to_string())
         };
         let status = (!opponent && active).then_some("your move");
         h_flex()
@@ -782,12 +859,21 @@ impl PlayScreen {
                             .border_color(rgb(if active { T.fg } else { T.muted }))
                             .when(active, |dot| dot.bg(rgb(T.fg))),
                     )
-                    .child(div().font_weight(FontWeight::SEMIBOLD).text_size(px(15.)).child(name))
-                    .children(rating.map(|rating| {
-                        mono(rating).text_size(px(14.)).text_color(rgb(T.muted))
-                    }))
+                    .child(
+                        div()
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_size(px(15.))
+                            .child(name),
+                    )
+                    .children(
+                        rating
+                            .map(|rating| mono(rating).text_size(px(14.)).text_color(rgb(T.muted))),
+                    )
                     .children(status.map(|text| {
-                        div().text_size(px(13.)).text_color(rgb(T.muted)).child(text)
+                        div()
+                            .text_size(px(13.))
+                            .text_color(rgb(T.muted))
+                            .child(text)
                     })),
             )
             .child(
@@ -799,11 +885,19 @@ impl PlayScreen {
                     .rounded(px(4.))
                     .when(active, |time| time.bg(rgb(T.fg)).text_color(rgb(T.bg)))
                     .when(!active, |time| time.text_color(rgb(T.muted)))
-                    .child(if game.is_some() { format_clock(ms) } else { "--:--".to_owned() }),
+                    .child(if game.is_some() {
+                        format_clock(ms)
+                    } else {
+                        "--:--".to_owned()
+                    }),
             )
     }
 
-    fn render_center(&mut self, board_size: Pixels, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+    fn render_center(
+        &mut self,
+        board_size: Pixels,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement + use<> {
         let top = self.clock_bar(true, cx);
         let bottom = self.clock_bar(false, cx);
         v_flex()
@@ -811,7 +905,14 @@ impl PlayScreen {
             .w(board_size)
             .pt(px(24.))
             .child(top)
-            .child(div().size(board_size).mt(px(12.)).mb(px(12.)).flex_none().child(self.board.clone()))
+            .child(
+                div()
+                    .size(board_size)
+                    .mt(px(12.))
+                    .mb(px(12.))
+                    .flex_none()
+                    .child(self.board.clone()),
+            )
             .child(bottom)
     }
 
@@ -836,17 +937,20 @@ impl PlayScreen {
                 let number = first_ply.div_ceil(2) as usize + index;
                 let cell = |id: Option<NodeId>| {
                     let current = id == Some(game.current);
-                    let san = id.map(|id| game.tree.node(id).san.clone()).unwrap_or_default();
-                    h_flex()
-                        .flex_1()
-                        .child(
-                            div()
-                                .flex_none()
-                                .when(current, |pill| {
-                                    pill.px(px(6.)).rounded(px(4.)).bg(rgb(T.fg)).text_color(rgb(T.bg))
-                                })
-                                .child(san),
-                        )
+                    let san = id
+                        .map(|id| game.tree.node(id).san.clone())
+                        .unwrap_or_default();
+                    h_flex().flex_1().child(
+                        div()
+                            .flex_none()
+                            .when(current, |pill| {
+                                pill.px(px(6.))
+                                    .rounded(px(4.))
+                                    .bg(rgb(T.fg))
+                                    .text_color(rgb(T.bg))
+                            })
+                            .child(san),
+                    )
                 };
                 list = list.child(
                     h_flex()
@@ -894,15 +998,30 @@ impl PlayScreen {
             .child(
                 h_flex()
                     .gap(px(6.))
-                    .child(btn("offer-draw", "Offer draw").flex_1().disabled(!in_game).on_click(move |_, cx| {
-                        draw_this.update(cx, |screen, cx| screen.offer_draw(cx));
-                    }))
-                    .child(btn("takeback", "Takeback").flex_1().disabled(!in_game).on_click(move |_, cx| {
-                        takeback_this.update(cx, |screen, cx| screen.takeback(cx));
-                    }))
-                    .child(btn("resign", "Resign").flex_1().disabled(!in_game).on_click(move |_, cx| {
-                        resign_this.update(cx, |screen, cx| screen.resign(cx));
-                    })),
+                    .child(
+                        btn("offer-draw", "Offer draw")
+                            .flex_1()
+                            .disabled(!in_game)
+                            .on_click(move |_, cx| {
+                                draw_this.update(cx, |screen, cx| screen.offer_draw(cx));
+                            }),
+                    )
+                    .child(
+                        btn("takeback", "Takeback")
+                            .flex_1()
+                            .disabled(!in_game)
+                            .on_click(move |_, cx| {
+                                takeback_this.update(cx, |screen, cx| screen.takeback(cx));
+                            }),
+                    )
+                    .child(
+                        btn("resign", "Resign")
+                            .flex_1()
+                            .disabled(!in_game)
+                            .on_click(move |_, cx| {
+                                resign_this.update(cx, |screen, cx| screen.resign(cx));
+                            }),
+                    ),
             )
             .child(
                 btn("analyse-game", "Analyse this game")
@@ -917,7 +1036,11 @@ impl PlayScreen {
 }
 
 fn supports_limit(config: &EngineConfig) -> bool {
-    config.info.options.iter().any(|option| option.name == "UCI_Elo")
+    config
+        .info
+        .options
+        .iter()
+        .any(|option| option.name == "UCI_Elo")
         || config.name.eq_ignore_ascii_case("stockfish")
 }
 

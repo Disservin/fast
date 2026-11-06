@@ -9,7 +9,7 @@ use anyhow::Result;
 use chess_core::notation::numbered;
 use db::{Database, NoteStore};
 use engine::{EngineConfig, EngineId, EngineManager, EngineStatus};
-use gpui::{Context, EventEmitter, SharedString};
+use gpui::{App, AppContext as _, Context, Entity, EventEmitter, PathPromptOptions, SharedString};
 use trainer::{BookGap, GameLine, Leak, Repertoire, deviation, find_book_gaps, find_leaks};
 
 use crate::config::{Config, Paths};
@@ -22,6 +22,14 @@ pub struct DbEntry {
     pub games: u64,
 }
 
+pub type PathCallback = Box<dyn FnOnce(PathBuf, &mut App)>;
+
+/// A file request waiting for the user to type a path.
+pub struct PendingPath {
+    pub title: SharedString,
+    pub on_path: PathCallback,
+}
+
 pub struct Toast {
     pub id: u64,
     pub text: SharedString,
@@ -30,10 +38,10 @@ pub struct Toast {
 /// Emitted when something other screens should re-read has changed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ModelEvent {
-    BoardPrefsChanged,
-    DatabasesChanged,
-    RepertoireChanged,
-    EnginesChanged,
+    BoardPrefs,
+    Databases,
+    Repertoire,
+    Engines,
 }
 
 pub struct AppModel {
@@ -47,11 +55,64 @@ pub struct AppModel {
     pub notes: Option<NoteStore>,
     pub toasts: Vec<Toast>,
     next_toast: u64,
+    pub pending_path: Option<PendingPath>,
     pub manager: EngineManager,
     pub engine_status: std::collections::BTreeMap<EngineId, EngineStatus>,
 }
 
 impl EventEmitter<ModelEvent> for AppModel {}
+
+/// Asks for a file through the system dialog, falling back to a typed path when no
+/// dialog service exists. `save_name` selects a save dialog with that default name.
+pub fn pick_path(
+    model: Entity<AppModel>,
+    title: &'static str,
+    save_name: Option<&'static str>,
+    cx: &mut App,
+    on_path: impl FnOnce(PathBuf, &mut App) + 'static,
+) {
+    let prompt = match save_name {
+        Some(name) => {
+            let dir = dirs::document_dir().unwrap_or_else(|| PathBuf::from("."));
+            let answer = cx.prompt_for_new_path(&dir, Some(name));
+            cx.background_spawn(async move {
+                answer
+                    .await
+                    .map(|result| result.map(|path| path.map(|path| vec![path])))
+            })
+        }
+        None => {
+            let answer = cx.prompt_for_paths(PathPromptOptions {
+                files: true,
+                directories: false,
+                multiple: false,
+                prompt: Some(title.into()),
+            });
+            cx.background_spawn(answer)
+        }
+    };
+    cx.spawn(async move |cx| match prompt.await {
+        Ok(Ok(Some(paths))) => {
+            if let Some(path) = paths.into_iter().next() {
+                cx.update(|cx| on_path(path, cx));
+            }
+        }
+        // Cancelled by the user.
+        Ok(Ok(None)) => {}
+        Ok(Err(err)) => {
+            log::info!("no file dialog: {err:#}");
+            model.update(cx, |model, cx| {
+                model.pending_path = Some(PendingPath {
+                    title: title.into(),
+                    on_path: Box::new(on_path),
+                });
+                cx.notify();
+            });
+        }
+        Err(_) => {}
+    })
+    .detach();
+}
 
 /// Days since the Unix epoch; the scheduler's clock.
 pub fn today() -> i64 {
@@ -102,6 +163,7 @@ impl AppModel {
             notes,
             toasts: Vec::new(),
             next_toast: 0,
+            pending_path: None,
             manager: EngineManager::default(),
             engine_status,
         };
@@ -204,7 +266,7 @@ impl AppModel {
             }
             Err(err) => log::error!("could not serialise repertoire: {err}"),
         }
-        cx.emit(ModelEvent::RepertoireChanged);
+        cx.emit(ModelEvent::Repertoire);
         cx.notify();
     }
 
@@ -245,7 +307,10 @@ impl AppModel {
     }
 
     pub fn engine_mut(&mut self, id: EngineId) -> Option<&mut EngineConfig> {
-        self.config.engines.iter_mut().find(|engine| engine.id == id)
+        self.config
+            .engines
+            .iter_mut()
+            .find(|engine| engine.id == id)
     }
 
     /// Engines to run in Analyse, in table order.
@@ -299,7 +364,10 @@ pub fn compute_leaks(
             score,
         })
         .collect();
-    Ok((find_leaks(repertoire, &games), find_book_gaps(repertoire, &games)))
+    Ok((
+        find_leaks(repertoire, &games),
+        find_book_gaps(repertoire, &games),
+    ))
 }
 
 /// A sensible display name and version from an engine's self-reported id.
@@ -340,7 +408,10 @@ mod tests {
             split_engine_name("Weird Engine", "x"),
             ("Weird Engine".to_owned(), String::new())
         );
-        assert_eq!(split_engine_name("", "fallback"), ("fallback".to_owned(), String::new()));
+        assert_eq!(
+            split_engine_name("", "fallback"),
+            ("fallback".to_owned(), String::new())
+        );
     }
 
     #[test]

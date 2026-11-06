@@ -28,7 +28,10 @@ impl TimeClass {
         let Some(Ok(base)) = parts.next().map(str::parse::<u32>) else {
             return Self::Unknown;
         };
-        let increment = parts.next().and_then(|inc| inc.parse::<u32>().ok()).unwrap_or(0);
+        let increment = parts
+            .next()
+            .and_then(|inc| inc.parse::<u32>().ok())
+            .unwrap_or(0);
         match base + 40 * increment {
             0..180 => Self::Bullet,
             180..480 => Self::Blitz,
@@ -112,9 +115,7 @@ impl Filter {
             }
         }
         if let Some(hash) = self.position {
-            clauses.push(
-                "id IN (SELECT game_id FROM positions WHERE hash = ?)".to_owned(),
-            );
+            clauses.push("id IN (SELECT game_id FROM positions WHERE hash = ?)".to_owned());
             values.push(Box::new(hash as i64));
         }
         if self.only_left_repertoire {
@@ -128,6 +129,9 @@ impl Filter {
         (clause, values)
     }
 }
+
+/// A game for repertoire analysis: id, moves, whether the player had White, their score.
+pub type PlayerLine = (i64, Vec<String>, bool, f32);
 
 /// One row of the games table.
 #[derive(Clone, Debug, PartialEq)]
@@ -190,9 +194,23 @@ impl GameDetails {
         let mut tag = |name: &str, value: &str| {
             out.push_str(&format!("[{name} \"{}\"]\n", value.replace('"', "'")));
         };
-        tag("Event", if row.event.is_empty() { "?" } else { &row.event });
+        tag(
+            "Event",
+            if row.event.is_empty() {
+                "?"
+            } else {
+                &row.event
+            },
+        );
         tag("Date", &row.date.replace('-', "."));
-        tag("Round", if row.round.is_empty() { "?" } else { &row.round });
+        tag(
+            "Round",
+            if row.round.is_empty() {
+                "?"
+            } else {
+                &row.round
+            },
+        );
         tag("White", &row.white);
         tag("Black", &row.black);
         tag("Result", &row.result);
@@ -232,7 +250,11 @@ pub struct MoveStat {
 impl MoveStat {
     /// Score percentage for the given side.
     pub fn score_percent(&self, for_white: bool) -> f32 {
-        let wins = if for_white { self.white_wins } else { self.black_wins };
+        let wins = if for_white {
+            self.white_wins
+        } else {
+            self.black_wins
+        };
         (wins as f32 + self.draws as f32 / 2.0) * 100.0 / self.games.max(1) as f32
     }
 }
@@ -252,9 +274,9 @@ impl Database {
     /// table virtualize by fetching row data only for the visible range.
     pub fn filtered_ids(&self, filter: &Filter) -> Result<Vec<i64>> {
         let (clause, values) = filter.sql();
-        let mut statement = self
-            .conn
-            .prepare(&format!("SELECT id FROM games{clause} ORDER BY date DESC, id DESC"))?;
+        let mut statement = self.conn.prepare(&format!(
+            "SELECT id FROM games{clause} ORDER BY date DESC, id DESC"
+        ))?;
         let rows = statement.query_map(params_from_iter(values.iter()), |row| row.get(0))?;
         Ok(rows.collect::<rusqlite::Result<_>>()?)
     }
@@ -264,9 +286,9 @@ impl Database {
             return Ok(Vec::new());
         }
         let marks = vec!["?"; ids.len()].join(",");
-        let mut statement = self
-            .conn
-            .prepare(&format!("SELECT {ROW_COLUMNS} FROM games WHERE id IN ({marks})"))?;
+        let mut statement = self.conn.prepare(&format!(
+            "SELECT {ROW_COLUMNS} FROM games WHERE id IN ({marks})"
+        ))?;
         let mut found: Vec<GameRow> = statement
             .query_map(params_from_iter(ids.iter()), GameRow::from_row)?
             .collect::<rusqlite::Result<_>>()?;
@@ -374,7 +396,9 @@ impl Database {
         let rows: rusqlite::Result<Vec<MoveStat>> = if player.is_empty() {
             statement.query_map(params![hash as i64], map)?.collect()
         } else {
-            statement.query_map(params![hash as i64, player], map)?.collect()
+            statement
+                .query_map(params![hash as i64, player], map)?
+                .collect()
         };
         Ok(rows?)
     }
@@ -409,7 +433,7 @@ impl Database {
     }
 
     /// Every game's id, moves and colour relative to `player`, for repertoire analysis.
-    pub fn player_lines(&self, player: &str) -> Result<Vec<(i64, Vec<String>, bool, f32)>> {
+    pub fn player_lines(&self, player: &str) -> Result<Vec<PlayerLine>> {
         let mut statement = self.conn.prepare(
             "SELECT id, moves, white = ?1 COLLATE NOCASE, result FROM games
              WHERE white = ?1 COLLATE NOCASE OR black = ?1 COLLATE NOCASE",
@@ -490,8 +514,14 @@ mod tests {
     fn database() -> (tempfile::TempDir, Database) {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("t.sqlite");
-        let summary =
-            import_games(&path, GAMES.as_bytes(), "", &ImportControl::default(), |_| {}).unwrap();
+        let summary = import_games(
+            &path,
+            GAMES.as_bytes(),
+            "",
+            &ImportControl::default(),
+            |_| {},
+        )
+        .unwrap();
         assert_eq!(summary.games, 3);
         (dir, Database::open(&path).unwrap())
     }
@@ -522,12 +552,30 @@ mod tests {
     fn filters_combine() {
         let (_dir, db) = database();
         let count = |filter: Filter| db.filtered_ids(&filter).unwrap().len();
-        let me = Filter { player: "ME".to_owned(), ..Default::default() };
+        let me = Filter {
+            player: "ME".to_owned(),
+            ..Default::default()
+        };
         assert_eq!(count(me.clone()), 3);
-        assert_eq!(count(Filter { side: SideFilter::White, ..me.clone() }), 2);
-        assert_eq!(count(Filter { side: SideFilter::Black, ..me.clone() }), 1);
         assert_eq!(
-            count(Filter { min_opponent_rating: Some(1900), ..me.clone() }),
+            count(Filter {
+                side: SideFilter::White,
+                ..me.clone()
+            }),
+            2
+        );
+        assert_eq!(
+            count(Filter {
+                side: SideFilter::Black,
+                ..me.clone()
+            }),
+            1
+        );
+        assert_eq!(
+            count(Filter {
+                min_opponent_rating: Some(1900),
+                ..me.clone()
+            }),
             2
         );
         assert_eq!(
@@ -539,11 +587,17 @@ mod tests {
             2
         );
         assert_eq!(
-            count(Filter { time_classes: vec![TimeClass::Rapid, TimeClass::Classical], ..Default::default() }),
+            count(Filter {
+                time_classes: vec![TimeClass::Rapid, TimeClass::Classical],
+                ..Default::default()
+            }),
             2
         );
         assert_eq!(
-            count(Filter { position: Some(hash_after(&["e4", "c5"])), ..Default::default() }),
+            count(Filter {
+                position: Some(hash_after(&["e4", "c5"])),
+                ..Default::default()
+            }),
             2
         );
     }
@@ -554,7 +608,10 @@ mod tests {
         let moves = db.moves_from(hash_after(&["e4", "c5"])).unwrap();
         assert_eq!(moves.len(), 2);
         let nf3 = moves.iter().find(|stat| stat.san == "Nf3").unwrap();
-        assert_eq!((nf3.games, nf3.white_wins, nf3.draws, nf3.black_wins), (1, 1, 0, 0));
+        assert_eq!(
+            (nf3.games, nf3.white_wins, nf3.draws, nf3.black_wins),
+            (1, 1, 0, 0)
+        );
         assert!((nf3.score_percent(true) - 100.0).abs() < f32::EPSILON);
         let start = db.moves_from(hash_after(&[])).unwrap();
         assert_eq!(start[0].san, "e4");
@@ -567,7 +624,12 @@ mod tests {
     #[test]
     fn stats_are_from_the_players_perspective() {
         let (_dir, db) = database();
-        let stats = db.stats(&Filter { player: "me".to_owned(), ..Default::default() }).unwrap();
+        let stats = db
+            .stats(&Filter {
+                player: "me".to_owned(),
+                ..Default::default()
+            })
+            .unwrap();
         assert_eq!(stats.games, 3);
         assert!((stats.score_percent - 50.0).abs() < 0.01);
         assert_eq!(stats.top_leak, None);
@@ -576,7 +638,10 @@ mod tests {
         db.set_left_rep(ids[1], Some("14.h4")).unwrap();
         let stats = db.stats(&Filter::default()).unwrap();
         assert_eq!(stats.top_leak, Some(("14.h4".to_owned(), 2)));
-        let only = Filter { only_left_repertoire: true, ..Default::default() };
+        let only = Filter {
+            only_left_repertoire: true,
+            ..Default::default()
+        };
         assert_eq!(db.filtered_ids(&only).unwrap().len(), 2);
     }
 
@@ -597,9 +662,9 @@ mod tests {
         let (_dir, db) = database();
         let mut lines = db.player_lines("me").unwrap();
         lines.sort_by_key(|(id, ..)| *id);
-        assert_eq!(lines[0].2, true);
+        assert!(lines[0].2);
         assert_eq!(lines[0].3, 1.0);
-        assert_eq!(lines[1].2, false);
+        assert!(!lines[1].2);
         assert_eq!(lines[1].3, 0.5);
     }
 
@@ -608,7 +673,10 @@ mod tests {
         assert_eq!(TimeClass::from_time_control("60+0"), TimeClass::Bullet);
         assert_eq!(TimeClass::from_time_control("180+2"), TimeClass::Blitz);
         assert_eq!(TimeClass::from_time_control("600+5"), TimeClass::Rapid);
-        assert_eq!(TimeClass::from_time_control("5400+30"), TimeClass::Classical);
+        assert_eq!(
+            TimeClass::from_time_control("5400+30"),
+            TimeClass::Classical
+        );
         assert_eq!(TimeClass::from_time_control("-"), TimeClass::Unknown);
     }
 }

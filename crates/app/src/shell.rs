@@ -104,6 +104,7 @@ pub struct Workspace {
     pub play: Entity<PlayScreen>,
     pub settings: Entity<SettingsScreen>,
     search: Entity<InputState>,
+    path_input: Entity<InputState>,
     focus: FocusHandle,
     first_frame: bool,
     _subscriptions: Vec<Subscription>,
@@ -124,8 +125,13 @@ impl Workspace {
         let train = cx.new(|cx| TrainScreen::new(model.clone(), this.clone(), window, cx));
         let play = cx.new(|cx| PlayScreen::new(model.clone(), this.clone(), window, cx));
         let settings = cx.new(|cx| SettingsScreen::new(model.clone(), window, cx));
-        let search = cx.new(|cx| {
-            InputState::new(window, cx).placeholder("Search positions, games, openings")
+        let search = cx
+            .new(|cx| InputState::new(window, cx).placeholder("Search positions, games, openings"));
+        let path_input = cx.new(|cx| InputState::new(window, cx).placeholder("/path/to/file"));
+        let path_sub = cx.subscribe_in(&path_input, window, |this, _, event, window, cx| {
+            if matches!(event, InputEvent::PressEnter { .. }) {
+                this.submit_path(window, cx);
+            }
         });
         let search_sub = cx.subscribe_in(&search, window, |this, state, event, window, cx| {
             if let InputEvent::PressEnter { .. } = event {
@@ -133,7 +139,17 @@ impl Workspace {
                 this.run_search(query.trim(), window, cx);
             }
         });
-        let model_sub = cx.observe(&model, |_, _, cx| cx.notify());
+        let mut path_prompt_open = false;
+        let model_sub = cx.observe_in(&model, window, move |this, model, window, cx| {
+            // The typed-path bar takes focus as soon as it opens.
+            let open = model.read(cx).pending_path.is_some();
+            if open && !path_prompt_open {
+                this.path_input
+                    .update(cx, |input, cx| input.focus(window, cx));
+            }
+            path_prompt_open = open;
+            cx.notify();
+        });
         let focus = cx.focus_handle();
         focus.focus(window, cx);
         let (mode, settings_page) = match screen.unwrap_or("analyse") {
@@ -159,9 +175,10 @@ impl Workspace {
             play,
             settings,
             search,
+            path_input,
             focus,
             first_frame: true,
-            _subscriptions: vec![search_sub, model_sub],
+            _subscriptions: vec![search_sub, path_sub, model_sub],
         }
     }
 
@@ -172,7 +189,8 @@ impl Workspace {
         self.mode = mode;
         // The engine only runs while Analyse is open.
         let visible = mode == Mode::Analyse;
-        self.analyse.update(cx, |analyse, cx| analyse.set_visible(visible, cx));
+        self.analyse
+            .update(cx, |analyse, cx| analyse.set_visible(visible, cx));
         cx.notify();
     }
 
@@ -194,13 +212,70 @@ impl Workspace {
         }
     }
 
+    fn submit_path(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let text = self.path_input.read(cx).value().trim().to_owned();
+        if text.is_empty() {
+            return;
+        }
+        let pending = self.model.update(cx, |model, cx| {
+            cx.notify();
+            model.pending_path.take()
+        });
+        self.path_input
+            .update(cx, |input, cx| input.set_value("", window, cx));
+        if let Some(pending) = pending {
+            (pending.on_path)(std::path::PathBuf::from(text), cx);
+        }
+    }
+
+    /// Typed-path fallback, for desktops with no file dialog service (such as WSL).
+    fn path_bar(&self, cx: &mut Context<Self>) -> Option<impl IntoElement + use<>> {
+        let title = self.model.read(cx).pending_path.as_ref()?.title.clone();
+        let this = cx.entity();
+        let cancel = self.model.clone();
+        Some(
+            h_flex()
+                .flex_none()
+                .w_full()
+                .gap(px(10.))
+                .px(px(21.))
+                .py(px(8.))
+                .bg(rgb(T.surface_2))
+                .border_b_1()
+                .border_color(rgb(T.border))
+                .child(div().flex_none().text_color(rgb(T.fg_2)).child(format!(
+                    "{title}: no file dialog is available here, enter a path"
+                )))
+                .child(
+                    div()
+                        .flex_1()
+                        .child(crate::controls::text_input(&self.path_input)),
+                )
+                .child(
+                    btn("path-ok", "Open")
+                        .primary()
+                        .on_click(move |window, cx| {
+                            this.update(cx, |this, cx| this.submit_path(window, cx));
+                        }),
+                )
+                .child(btn("path-cancel", "Cancel").on_click(move |_, cx| {
+                    cancel.update(cx, |model, cx| {
+                        model.pending_path = None;
+                        cx.notify();
+                    });
+                })),
+        )
+    }
+
     fn breadcrumb(&self, cx: &App) -> SharedString {
         match self.mode {
             Mode::Analyse => self.analyse.read(cx).breadcrumb(),
             Mode::Database => self.database.read(cx).breadcrumb(),
             Mode::Train => self.model.read(cx).repertoire.name.clone().into(),
             Mode::Play => self.play.read(cx).breadcrumb(),
-            Mode::Settings => format!("Settings · {}", self.settings.read(cx).page().title()).into(),
+            Mode::Settings => {
+                format!("Settings · {}", self.settings.read(cx).page().title()).into()
+            }
         }
     }
 
@@ -210,7 +285,11 @@ impl Workspace {
             .h(31.)
             .pad(14.)
             .text(15.)
-            .kind(if active { BtnKind::Active } else { BtnKind::Ghost })
+            .kind(if active {
+                BtnKind::Active
+            } else {
+                BtnKind::Ghost
+            })
             .on_click({
                 let this = cx.entity();
                 move |_, cx| this.update(cx, |this, cx| this.set_mode(mode, cx))
@@ -226,8 +305,18 @@ impl Workspace {
         };
         v_flex()
             .gap(px(1.))
-            .child(h_flex().gap(px(1.)).child(square(true)).child(square(false)))
-            .child(h_flex().gap(px(1.)).child(square(false)).child(square(true)))
+            .child(
+                h_flex()
+                    .gap(px(1.))
+                    .child(square(true))
+                    .child(square(false)),
+            )
+            .child(
+                h_flex()
+                    .gap(px(1.))
+                    .child(square(false))
+                    .child(square(true)),
+            )
     }
 
     fn engine_button(&self, cx: &mut Context<Self>) -> Option<Btn> {
@@ -275,7 +364,9 @@ impl Workspace {
         };
         if let Some(width) = search_w {
             row = row.child(
-                div().w(px(width)).child(crate::controls::text_input(&self.search).height(34.)),
+                div()
+                    .w(px(width))
+                    .child(crate::controls::text_input(&self.search).height(34.)),
             );
         }
         match self.mode {
@@ -292,11 +383,14 @@ impl Workspace {
             }
             Mode::Train => {
                 let settings_this = this.clone();
-                row = row.child(btn("repertoires", "Repertoires").on_click(move |window, cx| {
-                    settings_this.update(cx, |this, cx| {
-                        this.train.update(cx, |train, cx| train.prompt_open(window, cx));
-                    });
-                }));
+                row = row.child(
+                    btn("repertoires", "Repertoires").on_click(move |window, cx| {
+                        settings_this.update(cx, |this, cx| {
+                            this.train
+                                .update(cx, |train, cx| train.prompt_open(window, cx));
+                        });
+                    }),
+                );
             }
             _ => {}
         }
@@ -381,7 +475,11 @@ impl Workspace {
 
     fn toasts(&self, cx: &App) -> impl IntoElement + use<> {
         let model = self.model.read(cx);
-        let mut column = v_flex().absolute().bottom(px(20.)).right(px(24.)).gap(px(8.));
+        let mut column = v_flex()
+            .absolute()
+            .bottom(px(20.))
+            .right(px(24.))
+            .gap(px(8.));
         for toast in &model.toasts {
             column = column.child(
                 div()
@@ -412,9 +510,12 @@ impl Render for Workspace {
         let typing = stack.iter().any(|context| {
             ["Input", "Select", "Popover", "Menu", "List", "Dialog"]
                 .iter()
-                .any(|name| context.contains(*name))
+                .any(|name| context.contains(name))
         });
-        let on_button = stack.iter().any(|context| context.contains("OutpostButton"));
+        let path_bar = self.path_bar(cx);
+        let on_button = stack
+            .iter()
+            .any(|context| context.contains("OutpostButton"));
         let body = match self.mode {
             Mode::Analyse => self.analyse.clone().into_any_element(),
             Mode::Database => self.database.clone().into_any_element(),
@@ -426,11 +527,19 @@ impl Render for Workspace {
             .id("workspace")
             .relative()
             .track_focus(&self.focus)
-            .when(!typing, |root| root.key_context(SHORTCUT_CONTEXT))
+            // One node carries both contexts: it must be an ancestor of the focused element.
+            .when(!typing, |root| {
+                root.key_context(
+                    if on_button {
+                        SHORTCUT_CONTEXT.to_owned()
+                    } else {
+                        format!("{SHORTCUT_CONTEXT} {SPACE_CONTEXT}")
+                    }
+                    .as_str(),
+                )
+            })
             .child(
-                // A nested context so Space can be excluded while a button has focus.
                 div()
-                    .when(!typing && !on_button, |inner| inner.key_context(SPACE_CONTEXT))
                     .flex()
                     .flex_col()
                     .size_full()
@@ -439,23 +548,29 @@ impl Render for Workspace {
                     .font_family(SANS)
                     .text_size(px(14.))
                     .child(self.top_bar(cx))
+                    .children(path_bar)
                     .child(div().flex_1().min_h_0().w_full().child(body)),
             )
             .size_full()
             .on_action(cx.listener(|this, _: &PrevMove, window, cx| {
-                this.analyse.update(cx, |screen, cx| screen.step(-1, window, cx));
+                this.analyse
+                    .update(cx, |screen, cx| screen.step(-1, window, cx));
             }))
             .on_action(cx.listener(|this, _: &NextMove, window, cx| {
-                this.analyse.update(cx, |screen, cx| screen.step(1, window, cx));
+                this.analyse
+                    .update(cx, |screen, cx| screen.step(1, window, cx));
             }))
             .on_action(cx.listener(|this, _: &FirstMove, window, cx| {
-                this.analyse.update(cx, |screen, cx| screen.go_first(window, cx));
+                this.analyse
+                    .update(cx, |screen, cx| screen.go_first(window, cx));
             }))
             .on_action(cx.listener(|this, _: &LastMove, window, cx| {
-                this.analyse.update(cx, |screen, cx| screen.go_last(window, cx));
+                this.analyse
+                    .update(cx, |screen, cx| screen.go_last(window, cx));
             }))
             .on_action(cx.listener(|this, _: &ToggleEngine, _, cx| {
-                this.analyse.update(cx, |screen, cx| screen.toggle_engine(cx));
+                this.analyse
+                    .update(cx, |screen, cx| screen.toggle_engine(cx));
                 cx.notify();
             }))
             .on_action(cx.listener(|this, _: &FlipBoard, _, cx| match this.mode {
@@ -467,7 +582,8 @@ impl Render for Workspace {
                 if !matches!(this.mode, Mode::Analyse | Mode::Database) {
                     this.set_mode(Mode::Analyse, cx);
                 }
-                this.search.update(cx, |search, cx| search.focus(window, cx));
+                this.search
+                    .update(cx, |search, cx| search.focus(window, cx));
             }))
             .on_action(cx.listener(|this, _: &SaveGame, _, cx| {
                 this.analyse.update(cx, |screen, cx| screen.save_game(cx));

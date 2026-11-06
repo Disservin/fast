@@ -2,8 +2,8 @@
 
 use chess_core::{Chess, Move, format_pv, parse_pgn, shakmaty::san::SanPlus};
 use gpui::{
-    AppContext as _, Context, Entity, FontWeight, IntoElement, PathPromptOptions, Render,
-    SharedString, Subscription, WeakEntity, Window, div, prelude::*, px, rgb,
+    AppContext as _, Context, Entity, FontWeight, IntoElement, Render, SharedString, Subscription,
+    WeakEntity, Window, div, prelude::*, px, rgb,
 };
 use gpui_component::input::{InputEvent, InputState};
 use trainer::{Card, Drill, Grade, RepStatus};
@@ -14,7 +14,7 @@ use ui::{
 
 use crate::{
     controls::{new_input, text_input},
-    model::{AppModel, ModelEvent, today},
+    model::{AppModel, ModelEvent, pick_path, today},
     shell::Workspace,
 };
 
@@ -87,7 +87,7 @@ impl TrainScreen {
         let add_line = new_input("", "1.e4 c5 2.Nf3 d6", window, cx);
         let subscriptions = vec![
             cx.subscribe_in(&board, window, |this, _, event, _, cx| match event {
-                BoardEvent::Moved(mv) => this.user_move(mv.clone(), cx),
+                BoardEvent::Moved(mv) => this.user_move(*mv, cx),
             }),
             cx.subscribe_in(&add_line, window, |this, state, event, window, cx| {
                 if matches!(event, InputEvent::PressEnter { .. }) {
@@ -96,11 +96,12 @@ impl TrainScreen {
                 }
             }),
             cx.subscribe_in(&model, window, |this, model, event, _, cx| match event {
-                ModelEvent::BoardPrefsChanged => {
+                ModelEvent::BoardPrefs => {
                     let prefs = model.read(cx).config.board.prefs();
-                    this.board.update(cx, |board, cx| board.set_prefs(prefs, cx));
+                    this.board
+                        .update(cx, |board, cx| board.set_prefs(prefs, cx));
                 }
-                ModelEvent::RepertoireChanged => cx.notify(),
+                ModelEvent::Repertoire => cx.notify(),
                 _ => {}
             }),
         ];
@@ -126,7 +127,12 @@ impl TrainScreen {
         self.queue = model.repertoire.drills(today());
         // Demo mode opens mid-session, as in the design.
         self.finished = if model.demo { 6 } else { 0 };
-        self.total = self.queue.iter().filter(|drill| self.is_due(drill, cx)).count() + self.finished;
+        self.total = self
+            .queue
+            .iter()
+            .filter(|drill| self.is_due(drill, cx))
+            .count()
+            + self.finished;
         self.start_drill(cx);
     }
 
@@ -156,7 +162,7 @@ impl TrainScreen {
         for san in path {
             let parsed: chess_core::shakmaty::san::San = san.parse().ok()?;
             let mv = parsed.to_move(&pos).ok()?;
-            let _ = SanPlus::from_move_and_play_unchecked(&mut pos, mv.clone());
+            let _ = SanPlus::from_move_and_play_unchecked(&mut pos, mv);
             last = Some(mv);
         }
         Some((pos, last))
@@ -166,11 +172,20 @@ impl TrainScreen {
         self.phase = Phase::Asking;
         self.message = None;
         let white = self.model.read(cx).repertoire.white;
-        let color = if white { chess_core::Color::White } else { chess_core::Color::Black };
+        let color = if white {
+            chess_core::Color::White
+        } else {
+            chess_core::Color::Black
+        };
         let drill = self.current().cloned();
-        self.selected_path = drill
-            .as_ref()
-            .map(|drill| drill.path.iter().cloned().chain([drill.answer.clone()]).collect());
+        self.selected_path = drill.as_ref().map(|drill| {
+            drill
+                .path
+                .iter()
+                .cloned()
+                .chain([drill.answer.clone()])
+                .collect()
+        });
         let (pos, _) = drill
             .as_ref()
             .and_then(|drill| Self::position_for(&drill.path))
@@ -186,13 +201,17 @@ impl TrainScreen {
     }
 
     fn user_move(&mut self, mv: Move, cx: &mut Context<Self>) {
-        let Some(drill) = self.current().cloned() else { return };
+        let Some(drill) = self.current().cloned() else {
+            return;
+        };
         if self.phase != Phase::Asking && self.phase != Phase::Wrong {
             return;
         }
-        let Some((pos, _)) = Self::position_for(&drill.path) else { return };
+        let Some((pos, _)) = Self::position_for(&drill.path) else {
+            return;
+        };
         let mut after = pos.clone();
-        let played = SanPlus::from_move_and_play_unchecked(&mut after, mv.clone()).to_string();
+        let played = SanPlus::from_move_and_play_unchecked(&mut after, mv).to_string();
         if played.trim_end_matches(['+', '#']) == drill.answer {
             self.phase = Phase::Correct;
             self.message = Some(format!("Correct: {played}. How well did you know it?").into());
@@ -203,7 +222,8 @@ impl TrainScreen {
             });
         } else {
             self.phase = Phase::Wrong;
-            self.message = Some(format!("{played} is not in your repertoire here. Try again.").into());
+            self.message =
+                Some(format!("{played} is not in your repertoire here. Try again.").into());
         }
         cx.notify();
     }
@@ -243,7 +263,10 @@ impl TrainScreen {
     }
 
     fn why(&mut self, cx: &mut Context<Self>) {
-        let note = self.current().map(|drill| drill.note.clone()).unwrap_or_default();
+        let note = self
+            .current()
+            .map(|drill| drill.note.clone())
+            .unwrap_or_default();
         self.message = Some(if note.is_empty() {
             "No note saved for this move yet.".into()
         } else {
@@ -261,9 +284,16 @@ impl TrainScreen {
     }
 
     fn grade(&mut self, grade: Grade, cx: &mut Context<Self>) {
-        let Some(drill) = self.current().cloned() else { return };
+        let Some(drill) = self.current().cloned() else {
+            return;
+        };
         let was_due = self.is_due(&drill, cx);
-        let path: Vec<String> = drill.path.iter().cloned().chain([drill.answer.clone()]).collect();
+        let path: Vec<String> = drill
+            .path
+            .iter()
+            .cloned()
+            .chain([drill.answer.clone()])
+            .collect();
         self.model.update(cx, |model, cx| {
             model.repertoire.grade(&path, grade, today());
             model.save_repertoire(cx);
@@ -319,7 +349,8 @@ impl TrainScreen {
         match result {
             Ok(()) => {
                 self.adding = false;
-                self.add_line.update(cx, |input, cx| input.set_value("", window, cx));
+                self.add_line
+                    .update(cx, |input, cx| input.set_value("", window, cx));
                 self.reload_queue(cx);
             }
             Err(err) => self.toast(format!("Could not add the line: {err}"), cx),
@@ -333,7 +364,10 @@ impl TrainScreen {
             Some(first) => format!(
                 "{} positions need an answer, for example after {}.",
                 gaps.len(),
-                format_pv(first.len().saturating_sub(4) as u32, &first[first.len().saturating_sub(4)..])
+                format_pv(
+                    first.len().saturating_sub(4) as u32,
+                    &first[first.len().saturating_sub(4)..]
+                )
             ),
         };
         self.toast(text, cx);
@@ -353,49 +387,48 @@ impl TrainScreen {
 
     /// Imports lines from a PGN into the active repertoire (variations included).
     pub fn prompt_open(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        let paths = cx.prompt_for_paths(PathPromptOptions {
-            files: true,
-            directories: false,
-            multiple: false,
-            prompt: Some("Add lines from PGN".into()),
-        });
-        cx.spawn(async move |this, cx| {
-            let Ok(Ok(Some(paths))) = paths.await else { return };
-            let Some(path) = paths.into_iter().next() else { return };
-            let text = match std::fs::read_to_string(&path) {
-                Ok(text) => text,
-                Err(err) => {
-                    let _ = this.update(cx, |this, cx| {
-                        this.toast(format!("Could not read the file: {err}"), cx);
-                    });
-                    return;
-                }
-            };
-            let _ = this.update(cx, |this, cx| {
-                let message = match parse_pgn(&text) {
-                    Ok(games) => {
-                        let mut added = 0;
-                        this.model.update(cx, |model, cx| {
-                            for game in &games {
-                                for line in tree_lines(game) {
-                                    let refs: Vec<&str> = line.iter().map(String::as_str).collect();
-                                    if model.repertoire.add_line(&refs).is_ok() {
-                                        added += 1;
-                                    }
-                                }
+        let this = cx.entity().downgrade();
+        pick_path(
+            self.model.clone(),
+            "Add lines from PGN",
+            None,
+            cx,
+            move |path, cx| {
+                let Some(this) = this.upgrade() else { return };
+                this.update(cx, |this, cx| {
+                    this.add_lines_from(path, cx);
+                });
+            },
+        );
+    }
+
+    fn add_lines_from(&mut self, path: std::path::PathBuf, cx: &mut Context<Self>) {
+        let read = std::fs::read_to_string(&path);
+        let message = match read
+            .map_err(|err| format!("Could not read the file: {err}"))
+            .and_then(|text| {
+                parse_pgn(&text).map_err(|err| format!("Could not read the PGN: {err}"))
+            }) {
+            Ok(games) => {
+                let mut added = 0;
+                self.model.update(cx, |model, cx| {
+                    for game in &games {
+                        for line in tree_lines(game) {
+                            let refs: Vec<&str> = line.iter().map(String::as_str).collect();
+                            if model.repertoire.add_line(&refs).is_ok() {
+                                added += 1;
                             }
-                            model.save_repertoire(cx);
-                            model.refresh_leaks();
-                        });
-                        this.reload_queue(cx);
-                        format!("Added {added} lines to the repertoire.")
+                        }
                     }
-                    Err(err) => format!("Could not read the PGN: {err}"),
-                };
-                this.toast(message, cx);
-            });
-        })
-        .detach();
+                    model.save_repertoire(cx);
+                    model.refresh_leaks();
+                });
+                self.reload_queue(cx);
+                format!("Added {added} lines to the repertoire.")
+            }
+            Err(message) => message,
+        };
+        self.toast(message, cx);
     }
 
     fn render_tree(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
@@ -434,7 +467,13 @@ impl TrainScreen {
                     .when(is_selected, |row_el| row_el.bg(rgb(T.selected)))
                     .when(is_selected, |row_el| {
                         row_el.child(
-                            div().absolute().left_0().top_0().bottom_0().w(px(3.)).bg(rgb(T.fg)),
+                            div()
+                                .absolute()
+                                .left_0()
+                                .top_0()
+                                .bottom_0()
+                                .w(px(3.))
+                                .bg(rgb(T.fg)),
                         )
                     })
                     .child(mono(row.label).text_size(px(14.)).text_color(rgb(T.fg)))
@@ -448,7 +487,11 @@ impl TrainScreen {
             );
         }
         let segment = |value: u32, color: u32| {
-            div().h_full().flex_grow(value.max(1) as f32).flex_basis(px(0.)).bg(rgb(color))
+            div()
+                .h_full()
+                .flex_grow(value.max(1) as f32)
+                .flex_basis(px(0.))
+                .bg(rgb(color))
         };
         let add_this = this.clone();
         let gaps_this = this.clone();
@@ -510,7 +553,12 @@ impl TrainScreen {
                     .overflow_y_scroll()
                     .child(list)
                     .when(self.adding, |column| {
-                        column.child(div().px(px(18.)).pb(px(8.)).child(text_input(&self.add_line)))
+                        column.child(
+                            div()
+                                .px(px(18.))
+                                .pb(px(8.))
+                                .child(text_input(&self.add_line)),
+                        )
                     })
                     .child(
                         h_flex()
@@ -534,18 +582,30 @@ impl TrainScreen {
             )
     }
 
-    fn render_center(&mut self, board_size: gpui::Pixels, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+    fn render_center(
+        &mut self,
+        board_size: gpui::Pixels,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement + use<> {
         let this = cx.entity();
         let drill = self.current().cloned();
         let white = self.model.read(cx).repertoire.white;
         let side = if white { "White" } else { "Black" };
         let position = self.finished + usize::from(drill.is_some());
         let total = self.total.max(position);
-        let fraction = if total == 0 { 0.0 } else { position as f32 / total as f32 };
+        let fraction = if total == 0 {
+            0.0
+        } else {
+            position as f32 / total as f32
+        };
         let context = drill.as_ref().map(|drill| {
             let start = drill.path.len().saturating_sub(2);
             let moves = format_pv(start as u32, &drill.path[start..]);
-            if start > 0 { format!("…{moves}") } else { moves }
+            if start > 0 {
+                format!("…{moves}")
+            } else {
+                moves
+            }
         });
         let card: Card = drill
             .as_ref()
@@ -556,23 +616,31 @@ impl TrainScreen {
                     .map(String::as_str)
                     .chain([drill.answer.as_str()])
                     .collect();
-                self.model.read(cx).repertoire.node(&path).and_then(|node| node.card)
+                self.model
+                    .read(cx)
+                    .repertoire
+                    .node(&path)
+                    .and_then(|node| node.card)
             })
             .unwrap_or_default();
         let intervals = card.intervals();
         let has_drill = drill.is_some();
-        let tool = |id: &'static str, label: &'static str, action: fn(&mut Self, &mut Context<Self>), this: Entity<Self>| {
+        let tool = |id: &'static str,
+                    label: &'static str,
+                    action: fn(&mut Self, &mut Context<Self>),
+                    this: Entity<Self>| {
             btn(id, label).disabled(!has_drill).on_click(move |_, cx| {
-                this.update(cx, |screen, cx| action(screen, cx));
+                this.update(cx, action);
             })
         };
-        let recall = |id: &'static str, label: String, grade: Grade, kind: BtnKind, this: Entity<Self>| {
-            btn(id, label)
-                .flex_1()
-                .kind(kind)
-                .disabled(!has_drill)
-                .on_click(move |_, cx| this.update(cx, |screen, cx| screen.grade(grade, cx)))
-        };
+        let recall =
+            |id: &'static str, label: String, grade: Grade, kind: BtnKind, this: Entity<Self>| {
+                btn(id, label)
+                    .flex_1()
+                    .kind(kind)
+                    .disabled(!has_drill)
+                    .on_click(move |_, cx| this.update(cx, |screen, cx| screen.grade(grade, cx)))
+            };
         v_flex()
             .flex_none()
             .w(board_size)
@@ -583,13 +651,18 @@ impl TrainScreen {
                     .gap(px(14.))
                     .child(section_label(format!("Drill · {position} of {total} due")))
                     .child(
-                        div().flex_1().h(px(3.)).rounded(px(1.)).bg(rgb(T.selected)).child(
-                            div()
-                                .h_full()
-                                .w(gpui::relative(fraction))
-                                .rounded(px(1.))
-                                .bg(rgb(T.fg)),
-                        ),
+                        div()
+                            .flex_1()
+                            .h(px(3.))
+                            .rounded(px(1.))
+                            .bg(rgb(T.selected))
+                            .child(
+                                div()
+                                    .h_full()
+                                    .w(gpui::relative(fraction))
+                                    .rounded(px(1.))
+                                    .bg(rgb(T.fg)),
+                            ),
                     ),
             )
             .child(
@@ -609,9 +682,9 @@ impl TrainScreen {
                                 "Nothing due".to_owned()
                             }),
                     )
-                    .children(context.map(|text| {
-                        mono(text).text_size(px(14.)).text_color(rgb(T.muted))
-                    })),
+                    .children(
+                        context.map(|text| mono(text).text_size(px(14.)).text_color(rgb(T.muted))),
+                    ),
             )
             .child(div().size(board_size).flex_none().child(self.board.clone()))
             .child(
@@ -622,7 +695,12 @@ impl TrainScreen {
                         h_flex()
                             .gap(px(6.))
                             .child(tool("hint", "Hint", Self::hint, this.clone()))
-                            .child(tool("show-answer", "Show answer", Self::show_answer, this.clone()))
+                            .child(tool(
+                                "show-answer",
+                                "Show answer",
+                                Self::show_answer,
+                                this.clone(),
+                            ))
                             .child(tool("why", "Why this move?", Self::why, this.clone())),
                     )
                     .child(tool("skip", "Skip", Self::skip, this.clone())),
@@ -631,16 +709,44 @@ impl TrainScreen {
                 h_flex()
                     .mt(px(15.))
                     .gap(px(6.))
-                    .child(recall("again", "Again".to_owned(), Grade::Again, BtnKind::Normal, this.clone()))
-                    .child(recall("hard", format!("Hard · {}d", intervals.hard), Grade::Hard, BtnKind::Normal, this.clone()))
-                    .child(recall("good", format!("Good · {}d", intervals.good), Grade::Good, BtnKind::Primary, this.clone()))
-                    .child(recall("easy", format!("Easy · {}d", intervals.easy), Grade::Easy, BtnKind::Normal, this.clone())),
+                    .child(recall(
+                        "again",
+                        "Again".to_owned(),
+                        Grade::Again,
+                        BtnKind::Normal,
+                        this.clone(),
+                    ))
+                    .child(recall(
+                        "hard",
+                        format!("Hard · {}d", intervals.hard),
+                        Grade::Hard,
+                        BtnKind::Normal,
+                        this.clone(),
+                    ))
+                    .child(recall(
+                        "good",
+                        format!("Good · {}d", intervals.good),
+                        Grade::Good,
+                        BtnKind::Primary,
+                        this.clone(),
+                    ))
+                    .child(recall(
+                        "easy",
+                        format!("Easy · {}d", intervals.easy),
+                        Grade::Easy,
+                        BtnKind::Normal,
+                        this.clone(),
+                    )),
             )
             .children(self.message.clone().map(|message| {
                 div()
                     .mt(px(10.))
                     .text_size(px(13.))
-                    .text_color(rgb(if self.phase == Phase::Wrong { T.warn } else { T.fg_2 }))
+                    .text_color(rgb(if self.phase == Phase::Wrong {
+                        T.warn
+                    } else {
+                        T.fg_2
+                    }))
                     .child(message)
             }))
     }
@@ -673,17 +779,31 @@ impl TrainScreen {
                                 .text_color(rgb(if warn { T.warn } else { T.muted })),
                         ),
                 )
-                .child(div().text_size(px(13.)).text_color(rgb(T.muted)).child(subtitle))
+                .child(
+                    div()
+                        .text_size(px(13.))
+                        .text_color(rgb(T.muted))
+                        .child(subtitle),
+                )
         };
         let mut body = v_flex();
         let mut shown = 0;
-        for leak in model.leaks.iter().filter(|leak| leak.games >= MIN_LEAK_GAMES).take(2) {
+        for leak in model
+            .leaks
+            .iter()
+            .filter(|leak| leak.games >= MIN_LEAK_GAMES)
+            .take(2)
+        {
             let number = leak.path.len() as u32;
             let played = chess_core::notation::numbered(number + 1, &leak.played);
             let title = match &leak.prepared {
                 Some(prepared) => format!(
                     "{played}{} for {}",
-                    if leak.prepared_score.is_some() { "?!" } else { "" },
+                    if leak.prepared_score.is_some() {
+                        "?!"
+                    } else {
+                        ""
+                    },
                     chess_core::notation::numbered(number + 1, prepared)
                 ),
                 None => played,
@@ -702,10 +822,20 @@ impl TrainScreen {
             body = body.child(row(title, subtitle, leak.games, true));
             shown += 1;
         }
-        for gap in model.gaps.iter().filter(|gap| gap.games >= MIN_GAP_GAMES).take(1) {
+        for gap in model
+            .gaps
+            .iter()
+            .filter(|gap| gap.games >= MIN_GAP_GAMES)
+            .take(1)
+        {
             let start = gap.path.len().saturating_sub(3);
             let title = format_pv(start as u32, &gap.path[start..]);
-            body = body.child(row(title, "Not in repertoire yet".to_owned(), gap.games, false));
+            body = body.child(row(
+                title,
+                "Not in repertoire yet".to_owned(),
+                gap.games,
+                false,
+            ));
             shown += 1;
         }
         if shown == 0 {
@@ -717,7 +847,9 @@ impl TrainScreen {
                     .border_color(rgb(T.border))
                     .text_size(px(13.))
                     .text_color(rgb(T.muted))
-                    .child("No leaks found. Import your games to see where you leave the repertoire."),
+                    .child(
+                        "No leaks found. Import your games to see where you leave the repertoire.",
+                    ),
             );
         }
         panel()
@@ -747,13 +879,11 @@ impl TrainScreen {
                     .py(px(12.))
                     .border_t_1()
                     .border_color(rgb(T.border))
-                    .child(
-                        btn("drill-leaks", "Drill these lines")
-                            .primary()
-                            .on_click(move |_, cx| {
-                                this.update(cx, |screen, cx| screen.drill_leaks(cx));
-                            }),
-                    ),
+                    .child(btn("drill-leaks", "Drill these lines").primary().on_click(
+                        move |_, cx| {
+                            this.update(cx, |screen, cx| screen.drill_leaks(cx));
+                        },
+                    )),
             )
     }
 }
@@ -800,7 +930,9 @@ mod tests {
 
     #[test]
     fn tree_lines_cover_each_leaf() {
-        let tree = parse_pgn("1. e4 e5 (1... c5 2. Nf3) 2. Nf3 *").unwrap().remove(0);
+        let tree = parse_pgn("1. e4 e5 (1... c5 2. Nf3) 2. Nf3 *")
+            .unwrap()
+            .remove(0);
         let lines = tree_lines(&tree);
         assert_eq!(lines.len(), 2);
         assert!(lines.contains(&vec!["e4".to_owned(), "e5".to_owned(), "Nf3".to_owned()]));

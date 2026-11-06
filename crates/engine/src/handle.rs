@@ -63,8 +63,14 @@ pub struct SearchRequest {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum EngineEvent {
     Ready(EngineInfo),
-    Analysis { search_id: u64, update: AnalysisUpdate },
-    BestMove { search_id: u64, best: Option<String> },
+    Analysis {
+        search_id: u64,
+        update: AnalysisUpdate,
+    },
+    BestMove {
+        search_id: u64,
+        best: Option<String>,
+    },
     /// The process exited or could not be used.
     Crashed(String),
 }
@@ -175,7 +181,10 @@ fn start_process(
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
-    if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
         command.current_dir(parent);
     }
     #[cfg(windows)]
@@ -185,7 +194,10 @@ fn start_process(
         command.creation_flags(CREATE_NO_WINDOW);
     }
     let mut child = command.spawn()?;
-    let stdin = child.stdin.take().ok_or_else(|| std::io::Error::other("no stdin"))?;
+    let stdin = child
+        .stdin
+        .take()
+        .ok_or_else(|| std::io::Error::other("no stdin"))?;
     let stdout = child
         .stdout
         .take()
@@ -228,7 +240,9 @@ fn supervise(
         }
     };
     if let Err(err) = process.send("uci") {
-        emit(EngineEvent::Crashed(format!("could not talk to engine: {err}")));
+        emit(EngineEvent::Crashed(format!(
+            "could not talk to engine: {err}"
+        )));
         return;
     }
 
@@ -339,6 +353,10 @@ fn supervise(
             Request::SetOption { name, value } => {
                 process.send(&set_option_line(&name, value.as_deref()))
             }
+            Request::NewGame if !handshake_done => {
+                deferred.push_back(Request::NewGame);
+                Ok(())
+            }
             Request::NewGame => process.send("ucinewgame"),
             Request::Eof(reason) => {
                 emit(EngineEvent::Crashed(reason));
@@ -367,6 +385,9 @@ fn supervise(
                     }
                     Request::SetOption { name, value } => {
                         let _ = process.send(&set_option_line(&name, value.as_deref()));
+                    }
+                    Request::NewGame => {
+                        let _ = process.send("ucinewgame");
                     }
                     _ => {}
                 }

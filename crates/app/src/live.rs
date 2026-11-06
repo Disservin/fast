@@ -57,7 +57,7 @@ impl LiveAnalysis {
     pub fn new(model: Entity<AppModel>, cx: &mut Context<Self>) -> Self {
         let on = model.read(cx).config.engine_on;
         let sub = cx.subscribe(&model, |this, _, event, cx| {
-            if *event == ModelEvent::EnginesChanged {
+            if *event == ModelEvent::Engines {
                 this.restart(cx);
             }
         });
@@ -163,25 +163,42 @@ impl LiveAnalysis {
                         }
                     });
                 }
-                EngineEvent::Analysis { search_id: from, update } if from == search_id => {
+                EngineEvent::Analysis {
+                    search_id: from,
+                    update,
+                } if from == search_id => {
                     let Some(pos) = &pos else { continue };
                     let white_to_move = pos.turn().is_white();
                     let score = update
                         .score
                         .map(|score| if white_to_move { score } else { score.negate() });
-                    let wdl = update.wdl.map(|wdl| if white_to_move { wdl } else { wdl.flip() });
+                    let wdl = update
+                        .wdl
+                        .map(|wdl| if white_to_move { wdl } else { wdl.flip() });
                     if update.multipv == 1
                         && let Some(score) = score
                     {
                         newest_eval = Some(match score {
                             Score::Cp(cp) => cp,
                             Score::Mate(mate) => {
-                                if mate > 0 { 2000 } else { -2000 }
+                                if mate > 0 {
+                                    2000
+                                } else {
+                                    -2000
+                                }
                             }
                         });
                     }
                     let sans = chess_core::pv_to_san(pos, &update.pv);
-                    live.lines.insert(update.multipv, LiveLine { update, score, wdl, sans });
+                    live.lines.insert(
+                        update.multipv,
+                        LiveLine {
+                            update,
+                            score,
+                            wdl,
+                            sans,
+                        },
+                    );
                 }
                 EngineEvent::Analysis { .. } => {}
                 EngineEvent::BestMove { .. } => {}
@@ -246,7 +263,7 @@ impl LiveAnalysis {
             .path_to(node)
             .iter()
             .filter_map(|&id| tree.node(id).mv.as_ref())
-            .map(|mv| UciMove::from_standard(mv.clone()).to_string())
+            .map(|mv| UciMove::from_standard(*mv).to_string())
             .collect();
         self.node = Some(node);
         self.pos = Some(tree.node(node).pos.clone());
@@ -277,21 +294,31 @@ impl LiveAnalysis {
                 engine.lines.clear();
                 if let Some(lines) = scripted.remove(engine.config.name.as_str()) {
                     for update in lines {
-                        let score = update.score.map(|score| {
-                            if white_to_move { score } else { score.negate() }
-                        });
-                        let wdl = update.wdl.map(|wdl| if white_to_move { wdl } else { wdl.flip() });
+                        let score = update
+                            .score
+                            .map(|score| if white_to_move { score } else { score.negate() });
+                        let wdl = update
+                            .wdl
+                            .map(|wdl| if white_to_move { wdl } else { wdl.flip() });
                         let sans = chess_core::pv_to_san(pos, &update.pv);
-                        engine
-                            .lines
-                            .insert(update.multipv, LiveLine { update, score, wdl, sans });
+                        engine.lines.insert(
+                            update.multipv,
+                            LiveLine {
+                                update,
+                                score,
+                                wdl,
+                                sans,
+                            },
+                        );
                     }
                 }
             }
             return;
         }
         for engine in &mut self.engines {
-            let Some(handle) = &engine.handle else { continue };
+            let Some(handle) = &engine.handle else {
+                continue;
+            };
             if terminal {
                 handle.stop();
                 continue;
@@ -319,8 +346,7 @@ impl LiveAnalysis {
         self.engines
             .iter()
             .find(|engine| {
-                engine.config.runs_on_gpu
-                    && engine.lines.values().any(|line| line.wdl.is_some())
+                engine.config.runs_on_gpu && engine.lines.values().any(|line| line.wdl.is_some())
             })
             .or_else(|| {
                 self.engines

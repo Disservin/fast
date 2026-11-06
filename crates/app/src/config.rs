@@ -135,11 +135,19 @@ pub fn default_shortcuts() -> BTreeMap<String, String> {
         ("flip_board", "f"),
         (
             "search",
-            if cfg!(target_os = "macos") { "cmd-k" } else { "ctrl-k" },
+            if cfg!(target_os = "macos") {
+                "cmd-k"
+            } else {
+                "ctrl-k"
+            },
         ),
         (
             "save_game",
-            if cfg!(target_os = "macos") { "cmd-s" } else { "ctrl-s" },
+            if cfg!(target_os = "macos") {
+                "cmd-s"
+            } else {
+                "ctrl-s"
+            },
         ),
     ]
     .into_iter()
@@ -215,15 +223,19 @@ mod tests {
     fn config_round_trips_through_toml() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("nested/config.toml");
-        let mut config = Config::default();
-        config.player_name = "someone".to_owned();
+        let mut config = Config {
+            player_name: "someone".to_owned(),
+            ..Default::default()
+        };
         config.board.theme = SavedTheme::Moss;
         config.board.notation = Notation::Figurine;
         config.engines.push(EngineConfig {
             id: 3,
             name: "Stockfish".to_owned(),
             path: "/usr/bin/stockfish".into(),
-            options: [("Hash".to_owned(), "512".to_owned())].into_iter().collect(),
+            options: [("Hash".to_owned(), "512".to_owned())]
+                .into_iter()
+                .collect(),
             ..Default::default()
         });
         config.save(&path).unwrap();
@@ -243,7 +255,11 @@ mod tests {
     fn partial_files_fill_in_missing_fields_and_shortcuts() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("config.toml");
-        std::fs::write(&path, "player_name = \"x\"\n[shortcuts]\nflip_board = \"g\"\n").unwrap();
+        std::fs::write(
+            &path,
+            "player_name = \"x\"\n[shortcuts]\nflip_board = \"g\"\n",
+        )
+        .unwrap();
         let config = Config::load(&path);
         assert_eq!(config.player_name, "x");
         assert_eq!(config.shortcuts["flip_board"], "g");

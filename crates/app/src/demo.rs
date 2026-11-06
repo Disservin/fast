@@ -53,9 +53,9 @@ fn extend(line: &str, target: usize, rng: &mut Rng) -> Vec<String> {
         let moves = pos.legal_moves();
         let quiet: Vec<&Move> = moves.iter().filter(|mv| !mv.is_capture()).collect();
         let mv = if !quiet.is_empty() && rng.below(5) > 0 {
-            quiet[rng.below(quiet.len())].clone()
+            *quiet[rng.below(quiet.len())]
         } else if !moves.is_empty() {
-            moves[rng.below(moves.len())].clone()
+            moves[rng.below(moves.len())]
         } else {
             break;
         };
@@ -105,19 +105,151 @@ fn write_game(out: &mut String, game: &PgnGame<'_>) {
 }
 
 /// Rows from the design: opponent, ratings, result, source, date, moves, accuracy, line.
-const MY_ROWS: &[(&str, u32, u32, &str, &str, &str, usize, f64, &str)] = &[
-    ("knightowl_42", 2061, 2012, "1-0", "OTB", "2026.11.02", 41, 91.2, "f4 a5 f5 Bc4 Kb1"),
-    ("sicilian_sam", 2058, 2104, "1/2-1/2", "Online", "2026.10.29", 58, 88.0, "h4"),
-    ("pawnstorm_ida", 2055, 1987, "1-0", "Online", "2026.10.24", 33, 93.5, "OPP"),
-    ("e5_or_bust", 2049, 2140, "0-1", "Online", "2026.10.19", 47, 74.1, "h4"),
-    ("quietmoves", 2051, 2033, "1-0", "OTB", "2026.10.11", 29, 89.7, "f4"),
-    ("bishoppair", 2046, 1998, "1/2-1/2", "Online", "2026.10.05", 62, 85.3, "G4"),
-    ("rookliftr", 2040, 2071, "1-0", "Online", "2026.09.28", 38, 90.4, "OPP"),
-    ("dragonslayer9", 2038, 2110, "0-1", "OTB", "2026.09.20", 44, 71.8, "h4"),
-    ("zwischenzug", 2041, 1962, "1-0", "Online", "2026.09.13", 27, 94.0, "OPP"),
-    ("hedgehog_h", 2035, 2025, "1/2-1/2", "Online", "2026.09.06", 71, 86.6, "f4"),
-    ("fianchetto_f", 2032, 2088, "1-0", "OTB", "2026.08.30", 36, 90.9, "OPP"),
-    ("tempo_tom", 2029, 1979, "0-1", "Online", "2026.08.22", 52, 78.2, "h4"),
+type MyRow = (
+    &'static str,
+    u32,
+    u32,
+    &'static str,
+    &'static str,
+    &'static str,
+    usize,
+    f64,
+    &'static str,
+);
+
+const MY_ROWS: &[MyRow] = &[
+    (
+        "knightowl_42",
+        2061,
+        2012,
+        "1-0",
+        "OTB",
+        "2026.11.02",
+        41,
+        91.2,
+        "f4 a5 f5 Bc4 Kb1",
+    ),
+    (
+        "sicilian_sam",
+        2058,
+        2104,
+        "1/2-1/2",
+        "Online",
+        "2026.10.29",
+        58,
+        88.0,
+        "h4",
+    ),
+    (
+        "pawnstorm_ida",
+        2055,
+        1987,
+        "1-0",
+        "Online",
+        "2026.10.24",
+        33,
+        93.5,
+        "OPP",
+    ),
+    (
+        "e5_or_bust",
+        2049,
+        2140,
+        "0-1",
+        "Online",
+        "2026.10.19",
+        47,
+        74.1,
+        "h4",
+    ),
+    (
+        "quietmoves",
+        2051,
+        2033,
+        "1-0",
+        "OTB",
+        "2026.10.11",
+        29,
+        89.7,
+        "f4",
+    ),
+    (
+        "bishoppair",
+        2046,
+        1998,
+        "1/2-1/2",
+        "Online",
+        "2026.10.05",
+        62,
+        85.3,
+        "G4",
+    ),
+    (
+        "rookliftr",
+        2040,
+        2071,
+        "1-0",
+        "Online",
+        "2026.09.28",
+        38,
+        90.4,
+        "OPP",
+    ),
+    (
+        "dragonslayer9",
+        2038,
+        2110,
+        "0-1",
+        "OTB",
+        "2026.09.20",
+        44,
+        71.8,
+        "h4",
+    ),
+    (
+        "zwischenzug",
+        2041,
+        1962,
+        "1-0",
+        "Online",
+        "2026.09.13",
+        27,
+        94.0,
+        "OPP",
+    ),
+    (
+        "hedgehog_h",
+        2035,
+        2025,
+        "1/2-1/2",
+        "Online",
+        "2026.09.06",
+        71,
+        86.6,
+        "f4",
+    ),
+    (
+        "fianchetto_f",
+        2032,
+        2088,
+        "1-0",
+        "OTB",
+        "2026.08.30",
+        36,
+        90.9,
+        "OPP",
+    ),
+    (
+        "tempo_tom",
+        2029,
+        1979,
+        "0-1",
+        "Online",
+        "2026.08.22",
+        52,
+        78.2,
+        "h4",
+    ),
 ];
 
 fn my_games(path: &Path, rng: &mut Rng) {
@@ -141,9 +273,17 @@ fn my_games(path: &Path, rng: &mut Rng) {
                 result,
                 date: date.to_owned(),
                 eco: "B90",
-                event: if opponent == "knightowl_42" { "Club league" } else { "Casual" },
+                event: if opponent == "knightowl_42" {
+                    "Club league"
+                } else {
+                    "Casual"
+                },
                 round: if opponent == "knightowl_42" { "4" } else { "?" },
-                site: if source == "OTB" { "Club" } else { "https://lichess.org" },
+                site: if source == "OTB" {
+                    "Club"
+                } else {
+                    "https://lichess.org"
+                },
                 time_control: "900+10",
                 sans: extend(&line_after(kind), moves * 2 - 1, rng),
             },
@@ -222,7 +362,13 @@ fn my_games(path: &Path, rng: &mut Rng) {
         );
     }
     // The rest of the collection: games as Black, which a White repertoire ignores.
-    let openings = ["d4 Nf6 c4 g6", "Nf3 d5 d4 Nf6", "c4 e5 Nc3 Nf6", "e4 e5 Nf3 Nc6", "d4 d5 c4 e6"];
+    let openings = [
+        "d4 Nf6 c4 g6",
+        "Nf3 d5 d4 Nf6",
+        "c4 e5 Nc3 Nf6",
+        "e4 e5 Nf3 Nc6",
+        "d4 d5 c4 e6",
+    ];
     for index in 0..3075 {
         let result = ["1-0", "0-1", "1/2-1/2"][rng.below(3)];
         write_game(
@@ -233,7 +379,12 @@ fn my_games(path: &Path, rng: &mut Rng) {
                 white_elo: 1800 + rng.below(400) as u32,
                 black_elo: 2000,
                 result,
-                date: format!("20{:02}.{:02}.{:02}", 18 + index % 8, 1 + index % 12, 1 + index % 27),
+                date: format!(
+                    "20{:02}.{:02}.{:02}",
+                    18 + index % 8,
+                    1 + index % 12,
+                    1 + index % 27
+                ),
                 eco: "",
                 event: "Blitz",
                 round: "?",
@@ -380,10 +531,18 @@ fn repertoire(today: i64) -> Repertoire {
         [main.as_slice(), &["f4"]].concat(),
         [main.as_slice(), &["Ng3"]].concat(),
         [&main[..23], &["Nh5", "Nd5"]].concat(),
-        "e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6 Be3 e5 Nb3 Be7 f3".split(' ').collect(),
-        "e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6 Be3 Ng4 Bg5".split(' ').collect(),
-        "e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 Nc6 Bg5".split(' ').collect(),
-        "e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 g6 Be3".split(' ').collect(),
+        "e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6 Be3 e5 Nb3 Be7 f3"
+            .split(' ')
+            .collect(),
+        "e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6 Be3 Ng4 Bg5"
+            .split(' ')
+            .collect(),
+        "e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 Nc6 Bg5"
+            .split(' ')
+            .collect(),
+        "e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 g6 Be3"
+            .split(' ')
+            .collect(),
         "e4 c5 Nf3 Nc6 Bb5".split(' ').collect(),
         "e4 c5 Nf3 e6 d4".split(' ').collect(),
     ];
@@ -423,16 +582,19 @@ fn repertoire(today: i64) -> Repertoire {
             if moves.is_empty() {
                 break;
             }
-            let mv = moves[rng.below(moves.len())].clone();
+            let mv = moves[rng.below(moves.len())];
             path.push(SanPlus::from_move_and_play_unchecked(&mut pos, mv).to_string());
         }
         // Keep filler clear of the lines the demo games use to leave the book.
         let joined = path.join(" ");
-        if forbidden.iter().any(|prefix| joined.starts_with(prefix.as_str())) {
+        if forbidden
+            .iter()
+            .any(|prefix| joined.starts_with(prefix.as_str()))
+        {
             continue;
         }
         let refs: Vec<&str> = path.iter().map(String::as_str).collect();
-        if rep.add_line(&refs).is_ok() && path.len() % 7 == 0 {
+        if rep.add_line(&refs).is_ok() && path.len().is_multiple_of(7) {
             base.push(path);
         }
     }
@@ -440,12 +602,7 @@ fn repertoire(today: i64) -> Repertoire {
     // once the curated rows below have their own states.
     let mut counter = 0u32;
     let mut due_left = 17;
-    fn walk(
-        nodes: &mut [RepNode],
-        today: i64,
-        counter: &mut u32,
-        due_left: &mut i32,
-    ) {
+    fn walk(nodes: &mut [RepNode], today: i64, counter: &mut u32, due_left: &mut i32) {
         for node in nodes {
             if node.card.is_some() {
                 *counter += 1;
@@ -471,15 +628,60 @@ fn repertoire(today: i64) -> Repertoire {
     // The rows shown in the tree, with their display status set on the row's own card.
     let rows: &[(&str, usize, &str, Option<Card>)] = &[
         ("e4", 0, "1.e4 c5 2.Nf3 d6 3.d4", Some(card_known(today))),
-        ("e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6", 1, "5…a6 Najdorf", Some(card_known(today))),
-        ("e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6 Be3", 2, "6.Be3 e5 7.Nb3", Some(card_known(today))),
-        ("e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6 Be3 e5 Nb3 Be6", 3, "7…Be6 8.f3", Some(card_learning(today))),
-        ("e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6 Be3 e5 Nb3 Be6 f3 Be7 Qd2 O-O O-O-O Nbd7 g4 b5 g5 b4", 4, "12…b4 13.Ne2", Some(card_due(today, 30))),
-        ("e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6 Be3 e5 Nb3 Be6 f3 Be7 Qd2 O-O O-O-O Nbd7 g4 b5 g5 Nh5", 4, "12…Nh5 13.Nd5", Some(Card::default())),
-        ("e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6 Be3 e5 Nb3 Be7", 3, "7…Be7 8.f3", Some(card_known(today))),
-        ("e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6 Be3 Ng4", 2, "6…Ng4 7.Bg5", Some(card_known(today))),
-        ("e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 Nc6", 1, "5…Nc6 Classical", Some(card_known(today))),
-        ("e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 g6", 1, "5…g6 Dragon", Some(card_learning(today))),
+        (
+            "e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6",
+            1,
+            "5…a6 Najdorf",
+            Some(card_known(today)),
+        ),
+        (
+            "e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6 Be3",
+            2,
+            "6.Be3 e5 7.Nb3",
+            Some(card_known(today)),
+        ),
+        (
+            "e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6 Be3 e5 Nb3 Be6",
+            3,
+            "7…Be6 8.f3",
+            Some(card_learning(today)),
+        ),
+        (
+            "e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6 Be3 e5 Nb3 Be6 f3 Be7 Qd2 O-O O-O-O Nbd7 g4 b5 g5 b4",
+            4,
+            "12…b4 13.Ne2",
+            Some(card_due(today, 30)),
+        ),
+        (
+            "e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6 Be3 e5 Nb3 Be6 f3 Be7 Qd2 O-O O-O-O Nbd7 g4 b5 g5 Nh5",
+            4,
+            "12…Nh5 13.Nd5",
+            Some(Card::default()),
+        ),
+        (
+            "e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6 Be3 e5 Nb3 Be7",
+            3,
+            "7…Be7 8.f3",
+            Some(card_known(today)),
+        ),
+        (
+            "e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6 Be3 Ng4",
+            2,
+            "6…Ng4 7.Bg5",
+            Some(card_known(today)),
+        ),
+        (
+            "e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 Nc6",
+            1,
+            "5…Nc6 Classical",
+            Some(card_known(today)),
+        ),
+        (
+            "e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 g6",
+            1,
+            "5…g6 Dragon",
+            Some(card_learning(today)),
+        ),
         ("e4 c5 Nf3 Nc6", 0, "2…Nc6 3.Bb5", Some(card_known(today))),
         ("e4 c5 Nf3 e6", 0, "2…e6 3.d4", Some(Card::default())),
     ];
@@ -516,9 +718,7 @@ fn apply_row(rep: &mut Repertoire, path: &[&str], depth: usize, label: &str, car
 
 fn demo_engine(
     id: u64,
-    name: &str,
-    version: &str,
-    path: &str,
+    (name, version, path): (&str, &str, &str),
     gpu: bool,
     enabled: bool,
     uses: (bool, bool, bool),
@@ -581,10 +781,42 @@ pub fn prepare(paths: &Paths, config: &mut Config) {
         ("UCI_ShowWDL", "true"),
     ];
     config.engines = vec![
-        demo_engine(1, "Stockfish", "17.1", "C:\\Engines\\stockfish\\stockfish-avx2.exe", false, true, (true, true, true), &opts),
-        demo_engine(2, "Lc0", "0.31", "C:\\Engines\\lc0\\lc0.exe", true, true, (true, false, false), &opts),
-        demo_engine(3, "Maia", "1900", "C:\\Engines\\maia\\lc0.exe", false, true, (false, false, true), &opts),
-        demo_engine(4, "Berserk", "13", "C:\\Engines\\berserk\\berserk.exe", false, false, (false, false, false), &opts),
+        demo_engine(
+            1,
+            (
+                "Stockfish",
+                "17.1",
+                "C:\\Engines\\stockfish\\stockfish-avx2.exe",
+            ),
+            false,
+            true,
+            (true, true, true),
+            &opts,
+        ),
+        demo_engine(
+            2,
+            ("Lc0", "0.31", "C:\\Engines\\lc0\\lc0.exe"),
+            true,
+            true,
+            (true, false, false),
+            &opts,
+        ),
+        demo_engine(
+            3,
+            ("Maia", "1900", "C:\\Engines\\maia\\lc0.exe"),
+            false,
+            true,
+            (false, false, true),
+            &opts,
+        ),
+        demo_engine(
+            4,
+            ("Berserk", "13", "C:\\Engines\\berserk\\berserk.exe"),
+            false,
+            false,
+            (false, false, false),
+            &opts,
+        ),
     ];
     config.next_engine_id = 5;
 
@@ -601,8 +833,22 @@ pub fn prepare(paths: &Paths, config: &mut Config) {
     let mut rng = Rng(0x0DD5_EED5_0000_0042);
     my_games(&databases.join("my_games.sqlite"), &mut rng);
     reference_db(&databases.join("a_reference.sqlite"), &mut rng);
-    small_db(&databases.join("b_najdorf.sqlite"), "Najdorf model games", 186, "Model", ENGLISH_ATTACK, &mut rng);
-    small_db(&databases.join("c_opponent.sqlite"), "Opponent · knightowl_42", 74, "knightowl_42", "d4 Nf6 c4 e6", &mut rng);
+    small_db(
+        &databases.join("b_najdorf.sqlite"),
+        "Najdorf model games",
+        186,
+        "Model",
+        ENGLISH_ATTACK,
+        &mut rng,
+    );
+    small_db(
+        &databases.join("c_opponent.sqlite"),
+        "Opponent · knightowl_42",
+        74,
+        "knightowl_42",
+        "d4 Nf6 c4 e6",
+        &mut rng,
+    );
     if let Ok(text) = serde_json::to_string(&repertoire(today)) {
         let _ = std::fs::write(paths.repertoire_file(), text);
     }

@@ -1,6 +1,9 @@
 //! Thin wrappers styling the component library's stateful inputs for Outpost.
 
-use gpui::{App, Div, Entity, Focusable as _, IntoElement, RenderOnce, SharedString, Window, div, prelude::*, px, rgb};
+use gpui::{
+    App, Div, Entity, Focusable as _, IntoElement, RenderOnce, SharedString, Window, div,
+    prelude::*, px, rgb,
+};
 use gpui_component::{
     input::{Input, InputState},
     select::{SearchableVec, Select, SelectState},
@@ -54,7 +57,12 @@ impl RenderOnce for TextField {
                     .appearance(false)
                     .text_size(px(14.))
                     .when_some(self.suffix, |input, suffix| {
-                        input.suffix(div().text_size(px(13.)).text_color(rgb(T.muted)).child(suffix))
+                        input.suffix(
+                            div()
+                                .text_size(px(13.))
+                                .text_color(rgb(T.muted))
+                                .child(suffix),
+                        )
                     }),
             )
     }

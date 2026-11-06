@@ -70,11 +70,22 @@ pub struct AnalysisUpdate {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum OptionKind {
-    Check { default: bool },
-    Spin { default: i64, min: i64, max: i64 },
-    Combo { default: String, choices: Vec<String> },
+    Check {
+        default: bool,
+    },
+    Spin {
+        default: i64,
+        min: i64,
+        max: i64,
+    },
+    Combo {
+        default: String,
+        choices: Vec<String>,
+    },
     Button,
-    String { default: String },
+    String {
+        default: String,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -93,11 +104,17 @@ pub struct EngineInfo {
 /// Parsed engine output. Unknown lines are preserved as `Other`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum UciLine {
-    Id { key: String, value: String },
+    Id {
+        key: String,
+        value: String,
+    },
     Option(UciOption),
     UciOk,
     ReadyOk,
-    BestMove { best: Option<String>, ponder: Option<String> },
+    BestMove {
+        best: Option<String>,
+        ponder: Option<String>,
+    },
     Info(AnalysisUpdate),
     Other,
 }
@@ -262,7 +279,11 @@ mod tests {
         assert_eq!(info.score, Some(Score::Cp(42)));
         assert_eq!(
             info.wdl,
-            Some(Wdl { win: 345, draw: 512, loss: 143 })
+            Some(Wdl {
+                win: 345,
+                draw: 512,
+                loss: 143
+            })
         );
         assert_eq!(info.nps, Some(58_000_000));
         assert_eq!(info.tbhits, Some(7));
@@ -283,7 +304,10 @@ mod tests {
     #[test]
     fn info_without_pv_or_with_string_is_ignored() {
         assert_eq!(parse_line("info depth 1 nodes 5"), UciLine::Other);
-        assert_eq!(parse_line("info string NNUE loaded pv e2e4"), UciLine::Other);
+        assert_eq!(
+            parse_line("info string NNUE loaded pv e2e4"),
+            UciLine::Other
+        );
     }
 
     #[test]
@@ -296,7 +320,11 @@ mod tests {
         assert_eq!(spin.name, "Skill Level");
         assert_eq!(
             spin.kind,
-            OptionKind::Spin { default: 20, min: 0, max: 20 }
+            OptionKind::Spin {
+                default: 20,
+                min: 0,
+                max: 20
+            }
         );
         let UciLine::Option(combo) =
             parse_line("option name Style type combo default Normal var Solid var Very Risky")
@@ -310,18 +338,30 @@ mod tests {
                 choices: vec!["Solid".to_owned(), "Very Risky".to_owned()],
             }
         );
-        let UciLine::Option(string) = parse_line("option name SyzygyPath type string default <empty>")
+        let UciLine::Option(string) =
+            parse_line("option name SyzygyPath type string default <empty>")
         else {
             panic!();
         };
-        assert_eq!(string.kind, OptionKind::String { default: String::new() });
+        assert_eq!(
+            string.kind,
+            OptionKind::String {
+                default: String::new()
+            }
+        );
         assert!(matches!(
             parse_line("option name Clear Hash type button"),
-            UciLine::Option(UciOption { kind: OptionKind::Button, .. })
+            UciLine::Option(UciOption {
+                kind: OptionKind::Button,
+                ..
+            })
         ));
         assert!(matches!(
             parse_line("option name Ponder type check default false"),
-            UciLine::Option(UciOption { kind: OptionKind::Check { default: false }, .. })
+            UciLine::Option(UciOption {
+                kind: OptionKind::Check { default: false },
+                ..
+            })
         ));
     }
 
@@ -336,7 +376,10 @@ mod tests {
         );
         assert_eq!(
             parse_line("bestmove (none)"),
-            UciLine::BestMove { best: None, ponder: None }
+            UciLine::BestMove {
+                best: None,
+                ponder: None
+            }
         );
     }
 

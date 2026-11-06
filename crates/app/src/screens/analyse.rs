@@ -10,8 +10,8 @@ use db::{Database, ImportControl, MoveStat, import_games};
 use engine::{Score, Wdl};
 use gpui::{
     AppContext as _, ClipboardItem, Context, Entity, FontWeight, IntoElement, MouseButton, Pixels,
-    Point, Render, ScrollHandle, SharedString, Subscription, Task, Window, anchored,
-    deferred, div, prelude::*, px, rgb,
+    Point, Render, ScrollHandle, SharedString, Subscription, Task, Window, anchored, deferred, div,
+    prelude::*, px, rgb,
 };
 use gpui_component::input::{InputEvent, InputState, TextareaState};
 use ui::{
@@ -116,6 +116,8 @@ pub fn merge_rows(
     rows
 }
 
+type MenuHandler = Box<dyn Fn(&mut Window, &mut gpui::App)>;
+
 pub struct AnalyseScreen {
     model: Entity<AppModel>,
     pub tree: GameTree,
@@ -141,21 +143,16 @@ pub struct AnalyseScreen {
 }
 
 impl AnalyseScreen {
-    pub fn new(
-        model: Entity<AppModel>,
-            window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Self {
+    pub fn new(model: Entity<AppModel>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let board = cx.new(|_| BoardView::new("analyse-board"));
         let live = cx.new(|cx| LiveAnalysis::new(model.clone(), cx));
         let note = cx.new(|cx| TextareaState::new(window, cx));
         let comment = cx.new(|cx| TextareaState::new(window, cx));
-        let fen_input = cx.new(|cx| {
-            InputState::new(window, cx).placeholder("Paste a FEN and press Enter")
-        });
+        let fen_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("Paste a FEN and press Enter"));
         let subscriptions = vec![
             cx.subscribe_in(&board, window, |this, _, event, window, cx| match event {
-                BoardEvent::Moved(mv) => this.play_move(mv.clone(), window, cx),
+                BoardEvent::Moved(mv) => this.play_move(*mv, window, cx),
             }),
             cx.subscribe_in(&live, window, |this, _, event, _, cx| match event {
                 LiveEvent::Updated => this.rebuild_rows(cx),
@@ -177,16 +174,21 @@ impl AnalyseScreen {
                     this.load_fen(fen.trim(), window, cx);
                 }
             }),
-            cx.subscribe_in(&model, window, |this, model, event, window, cx| match event {
-                ModelEvent::BoardPrefsChanged => {
-                    let prefs = model.read(cx).config.board.prefs();
-                    this.board.update(cx, |board, cx| board.set_prefs(prefs, cx));
-                }
-                ModelEvent::DatabasesChanged | ModelEvent::RepertoireChanged => {
-                    this.query_databases(window, cx);
-                }
-                ModelEvent::EnginesChanged => {}
-            }),
+            cx.subscribe_in(
+                &model,
+                window,
+                |this, model, event, window, cx| match event {
+                    ModelEvent::BoardPrefs => {
+                        let prefs = model.read(cx).config.board.prefs();
+                        this.board
+                            .update(cx, |board, cx| board.set_prefs(prefs, cx));
+                    }
+                    ModelEvent::Databases | ModelEvent::Repertoire => {
+                        this.query_databases(window, cx);
+                    }
+                    ModelEvent::Engines => {}
+                },
+            ),
         ];
         let demo = model.read(cx).demo;
         let tree = if demo {
@@ -286,14 +288,16 @@ impl AnalyseScreen {
         self.board
             .update(cx, |board, cx| board.set_position(pos, last, animate, cx));
         self.selected_san = None;
-        self.board.update(cx, |board, cx| board.set_arrows(Vec::new(), cx));
+        self.board
+            .update(cx, |board, cx| board.set_arrows(Vec::new(), cx));
         let tree = self.tree.clone();
         let current = self.current;
         self.live
             .update(cx, |live, cx| live.set_position(&tree, current, cx));
         self.note_hash = position_hash(&self.tree.node(self.current).pos);
         let text = self.model.read(cx).note(self.note_hash);
-        self.note.update(cx, |note, cx| note.set_value(text, window, cx));
+        self.note
+            .update(cx, |note, cx| note.set_value(text, window, cx));
         self.query_databases(window, cx);
         self.scoresheet_scroll.scroll_to_item(0);
         cx.notify();
@@ -343,7 +347,9 @@ impl AnalyseScreen {
         let mut lines = Vec::new();
         if let Some(primary) = live.primary() {
             for line in primary.lines.values() {
-                let Some(san) = line.sans.first() else { continue };
+                let Some(san) = line.sans.first() else {
+                    continue;
+                };
                 lines.push(MoveRow {
                     san: san.clone(),
                     score: line.score,
@@ -358,16 +364,21 @@ impl AnalyseScreen {
         }
         if let Some(wdl_engine) = live.wdl_engine() {
             for line in wdl_engine.lines.values() {
-                let Some(san) = line.sans.first() else { continue };
+                let Some(san) = line.sans.first() else {
+                    continue;
+                };
                 if let Some(row) = lines.iter_mut().find(|row| &row.san == san) {
                     row.wdl = line.wdl.or(row.wdl);
                 }
             }
         }
         let path = self.san_path();
+        // Repertoires are stored as lines from the initial position.
+        let from_start = self.tree.header("FEN").is_none();
         let rep_moves: Vec<(String, bool)> = model
             .repertoire
             .moves_after(&path)
+            .filter(|_| from_start)
             .map(|moves| {
                 moves
                     .iter()
@@ -407,7 +418,8 @@ impl AnalyseScreen {
                 })
             })
             .collect();
-        self.board.update(cx, |board, cx| board.set_arrows(arrows, cx));
+        self.board
+            .update(cx, |board, cx| board.set_arrows(arrows, cx));
     }
 
     pub fn play_move(&mut self, mv: Move, window: &mut Window, cx: &mut Context<Self>) {
@@ -468,7 +480,13 @@ impl AnalyseScreen {
     }
 
     /// Loads a PGN and jumps to a given ply of the main line.
-    pub fn load_pgn_at(&mut self, pgn: &str, ply: usize, window: &mut Window, cx: &mut Context<Self>) {
+    pub fn load_pgn_at(
+        &mut self,
+        pgn: &str,
+        ply: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         match parse_pgn(pgn) {
             Ok(mut games) if !games.is_empty() => {
                 let tree = games.remove(0);
@@ -516,14 +534,16 @@ impl AnalyseScreen {
                     Ok::<_, db::DbError>(summary)
                 })
                 .await;
-            let _ = model.update(cx, |model, cx| {
+            model.update(cx, |model, cx| {
                 match saved {
                     Ok(summary) if summary.games > 0 => model.toast("Saved to My games.", cx),
-                    Ok(_) => model.toast("Could not save: custom start positions are not stored.", cx),
+                    Ok(_) => {
+                        model.toast("Could not save: custom start positions are not stored.", cx)
+                    }
                     Err(err) => model.toast(format!("Could not save the game: {err}"), cx),
                 }
                 model.refresh_databases();
-                cx.emit(ModelEvent::DatabasesChanged);
+                cx.emit(ModelEvent::Databases);
             });
         })
         .detach();
@@ -607,16 +627,15 @@ impl AnalyseScreen {
             path.extend(row.pv.iter().cloned());
         }
         let refs: Vec<&str> = path.iter().map(String::as_str).collect();
-        self.model.update(cx, |model, cx| {
-            match model.repertoire.add_line(&refs) {
+        self.model
+            .update(cx, |model, cx| match model.repertoire.add_line(&refs) {
                 Ok(()) => {
                     model.save_repertoire(cx);
                     model.refresh_leaks();
                     model.toast("Added to the repertoire.", cx);
                 }
                 Err(err) => model.toast(format!("Could not add the line: {err}"), cx),
-            }
-        });
+            });
         self.rebuild_rows(cx);
     }
 
@@ -722,17 +741,20 @@ impl AnalyseScreen {
                         .border_t_1()
                         .border_color(rgb(T.border))
                         .child(gpui_component::input::Textarea::new(&comment).h(px(80.)))
-                        .child(btn("comment-save", "Save comment").primary().h(30.).on_click(
-                            move |_, cx| {
-                                save.update(cx, |screen, cx| {
-                                    let text = screen.comment.read(cx).value().to_string();
-                                    let current = screen.current;
-                                    screen.tree.node_mut(current).comment = text;
-                                    screen.editing_comment = false;
-                                    cx.notify();
-                                });
-                            },
-                        )),
+                        .child(
+                            btn("comment-save", "Save comment")
+                                .primary()
+                                .h(30.)
+                                .on_click(move |_, cx| {
+                                    save.update(cx, |screen, cx| {
+                                        let text = screen.comment.read(cx).value().to_string();
+                                        let current = screen.current;
+                                        screen.tree.node_mut(current).comment = text;
+                                        screen.editing_comment = false;
+                                        cx.notify();
+                                    });
+                                }),
+                        ),
                 )
             })
             .child(
@@ -781,7 +803,11 @@ impl AnalyseScreen {
     ) -> impl IntoElement + use<> {
         let this = cx.entity();
         let node = self.tree.node(self.current);
-        let turn = if node.pos.turn().is_white() { "White" } else { "Black" };
+        let turn = if node.pos.turn().is_white() {
+            "White"
+        } else {
+            "Black"
+        };
         let status = if node.pos.is_checkmate() {
             "Checkmate".to_owned()
         } else if node.pos.is_stalemate() {
@@ -797,17 +823,28 @@ impl AnalyseScreen {
             .and_then(|engine| engine.lines.get(&1))
             .and_then(|line| line.score)
             .map(Score::display)
-            .or_else(|| self.evals.get(&self.current).map(|cp| Score::Cp(*cp).display()))
+            .or_else(|| {
+                self.evals
+                    .get(&self.current)
+                    .map(|cp| Score::Cp(*cp).display())
+            })
             .unwrap_or_else(|| "–".to_owned());
         let ids = self.timeline_ids();
         let evals: Vec<Option<i32>> = ids.iter().map(|id| self.evals.get(id).copied()).collect();
         let current_index = ids.iter().position(|&id| id == self.current);
         let scrub_this = this.clone();
         let scrub_ids = ids.clone();
-        let nav = |id: &'static str, icon: &'static str, tip: &'static str, this: Entity<Self>, action: fn(&mut Self, &mut Window, &mut Context<Self>)| {
-            icon_btn(id, icon).w(42.).tooltip(tip).on_click(move |window, cx| {
-                this.update(cx, |screen, cx| action(screen, window, cx));
-            })
+        let nav = |id: &'static str,
+                   icon: &'static str,
+                   tip: &'static str,
+                   this: Entity<Self>,
+                   action: fn(&mut Self, &mut Window, &mut Context<Self>)| {
+            icon_btn(id, icon)
+                .w(42.)
+                .tooltip(tip)
+                .on_click(move |window, cx| {
+                    this.update(cx, |screen, cx| action(screen, window, cx));
+                })
         };
         let fen = self.tree.fen(self.current);
         v_flex()
@@ -830,7 +867,10 @@ impl AnalyseScreen {
                                     .child(status),
                             )
                             .children(after.map(|text| {
-                                div().text_size(px(14.)).text_color(rgb(T.muted)).child(text)
+                                div()
+                                    .text_size(px(14.))
+                                    .text_color(rgb(T.muted))
+                                    .child(text)
                             })),
                     )
                     .child(
@@ -840,7 +880,11 @@ impl AnalyseScreen {
                     ),
             )
             .child(div().size(board_size).flex_none().child(self.board.clone()))
-            .child(section_label("Game timeline · eval per move").mt(px(16.)).mb(px(6.)))
+            .child(
+                section_label("Game timeline · eval per move")
+                    .mt(px(16.))
+                    .mb(px(6.)),
+            )
             .child(timeline(TimelineProps {
                 evals,
                 current: current_index,
@@ -861,10 +905,34 @@ impl AnalyseScreen {
                     .child(
                         h_flex()
                             .gap(px(6.))
-                            .child(nav("first", "icons/skip-back.svg", "First move", this.clone(), Self::go_first))
-                            .child(nav("prev", "icons/chevron-left.svg", "Previous move", this.clone(), |s, w, c| s.step(-1, w, c)))
-                            .child(nav("next", "icons/chevron-right.svg", "Next move", this.clone(), |s, w, c| s.step(1, w, c)))
-                            .child(nav("last", "icons/skip-forward.svg", "Last move", this.clone(), Self::go_last)),
+                            .child(nav(
+                                "first",
+                                "icons/skip-back.svg",
+                                "First move",
+                                this.clone(),
+                                Self::go_first,
+                            ))
+                            .child(nav(
+                                "prev",
+                                "icons/chevron-left.svg",
+                                "Previous move",
+                                this.clone(),
+                                |s, w, c| s.step(-1, w, c),
+                            ))
+                            .child(nav(
+                                "next",
+                                "icons/chevron-right.svg",
+                                "Next move",
+                                this.clone(),
+                                |s, w, c| s.step(1, w, c),
+                            ))
+                            .child(nav(
+                                "last",
+                                "icons/skip-forward.svg",
+                                "Last move",
+                                this.clone(),
+                                Self::go_last,
+                            )),
                     )
                     .child(
                         h_flex()
@@ -911,7 +979,13 @@ impl AnalyseScreen {
         let eval_title = primary
             .map(|engine| {
                 let short = short_engine(&engine.config.name);
-                format!("{short} {}", engine.config.version).trim().to_owned()
+                // Long development version strings would not fit the column.
+                let version = &engine.config.version;
+                if version.len() <= 5 {
+                    format!("{short} {version}").trim().to_owned()
+                } else {
+                    short
+                }
             })
             .unwrap_or_else(|| "Eval".to_owned());
         let wdl_title = wdl_engine
@@ -932,11 +1006,37 @@ impl AnalyseScreen {
             .bg(rgb(T.surface_2))
             .border_b_1()
             .border_color(rgb(T.border))
-            .child(div().w(px(COL_MOVE)).flex_none().child(section_label("Move")))
-            .child(div().w(px(COL_SF)).flex_none().child(section_label(&eval_title)))
-            .child(div().w(px(COL_WDL)).flex_none().child(section_label(&wdl_title)))
-            .child(div().w(px(COL_REF)).flex_none().pl(px(4.)).child(section_label(&reference_title)))
-            .child(div().w(px(COL_MY)).flex_none().child(section_label("My games")))
+            .child(
+                div()
+                    .w(px(COL_MOVE))
+                    .flex_none()
+                    .child(section_label("Move")),
+            )
+            .child(
+                div()
+                    .w(px(COL_SF))
+                    .flex_none()
+                    .child(section_label(&eval_title)),
+            )
+            .child(
+                div()
+                    .w(px(COL_WDL))
+                    .flex_none()
+                    .child(section_label(&wdl_title)),
+            )
+            .child(
+                div()
+                    .w(px(COL_REF))
+                    .flex_none()
+                    .pl(px(4.))
+                    .child(section_label(&reference_title)),
+            )
+            .child(
+                div()
+                    .w(px(COL_MY))
+                    .flex_none()
+                    .child(section_label("My games")),
+            )
             .child(div().flex_1().min_w_0().child(section_label("Repertoire")));
         let ply = self.tree.node(self.current).ply;
         let pos = self.tree.node(self.current).pos.clone();
@@ -945,7 +1045,11 @@ impl AnalyseScreen {
         for (index, row) in self.rows.iter().enumerate() {
             let selected = self.selected_san.as_deref() == Some(row.san.as_str());
             let san = row.san.clone();
-            let mv = row.san.parse::<chess_core::shakmaty::san::San>().ok().and_then(|parsed| parsed.to_move(&pos).ok());
+            let mv = row
+                .san
+                .parse::<chess_core::shakmaty::san::San>()
+                .ok()
+                .and_then(|parsed| parsed.to_move(&pos).ok());
             let shown = display_san(&row.san, mv.as_ref(), notation);
             let label = chess_core::notation::numbered(ply + 1, &shown);
             let select_this = this.clone();
@@ -980,14 +1084,22 @@ impl AnalyseScreen {
                     .font_family(MONO)
                     .whitespace_nowrap()
                     .when(selected, |row_el| row_el.bg(rgb(T.selected)))
-                    .when(!selected, |row_el| row_el.hover(|style| style.bg(rgb(T.hover))))
+                    .when(!selected, |row_el| {
+                        row_el.hover(|style| style.bg(rgb(T.hover)))
+                    })
                     .on_click(move |_, _, cx| {
                         let san = san.clone();
                         select_this.update(cx, |screen, cx| screen.select_row(san, cx));
                     })
                     .when(selected, |row_el| {
                         row_el.child(
-                            div().absolute().left_0().top_0().bottom_0().w(px(3.)).bg(rgb(T.fg)),
+                            div()
+                                .absolute()
+                                .left_0()
+                                .top_0()
+                                .bottom_0()
+                                .w(px(3.))
+                                .bg(rgb(T.fg)),
                         )
                     })
                     .child(
@@ -1006,7 +1118,13 @@ impl AnalyseScreen {
                             .text_color(rgb(T.fg_2))
                             .child(score),
                     )
-                    .child(div().w(px(COL_WDL)).flex_none().pr(px(12.)).child(wdl_bar(row.wdl)))
+                    .child(
+                        div()
+                            .w(px(COL_WDL))
+                            .flex_none()
+                            .pr(px(12.))
+                            .child(wdl_bar(row.wdl)),
+                    )
                     .child(
                         div()
                             .w(px(COL_REF))
@@ -1110,7 +1228,10 @@ impl AnalyseScreen {
                             .child(mono(selected_label).font_weight(FontWeight::SEMIBOLD)),
                     )
                     .children(meta.map(|text| {
-                        div().text_size(px(13.)).text_color(rgb(T.muted)).child(text)
+                        div()
+                            .text_size(px(13.))
+                            .text_color(rgb(T.muted))
+                            .child(text)
                     })),
             )
             .child(
@@ -1137,25 +1258,41 @@ impl AnalyseScreen {
             .child(
                 h_flex()
                     .gap(px(6.))
-                    .child(btn("play-line", "Play line on board").disabled(!has_row).on_click({
-                        let this = this.clone();
-                        move |window, cx| this.update(cx, |screen, cx| screen.play_line(window, cx))
-                    }))
-                    .child(btn("add-variation", "Add as variation").disabled(!has_row).on_click({
-                        let this = this.clone();
-                        move |_, cx| this.update(cx, |screen, cx| screen.add_variation(cx))
-                    }))
-                    .child(btn("add-rep", "Add to repertoire").disabled(!has_row).on_click({
-                        let this = this.clone();
-                        move |_, cx| this.update(cx, |screen, cx| screen.add_to_repertoire(cx))
-                    })),
+                    .child(
+                        btn("play-line", "Play line on board")
+                            .disabled(!has_row)
+                            .on_click({
+                                let this = this.clone();
+                                move |window, cx| {
+                                    this.update(cx, |screen, cx| screen.play_line(window, cx))
+                                }
+                            }),
+                    )
+                    .child(
+                        btn("add-variation", "Add as variation")
+                            .disabled(!has_row)
+                            .on_click({
+                                let this = this.clone();
+                                move |_, cx| this.update(cx, |screen, cx| screen.add_variation(cx))
+                            }),
+                    )
+                    .child(
+                        btn("add-rep", "Add to repertoire")
+                            .disabled(!has_row)
+                            .on_click({
+                                let this = this.clone();
+                                move |_, cx| {
+                                    this.update(cx, |screen, cx| screen.add_to_repertoire(cx))
+                                }
+                            }),
+                    ),
             )
     }
 
     fn render_context_menu(&self, cx: &mut Context<Self>) -> Option<impl IntoElement + use<>> {
         let (id, position) = self.context_menu?;
         let this = cx.entity();
-        let item = |index: u32, label: &'static str, handler: Box<dyn Fn(&mut Window, &mut gpui::App)>| {
+        let item = |index: u32, label: &'static str, handler: MenuHandler| {
             div()
                 .id(("context-item", index))
                 .px(px(12.))
@@ -1183,20 +1320,32 @@ impl AnalyseScreen {
                         screen.context_menu = None;
                         cx.notify();
                     }))
-                    .child(item(0, "Delete from here", Box::new(move |window, cx| {
-                        delete_this.update(cx, |screen, cx| screen.delete_from(id, window, cx));
-                    })))
-                    .child(item(1, "Promote variation", Box::new(move |_, cx| {
-                        promote_this.update(cx, |screen, cx| screen.promote(id, cx));
-                    })))
-                    .child(item(2, "Copy PGN from here", Box::new(move |_, cx| {
-                        copy_this.update(cx, |screen, cx| {
-                            let text = write_pgn_from(&screen.tree, id);
-                            cx.write_to_clipboard(ClipboardItem::new_string(text));
-                            screen.context_menu = None;
-                            screen.toast("PGN copied.", cx);
-                        });
-                    }))),
+                    .child(item(
+                        0,
+                        "Delete from here",
+                        Box::new(move |window, cx| {
+                            delete_this.update(cx, |screen, cx| screen.delete_from(id, window, cx));
+                        }),
+                    ))
+                    .child(item(
+                        1,
+                        "Promote variation",
+                        Box::new(move |_, cx| {
+                            promote_this.update(cx, |screen, cx| screen.promote(id, cx));
+                        }),
+                    ))
+                    .child(item(
+                        2,
+                        "Copy PGN from here",
+                        Box::new(move |_, cx| {
+                            copy_this.update(cx, |screen, cx| {
+                                let text = write_pgn_from(&screen.tree, id);
+                                cx.write_to_clipboard(ClipboardItem::new_string(text));
+                                screen.context_menu = None;
+                                screen.toast("PGN copied.", cx);
+                            });
+                        }),
+                    )),
             ),
         ))
     }
@@ -1220,7 +1369,11 @@ fn reference_column_title(name: &str) -> String {
 
 /// The three-part win/draw/loss bar.
 fn wdl_bar(wdl: Option<Wdl>) -> impl IntoElement {
-    let bar = h_flex().h(px(13.)).w_full().overflow_hidden().rounded(px(1.));
+    let bar = h_flex()
+        .h(px(13.))
+        .w_full()
+        .overflow_hidden()
+        .rounded(px(1.));
     let Some(wdl) = wdl else {
         return bar.bg(rgb(T.selected));
     };
@@ -1265,30 +1418,30 @@ impl Render for AnalyseScreen {
                     .pt(px(24.))
                     .pb(px(16.))
                     .child(
-                        v_flex()
-                            .gap(px(18.))
-                            .child(table)
-                            .child(preview)
-                            .child(
-                                panel()
-                                    .flex_none()
-                                    .p(px(16.))
-                                    .child(section_label("Position note").mb(px(10.)))
-                                    .child(
-                                        div()
-                                            .bg(rgb(T.bg))
-                                            .rounded(px(4.))
-                                            .child(gpui_component::input::Textarea::new(&note).h(px(64.)).text_size(px(14.))),
+                        v_flex().gap(px(18.)).child(table).child(preview).child(
+                            panel()
+                                .flex_none()
+                                .p(px(16.))
+                                .child(section_label("Position note").mb(px(10.)))
+                                .child(
+                                    div().bg(rgb(T.bg)).rounded(px(4.)).child(
+                                        gpui_component::input::Textarea::new(&note)
+                                            .h(px(64.))
+                                            .text_size(px(14.)),
                                     ),
-                            ),
+                                ),
+                        ),
                     ),
             )
             .children(menu)
-            .on_mouse_down(MouseButton::Left, cx.listener(|screen, _, _, cx| {
-                if screen.context_menu.take().is_some() {
-                    cx.notify();
-                }
-            }))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|screen, _, _, cx| {
+                    if screen.context_menu.take().is_some() {
+                        cx.notify();
+                    }
+                }),
+            )
     }
 }
 
@@ -1335,13 +1488,27 @@ mod tests {
 
     #[test]
     fn black_prefers_lower_white_relative_scores() {
-        let rows = merge_rows(vec![line("a", 50), line("b", -50)], vec![], vec![], &[], false, false);
+        let rows = merge_rows(
+            vec![line("a", 50), line("b", -50)],
+            vec![],
+            vec![],
+            &[],
+            false,
+            false,
+        );
         assert_eq!(rows[0].san, "b");
     }
 
     #[test]
     fn check_suffixes_merge_with_database_moves() {
-        let rows = merge_rows(vec![line("Qh5+", 10)], vec![stat("Qh5", 3)], vec![], &[], true, true);
+        let rows = merge_rows(
+            vec![line("Qh5+", 10)],
+            vec![stat("Qh5", 3)],
+            vec![],
+            &[],
+            true,
+            true,
+        );
         assert_eq!(rows.len(), 1);
     }
 
@@ -1350,7 +1517,17 @@ mod tests {
         let rows = merge_rows(vec![], vec![], vec![stat("e4", 3)], &[], true, true);
         assert_eq!(rows[0].rep, RepTag::None);
         // Nor on the opponent's turn, where the moves are not the user's choices.
-        let rows = merge_rows(vec![], vec![], vec![stat("e5", 3)], &[("c5".to_owned(), true)], false, false);
-        assert_eq!(rows.iter().find(|row| row.san == "e5").unwrap().rep, RepTag::None);
+        let rows = merge_rows(
+            vec![],
+            vec![],
+            vec![stat("e5", 3)],
+            &[("c5".to_owned(), true)],
+            false,
+            false,
+        );
+        assert_eq!(
+            rows.iter().find(|row| row.san == "e5").unwrap().rep,
+            RepTag::None
+        );
     }
 }

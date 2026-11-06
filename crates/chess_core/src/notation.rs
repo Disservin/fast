@@ -70,7 +70,7 @@ pub fn nag_symbol(nag: u8) -> Option<&'static str> {
         4 => "??",
         5 => "!?",
         6 => "?!",
-        10 | 11 | 12 => "=",
+        10..=12 => "=",
         13 => "∞",
         14 => "⩲",
         15 => "⩱",
@@ -131,7 +131,10 @@ mod tests {
         let pos = Chess::default();
         let pv = ["e2e4", "e7e5", "e4e5", "g1f3"].map(String::from);
         assert_eq!(pv_to_san(&pos, &pv), vec!["e4", "e5"]);
-        assert_eq!(pv_to_san(&pos, &["nonsense".to_owned()]), Vec::<String>::new());
+        assert_eq!(
+            pv_to_san(&pos, &["nonsense".to_owned()]),
+            Vec::<String>::new()
+        );
     }
 
     #[test]

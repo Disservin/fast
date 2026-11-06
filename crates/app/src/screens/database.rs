@@ -8,9 +8,9 @@ use db::{
     TimeClass, import_games,
 };
 use gpui::{
-    AppContext as _, Context, Entity, FontWeight, IntoElement, PathPromptOptions, Render,
-    ScrollStrategy, SharedString, Subscription, Task, UniformListScrollHandle, WeakEntity, Window,
-    div, prelude::*, px, rgb, uniform_list,
+    AppContext as _, Context, Entity, FontWeight, IntoElement, Render, ScrollStrategy,
+    SharedString, Subscription, Task, UniformListScrollHandle, WeakEntity, Window, div, prelude::*,
+    px, rgb, uniform_list,
 };
 use gpui_component::{
     input::{InputEvent, InputState},
@@ -23,7 +23,7 @@ use ui::{
 
 use crate::{
     controls::{TextSelect, field, new_input, new_select, select_el, text_input},
-    model::{AppModel, DbEntry, ModelEvent},
+    model::{AppModel, DbEntry, ModelEvent, pick_path},
     shell::{Mode, Workspace},
 };
 
@@ -118,9 +118,17 @@ impl DatabaseScreen {
     ) -> Self {
         let demo = model.read(cx).demo;
         let me = model.read(cx).config.player_name.clone();
-        let player = new_input(if demo { me.as_str() } else { "" }, "Any player", window, cx);
+        let player = new_input(
+            if demo { me.as_str() } else { "" },
+            "Any player",
+            window,
+            cx,
+        );
         let colour = new_select(
-            COLOURS.iter().map(|text| SharedString::from(*text)).collect(),
+            COLOURS
+                .iter()
+                .map(|text| SharedString::from(*text))
+                .collect(),
             usize::from(demo),
             window,
             cx,
@@ -128,7 +136,10 @@ impl DatabaseScreen {
         let eco = new_input(if demo { "B90–B99" } else { "" }, "A00–E99", window, cx);
         let opp_rating = new_input(if demo { "1900" } else { "" }, "Any", window, cx);
         let time_control = new_select(
-            TIME_CONTROLS.iter().map(|text| SharedString::from(*text)).collect(),
+            TIME_CONTROLS
+                .iter()
+                .map(|text| SharedString::from(*text))
+                .collect(),
             usize::from(demo),
             window,
             cx,
@@ -146,30 +157,39 @@ impl DatabaseScreen {
         });
         let mut subscriptions = Vec::new();
         for input in [&player, &eco, &opp_rating] {
-            subscriptions.push(cx.subscribe_in(input, window, |this, _, event, _, cx| {
-                match event {
+            subscriptions.push(cx.subscribe_in(
+                input,
+                window,
+                |this, _, event, _, cx| match event {
                     InputEvent::Change => this.update_pending_count(cx),
                     InputEvent::PressEnter { .. } => this.apply_filter(cx),
                     _ => {}
-                }
-            }));
+                },
+            ));
         }
         for select in [&colour, &time_control] {
             subscriptions.push(cx.subscribe(select, |this, _, _: &SelectEvent<_>, cx| {
                 this.update_pending_count(cx);
             }));
         }
-        subscriptions.push(cx.subscribe_in(&model, window, |this, _, event, _, cx| match event {
-            ModelEvent::BoardPrefsChanged => {
-                let prefs = this.model.read(cx).config.board.prefs();
-                this.preview_board.update(cx, |board, cx| board.set_prefs(prefs, cx));
-            }
-            ModelEvent::DatabasesChanged | ModelEvent::RepertoireChanged => {
-                this.apply_filter(cx);
-            }
-            ModelEvent::EnginesChanged => {}
-        }));
-        let selected_db = model.read(cx).databases.first().map(|entry| entry.path.clone());
+        subscriptions.push(
+            cx.subscribe_in(&model, window, |this, _, event, _, cx| match event {
+                ModelEvent::BoardPrefs => {
+                    let prefs = this.model.read(cx).config.board.prefs();
+                    this.preview_board
+                        .update(cx, |board, cx| board.set_prefs(prefs, cx));
+                }
+                ModelEvent::Databases | ModelEvent::Repertoire => {
+                    this.apply_filter(cx);
+                }
+                ModelEvent::Engines => {}
+            }),
+        );
+        let selected_db = model
+            .read(cx)
+            .databases
+            .first()
+            .map(|entry| entry.path.clone());
         let mut this = Self {
             model,
             workspace,
@@ -215,7 +235,11 @@ impl DatabaseScreen {
 
     fn build_filter(&self, cx: &gpui::App) -> Filter {
         let (eco_min, eco_max) = parse_eco(self.eco.read(cx).value().as_ref());
-        let colour = self.colour.read(cx).selected_index(cx).map_or(0, |index| index.row);
+        let colour = self
+            .colour
+            .read(cx)
+            .selected_index(cx)
+            .map_or(0, |index| index.row);
         let time = self
             .time_control
             .read(cx)
@@ -271,10 +295,14 @@ impl DatabaseScreen {
 
     /// Counts matches in the background for the "Show N games" button.
     fn update_pending_count(&mut self, cx: &mut Context<Self>) {
-        let Some(path) = self.selected_db.clone() else { return };
+        let Some(path) = self.selected_db.clone() else {
+            return;
+        };
         let filter = self.build_filter(cx);
         let task = cx.background_spawn(async move {
-            Database::open(path).and_then(|db| db.stats(&filter)).map(|stats| stats.games)
+            Database::open(path)
+                .and_then(|db| db.stats(&filter))
+                .map(|stats| stats.games)
         });
         self.count_task = Some(cx.spawn(async move |this, cx| {
             let count = task.await.ok();
@@ -287,7 +315,11 @@ impl DatabaseScreen {
 
     pub fn apply_filter(&mut self, cx: &mut Context<Self>) {
         let entries = self.model.read(cx).databases.clone();
-        if self.selected_db.as_ref().is_none_or(|path| !entries.iter().any(|e| &e.path == path)) {
+        if self
+            .selected_db
+            .as_ref()
+            .is_none_or(|path| !entries.iter().any(|e| &e.path == path))
+        {
             self.selected_db = entries.first().map(|entry| entry.path.clone());
         }
         self.db_snapshot = self
@@ -309,13 +341,10 @@ impl DatabaseScreen {
             let db = Database::open(path)?;
             let ids = db.filtered_ids(&filter)?;
             let stats = db.stats(&filter)?;
-            let leak = stats
-                .top_leak
-                .as_ref()
-                .and_then(|(left, _)| {
-                    let sans = db.sample_with_left_rep(left).ok()??;
-                    Some(leak_context(left, &sans))
-                });
+            let leak = stats.top_leak.as_ref().and_then(|(left, _)| {
+                let sans = db.sample_with_left_rep(left).ok()??;
+                Some(leak_context(left, &sans))
+            });
             Ok::<_, db::DbError>((ids, stats, leak))
         });
         self.query_task = Some(cx.spawn(async move |this, cx| {
@@ -348,7 +377,9 @@ impl DatabaseScreen {
 
     /// Fetches any pages in `range` not loaded yet, off the UI thread.
     fn ensure_rows(&mut self, range: Range<usize>, cx: &mut Context<Self>) {
-        let Some(path) = self.selected_db.clone() else { return };
+        let Some(path) = self.selected_db.clone() else {
+            return;
+        };
         let first_page = range.start / PAGE;
         let last_page = range.end.saturating_sub(1) / PAGE;
         for page in first_page..=last_page {
@@ -387,7 +418,8 @@ impl DatabaseScreen {
             cx.notify();
             return;
         };
-        let task = cx.background_spawn(async move { Database::open(path).and_then(|db| db.game(id)) });
+        let task =
+            cx.background_spawn(async move { Database::open(path).and_then(|db| db.game(id)) });
         self.preview_task = Some(cx.spawn(async move |this, cx| {
             let found = task.await.ok().flatten();
             let _ = this.update(cx, |this, cx| {
@@ -412,14 +444,19 @@ impl DatabaseScreen {
             }
         }
         let pos: Chess = tree.node(node).pos.clone();
-        let last = tree.node(node).mv.as_ref().and_then(|mv| Some((mv.from()?, mv.to())));
+        let last = tree
+            .node(node)
+            .mv
+            .as_ref()
+            .and_then(|mv| Some((mv.from()?, mv.to())));
         self.preview_board
             .update(cx, |board, cx| board.set_position(pos, last, false, cx));
     }
 
     pub fn search_player(&mut self, query: &str, window: &mut Window, cx: &mut Context<Self>) {
         let text = query.to_owned();
-        self.player.update(cx, |player, cx| player.set_value(text, window, cx));
+        self.player
+            .update(cx, |player, cx| player.set_value(text, window, cx));
         self.apply_filter(cx);
     }
 
@@ -441,18 +478,16 @@ impl DatabaseScreen {
         if self.importing.is_some() {
             return;
         }
-        let paths = cx.prompt_for_paths(PathPromptOptions {
-            files: true,
-            directories: false,
-            multiple: false,
-            prompt: Some("Import PGN".into()),
-        });
-        cx.spawn(async move |this, cx| {
-            let Ok(Ok(Some(paths))) = paths.await else { return };
-            let Some(path) = paths.into_iter().next() else { return };
-            let _ = this.update(cx, |this, cx| this.import_file(path, cx));
-        })
-        .detach();
+        let this = cx.entity().downgrade();
+        pick_path(
+            self.model.clone(),
+            "Import PGN",
+            None,
+            cx,
+            move |path, cx| {
+                let _ = this.update(cx, |this, cx| this.import_file(path, cx));
+            },
+        );
     }
 
     /// Streams a PGN into the selected database, with progress and cancel.
@@ -517,7 +552,7 @@ impl DatabaseScreen {
                     model.toast(message, cx);
                     model.refresh_databases();
                     model.refresh_leaks();
-                    cx.emit(ModelEvent::DatabasesChanged);
+                    cx.emit(ModelEvent::Databases);
                 });
             });
         })
@@ -526,43 +561,57 @@ impl DatabaseScreen {
     }
 
     fn export_pgn(&mut self, cx: &mut Context<Self>) {
-        let Some(db_path) = self.selected_db.clone() else { return };
+        let Some(db_path) = self.selected_db.clone() else {
+            return;
+        };
         let ids = self.ids.clone();
-        let dir = dirs::document_dir().unwrap_or_else(|| PathBuf::from("."));
-        let chosen = cx.prompt_for_new_path(&dir, Some("games.pgn"));
-        cx.spawn(async move |this, cx| {
-            let Ok(Ok(Some(path))) = chosen.await else { return };
-            let written = cx
-                .background_spawn(async move {
-                    use std::io::Write as _;
-                    let database = Database::open(db_path)?;
-                    let mut out = std::io::BufWriter::new(std::fs::File::create(path)?);
-                    let mut count = 0usize;
-                    for id in ids {
-                        if let Some(game) = database.game(id)? {
-                            writeln!(out, "{}", game.to_pgn())?;
-                            count += 1;
-                        }
-                    }
-                    out.flush()?;
-                    anyhow::Ok(count)
-                })
-                .await;
-            let _ = this.update(cx, |this, cx| {
-                let text = match written {
-                    Ok(count) => format!("Exported {count} games."),
-                    Err(err) => format!("Export failed: {err:#}"),
-                };
-                this.toast(text, cx);
-            });
-        })
-        .detach();
+        let this = cx.entity().downgrade();
+        let model = self.model.clone();
+        pick_path(
+            model,
+            "Export PGN",
+            Some("games.pgn"),
+            cx,
+            move |path, cx| {
+                let Some(this) = this.upgrade() else { return };
+                this.update(cx, |_, cx| {
+                    cx.spawn(async move |this, cx| {
+                        let written = cx
+                            .background_spawn(async move {
+                                use std::io::Write as _;
+                                let database = Database::open(db_path)?;
+                                let mut out = std::io::BufWriter::new(std::fs::File::create(path)?);
+                                let mut count = 0usize;
+                                for id in ids {
+                                    if let Some(game) = database.game(id)? {
+                                        writeln!(out, "{}", game.to_pgn())?;
+                                        count += 1;
+                                    }
+                                }
+                                out.flush()?;
+                                anyhow::Ok(count)
+                            })
+                            .await;
+                        let _ = this.update(cx, |this, cx| {
+                            let text = match written {
+                                Ok(count) => format!("Exported {count} games."),
+                                Err(err) => format!("Export failed: {err:#}"),
+                            };
+                            this.toast(text, cx);
+                        });
+                    })
+                    .detach();
+                });
+            },
+        );
     }
 
     /// Batch engine review: scores each filtered game and stores its accuracy.
     fn analyse_all(&mut self, cx: &mut Context<Self>) {
         if let Some(reviewing) = &self.reviewing {
-            reviewing.cancelled.store(true, std::sync::atomic::Ordering::Relaxed);
+            reviewing
+                .cancelled
+                .store(true, std::sync::atomic::Ordering::Relaxed);
             return;
         }
         let model = self.model.read(cx);
@@ -573,14 +622,22 @@ impl DatabaseScreen {
             .find(|engine| engine.enabled && engine.use_review)
             .cloned()
         else {
-            self.toast("Choose an engine for batch review in Settings › Engines.", cx);
+            self.toast(
+                "Choose an engine for batch review in Settings › Engines.",
+                cx,
+            );
             return;
         };
         if model.demo {
-            self.toast("Batch review needs a real engine; demo mode only has scripted lines.", cx);
+            self.toast(
+                "Batch review needs a real engine; demo mode only has scripted lines.",
+                cx,
+            );
             return;
         }
-        let Some(path) = self.selected_db.clone() else { return };
+        let Some(path) = self.selected_db.clone() else {
+            return;
+        };
         let ids = self.ids.clone();
         let player = self.applied.player.trim().to_owned();
         let cancelled = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -693,26 +750,27 @@ impl DatabaseScreen {
                     .child(field("Opp. rating ≥", text_input(&self.opp_rating)))
                     .child(field("Time control", select_el(&self.time_control))),
             )
-            .child(
-                div().mb(px(10.)).child(
-                    check("reached", reached, "Reached the Analyse board position").on_change(
-                        move |value, _, cx| {
-                            reached_this.update(cx, |screen, cx| screen.toggle_reached(value, cx));
-                        },
-                    ),
+            .child(div().mb(px(10.)).child(
+                check("reached", reached, "Reached the Analyse board position").on_change(
+                    move |value, _, cx| {
+                        reached_this.update(cx, |screen, cx| screen.toggle_reached(value, cx));
+                    },
                 ),
-            )
+            ))
             .child(
                 div().mb(px(10.)).child(
-                    check("left-rep", only_left, "Only games where I left my repertoire").on_change(
-                        move |value, _, cx| {
-                            only_this.update(cx, |screen, cx| {
-                                screen.only_left_rep = value;
-                                screen.update_pending_count(cx);
-                                cx.notify();
-                            });
-                        },
-                    ),
+                    check(
+                        "left-rep",
+                        only_left,
+                        "Only games where I left my repertoire",
+                    )
+                    .on_change(move |value, _, cx| {
+                        only_this.update(cx, |screen, cx| {
+                            screen.only_left_rep = value;
+                            screen.update_pending_count(cx);
+                            cx.notify();
+                        });
+                    }),
                 ),
             )
             .child(
@@ -727,9 +785,7 @@ impl DatabaseScreen {
 
     fn toggle_reached(&mut self, value: bool, cx: &mut Context<Self>) {
         self.reached = value;
-        if value
-            && let Some(workspace) = self.workspace.upgrade()
-        {
+        if value && let Some(workspace) = self.workspace.upgrade() {
             // Capture whatever is on the Analyse board right now.
             let analyse = workspace.read(cx).analyse.read(cx);
             let node = analyse.tree.node(analyse.current);
@@ -865,6 +921,7 @@ impl DatabaseScreen {
         let row_el = h_flex()
             .id(("game", index))
             .relative()
+            .w_full()
             .h(px(ROW_H))
             .px(px(12.))
             .cursor_pointer()
@@ -877,7 +934,15 @@ impl DatabaseScreen {
                 this.update(cx, |screen, cx| screen.select_game(Some(id), cx));
             })
             .when(selected, |row| {
-                row.child(div().absolute().left_0().top_0().bottom_0().w(px(3.)).bg(rgb(T.fg)))
+                row.child(
+                    div()
+                        .absolute()
+                        .left_0()
+                        .top_0()
+                        .bottom_0()
+                        .w(px(3.))
+                        .bg(rgb(T.fg)),
+                )
             });
         let Some(game) = self.rows.get(&id) else {
             return row_el.child(div().text_color(rgb(T.faint)).child("…"));
@@ -895,7 +960,9 @@ impl DatabaseScreen {
                         .child(SharedString::from(name.to_owned())),
                 )
                 .children(elo.map(|elo| {
-                    mono(elo.to_string()).text_color(rgb(T.muted)).text_size(px(14.))
+                    mono(elo.to_string())
+                        .text_color(rgb(T.muted))
+                        .text_size(px(14.))
                 }))
         };
         let white_won = game.result == "1-0";
@@ -969,15 +1036,23 @@ impl DatabaseScreen {
                 );
         }
         column
-            .child(div().size(px(249.)).flex_none().child(self.preview_board.clone()))
+            .child(
+                div()
+                    .size(px(249.))
+                    .flex_none()
+                    .child(self.preview_board.clone()),
+            )
             .when_some(self.preview.as_ref(), |column, preview| {
                 column.child(move_snippet(preview, self.preview_key))
             })
-            .child(btn("open-analyse", "Open in Analyse").full().disabled(self.preview.is_none()).on_click(
-                move |window, cx| {
-                    this.update(cx, |screen, cx| screen.open_in_analyse(window, cx));
-                },
-            ))
+            .child(
+                btn("open-analyse", "Open in Analyse")
+                    .full()
+                    .disabled(self.preview.is_none())
+                    .on_click(move |window, cx| {
+                        this.update(cx, |screen, cx| screen.open_in_analyse(window, cx));
+                    }),
+            )
     }
 
     fn render_import_bar(&self, cx: &mut Context<Self>) -> Option<impl IntoElement + use<>> {
@@ -992,20 +1067,22 @@ impl DatabaseScreen {
                 .justify_between()
                 .px(px(16.))
                 .py(px(8.))
+                .child(div().text_size(px(14.)).child(format!(
+                    "Importing {} · {} games",
+                    importing.file,
+                    format_count(importing.progress.games)
+                )))
                 .child(
-                    div().text_size(px(14.)).child(format!(
-                        "Importing {} · {} games",
-                        importing.file,
-                        format_count(importing.progress.games)
-                    )),
-                )
-                .child(btn("cancel-import", "Cancel").h(30.).on_click(move |_, cx| {
-                    this.update(cx, |screen, _| {
-                        if let Some(importing) = &screen.importing {
-                            importing.control.cancel();
-                        }
-                    });
-                })),
+                    btn("cancel-import", "Cancel")
+                        .h(30.)
+                        .on_click(move |_, cx| {
+                            this.update(cx, |screen, _| {
+                                if let Some(importing) = &screen.importing {
+                                    importing.control.cancel();
+                                }
+                            });
+                        }),
+                ),
         )
     }
 }
@@ -1037,10 +1114,17 @@ fn leak_context(left: &str, sans: &[String]) -> String {
 fn key_moment(details: &GameDetails) -> usize {
     if let Some(left) = &details.row.left_rep {
         let san = left.rsplit(['.', '…']).next().unwrap_or("");
-        let number = left.split(['.', '…']).next().and_then(|n| n.parse::<usize>().ok());
+        let number = left
+            .split(['.', '…'])
+            .next()
+            .and_then(|n| n.parse::<usize>().ok());
         if let Some(number) = number {
             let ply = (number - 1) * 2 + usize::from(left.contains('…'));
-            if details.sans.get(ply).is_some_and(|played| played.trim_end_matches(['+', '#']) == san) {
+            if details
+                .sans
+                .get(ply)
+                .is_some_and(|played| played.trim_end_matches(['+', '#']) == san)
+            {
                 return ply;
             }
         }
@@ -1079,7 +1163,7 @@ fn move_snippet(preview: &GameDetails, key: usize) -> impl IntoElement + use<> {
     }
     for (index, san) in preview.sans[start..end].iter().enumerate() {
         let ply = start + index;
-        let label = if ply % 2 == 0 {
+        let label = if ply.is_multiple_of(2) {
             format!("{}.{san}", ply / 2 + 1)
         } else {
             san.clone()
@@ -1088,7 +1172,10 @@ fn move_snippet(preview: &GameDetails, key: usize) -> impl IntoElement + use<> {
         row = row.child(
             div()
                 .when(is_key, |pill| {
-                    pill.px(px(5.)).rounded(px(4.)).bg(rgb(T.fg)).text_color(rgb(T.bg))
+                    pill.px(px(5.))
+                        .rounded(px(4.))
+                        .bg(rgb(T.fg))
+                        .text_color(rgb(T.bg))
                 })
                 .child(label),
         );
@@ -1100,7 +1187,7 @@ pub fn format_count(count: u64) -> String {
     let digits = count.to_string();
     let mut out = String::new();
     for (index, digit) in digits.chars().enumerate() {
-        if index > 0 && (digits.len() - index) % 3 == 0 {
+        if index > 0 && (digits.len() - index).is_multiple_of(3) {
             out.push(',');
         }
         out.push(digit);
@@ -1133,7 +1220,11 @@ pub fn review_games(
     const START: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
     let database = Database::open(path)?;
-    let options = engine.options.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+    let options = engine
+        .options
+        .iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
     let handle = EngineHandle::spawn(engine.path.clone(), Vec::new(), options);
     let events = handle.events();
     let mut search_id = 0;
@@ -1141,7 +1232,9 @@ pub fn review_games(
         if cancelled.load(Ordering::Relaxed) {
             break;
         }
-        let Some(game) = database.game(id)? else { continue };
+        let Some(game) = database.game(id)? else {
+            continue;
+        };
         let mut moves: Vec<String> = Vec::new();
         let mut pos = Chess::default();
         let mut evals: Vec<i32> = Vec::with_capacity(game.sans.len() + 1);
@@ -1162,9 +1255,16 @@ pub fn review_games(
             let mut eval = 0;
             loop {
                 match smol::block_on(events.recv()) {
-                    Ok(EngineEvent::Analysis { search_id: from, update }) if from == search_id => {
+                    Ok(EngineEvent::Analysis {
+                        search_id: from,
+                        update,
+                    }) if from == search_id => {
                         if let Some(score) = update.score {
-                            let white = if pos.turn().is_white() { score } else { score.negate() };
+                            let white = if pos.turn().is_white() {
+                                score
+                            } else {
+                                score.negate()
+                            };
                             eval = match white {
                                 Score::Cp(cp) => cp,
                                 Score::Mate(mate) if mate > 0 => 3000,
@@ -1172,17 +1272,21 @@ pub fn review_games(
                             };
                         }
                     }
-                    Ok(EngineEvent::BestMove { search_id: from, .. }) if from == search_id => break,
+                    Ok(EngineEvent::BestMove {
+                        search_id: from, ..
+                    }) if from == search_id => break,
                     Ok(EngineEvent::Crashed(reason)) => anyhow::bail!(reason),
                     Ok(_) => {}
                     Err(_) => anyhow::bail!("engine channel closed"),
                 }
             }
             evals.push(eval);
-            let Some(san) = game.sans.get(san_index) else { break };
+            let Some(san) = game.sans.get(san_index) else {
+                break;
+            };
             let parsed: chess_core::shakmaty::san::San = san.parse()?;
             let mv = parsed.to_move(&pos)?;
-            moves.push(chess_core::shakmaty::uci::UciMove::from_standard(mv.clone()).to_string());
+            moves.push(chess_core::shakmaty::uci::UciMove::from_standard(mv).to_string());
             pos.play_unchecked(mv);
         }
         let reviewed_white = player.is_empty() || game.row.white.eq_ignore_ascii_case(player);
@@ -1192,7 +1296,12 @@ pub fn review_games(
             .filter(|(ply, _)| (ply % 2 == 0) == reviewed_white)
             .map(|(_, pair)| {
                 let (before, after) = (win_percent(pair[0]), win_percent(pair[1]));
-                if reviewed_white { before - after } else { after - before }.max(0.0)
+                if reviewed_white {
+                    before - after
+                } else {
+                    after - before
+                }
+                .max(0.0)
             })
             .collect();
         if !losses.is_empty() {
@@ -1213,32 +1322,28 @@ impl Render for DatabaseScreen {
         let table = self.render_table(cx);
         let preview = self.render_preview(cx);
         let import_bar = self.render_import_bar(cx);
-        h_flex()
-            .items_start()
-            .size_full()
-            .child(left)
-            .child(
-                v_flex()
-                    .flex_1()
-                    .min_w_0()
-                    .h_full()
-                    .px(px(24.))
-                    .pt(px(24.))
-                    .pb(px(16.))
-                    .gap(px(16.))
-                    .child(header)
-                    .children(import_bar)
-                    .child(stats)
-                    .child(
-                        h_flex()
-                            .items_start()
-                            .flex_1()
-                            .min_h_0()
-                            .gap(px(16.))
-                            .child(div().flex_1().min_w_0().h_full().child(table))
-                            .child(panel().w(px(293.)).flex_none().child(preview)),
-                    ),
-            )
+        h_flex().items_start().size_full().child(left).child(
+            v_flex()
+                .flex_1()
+                .min_w_0()
+                .h_full()
+                .px(px(24.))
+                .pt(px(24.))
+                .pb(px(16.))
+                .gap(px(16.))
+                .child(header)
+                .children(import_bar)
+                .child(stats)
+                .child(
+                    h_flex()
+                        .items_start()
+                        .flex_1()
+                        .min_h_0()
+                        .gap(px(16.))
+                        .child(div().flex_1().min_w_0().h_full().child(table))
+                        .child(panel().w(px(293.)).flex_none().child(preview)),
+                ),
+        )
     }
 }
 

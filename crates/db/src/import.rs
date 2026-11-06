@@ -132,11 +132,7 @@ impl Visitor for ImportVisitor {
         ControlFlow::Continue(Skip(true))
     }
 
-    fn san(
-        &mut self,
-        game: &mut Self::Movetext,
-        san_plus: SanPlus,
-    ) -> ControlFlow<Self::Output> {
+    fn san(&mut self, game: &mut Self::Movetext, san_plus: SanPlus) -> ControlFlow<Self::Output> {
         if game.failed {
             return ControlFlow::Continue(());
         }
@@ -184,7 +180,11 @@ fn insert_game(tx: &Transaction<'_>, game: &Game, source: &str) -> Result<()> {
         tags.black,
         tags.white_elo,
         tags.black_elo,
-        if tags.result.is_empty() { "*" } else { tags.result.as_str() },
+        if tags.result.is_empty() {
+            "*"
+        } else {
+            tags.result.as_str()
+        },
         tags.date,
         eco,
         tags.event,
@@ -300,8 +300,14 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("x.sqlite");
         let text = "1. e4 e5 1-0\n\n1. e5 e4 1-0\n\n1. d4 d5 0-1\n";
-        let summary =
-            import_games(&path, text.as_bytes(), "", &ImportControl::default(), |_| {}).unwrap();
+        let summary = import_games(
+            &path,
+            text.as_bytes(),
+            "",
+            &ImportControl::default(),
+            |_| {},
+        )
+        .unwrap();
         assert_eq!(summary.games, 2);
         assert_eq!(summary.skipped, 1);
         assert_eq!(Database::open(&path).unwrap().game_count().unwrap(), 2);

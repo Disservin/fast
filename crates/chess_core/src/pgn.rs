@@ -98,11 +98,7 @@ impl Visitor for TreeVisitor {
     }
 
     fn nag(&mut self, movetext: &mut Self::Movetext, nag: Nag) -> ControlFlow<Self::Output> {
-        movetext
-            .tree
-            .node_mut(movetext.current)
-            .nags
-            .push(nag.0);
+        movetext.tree.node_mut(movetext.current).nags.push(nag.0);
         ControlFlow::Continue(())
     }
 
@@ -235,7 +231,12 @@ pub fn write_pgn(tree: &GameTree) -> String {
     if !root.comment.is_empty() {
         tokens.push(format!("{{ {} }}", root.comment));
     }
-    write_moves(tree, GameTree::ROOT, &mut tokens, !root.pos.turn().is_white());
+    write_moves(
+        tree,
+        GameTree::ROOT,
+        &mut tokens,
+        !root.pos.turn().is_white(),
+    );
     tokens.push(tree.header("Result").unwrap_or("*").to_owned());
     out.push_str(&wrap(&tokens));
     out.push('\n');
@@ -340,9 +341,14 @@ mod tests {
 
     #[test]
     fn write_from_includes_following_variations() {
-        let game = parse_pgn("1. e4 e5 (1... c5 2. Nf3) 2. Nf3 *").unwrap().remove(0);
+        let game = parse_pgn("1. e4 e5 (1... c5 2. Nf3) 2. Nf3 *")
+            .unwrap()
+            .remove(0);
         let e4 = game.mainline()[0];
-        assert_eq!(write_pgn_from(&game, e4), "1. e4 e5 (1... c5 2. Nf3) 2. Nf3");
+        assert_eq!(
+            write_pgn_from(&game, e4),
+            "1. e4 e5 (1... c5 2. Nf3) 2. Nf3"
+        );
     }
 
     #[test]

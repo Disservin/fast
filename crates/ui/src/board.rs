@@ -260,7 +260,7 @@ impl BoardView {
         match candidates.as_slice() {
             [] => false,
             [mv] => {
-                cx.emit(BoardEvent::Moved(mv.clone()));
+                cx.emit(BoardEvent::Moved(*mv));
                 self.selected = None;
                 true
             }
@@ -269,7 +269,7 @@ impl BoardView {
                 if self.prefs.auto_queen
                     && let Some(queen) = many.iter().find(|mv| mv.promotion() == Some(Role::Queen))
                 {
-                    cx.emit(BoardEvent::Moved(queen.clone()));
+                    cx.emit(BoardEvent::Moved(*queen));
                 } else {
                     self.promotion = Some(Promotion { from, to });
                 }
@@ -382,7 +382,12 @@ impl BoardView {
         }
     }
 
-    fn piece_element(&self, piece: Piece, cell: Pixels, id: impl Into<ElementId>) -> gpui::AnyElement {
+    fn piece_element(
+        &self,
+        piece: Piece,
+        cell: Pixels,
+        id: impl Into<ElementId>,
+    ) -> gpui::AnyElement {
         let name = piece_file(piece);
         match self.prefs.pieces {
             PieceSet::Classic => img(SharedString::from(format!("pieces/merida/{name}.svg")))
@@ -394,7 +399,11 @@ impl BoardView {
                 .path(SharedString::from(format!("pieces/merida/{name}.svg")))
                 .size(cell * 0.86)
                 .m(cell * 0.07)
-                .text_color(rgb(if piece.color == Color::White { 0xFFFFFF } else { 0x14161A }))
+                .text_color(rgb(if piece.color == Color::White {
+                    0xFFFFFF
+                } else {
+                    0x14161A
+                }))
                 .into_any_element(),
             PieceSet::Letters => div()
                 .size(cell)
@@ -404,7 +413,11 @@ impl BoardView {
                 .font_family(SANS)
                 .font_weight(FontWeight::BOLD)
                 .text_size(cell * 0.62)
-                .text_color(rgb(if piece.color == Color::White { 0xFFFFFF } else { 0x14161A }))
+                .text_color(rgb(if piece.color == Color::White {
+                    0xFFFFFF
+                } else {
+                    0x14161A
+                }))
                 .child(piece.role.upper_char().to_string())
                 .into_any_element(),
         }
@@ -414,7 +427,11 @@ impl BoardView {
 fn board_target(mv: &Move) -> Square {
     // Castling is entered by moving the king two squares.
     if let Move::Castle { king, rook } = mv {
-        let file = if rook.file() > king.file() { File::G } else { File::C };
+        let file = if rook.file() > king.file() {
+            File::G
+        } else {
+            File::C
+        };
         Square::from_coords(file, king.rank())
     } else {
         mv.to()
@@ -424,7 +441,11 @@ fn board_target(mv: &Move) -> Square {
 fn piece_file(piece: Piece) -> String {
     format!(
         "{}{}",
-        if piece.color == Color::White { 'w' } else { 'b' },
+        if piece.color == Color::White {
+            'w'
+        } else {
+            'b'
+        },
         piece.role.upper_char()
     )
 }
@@ -472,9 +493,15 @@ impl Render for BoardView {
         // The parent decides the element size; this reads the last laid-out bounds.
         let cell = (self.bounds.size.width / 8.).max(px(8.));
         let (light, dark) = self.prefs.theme.colors();
-        let hidden = self.drag.as_ref().filter(|drag| drag.moved).map(|drag| drag.from);
+        let hidden = self
+            .drag
+            .as_ref()
+            .filter(|drag| drag.moved)
+            .map(|drag| drag.from);
         let targets: Vec<Square> = if self.prefs.show_legal && self.interactive {
-            self.selected.map(|from| self.legal_targets(from)).unwrap_or_default()
+            self.selected
+                .map(|from| self.legal_targets(from))
+                .unwrap_or_default()
         } else {
             Vec::new()
         };
@@ -562,16 +589,14 @@ impl Render for BoardView {
                 Some((from, _)) => {
                     let start = self.cell_origin(from, cell);
                     let duration = Duration::from_millis(u64::from(self.prefs.animation_ms));
-                    pieces_el = pieces_el.child(
-                        wrapper.with_animation(
-                            ElementId::Name(format!("move-{}", self.animate_serial).into()),
-                            Animation::new(duration).with_easing(gpui::ease_out_quint()),
-                            move |el, delta| {
-                                el.left(start.x + (origin.x - start.x) * delta)
-                                    .top(start.y + (origin.y - start.y) * delta)
-                            },
-                        ),
-                    );
+                    pieces_el = pieces_el.child(wrapper.with_animation(
+                        ElementId::Name(format!("move-{}", self.animate_serial).into()),
+                        Animation::new(duration).with_easing(gpui::ease_out_quint()),
+                        move |el, delta| {
+                            el.left(start.x + (origin.x - start.x) * delta)
+                                .top(start.y + (origin.y - start.y) * delta)
+                        },
+                    ));
                 }
                 None => pieces_el = pieces_el.child(wrapper),
             }
@@ -739,11 +764,16 @@ impl BoardView {
                         cx.listener(move |board, _, _, cx| {
                             cx.stop_propagation();
                             board.promotion = None;
-                            let chosen = board.pos.legal_moves().iter().find(|mv| {
-                                mv.from() == Some(from)
-                                    && mv.to() == to
-                                    && mv.promotion() == Some(role)
-                            }).cloned();
+                            let chosen = board
+                                .pos
+                                .legal_moves()
+                                .iter()
+                                .find(|mv| {
+                                    mv.from() == Some(from)
+                                        && mv.to() == to
+                                        && mv.promotion() == Some(role)
+                                })
+                                .cloned();
                             if let Some(mv) = chosen {
                                 cx.emit(BoardEvent::Moved(mv));
                             }
