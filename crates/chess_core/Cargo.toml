@@ -1,0 +1,11 @@
+[package]
+name = "chess_core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+shakmaty.workspace = true
+pgn-reader.workspace = true
+thiserror.workspace = true
+serde.workspace = true

@@ -1,0 +1,39 @@
+[package]
+name = "outpost"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "A desktop chess workstation for analysis, databases, opening training and engine play."
+
+[[bin]]
+name = "outpost"
+path = "src/main.rs"
+
+[dependencies]
+gpui.workspace = true
+gpui_platform.workspace = true
+gpui-component.workspace = true
+gpui-kit-assets = { git = "https://github.com/longbridge/gpui-component", rev = "48ac25b50c81ca5e34ec1631e3efabe22f4af64a" }
+chess_core.workspace = true
+engine.workspace = true
+db.workspace = true
+trainer.workspace = true
+ui.workspace = true
+anyhow.workspace = true
+log.workspace = true
+env_logger.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+dirs.workspace = true
+smol.workspace = true
+rust-embed = "8"
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[package.metadata.bundle]
+name = "Outpost"
+identifier = "dev.outpost.app"
+category = "Utility"
+short_description = "Desktop chess workstation"

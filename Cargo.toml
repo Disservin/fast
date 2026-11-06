@@ -1,0 +1,40 @@
+[workspace]
+resolver = "2"
+members = ["crates/app", "crates/ui", "crates/chess_core", "crates/engine", "crates/db", "crates/trainer"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+
+[workspace.dependencies]
+# gpui-component at this rev is built against the gpui-pre 0.3.11 snapshot of Zed's
+# crates, so that exact snapshot is what must be used for gpui / gpui_platform.
+gpui = { package = "gpui-pre", version = "=0.3.11" }
+gpui_platform = { package = "gpui-pre-platform", version = "=0.3.11", features = ["font-kit", "x11", "wayland", "runtime_shaders"] }
+gpui-component = { git = "https://github.com/longbridge/gpui-component", rev = "48ac25b50c81ca5e34ec1631e3efabe22f4af64a" }
+
+chess_core = { path = "crates/chess_core" }
+engine = { path = "crates/engine" }
+db = { path = "crates/db" }
+trainer = { path = "crates/trainer" }
+ui = { path = "crates/ui" }
+
+shakmaty = "0.30"
+pgn-reader = "0.29"
+shakmaty-syzygy = "0.28"
+rusqlite = { version = "0.41", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.9"
+dirs = "6"
+anyhow = "1"
+thiserror = "2"
+log = "0.4"
+env_logger = "0.11"
+smol = "2"
+futures = "0.3"
+tempfile = "3"
+
+[profile.dev.package."*"]
+opt-level = 2

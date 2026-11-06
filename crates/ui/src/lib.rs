@@ -1,0 +1,10 @@
+//! Shared GPUI views and widgets used by every Outpost screen.
+
+pub mod board;
+pub mod scoresheet;
+pub mod theme;
+pub mod timeline;
+pub mod widgets;
+
+pub use board::{Arrow, BoardEvent, BoardPrefs, BoardTheme, BoardView, CoordinateStyle, PieceSet};
+pub use theme::{MONO, SANS, T, Theme, apply_component_theme};

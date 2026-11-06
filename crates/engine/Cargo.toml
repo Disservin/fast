@@ -1,0 +1,12 @@
+[package]
+name = "engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+chess_core.workspace = true
+thiserror.workspace = true
+log.workspace = true
+smol.workspace = true
+serde.workspace = true
