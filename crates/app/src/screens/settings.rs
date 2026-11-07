@@ -1988,22 +1988,60 @@ impl SettingsScreen {
         let col_license = gpui::relative(0.38);
         let header = |cells: [&'static str; 4]| {
             h_flex()
+                .w_full()
                 .h(px(30.))
                 .px(px(12.))
                 .bg(rgb(T.surface_2))
                 .border_b_1()
                 .border_color(rgb(T.border))
-                .child(div().w(col_name).child(section_label(cells[0])))
-                .child(div().w(col_version).child(section_label(cells[1])))
-                .child(div().w(col_license).child(section_label(cells[2])))
+                .child(
+                    div()
+                        .w(col_name)
+                        .flex_shrink_0()
+                        .child(section_label(cells[0])),
+                )
+                .child(
+                    div()
+                        .w(col_version)
+                        .flex_shrink_0()
+                        .child(section_label(cells[1])),
+                )
+                .child(
+                    div()
+                        .w(col_license)
+                        .flex_shrink_0()
+                        .child(section_label(cells[2])),
+                )
                 .child(section_label(cells[3]))
         };
-        let mut assets = panel()
-            .overflow_hidden()
-            .child(header(["Asset", "", "Licence", "By"]));
+        let asset_name = gpui::relative(0.36);
+        let asset_license = gpui::relative(0.24);
+        let mut assets = panel().overflow_hidden().child(
+            h_flex()
+                .w_full()
+                .h(px(30.))
+                .px(px(12.))
+                .bg(rgb(T.surface_2))
+                .border_b_1()
+                .border_color(rgb(T.border))
+                .child(
+                    div()
+                        .w(asset_name)
+                        .flex_shrink_0()
+                        .child(section_label("Asset")),
+                )
+                .child(
+                    div()
+                        .w(asset_license)
+                        .flex_shrink_0()
+                        .child(section_label("Licence")),
+                )
+                .child(section_label("By")),
+        );
         for (name, author, license) in ASSETS {
             assets = assets.child(
                 h_flex()
+                    .w_full()
                     .h(px(34.))
                     .px(px(12.))
                     .border_b_1()
@@ -2011,18 +2049,29 @@ impl SettingsScreen {
                     .text_size(px(13.))
                     .child(
                         div()
-                            .w(col_name)
+                            .w(asset_name)
+                            .flex_shrink_0()
+                            .overflow_hidden()
+                            .whitespace_nowrap()
                             .font_weight(FontWeight::MEDIUM)
                             .child(name),
                     )
-                    .child(div().w(col_version))
                     .child(
                         mono(license)
-                            .w(col_license)
+                            .w(asset_license)
+                            .flex_shrink_0()
                             .text_size(px(12.))
                             .text_color(rgb(T.fg_2)),
                     )
-                    .child(div().text_color(rgb(T.muted)).child(author)),
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .overflow_hidden()
+                            .whitespace_nowrap()
+                            .text_color(rgb(T.muted))
+                            .child(author),
+                    ),
             );
         }
         let summary = license_counts(all)
@@ -2043,6 +2092,7 @@ impl SettingsScreen {
                         Some(
                             h_flex()
                                 .id(("library", row))
+                                .w_full()
                                 .h(px(32.))
                                 .px(px(12.))
                                 .border_b_1()
@@ -2051,6 +2101,7 @@ impl SettingsScreen {
                                 .child(
                                     div()
                                         .w(col_name)
+                                        .flex_shrink_0()
                                         .overflow_hidden()
                                         .whitespace_nowrap()
                                         .font_weight(FontWeight::MEDIUM)
@@ -2059,12 +2110,14 @@ impl SettingsScreen {
                                 .child(
                                     mono(library.version.clone())
                                         .w(col_version)
+                                        .flex_shrink_0()
                                         .text_size(px(12.))
                                         .text_color(rgb(T.muted)),
                                 )
                                 .child(
                                     mono(library.license.clone())
                                         .w(col_license)
+                                        .flex_shrink_0()
                                         .overflow_hidden()
                                         .whitespace_nowrap()
                                         .text_size(px(12.))
@@ -2127,7 +2180,7 @@ impl SettingsScreen {
                     .child(
                         panel()
                             .overflow_hidden()
-                            .child(header(["Crate", "Version", "Licence", ""]))
+                            .child(header(["Crate", "Version", "Licence", "Source"]))
                             .child(list),
                     ),
             )
