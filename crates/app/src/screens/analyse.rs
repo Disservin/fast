@@ -266,6 +266,7 @@ pub struct AnalyseScreen {
     /// Show WDL when an engine requests or supplies it, regardless of window width.
     show_wdl: bool,
     engine_panel_open: bool,
+    spin_edit: Option<(EngineId, &'static str, Entity<InputState>, Subscription)>,
     log_panel_open: bool,
     /// The Online panel and its tablebase and cloud lookups.
     online: online::OnlineState,
@@ -425,6 +426,7 @@ impl AnalyseScreen {
             visible: false,
             show_wdl: true,
             engine_panel_open: false,
+            spin_edit: None,
             log_panel_open: false,
             online: online::OnlineState::default(),
             panel_engine: None,

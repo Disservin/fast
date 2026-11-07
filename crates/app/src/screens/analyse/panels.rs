@@ -10,7 +10,10 @@ use gpui::{
     ScrollStrategy, SharedString, StyledText, Window, anchored, deferred, div, point, prelude::*,
     px, rgb, uniform_list,
 };
-use gpui_component::scroll::ScrollableElement;
+use gpui_component::{
+    input::{Input, InputEvent, InputState},
+    scroll::ScrollableElement,
+};
 use ui::{
     Arrow, CoordinateStyle, MONO, T,
     widgets::{btn, check, h_flex, icon_btn, mono, panel, section_label, v_flex},
@@ -519,7 +522,49 @@ impl AnalyseScreen {
                         this.update(cx, |screen, cx| screen.set_spin(id, name, next, cx));
                     })
             };
-        let text = spin.map_or_else(|| "—".to_owned(), |(value, ..)| format!("{value}{unit}"));
+        let edit_this = this.clone();
+        let value_element = if let Some((edit_id, edit_name, input, _)) = &self.spin_edit
+            && *edit_id == id
+            && *edit_name == name
+        {
+            Input::new(input).w(px(88.)).into_any_element()
+        } else {
+            let text = spin.map_or_else(|| "—".to_owned(), |(value, ..)| format!("{value}{unit}"));
+            btn(SharedString::from(format!("{name}-value")), text)
+                .w(88.)
+                .h(26.)
+                .pad(0.)
+                .disabled(spin.is_none())
+                .on_click(move |window, cx| {
+                    let Some((value, min, max)) = spin else {
+                        return;
+                    };
+                    edit_this.update(cx, |screen, cx| {
+                        let input = cx.new(|cx| {
+                            let mut state = InputState::new(window, cx);
+                            state.set_value(value.to_string(), window, cx);
+                            state
+                        });
+                        let subscription =
+                            cx.subscribe_in(&input, window, move |screen, input, event, _, cx| {
+                                if matches!(event, InputEvent::Blur | InputEvent::PressEnter { .. })
+                                {
+                                    if let Ok(value) = input.read(cx).value().trim().parse::<i64>()
+                                    {
+                                        screen.set_spin(id, name, value.clamp(min, max), cx);
+                                    }
+                                    screen.spin_edit = None;
+                                    cx.notify();
+                                }
+                            });
+                        use gpui::Focusable;
+                        input.focus_handle(cx).focus(window, cx);
+                        screen.spin_edit = Some((id, name, input, subscription));
+                        cx.notify();
+                    });
+                })
+                .into_any_element()
+        };
         v_flex()
             .gap(px(4.))
             .child(
@@ -532,13 +577,7 @@ impl AnalyseScreen {
                 h_flex()
                     .gap(px(4.))
                     .child(button(false, this.clone()))
-                    .child(
-                        mono(text)
-                            .min_w(px(58.))
-                            .flex()
-                            .justify_center()
-                            .text_size(px(13.)),
-                    )
+                    .child(value_element)
                     .child(button(true, this)),
             )
     }
