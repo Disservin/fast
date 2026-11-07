@@ -3,22 +3,22 @@
 
 use std::{
     collections::{HashMap, VecDeque},
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{Arc, Mutex, atomic::AtomicBool},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use chess_core::{Position as _, format_pv, pv_to_san};
 
 use engine::EngineId;
 use gpui::{
-    AppContext as _, ClipboardItem, Context, Entity, FontWeight, IntoElement, Render, SharedString,
-    Task, WeakEntity, Window, div, prelude::*, px, rgb,
+    AnyElement, AppContext as _, ClipboardItem, Context, Div, Entity, FontWeight, IntoElement,
+    Pixels, Render, SharedString, Task, WeakEntity, Window, div, prelude::*, px, relative, rgb,
 };
 use gpui_component::input::{InputState, Textarea, TextareaState};
 use ui::{
     BoardView, MONO, T,
-    widgets::{btn, check, h_flex, mono, panel, section_label, segmented, v_flex},
+    widgets::{btn, check, divider, h_flex, mono, panel, section_label, segmented, v_flex},
 };
 
 use crate::{
@@ -26,7 +26,8 @@ use crate::{
     fastchess::{self, Limit, Line, Participant, Pasted, Setup, StopHandle},
     model::{AppModel, pick_path},
     shell::Workspace,
-    tournament_live::{self, LiveGame, LiveGames, Search},
+    tournament_live::{self, LiveGame, LiveGames, Score, Search},
+    tournament_wall::{self, LiveWall},
 };
 
 const MAX_LOG: usize = 400;
@@ -48,6 +49,46 @@ enum Status {
     Finished(String),
     Failed(String),
 }
+
+/// The filter above the games table.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum GameFilter {
+    All,
+    Decisive,
+    Adjudicated,
+    Repetition,
+}
+
+impl GameFilter {
+    const ALL: [Self; 4] = [
+        Self::All,
+        Self::Decisive,
+        Self::Adjudicated,
+        Self::Repetition,
+    ];
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::All => "All",
+            Self::Decisive => "Decisive",
+            Self::Adjudicated => "Adjudicated",
+            Self::Repetition => "Repetition",
+        }
+    }
+
+    fn matches(self, row: &GameRow) -> bool {
+        let reason = row.reason.to_lowercase();
+        match self {
+            Self::All => true,
+            Self::Decisive => row.result != "1/2-1/2",
+            Self::Adjudicated => reason.contains("adjudicat"),
+            Self::Repetition => reason.contains("repetition"),
+        }
+    }
+}
+
+/// Live boards are this many pixels square in the tournament tab.
+const LIVE_BOARD: f32 = 280.;
 
 struct GameRow {
     game: u64,
@@ -82,6 +123,12 @@ struct Run {
     /// Why there are no live boards, when there are none.
     live_off: Option<&'static str>,
     live_seen: u64,
+    /// Engine names in the order fastchess was given them; the first two are A and B.
+    names: Vec<String>,
+    concurrency: usize,
+    /// When each game started, and the total time and count of the finished ones.
+    started: HashMap<u64, Instant>,
+    game_time: (Duration, u32),
     _task: Task<()>,
     _live_task: Option<Task<()>>,
 }
@@ -126,7 +173,10 @@ impl Run {
                 self.in_block = !self.in_block;
             }
             _ if self.in_block => self.block.push(line),
-            Line::Started { total, .. } => self.total = total,
+            Line::Started { game, total } => {
+                self.total = total;
+                self.started.insert(game, Instant::now());
+            }
             Line::Finished {
                 game,
                 white,
@@ -142,6 +192,10 @@ impl Run {
                     reason: reason.to_owned(),
                     pgn_index: self.pgn_offset + self.finished as usize,
                 };
+                if let Some(start) = self.started.remove(&game) {
+                    self.game_time.0 += start.elapsed();
+                    self.game_time.1 += 1;
+                }
                 self.finished += 1;
                 if self.games.len() == MAX_GAMES {
                     self.games.pop_back();
@@ -208,6 +262,9 @@ pub struct TournamentScreen {
     focus_board: Entity<BoardView>,
     focus_shown: (u64, usize),
     live_all: bool,
+    games_filter: GameFilter,
+    /// The ⋯ menu above the run's header.
+    menu_open: bool,
     /// Whether each fastchess executable offers the `-events` stream.
     events_support: HashMap<PathBuf, bool>,
 }
@@ -302,6 +359,8 @@ impl TournamentScreen {
             focus_board: cx.new(|_| BoardView::new("live-focus-board").read_only()),
             focus_shown: (0, usize::MAX),
             live_all: false,
+            games_filter: GameFilter::All,
+            menu_open: false,
             events_support: HashMap::new(),
         }
     }
@@ -500,6 +559,13 @@ impl TournamentScreen {
             Err(err) => return self.fail(format!("{err:#}"), cx),
         };
         let stop = process.stop_handle();
+        let names = engines(&launch.args)
+            .into_iter()
+            .map(|(name, _)| name)
+            .collect();
+        let concurrency = flag_value(&launch.args, "-concurrency")
+            .and_then(|value| value.parse().ok())
+            .unwrap_or_else(fastchess::default_concurrency);
         let task = cx.spawn(async move |this, cx| {
             while let Ok(first) = process.lines.recv().await {
                 // Take whatever else is waiting so a burst costs one redraw.
@@ -555,6 +621,10 @@ impl TournamentScreen {
             live,
             live_off,
             live_seen: 0,
+            names,
+            concurrency,
+            started: HashMap::new(),
+            game_time: (Duration::ZERO, 0),
             _task: task,
         });
         self.live_games.clear();
@@ -586,28 +656,13 @@ impl TournamentScreen {
             live.snapshot()
         };
         let prefs = self.model.read(cx).config.board.prefs();
-        let show = |board: &Entity<BoardView>,
-                    shown: &mut (u64, usize),
-                    game: &LiveGame,
-                    cx: &mut Context<Self>| {
-            if *shown == (game.number, game.moves.len()) {
-                return;
-            }
-            let animate = shown.0 == game.number && shown.1 + 1 == game.moves.len();
-            let (pos, last) = game.position();
-            board.update(cx, |board, cx| {
-                board.set_prefs(prefs, cx);
-                board.set_position(pos, last, animate, cx);
-            });
-            *shown = (game.number, game.moves.len());
-        };
         for game in &games {
             let entry = self.live_boards.entry(game.slot).or_insert_with(|| {
                 let board = cx.new(|_| BoardView::new(("live-board", game.slot)).read_only());
                 (board, 0, usize::MAX)
             });
             let mut shown = (entry.1, entry.2);
-            show(&entry.0, &mut shown, game, cx);
+            tournament_wall::sync_board(&entry.0, &mut shown, game, prefs, cx);
             (entry.1, entry.2) = shown;
         }
         if let Some(game) = self
@@ -616,7 +671,7 @@ impl TournamentScreen {
         {
             let board = self.focus_board.clone();
             let mut shown = self.focus_shown;
-            show(&board, &mut shown, game, cx);
+            tournament_wall::sync_board(&board, &mut shown, game, prefs, cx);
             self.focus_shown = shown;
         }
         self.live_games = games;
@@ -1260,7 +1315,35 @@ impl TournamentScreen {
         Some(list)
     }
 
-    fn render_left(&self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+    fn render_left(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        if let Some(run) = self.run.as_ref().filter(|run| run.active()) {
+            return v_flex()
+                .id("tournament-setup")
+                .w(px(280.))
+                .h_full()
+                .flex_none()
+                .overflow_y_scroll()
+                .bg(rgb(T.surface))
+                .border_r_1()
+                .border_color(rgb(T.border))
+                .child(
+                    v_flex()
+                        .flex_none()
+                        .gap(px(16.))
+                        .px(px(18.))
+                        .pt(px(20.))
+                        .pb(px(24.))
+                        .child(
+                            div()
+                                .text_size(px(18.))
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .child("Engine tournament"),
+                        )
+                        .child(locked_summary(run))
+                        .children(self.render_saved(cx)),
+                )
+                .into_any_element();
+        }
         let source_this = cx.entity();
         let start = cx.entity();
         let busy = self.run.as_ref().is_some_and(Run::active) || self.pending.is_some();
@@ -1329,92 +1412,253 @@ impl TournamentScreen {
                     )
                     .children(self.render_saved(cx)),
             )
+            .into_any_element()
     }
 
-    fn render_run(&self, run: &Run, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let (status, colour) = match &run.status {
-            Status::Running => ("Running".to_owned(), T.good),
-            Status::Stopping => (
-                "Stopping: fastchess is saving its config. Stop again to kill it.".to_owned(),
-                T.faint,
-            ),
-            Status::Finished(text) => (text.clone(), T.fg_2),
-            Status::Failed(text) => (text.clone(), T.warn),
-        };
+    /// Opens the watch-all window on the games in progress.
+    fn watch_all(&self, cx: &mut Context<Self>) {
+        let Some(run) = &self.run else { return };
+        let Some(live) = run.live.clone() else { return };
+        LiveWall::open(self.model.clone(), live, run.names.clone(), cx);
+    }
+
+    fn render_run(&self, run: &Run, cx: &mut Context<Self>) -> AnyElement {
+        let this = cx.entity();
+        let live = self.live_games.len() as u64;
         let total = run.total.max(run.played());
         let fraction = if total == 0 {
             0.
         } else {
             run.played() as f32 / total as f32
         };
-        let summary = fastchess::summarize(&run.results);
-        let stop = cx.entity();
-        let resume = cx.entity();
-        let copy = cx.entity();
-        let copy_config = cx.entity();
-        let open_last = cx.entity();
-        let (dir, cwd, config) = (run.dir.clone(), run.cwd.clone(), run.config.clone());
-        let can_resume = !run.active() && run.config.is_file();
-        let last_index = run.games.front().map(|game| (game.game, game.pgn_index));
-        let tile = |label: &'static str, value: Option<String>| {
-            v_flex()
-                .gap(px(2.))
-                .min_w(px(150.))
-                .child(section_label(label))
-                .child(
-                    div()
-                        .font_family(MONO)
-                        .text_size(px(14.))
-                        .child(SharedString::from(value.unwrap_or_else(|| "–".into()))),
-                )
+        let queued = total.saturating_sub(run.played() + live);
+        let (label, fg, bg, note) = match &run.status {
+            Status::Running => ("Running", T.live_fg, T.live_bg, None),
+            Status::Stopping => (
+                "Stopping",
+                T.warn,
+                T.tour_tile,
+                Some((
+                    "Stopping: fastchess is saving its config. Stop again to kill it.".to_owned(),
+                    T.warn,
+                )),
+            ),
+            Status::Finished(text) => {
+                let label = if text.starts_with("Stopped") {
+                    "Stopped"
+                } else {
+                    "Finished"
+                };
+                (label, T.muted, T.tour_tile, Some((text.clone(), T.muted)))
+            }
+            Status::Failed(text) => (
+                "Failed",
+                T.danger_fg,
+                T.danger_bg,
+                Some((text.clone(), T.danger_fg)),
+            ),
         };
-        let mut games = v_flex().gap(px(2.));
-        for row in run.games.iter().take(200) {
-            let this = cx.entity();
-            let (number, index) = (row.game, row.pgn_index);
-            games = games.child(
+        let pill = h_flex()
+            .gap(px(6.))
+            .items_center()
+            .px(px(10.))
+            .py(px(3.))
+            .rounded(px(999.))
+            .bg(rgb(bg))
+            .child(div().size(px(7.)).rounded_full().bg(rgb(fg)))
+            .child(div().text_size(px(12.)).text_color(rgb(fg)).child(label));
+        let (a, b) = (
+            run.names.first().map(String::as_str).unwrap_or("Engine A"),
+            run.names.get(1).map(String::as_str).unwrap_or("Engine B"),
+        );
+        let title = h_flex()
+            .gap(px(12.))
+            .items_center()
+            .flex_wrap()
+            .child(name_chip(a, engine_colour(&run.names, a), 22.))
+            .child(
+                div()
+                    .text_size(px(22.))
+                    .text_color(rgb(T.muted))
+                    .child("vs"),
+            )
+            .child(name_chip(b, engine_colour(&run.names, b), 22.));
+
+        let open_last = run.games.front().map(|game| (game.game, game.pgn_index));
+        let can_resume = !run.active() && run.config.is_file();
+        let folder = run.dir.clone();
+        let (dir, cwd, config) = (run.dir.clone(), run.cwd.clone(), run.config.clone());
+        let more = this.clone();
+        let menu = self.menu_open.then(|| {
+            let (copy, copy_config) = (this.clone(), this.clone());
+            v_flex()
+                .absolute()
+                .top(px(40.))
+                .right(px(0.))
+                .w(px(190.))
+                .p(px(6.))
+                .gap(px(4.))
+                .rounded(px(10.))
+                .bg(rgb(T.tour_card))
+                .border_1()
+                .border_color(rgb(T.tour_card_border))
+                .child(
+                    btn("tournament-copy", "Copy command")
+                        .full()
+                        .on_click(move |_, cx| {
+                            copy.update(cx, |screen, cx| {
+                                screen.menu_open = false;
+                                screen.copy_command(cx)
+                            })
+                        }),
+                )
+                .child(
+                    btn("tournament-copy-config", "Copy config")
+                        .full()
+                        .on_click(move |_, cx| {
+                            copy_config.update(cx, |screen, cx| {
+                                screen.menu_open = false;
+                                screen.copy_config(cx)
+                            })
+                        }),
+                )
+        });
+        let overflow = div()
+            .relative()
+            .child(
+                btn("tournament-more", "⋯")
+                    .tooltip("More actions")
+                    .on_click(move |_, cx| {
+                        more.update(cx, |screen, cx| {
+                            screen.menu_open = !screen.menu_open;
+                            cx.notify();
+                        })
+                    }),
+            )
+            .children(menu);
+
+        let actions = h_flex()
+            .gap(px(8.))
+            .items_center()
+            .flex_wrap()
+            .child(
+                btn("tournament-open-folder", "Open folder")
+                    .tooltip(folder.display().to_string())
+                    .on_click(move |_, _| reveal_folder(&folder)),
+            )
+            .when_some(open_last, |row, (number, index)| {
+                let open = this.clone();
+                row.child(btn("tournament-open-last", "Open last game").on_click(
+                    move |window, cx| {
+                        open.update(cx, |screen, cx| screen.open_game(number, index, window, cx))
+                    },
+                ))
+            })
+            .when(run.live.is_some() && run.active(), |row| {
+                let watch = this.clone();
+                row.child(
+                    btn("tournament-watch-all", "Watch all live")
+                        .primary()
+                        .on_click(move |_, cx| watch.update(cx, |screen, cx| screen.watch_all(cx))),
+                )
+            })
+            .when(can_resume, |row| {
+                let resume = this.clone();
+                row.child(
+                    btn("tournament-resume", "Continue")
+                        .primary()
+                        .on_click(move |_, cx| {
+                            let (dir, cwd, config) = (dir.clone(), cwd.clone(), config.clone());
+                            resume.update(cx, |screen, cx| screen.resume(dir, cwd, config, cx))
+                        }),
+                )
+            })
+            .when(run.active(), |row| {
+                let stop = this.clone();
+                row.child(
+                    div()
+                        .id("tournament-stop")
+                        .flex()
+                        .items_center()
+                        .h(px(32.))
+                        .px(px(14.))
+                        .rounded(px(8.))
+                        .border_1()
+                        .border_color(rgb(T.danger_border))
+                        .bg(rgb(T.danger_bg))
+                        .text_size(px(13.))
+                        .text_color(rgb(T.danger_fg))
+                        .cursor_pointer()
+                        .child("Stop")
+                        .on_click(move |_, _, cx| stop.update(cx, |screen, cx| screen.stop(cx))),
+                )
+            })
+            .child(overflow);
+
+        let header = card()
+            .child(
                 h_flex()
-                    .id(("tournament-game", row.game as usize))
-                    .gap(px(10.))
-                    .px(px(6.))
-                    .py(px(3.))
-                    .rounded(px(4.))
-                    .cursor_pointer()
-                    .hover(|row| row.bg(rgb(T.selected)))
-                    .text_size(px(13.))
-                    .on_click(move |_, window, cx| {
-                        this.update(cx, |screen, cx| screen.open_game(number, index, window, cx))
-                    })
+                    .justify_between()
+                    .items_start()
+                    .flex_wrap()
+                    .gap(px(16.))
                     .child(
-                        div()
-                            .w(px(56.))
-                            .font_family(MONO)
-                            .text_color(rgb(T.muted))
-                            .child(SharedString::from(format!("#{}", row.game))),
-                    )
-                    .child(
-                        div()
-                            .flex_1()
+                        v_flex()
+                            .gap(px(8.))
                             .min_w_0()
-                            .overflow_hidden()
-                            .child(SharedString::from(format!("{} – {}", row.white, row.black))),
+                            .child(
+                                h_flex()
+                                    .gap(px(14.))
+                                    .items_center()
+                                    .flex_wrap()
+                                    .child(title)
+                                    .child(pill),
+                            )
+                            .children(note.map(|(text, colour)| {
+                                div()
+                                    .text_size(px(13.))
+                                    .text_color(rgb(colour))
+                                    .child(SharedString::from(text))
+                            })),
                     )
+                    .child(actions),
+            )
+            .child(
+                v_flex()
+                    .gap(px(8.))
                     .child(
-                        div()
-                            .w(px(64.))
-                            .font_family(MONO)
-                            .child(SharedString::from(row.result.clone())),
-                    )
-                    .child(
-                        div()
-                            .w(px(240.))
-                            .overflow_hidden()
+                        h_flex()
+                            .justify_between()
+                            .text_size(px(13.))
                             .text_color(rgb(T.muted))
-                            .child(SharedString::from(row.reason.clone())),
+                            .child(SharedString::from(format!(
+                                "{} / {} games · {:.0}%",
+                                run.played(),
+                                total,
+                                fraction * 100.
+                            )))
+                            .child(SharedString::from(format!(
+                                "{live} live · {queued} queued · ETA {}",
+                                eta(run)
+                            ))),
+                    )
+                    .child(
+                        div()
+                            .h(px(8.))
+                            .w_full()
+                            .rounded(px(4.))
+                            .bg(rgb(T.tour_tile))
+                            .child(
+                                div()
+                                    .h_full()
+                                    .rounded(px(4.))
+                                    .bg(rgb(T.engine_a))
+                                    .w(relative(fraction.clamp(0., 1.))),
+                            ),
                     ),
             );
-        }
-        let mut log = v_flex();
+
+        let mut log = v_flex().gap(px(2.));
         for line in run.log.iter().rev().take(150) {
             log = log.child(
                 div()
@@ -1424,223 +1668,151 @@ impl TournamentScreen {
                     .child(SharedString::from(line.clone())),
             );
         }
-        let mut block = v_flex();
-        for line in &run.results {
-            block = block.child(
-                div()
-                    .font_family(MONO)
-                    .text_size(px(12.5))
-                    .whitespace_nowrap()
-                    .child(SharedString::from(line.clone())),
-            );
-        }
+
         v_flex()
-            .gap(px(16.))
+            .gap(px(20.))
+            .child(header)
             .child(
                 h_flex()
-                    .gap(px(10.))
-                    .child(div().size(px(9.)).rounded_full().bg(rgb(colour)))
+                    .items_start()
+                    .flex_wrap()
+                    .gap(px(20.))
                     .child(
                         div()
                             .flex_1()
-                            .text_size(px(14.))
-                            .child(SharedString::from(status)),
-                    )
-                    .when(run.active(), |row| {
-                        row.child(
-                            btn("tournament-stop", "Stop").on_click(move |_, cx| {
-                                stop.update(cx, |screen, cx| screen.stop(cx))
-                            }),
-                        )
-                    })
-                    .when(can_resume, |row| {
-                        row.child(btn("tournament-resume", "Continue").primary().on_click(
-                            move |_, cx| {
-                                let (dir, cwd, config) = (dir.clone(), cwd.clone(), config.clone());
-                                resume.update(cx, |screen, cx| screen.resume(dir, cwd, config, cx))
-                            },
-                        ))
-                    })
-                    .when_some(last_index, |row, (number, index)| {
-                        row.child(btn("tournament-open-last", "Open last game").on_click(
-                            move |window, cx| {
-                                open_last.update(cx, |screen, cx| {
-                                    screen.open_game(number, index, window, cx)
-                                })
-                            },
-                        ))
-                    })
-                    .child(
-                        btn("tournament-copy", "Copy command").on_click(move |_, cx| {
-                            copy.update(cx, |screen, cx| screen.copy_command(cx))
-                        }),
-                    )
-                    .child(
-                        btn("tournament-copy-config", "Copy config").on_click(move |_, cx| {
-                            copy_config.update(cx, |screen, cx| screen.copy_config(cx))
-                        }),
-                    ),
-            )
-            .child(
-                v_flex()
-                    .gap(px(6.))
-                    .child(
-                        h_flex()
-                            .gap(px(16.))
-                            .text_size(px(13.))
-                            .text_color(rgb(T.muted))
-                            .child(div().flex_none().child(SharedString::from(format!(
-                                "{} of {} games",
-                                run.played(),
-                                total
-                            ))))
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .min_w_0()
-                                    .overflow_hidden()
-                                    .whitespace_nowrap()
-                                    .text_ellipsis()
-                                    .text_right()
-                                    .child(SharedString::from(run.dir.display().to_string())),
-                            ),
+                            .min_w(px(480.))
+                            .child(self.render_results(run)),
                     )
                     .child(
                         div()
-                            .h(px(6.))
-                            .w_full()
-                            .rounded(px(3.))
-                            .bg(rgb(T.bg))
-                            .child(
-                                div()
-                                    .h_full()
-                                    .rounded(px(3.))
-                                    .bg(rgb(T.fg_2))
-                                    .w(gpui::relative(fraction.clamp(0., 1.))),
-                            ),
+                            .flex_1()
+                            .min_w(px(360.))
+                            .child(self.render_live(run, cx)),
                     ),
             )
-            .child(self.render_live(run, cx))
-            .child(
-                panel().p(px(16.)).child(
-                    v_flex()
-                        .gap(px(14.))
-                        .children(summary.heading.clone().map(|heading| {
-                            div()
-                                .font_weight(FontWeight::SEMIBOLD)
-                                .child(SharedString::from(heading))
-                        }))
-                        .child(
-                            h_flex()
-                                .flex_wrap()
-                                .gap(px(18.))
-                                .child(tile("Elo", summary.elo.clone()))
-                                .child(tile("LLR", summary.llr.clone()))
-                                .child(tile("Games", summary.games.clone()))
-                                .child(tile("Pentanomial", summary.ptnml.clone()))
-                                .child(tile("LOS", summary.los.clone())),
-                        )
-                        // Head-to-head results fill the tiles; tables for more engines
-                        // are shown as fastchess prints them.
-                        .when(!run.results.is_empty() && summary.elo.is_none(), |column| {
-                            column.child(
-                                div()
-                                    .id("tournament-results-block")
-                                    .overflow_x_scroll()
-                                    .child(block),
-                            )
-                        })
-                        .when(run.results.is_empty(), |column| {
-                            column.child(
-                                div()
-                                    .text_size(px(13.))
-                                    .text_color(rgb(T.muted))
-                                    .child("Results appear after the first finished game."),
-                            )
-                        }),
-                ),
-            )
-            .child(
-                v_flex()
-                    .gap(px(6.))
-                    .child(section_label("Games (click to open in Analyse)"))
-                    .child(panel().p(px(6.)).child(if run.games.is_empty() {
-                        div()
-                            .p(px(6.))
-                            .text_size(px(13.))
-                            .text_color(rgb(T.muted))
-                            .child("No finished games yet.")
-                            .into_any_element()
-                    } else {
-                        games.into_any_element()
-                    })),
-            )
-            .child(
-                v_flex()
-                    .gap(px(6.))
-                    .child(section_label("fastchess output"))
-                    .child(panel().p(px(10.)).child(log)),
-            )
+            .child(self.render_games(run, cx))
+            .child(card().child(heading("fastchess output")).child(log))
+            .into_any_element()
     }
 
-    fn render_live(&self, run: &Run, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let count = if self.live_games.is_empty() {
+    fn render_results(&self, run: &Run) -> Div {
+        let numbers = fastchess::results(&run.results);
+        let view = numbers
+            .as_ref()
+            .and_then(|n| n.engines.as_ref().map(|(a, _)| a.clone()))
+            .or_else(|| run.names.first().cloned())
+            .unwrap_or_else(|| "Engine A".into());
+        let games = numbers
+            .as_ref()
+            .map(|n| n.games)
+            .unwrap_or_else(|| run.played());
+        let body = match (&numbers, run.results.is_empty()) {
+            (Some(n), _) => {
+                let other = n
+                    .engines
+                    .as_ref()
+                    .map(|(_, b)| b.clone())
+                    .or_else(|| run.names.get(1).cloned())
+                    .unwrap_or_else(|| "Engine B".into());
+                results_body(n, &view, &other).into_any_element()
+            }
+            (None, false) => {
+                let mut block = v_flex();
+                for line in &run.results {
+                    block = block.child(
+                        div()
+                            .font_family(MONO)
+                            .text_size(px(12.5))
+                            .whitespace_nowrap()
+                            .child(SharedString::from(line.clone())),
+                    );
+                }
+                div()
+                    .id("tournament-results-block")
+                    .overflow_x_scroll()
+                    .p(px(12.))
+                    .rounded(px(10.))
+                    .bg(rgb(T.tour_tile))
+                    .border_1()
+                    .border_color(rgb(T.tour_tile_border))
+                    .child(block)
+                    .into_any_element()
+            }
+            (None, true) => {
+                small("Results appear after the first finished game.").into_any_element()
+            }
+        };
+        card()
+            .child(
+                h_flex()
+                    .justify_between()
+                    .items_center()
+                    .flex_wrap()
+                    .gap(px(8.))
+                    .child(heading(format!("Results · {games} games")))
+                    .child(small(format!("from {view}'s view"))),
+            )
+            .child(body)
+    }
+
+    /// Games in progress: a board per game, with its clocks and evaluation.
+    fn render_live(&self, run: &Run, cx: &mut Context<Self>) -> AnyElement {
+        let count_text = if self.live_games.is_empty() {
             String::new()
         } else {
             format!("{} in progress", self.live_games.len())
         };
-        let header = || {
+        let head = |more: Option<AnyElement>| {
             h_flex()
+                .justify_between()
+                .items_center()
                 .gap(px(10.))
-                .child(section_label("Live games"))
+                .flex_wrap()
                 .child(
-                    div()
-                        .text_size(px(12.))
-                        .text_color(rgb(T.muted))
-                        .child(SharedString::from(count.clone())),
+                    h_flex()
+                        .gap(px(10.))
+                        .items_center()
+                        .child(heading("Live games"))
+                        .child(small(count_text.clone())),
                 )
-        };
-        let note = |text: &'static str| {
-            v_flex().gap(px(6.)).child(header()).child(
-                div()
-                    .text_size(px(13.))
-                    .text_color(rgb(T.muted))
-                    .child(text),
-            )
+                .children(more)
         };
         if run.live.is_none() {
-            return note(run.live_off.unwrap_or("Live boards are off.")).into_any_element();
+            return card()
+                .child(head(None))
+                .child(small(run.live_off.unwrap_or("Live boards are off.")))
+                .into_any_element();
         }
         if self.live_games.is_empty() {
-            return note(if run.active() {
-                "Waiting for the first moves…"
-            } else {
-                "No games in progress."
-            })
-            .into_any_element();
+            return card()
+                .child(head(None))
+                .child(small(if run.active() {
+                    "Waiting for the first moves…"
+                } else {
+                    "No games in progress."
+                }))
+                .into_any_element();
         }
-        let toggle = cx.entity();
+        let this = cx.entity();
         let more = self.live_games.len() > LIVE_LIMIT;
-        let header = header().when(more, |row| {
-            row.child(
-                btn(
-                    "live-show-all",
-                    if self.live_all {
-                        "Show fewer".to_owned()
-                    } else {
-                        format!("Show all {}", self.live_games.len())
-                    },
-                )
-                .h(24.)
-                .pad(7.)
-                .text(12.)
-                .on_click(move |_, cx| {
-                    toggle.update(cx, |screen, cx| {
-                        screen.live_all = !screen.live_all;
-                        cx.notify();
-                    })
-                }),
+        let toggle = more.then(|| {
+            btn(
+                "live-show-all",
+                if self.live_all {
+                    "Show fewer".to_owned()
+                } else {
+                    format!("Show all {}", self.live_games.len())
+                },
             )
+            .h(24.)
+            .pad(7.)
+            .text(12.)
+            .on_click(move |_, cx| {
+                this.update(cx, |screen, cx| {
+                    screen.live_all = !screen.live_all;
+                    cx.notify();
+                })
+            })
         });
         let shown = if self.live_all {
             usize::MAX
@@ -1656,34 +1828,153 @@ impl TournamentScreen {
             let slot = game.slot;
             let focused = self.live_focus == Some(slot);
             grid = grid.child(
-                v_flex()
+                div()
                     .id(("live-card", slot))
-                    .w(px(216.))
-                    .gap(px(4.))
-                    .p(px(6.))
-                    .rounded(px(6.))
-                    .border_1()
-                    .border_color(rgb(if focused { T.fg_2 } else { T.border }))
-                    .bg(rgb(T.surface))
                     .cursor_pointer()
                     .on_click(move |_, _, cx| {
                         this.update(cx, |screen, cx| screen.focus_live(slot, cx))
                     })
-                    .child(player_line(game, false, 12.))
-                    .child(div().size(px(202.)).child(board.clone()))
-                    .child(player_line(game, true, 12.)),
+                    .child(game_card(game, board, px(LIVE_BOARD), &run.names, focused)),
             );
         }
         let focus = self
             .live_focus
             .and_then(|slot| self.live_games.iter().find(|game| game.slot == slot))
             .map(|game| self.render_focus(game));
-        v_flex()
-            .gap(px(8.))
-            .child(header)
+        card()
+            .child(head(toggle.map(IntoElement::into_any_element)))
             .children(focus)
             .child(grid)
             .into_any_element()
+    }
+
+    /// The finished games, filterable, with a row per game that opens it in Analyse.
+    fn render_games(&self, run: &Run, cx: &mut Context<Self>) -> Div {
+        let filter = self.games_filter;
+        let counts = GameFilter::ALL.map(|f| {
+            let count = run.games.iter().filter(|row| f.matches(row)).count();
+            (
+                f,
+                SharedString::from(format!("{} ({count})", f.label())),
+                false,
+            )
+        });
+        let this = cx.entity();
+        let bar = segmented(
+            "tournament-filter",
+            counts.into(),
+            filter,
+            move |f, _, cx| {
+                this.update(cx, |screen, cx| {
+                    screen.games_filter = f;
+                    cx.notify();
+                })
+            },
+        );
+        let rows: Vec<&GameRow> = run
+            .games
+            .iter()
+            .filter(|row| filter.matches(row))
+            .take(200)
+            .collect();
+        let body = if run.games.is_empty() {
+            small("No finished games yet.").into_any_element()
+        } else if rows.is_empty() {
+            small("No games match this filter.").into_any_element()
+        } else {
+            let mut table = v_flex().min_w(px(760.)).gap(px(2.)).child(
+                h_flex()
+                    .gap(px(12.))
+                    .px(px(10.))
+                    .py(px(6.))
+                    .text_size(px(12.))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(rgb(T.faint))
+                    .child(div().w(px(72.)).child("#"))
+                    .child(div().flex_1().min_w_0().child("WHITE"))
+                    .child(div().flex_1().min_w_0().child("BLACK"))
+                    .child(div().w(px(96.)).child("RESULT"))
+                    .child(div().flex_1().min_w_0().child("TERMINATION"))
+                    .child(div().w(px(96.)).child("")),
+            );
+            for row in rows {
+                let this = cx.entity();
+                let (number, index) = (row.game, row.pgn_index);
+                let (chip_bg, chip_fg) = chip_colours(row, &run.names);
+                let decisive = row.result != "1/2-1/2";
+                table = table.child(
+                    h_flex()
+                        .id(("tournament-game", row.game as usize))
+                        .gap(px(12.))
+                        .px(px(10.))
+                        .py(px(7.))
+                        .rounded(px(6.))
+                        .items_center()
+                        .cursor_pointer()
+                        .bg(rgb(if decisive { T.surface_2 } else { T.tour_card }))
+                        .hover(|r| r.bg(rgb(T.hover)))
+                        .text_size(px(13.))
+                        .on_click(move |_, window, cx| {
+                            this.update(cx, |screen, cx| {
+                                screen.open_game(number, index, window, cx)
+                            })
+                        })
+                        .child(
+                            div()
+                                .w(px(72.))
+                                .font_family(MONO)
+                                .text_color(rgb(T.muted))
+                                .child(SharedString::from(format!("#{}", row.game))),
+                        )
+                        .child(name_cell(&row.white, &run.names))
+                        .child(name_cell(&row.black, &run.names))
+                        .child(
+                            div().w(px(96.)).child(
+                                div()
+                                    .px(px(8.))
+                                    .py(px(2.))
+                                    .rounded(px(6.))
+                                    .font_family(MONO)
+                                    .bg(rgb(chip_bg))
+                                    .text_color(rgb(chip_fg))
+                                    .child(SharedString::from(row.result.clone())),
+                            ),
+                        )
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w_0()
+                                .overflow_hidden()
+                                .whitespace_nowrap()
+                                .text_ellipsis()
+                                .text_color(rgb(T.muted))
+                                .child(SharedString::from(row.reason.clone())),
+                        )
+                        .child(
+                            div()
+                                .w(px(96.))
+                                .text_color(rgb(T.engine_a))
+                                .child("Analyse →"),
+                        ),
+                );
+            }
+            div()
+                .id("tournament-games-table")
+                .overflow_x_scroll()
+                .child(table)
+                .into_any_element()
+        };
+        card()
+            .child(
+                h_flex()
+                    .justify_between()
+                    .items_center()
+                    .flex_wrap()
+                    .gap(px(12.))
+                    .child(heading("Games (click to open in Analyse)"))
+                    .child(bar),
+            )
+            .child(body)
     }
 
     fn render_focus(&self, game: &LiveGame) -> impl IntoElement + use<> {
@@ -1789,7 +2080,7 @@ impl Render for TournamentScreen {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let left = self.render_left(window, cx);
         let right = match &self.run {
-            Some(run) => self.render_run(run, cx).into_any_element(),
+            Some(run) => self.render_run(run, cx),
             None => self.render_empty(cx).into_any_element(),
         };
         h_flex().items_start().size_full().child(left).child(
@@ -1799,8 +2090,13 @@ impl Render for TournamentScreen {
                 .min_w_0()
                 .h_full()
                 .overflow_y_scroll()
+                .bg(rgb(T.tour_bg))
                 .p(px(24.))
-                .child(right),
+                .child(
+                    h_flex()
+                        .justify_center()
+                        .child(div().w_full().max_w(px(1440.)).child(right)),
+                ),
         )
     }
 }
@@ -1844,6 +2140,679 @@ fn player_line(game: &LiveGame, white: bool, size: f32) -> impl IntoElement + us
         .child(div().font_family(MONO).child(SharedString::from(
             clock.map(tournament_live::format_clock).unwrap_or_default(),
         )))
+}
+
+/// A panel of the tournament tab.
+fn card() -> Div {
+    v_flex()
+        .gap(px(14.))
+        .p(px(20.))
+        .rounded(px(12.))
+        .bg(rgb(T.tour_card))
+        .border_1()
+        .border_color(rgb(T.tour_card_border))
+}
+
+/// A tile inside a panel.
+fn tile(label: &str) -> Div {
+    v_flex()
+        .flex_1()
+        .min_w(px(150.))
+        .gap(px(4.))
+        .p(px(14.))
+        .rounded(px(10.))
+        .bg(rgb(T.tour_tile))
+        .border_1()
+        .border_color(rgb(T.tour_tile_border))
+        .child(
+            div()
+                .text_size(px(12.))
+                .font_weight(FontWeight::SEMIBOLD)
+                .text_color(rgb(T.faint))
+                .child(SharedString::from(label.to_uppercase())),
+        )
+}
+
+fn heading(text: impl Into<SharedString>) -> Div {
+    let text: SharedString = text.into();
+    div()
+        .text_size(px(13.))
+        .font_weight(FontWeight::SEMIBOLD)
+        .text_color(rgb(T.muted))
+        .child(SharedString::from(text.to_uppercase()))
+}
+
+fn small(text: impl Into<SharedString>) -> Div {
+    div()
+        .text_size(px(12.))
+        .text_color(rgb(T.muted))
+        .child(text.into())
+}
+
+fn big(text: impl Into<SharedString>) -> Div {
+    div()
+        .text_size(px(30.))
+        .font_weight(FontWeight::BOLD)
+        .child(text.into())
+}
+
+/// A thin bar filled to `fraction`.
+fn meter(fraction: f32, colour: u32) -> Div {
+    div()
+        .h(px(6.))
+        .w_full()
+        .rounded(px(3.))
+        .bg(rgb(T.tour_tile_border))
+        .child(
+            div()
+                .h_full()
+                .rounded(px(3.))
+                .bg(rgb(colour))
+                .w(relative(fraction.clamp(0., 1.))),
+        )
+}
+
+fn swatch(colour: u32) -> Div {
+    div()
+        .size(px(8.))
+        .flex_none()
+        .rounded_full()
+        .bg(rgb(colour))
+}
+
+fn name_chip(name: &str, colour: u32, size: f32) -> Div {
+    h_flex()
+        .gap(px(8.))
+        .items_center()
+        .child(swatch(colour))
+        .child(
+            div()
+                .text_size(px(size))
+                .font_weight(FontWeight::BOLD)
+                .child(SharedString::from(name.to_owned())),
+        )
+}
+
+fn ratio(label: &str, value: String) -> Div {
+    h_flex()
+        .justify_between()
+        .gap(px(12.))
+        .text_size(px(13.))
+        .child(
+            div()
+                .text_color(rgb(T.muted))
+                .child(SharedString::from(label.to_owned())),
+        )
+        .child(div().font_family(MONO).child(SharedString::from(value)))
+}
+
+fn def_row(label: &str, value: String) -> Div {
+    h_flex()
+        .justify_between()
+        .gap(px(12.))
+        .text_size(px(13.))
+        .child(
+            div()
+                .flex_none()
+                .text_color(rgb(T.muted))
+                .child(SharedString::from(label.to_owned())),
+        )
+        .child(
+            div()
+                .min_w_0()
+                .overflow_hidden()
+                .whitespace_nowrap()
+                .text_ellipsis()
+                .text_right()
+                .child(SharedString::from(value)),
+        )
+}
+
+/// Engine A is blue, engine B orange, any others grey.
+fn engine_colour(names: &[String], name: &str) -> u32 {
+    match names.iter().position(|engine| engine == name) {
+        Some(0) => T.engine_a,
+        Some(1) => T.engine_b,
+        _ => T.muted,
+    }
+}
+
+/// Where the eval bar's white part ends, from 0 (Black ahead) to 1 (White ahead).
+fn white_share(score: Option<Score>) -> f32 {
+    match score {
+        None => 0.5,
+        Some(Score::Mate(moves)) => {
+            if moves > 0 {
+                1.
+            } else {
+                0.
+            }
+        }
+        Some(Score::Cp(cp)) => 1. / (1. + 10f32.powf(-(cp as f32) / 400.)),
+    }
+}
+
+/// The search whose line a game card shows: whoever is thinking, else the last one with a score.
+fn shown_search(game: &LiveGame) -> &Search {
+    let black_turn = game.thinking.is_some() && game.thinking == game.black;
+    if black_turn {
+        &game.black_search
+    } else if game.white_search.score.is_some() || game.thinking.is_some() {
+        &game.white_search
+    } else {
+        &game.black_search
+    }
+}
+
+/// The evaluation as a vertical bar: White's share fills from the bottom.
+fn eval_bar(game: &LiveGame, edge: Pixels) -> Div {
+    let share = white_share(shown_search(game).score);
+    div()
+        .relative()
+        .w(px(8.))
+        .h(edge)
+        .flex_none()
+        .rounded(px(4.))
+        .overflow_hidden()
+        .bg(rgb(T.tour_tile_border))
+        .child(
+            div()
+                .absolute()
+                .bottom(px(0.))
+                .left(px(0.))
+                .w_full()
+                .h(edge * share)
+                .bg(rgb(T.fg)),
+        )
+}
+
+/// A player's name, colour and clock; the side to move gets a "to move" label and a lit clock.
+fn player_row(game: &LiveGame, white: bool, names: &[String], to_move: bool) -> Div {
+    let (name, clock) = if white {
+        (&game.white, game.wtime)
+    } else {
+        (&game.black, game.btime)
+    };
+    let label = name.clone().unwrap_or_else(|| "…".into());
+    let clock = clock
+        .map(tournament_live::format_clock)
+        .unwrap_or_else(|| "–".into());
+    h_flex()
+        .gap(px(8.))
+        .items_center()
+        .text_size(px(13.))
+        .child(swatch(engine_colour(names, &label)))
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .overflow_hidden()
+                .whitespace_nowrap()
+                .text_ellipsis()
+                .font_weight(FontWeight::SEMIBOLD)
+                .child(SharedString::from(label)),
+        )
+        .children(to_move.then(|| {
+            div()
+                .text_size(px(11.))
+                .text_color(rgb(T.live_fg))
+                .child("to move")
+        }))
+        .child(
+            div()
+                .px(px(8.))
+                .py(px(2.))
+                .rounded(px(6.))
+                .font_family(MONO)
+                .bg(rgb(if to_move { T.live_bg } else { T.tour_tile }))
+                .text_color(rgb(if to_move { T.live_fg } else { T.fg_2 }))
+                .child(SharedString::from(clock)),
+        )
+}
+
+/// One game: Black, the board with its eval bar, White, then the game number and evaluation.
+/// Used by the tab and by the watch-all window.
+pub(crate) fn game_card(
+    game: &LiveGame,
+    board: &Entity<BoardView>,
+    edge: Pixels,
+    names: &[String],
+    focused: bool,
+) -> Div {
+    let (pos, _) = game.position();
+    let black_to_move = pos.turn().is_black();
+    let search = shown_search(game);
+    let eval = search
+        .score
+        .map(Score::format)
+        .unwrap_or_else(|| "–".into());
+    let depth = search
+        .depth
+        .map(|depth| format!(" / d{depth}"))
+        .unwrap_or_default();
+    v_flex()
+        .w(edge + px(40.))
+        .gap(px(8.))
+        .p(px(12.))
+        .rounded(px(12.))
+        .bg(rgb(T.tour_card))
+        .border_1()
+        .border_color(rgb(if focused {
+            T.border_strong
+        } else {
+            T.tour_card_border
+        }))
+        .child(player_row(game, false, names, black_to_move))
+        .child(
+            h_flex()
+                .gap(px(8.))
+                .items_start()
+                .child(eval_bar(game, edge))
+                .child(div().size(edge).child(board.clone())),
+        )
+        .child(player_row(game, true, names, !black_to_move))
+        .child(
+            h_flex()
+                .justify_between()
+                .text_size(px(12.))
+                .text_color(rgb(T.muted))
+                .child(SharedString::from(format!("Game #{}", game.number)))
+                .child(SharedString::from(format!("{eval}{depth}"))),
+        )
+}
+
+/// Result chip colours: draws grey, engine A's wins blue, engine B's wins orange.
+fn chip_colours(row: &GameRow, names: &[String]) -> (u32, u32) {
+    let winner = match row.result.as_str() {
+        "1-0" => Some(&row.white),
+        "0-1" => Some(&row.black),
+        _ => None,
+    };
+    match winner {
+        None => (T.chip_draw_bg, T.chip_draw_fg),
+        Some(name) if names.first() == Some(name) => (T.chip_a_bg, T.chip_a_fg),
+        Some(name) if names.get(1) == Some(name) => (T.chip_b_bg, T.chip_b_fg),
+        Some(_) => (T.tour_tile, T.fg_2),
+    }
+}
+
+fn name_cell(name: &str, names: &[String]) -> Div {
+    div()
+        .flex_1()
+        .min_w_0()
+        .overflow_hidden()
+        .whitespace_nowrap()
+        .text_ellipsis()
+        .child(
+            h_flex()
+                .gap(px(8.))
+                .items_center()
+                .child(swatch(engine_colour(names, name)))
+                .child(SharedString::from(name.to_owned())),
+        )
+}
+
+/// The results block as tiles, W/D/L and the pentanomial. Scores are from engine A's side.
+fn results_body(n: &fastchess::Results, a: &str, b: &str) -> Div {
+    let games = n.games.max(1) as f64;
+    let mut tiles = h_flex().gap(px(12.)).flex_wrap();
+    tiles = tiles.child(
+        tile("Elo")
+            .child(
+                h_flex()
+                    .gap(px(8.))
+                    .items_end()
+                    .child(big(format!("{:+.2}", n.elo)))
+                    .child(small(format!("± {:.2}", n.elo_err))),
+            )
+            .child(small(format!("nElo {:+.2} ± {:.2}", n.nelo, n.nelo_err))),
+    );
+    tiles = tiles.child(
+        tile("LOS")
+            .child(big(format!("{:.1} %", n.los)))
+            .child(meter(n.los as f32 / 100., T.engine_a)),
+    );
+    tiles = tiles.child(
+        tile("Score")
+            .child(big(format!("{:.1} / {}", n.points, n.games)))
+            .child(small(format!(
+                "{:.1}% · draws {:.0}%",
+                n.score_pct,
+                n.draws as f64 / games * 100.
+            ))),
+    );
+    if let Some(llr) = n.llr {
+        let span = (llr.upper - llr.lower).max(f64::EPSILON);
+        tiles = tiles.child(
+            tile("LLR")
+                .child(big(format!("{:+.2}", llr.value)))
+                .child(small(format!(
+                    "bounds {:.2} to {:.2}",
+                    llr.lower, llr.upper
+                )))
+                .child(meter(((llr.value - llr.lower) / span) as f32, T.engine_a)),
+        );
+    }
+
+    let total = (n.wins + n.draws + n.losses).max(1) as f32;
+    let wdl = v_flex()
+        .gap(px(6.))
+        .child(
+            h_flex()
+                .justify_between()
+                .text_size(px(12.))
+                .child(
+                    h_flex()
+                        .gap(px(6.))
+                        .items_center()
+                        .child(swatch(T.engine_a))
+                        .child(SharedString::from(format!("{a} wins {}", n.wins))),
+                )
+                .child(small(format!("Draws {}", n.draws)))
+                .child(
+                    h_flex()
+                        .gap(px(6.))
+                        .items_center()
+                        .child(SharedString::from(format!("{b} wins {}", n.losses)))
+                        .child(swatch(T.engine_b)),
+                ),
+        )
+        .child(
+            h_flex()
+                .h(px(14.))
+                .w_full()
+                .rounded(px(7.))
+                .overflow_hidden()
+                .child(
+                    div()
+                        .h_full()
+                        .w(relative(n.wins as f32 / total))
+                        .bg(rgb(T.engine_a)),
+                )
+                .child(
+                    div()
+                        .h_full()
+                        .w(relative(n.draws as f32 / total))
+                        .bg(rgb(T.border_strong)),
+                )
+                .child(
+                    div()
+                        .h_full()
+                        .w(relative(n.losses as f32 / total))
+                        .bg(rgb(T.engine_b)),
+                ),
+        );
+
+    // Losing pairs are orange, the middle grey, winning pairs blue.
+    let max = n.ptnml.iter().copied().max().unwrap_or(0).max(1) as f32;
+    let bins = ["LL", "LD", "DD/WL", "WD", "WW"];
+    let colours = [
+        T.engine_b,
+        T.engine_b,
+        T.border_strong,
+        T.engine_a,
+        T.engine_a,
+    ];
+    let chart = v_flex()
+        .flex_1()
+        .min_w(px(240.))
+        .gap(px(6.))
+        .child(heading("Pentanomial"))
+        .child(
+            h_flex()
+                .items_end()
+                .gap(px(10.))
+                .h(px(110.))
+                .children((0..5).map(|i| {
+                    v_flex()
+                        .flex_1()
+                        .h_full()
+                        .justify_end()
+                        .items_center()
+                        .gap(px(4.))
+                        .child(small(n.ptnml[i].to_string()))
+                        .child(
+                            div()
+                                .w_full()
+                                .h(px(72. * n.ptnml[i] as f32 / max))
+                                .rounded(px(4.))
+                                .bg(rgb(colours[i])),
+                        )
+                        .child(small(bins[i]))
+                })),
+        );
+    let ratios = v_flex()
+        .w(px(170.))
+        .gap(px(10.))
+        .child(ratio("Pairs ratio", format!("{:.2}", n.pairs_ratio)))
+        .child(ratio("WL/DD ratio", format!("{:.2}", n.wl_dd_ratio)))
+        .child(ratio("Draw ratio", format!("{:.1} %", n.draw_ratio)));
+
+    v_flex().gap(px(16.)).child(tiles).child(wdl).child(
+        h_flex()
+            .items_end()
+            .flex_wrap()
+            .gap(px(20.))
+            .child(chart)
+            .child(ratios),
+    )
+}
+
+/// The sidebar while a tournament runs: what it was started with, read from its command.
+fn locked_summary(run: &Run) -> Div {
+    let args = &run.args;
+    let engines = engines(args);
+    let names: Vec<String> = engines.iter().map(|(name, _)| name.clone()).collect();
+    let mut list = v_flex().gap(px(10.));
+    for (name, cmd) in &engines {
+        list = list.child(
+            h_flex()
+                .gap(px(10.))
+                .items_start()
+                .child(swatch(engine_colour(&names, name)))
+                .child(
+                    v_flex()
+                        .flex_1()
+                        .min_w_0()
+                        .child(
+                            div()
+                                .text_size(px(13.))
+                                .font_weight(FontWeight::BOLD)
+                                .child(SharedString::from(name.clone())),
+                        )
+                        .child(
+                            div()
+                                .font_family(MONO)
+                                .text_size(px(11.))
+                                .text_color(rgb(T.muted))
+                                .overflow_hidden()
+                                .whitespace_nowrap()
+                                .text_ellipsis()
+                                .child(SharedString::from(cmd.clone())),
+                        ),
+                ),
+        );
+    }
+
+    let each = flag_values(args, "-each");
+    let limit = ["tc", "st", "nodes", "depth"]
+        .into_iter()
+        .find_map(|key| {
+            kv(&each, key).map(|value| {
+                if key == "tc" {
+                    value.to_owned()
+                } else {
+                    format!("{key} {value}")
+                }
+            })
+        })
+        .unwrap_or_else(|| "–".into());
+    let book = kv(&flag_values(args, "-openings"), "file")
+        .map(|file| {
+            Path::new(file)
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_else(|| file.to_owned())
+        })
+        .unwrap_or_else(|| "None".into());
+    let schedule = format!(
+        "{} · {}",
+        if flag_value(args, "-tournament") == Some("gauntlet") {
+            "Gauntlet"
+        } else {
+            "Round robin"
+        },
+        if has(args, "-repeat") {
+            "2 games per round"
+        } else {
+            "1 game per round"
+        }
+    );
+    let settings = [
+        ("Time control", limit),
+        (
+            "Hash · Threads",
+            format!(
+                "{} MB · {}",
+                kv(&each, "option.Hash").unwrap_or("–"),
+                kv(&each, "option.Threads").unwrap_or("–")
+            ),
+        ),
+        ("Schedule", schedule),
+        (
+            "Rounds",
+            flag_value(args, "-rounds").unwrap_or("–").to_owned(),
+        ),
+        (
+            "Concurrency",
+            flag_value(args, "-concurrency").unwrap_or("–").to_owned(),
+        ),
+        ("Book", book),
+    ];
+    let mut defs = v_flex().gap(px(8.));
+    for (label, value) in settings {
+        defs = defs.child(def_row(label, value));
+    }
+    let on_off = |flag: &str| if has(args, flag) { "On" } else { "Off" };
+    let sprt = if has(args, "-sprt") {
+        let sprt = flag_values(args, "-sprt");
+        format!(
+            "elo0 {} · elo1 {}",
+            kv(&sprt, "elo0").unwrap_or("–"),
+            kv(&sprt, "elo1").unwrap_or("–")
+        )
+    } else {
+        "Off".to_owned()
+    };
+    let mut rules = v_flex().gap(px(8.));
+    for (label, value) in [
+        ("Draw adjudication", on_off("-draw").to_owned()),
+        ("Resign adjudication", on_off("-resign").to_owned()),
+        ("Recover crashes", on_off("-recover").to_owned()),
+        ("SPRT", sprt),
+    ] {
+        rules = rules.child(def_row(label, value));
+    }
+
+    v_flex()
+        .gap(px(16.))
+        .child(card().gap(px(12.)).child(heading("Engines")).child(list))
+        .child(
+            card()
+                .gap(px(12.))
+                .child(heading("Settings"))
+                .child(defs)
+                .child(divider())
+                .child(rules),
+        )
+        .child(
+            btn("tournament-start", "Stop tournament to edit")
+                .disabled(true)
+                .full()
+                .h(38.),
+        )
+}
+
+/// Engines in the order a command gives them, as (name, executable).
+fn engines(args: &[String]) -> Vec<(String, String)> {
+    args.iter()
+        .enumerate()
+        .filter(|(_, arg)| arg.as_str() == "-engine")
+        .map(|(index, _)| {
+            let values: Vec<&str> = args[index + 1..]
+                .iter()
+                .take_while(|arg| !arg.starts_with('-'))
+                .map(String::as_str)
+                .collect();
+            (
+                kv(&values, "name").unwrap_or("engine").to_owned(),
+                kv(&values, "cmd").unwrap_or("").to_owned(),
+            )
+        })
+        .collect()
+}
+
+/// The values after a flag, up to the next flag.
+fn flag_values<'a>(args: &'a [String], flag: &str) -> Vec<&'a str> {
+    let Some(start) = args.iter().position(|arg| arg.as_str() == flag) else {
+        return Vec::new();
+    };
+    args[start + 1..]
+        .iter()
+        .take_while(|arg| !arg.starts_with('-'))
+        .map(String::as_str)
+        .collect()
+}
+
+fn flag_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
+    flag_values(args, flag).first().copied()
+}
+
+/// The value of `key=value` among `values`.
+fn kv<'a>(values: &[&'a str], key: &str) -> Option<&'a str> {
+    values
+        .iter()
+        .find_map(|&value| value.strip_prefix(key)?.strip_prefix('='))
+}
+
+fn has(args: &[String], flag: &str) -> bool {
+    args.iter().any(|arg| arg.as_str() == flag)
+}
+
+/// Time left at the average pace of finished games: average game time × games left ÷
+/// concurrency.
+fn eta(run: &Run) -> String {
+    let (time, count) = run.game_time;
+    if count == 0 || run.concurrency == 0 {
+        return "–".into();
+    }
+    let remaining = run.total.max(run.played()).saturating_sub(run.played());
+    let average = time.as_secs_f64() / f64::from(count);
+    format_duration(average * remaining as f64 / run.concurrency as f64)
+}
+
+fn format_duration(secs: f64) -> String {
+    let secs = secs.round() as u64;
+    if secs < 60 {
+        format!("{secs}s")
+    } else if secs < 3600 {
+        format!("{}m {:02}s", secs / 60, secs % 60)
+    } else {
+        format!("{}h {:02}m", secs / 3600, secs / 60 % 60)
+    }
+}
+
+/// Shows a folder in the system's file manager.
+fn reveal_folder(path: &Path) {
+    #[cfg(target_os = "windows")]
+    let program = "explorer";
+    #[cfg(target_os = "macos")]
+    let program = "open";
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let program = "xdg-open";
+    if let Err(err) = std::process::Command::new(program).arg(path).spawn() {
+        log::warn!("could not open {}: {err}", path.display());
+    }
 }
 
 fn search_text(search: &Search, long: bool) -> String {

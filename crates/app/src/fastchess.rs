@@ -598,37 +598,126 @@ pub fn parse_line(line: &str) -> Line<'_> {
     parsed.unwrap_or(Line::Text(line))
 }
 
-/// Headline numbers from a head-to-head results block.
+/// A head-to-head results block as numbers, for the stat tiles. Scores are from the first
+/// engine's side, as fastchess prints them.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct Summary {
-    pub heading: Option<String>,
-    pub elo: Option<String>,
-    pub los: Option<String>,
-    pub games: Option<String>,
-    pub ptnml: Option<String>,
-    pub llr: Option<String>,
+pub struct Results {
+    /// Engine A and engine B, from the block's heading.
+    pub engines: Option<(String, String)>,
+    pub elo: f64,
+    pub elo_err: f64,
+    pub nelo: f64,
+    pub nelo_err: f64,
+    pub los: f64,
+    pub draw_ratio: f64,
+    pub pairs_ratio: f64,
+    pub wl_dd_ratio: f64,
+    pub games: u64,
+    pub wins: u64,
+    pub losses: u64,
+    pub draws: u64,
+    pub points: f64,
+    pub score_pct: f64,
+    /// Pentanomial counts from 0-2 to 2-0 points, for the pairs of games.
+    pub ptnml: [u64; 5],
+    /// Sequential test state, present only with SPRT.
+    pub llr: Option<Llr>,
 }
 
-pub fn summarize(block: &[String]) -> Summary {
-    let mut summary = Summary::default();
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Llr {
+    pub value: f64,
+    pub lower: f64,
+    pub upper: f64,
+}
+
+/// Parses the numbers of a head-to-head block. `None` when the block is not one, such as
+/// the table fastchess prints for more than two engines.
+pub fn results(block: &[String]) -> Option<Results> {
+    let mut out = Results::default();
+    let (mut elo, mut los, mut games, mut ptnml, mut llr) = (false, false, false, false, None);
     for line in block {
         let line = line.trim();
-        let field = |prefix: &str| line.strip_prefix(prefix).map(|rest| rest.trim().to_owned());
-        if line.starts_with("Results of ") {
-            summary.heading = Some(line.trim_end_matches(':').to_owned());
-        } else if let Some(value) = field("Elo:") {
-            summary.elo = Some(value);
-        } else if let Some(value) = field("LOS:") {
-            summary.los = Some(value);
-        } else if let Some(value) = field("Games:") {
-            summary.games = Some(value);
-        } else if let Some(value) = field("Ptnml(0-2):") {
-            summary.ptnml = Some(value);
-        } else if let Some(value) = field("LLR:") {
-            summary.llr = Some(value);
+        // The first number after `key` (ignoring commas and units).
+        let number = |key: &str| -> Option<f64> {
+            let rest = line.split_once(key)?.1;
+            rest.split(|c: char| c == ',' || c.is_whitespace())
+                .find(|token| !token.is_empty())?
+                .parse()
+                .ok()
+        };
+        if let Some(rest) = line.strip_prefix("Results of ") {
+            let names = rest.trim_end_matches(':');
+            out.engines = names.split_once(" vs ").map(|(a, b)| {
+                let b = b.split(" (").next().unwrap_or(b);
+                (
+                    a.trim().to_owned(),
+                    b.trim().trim_end_matches(':').to_owned(),
+                )
+            });
+        } else if line.starts_with("Elo:") {
+            // Elo: -58.45 +/- 98.05, nElo: -173.72 +/- 278.00
+            let nums: Vec<f64> = line
+                .split(|c: char| c == ',' || c.is_whitespace())
+                .filter_map(|token| token.parse().ok())
+                .collect();
+            if let [e, ee, n, ne] = nums[..] {
+                (out.elo, out.elo_err, out.nelo, out.nelo_err) = (e, ee, n, ne);
+                elo = true;
+            }
+        } else if line.starts_with("LOS:") {
+            out.los = number("LOS:").unwrap_or_default();
+            out.draw_ratio = number("DrawRatio:").unwrap_or_default();
+            out.pairs_ratio = number("PairsRatio:").unwrap_or_default();
+            los = true;
+        } else if line.starts_with("Games:") {
+            out.games = number("Games:").unwrap_or_default() as u64;
+            out.wins = number("Wins:").unwrap_or_default() as u64;
+            out.losses = number("Losses:").unwrap_or_default() as u64;
+            out.draws = number("Draws:").unwrap_or_default() as u64;
+            out.points = number("Points:").unwrap_or_default();
+            out.score_pct = line
+                .split_once('(')
+                .and_then(|(_, rest)| rest.split('%').next())
+                .and_then(|pct| pct.trim().parse().ok())
+                .unwrap_or_default();
+            games = true;
+        } else if line.starts_with("Ptnml(0-2):") {
+            let inside = line
+                .split_once('[')
+                .and_then(|(_, rest)| rest.split_once(']'));
+            if let Some((list, _)) = inside {
+                let values: Vec<u64> = list
+                    .split(',')
+                    .filter_map(|v| v.trim().parse().ok())
+                    .collect();
+                if let Ok(values) = <[u64; 5]>::try_from(values) {
+                    out.ptnml = values;
+                    ptnml = true;
+                }
+            }
+            out.wl_dd_ratio = number("Ratio:").unwrap_or_default();
+        } else if line.starts_with("LLR:") {
+            // LLR: -0.03 (-0.9%) (-2.94, 2.94) [0.00, 5.00]
+            let value = number("LLR:");
+            let bounds = line.rfind('(').and_then(|open| {
+                let inner = line[open + 1..].split(')').next()?;
+                let (lower, upper) = inner.split_once(',')?;
+                Some((lower.trim().parse().ok()?, upper.trim().parse().ok()?))
+            });
+            if let (Some(value), Some((lower, upper))) = (value, bounds) {
+                llr = Some(Llr {
+                    value,
+                    lower,
+                    upper,
+                });
+            }
         }
     }
-    summary
+    (elo && los && games && ptnml).then(|| {
+        out.llr = llr;
+        out
+    })
 }
 
 /// A running fastchess process. Output lines arrive on `lines`; the channel closes when
@@ -1122,16 +1211,28 @@ mod tests {
         ]
         .map(String::from)
         .into();
-        let summary = summarize(&block);
+
+        let numbers = results(&block).expect("a head-to-head block");
+        assert_eq!(numbers.engines, Some(("a".into(), "b".into())));
+        assert_eq!((numbers.elo, numbers.elo_err), (-58.45, 98.05));
+        assert_eq!((numbers.nelo, numbers.nelo_err), (-173.72, 278.0));
+        assert_eq!((numbers.los, numbers.draw_ratio), (11.03, 66.67));
         assert_eq!(
-            summary.heading.as_deref(),
-            Some("Results of a vs b (1+0.01, 1t, 8MB)")
+            (numbers.games, numbers.wins, numbers.losses, numbers.draws),
+            (6, 0, 1, 5)
         );
+        assert_eq!((numbers.points, numbers.score_pct), (2.5, 41.67));
+        assert_eq!(numbers.ptnml, [0, 1, 2, 0, 0]);
         assert_eq!(
-            summary.elo.as_deref(),
-            Some("-58.45 +/- 98.05, nElo: -173.72 +/- 278.00")
+            numbers.llr,
+            Some(Llr {
+                value: -0.03,
+                lower: -2.94,
+                upper: 2.94
+            })
         );
-        assert!(summary.llr.unwrap().starts_with("-0.03"));
+        // A table for more engines is not a head-to-head block.
+        assert!(results(&["Results of 3 engines:".to_owned()]).is_none());
     }
 
     #[test]

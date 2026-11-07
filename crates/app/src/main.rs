@@ -21,6 +21,7 @@ mod shell;
 mod snapshot;
 mod sound;
 mod tournament_live;
+mod tournament_wall;
 
 use gpui::{
     App, AppContext as _, Bounds, TitlebarOptions, WindowBounds, WindowDecorations, WindowOptions,
