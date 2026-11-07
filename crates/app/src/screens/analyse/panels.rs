@@ -162,6 +162,32 @@ fn replay(base: &Chess, sans: &[String]) -> (Chess, Vec<Move>) {
     (pos, moves)
 }
 
+/// What the Lines buttons ask for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LinesTarget {
+    Step(bool),
+    /// The engine's own default.
+    Default,
+    /// One line per legal move.
+    All,
+}
+
+/// The MultiPV value for a Lines button, within the engine's range.
+pub fn lines_target(
+    target: LinesTarget,
+    current: i64,
+    default: i64,
+    legal: i64,
+    min: i64,
+    max: i64,
+) -> i64 {
+    match target {
+        LinesTarget::Step(up) => step_value("MultiPV", current, up, min, max),
+        LinesTarget::Default => default.clamp(min, max),
+        LinesTarget::All => legal.clamp(min, max),
+    }
+}
+
 /// The next stepper value: Hash doubles and halves, everything else moves by one.
 pub fn step_value(name: &str, value: i64, up: bool, min: i64, max: i64) -> i64 {
     let next = match (name, up) {
@@ -223,6 +249,7 @@ impl AnalyseScreen {
         let lines = self.shown_lines(cx);
         let lines_stepper = lines.map(|value| {
             let (down_this, up_this) = (this.clone(), this.clone());
+            let (reset_this, max_this) = (this.clone(), this.clone());
             h_flex()
                 .gap(px(2.))
                 .mr(px(4.))
@@ -256,6 +283,27 @@ impl AnalyseScreen {
                         .tooltip("MultiPV: lines each engine searches, saved in its options")
                         .on_click(move |_, cx| {
                             up_this.update(cx, |screen, cx| screen.step_lines(true, cx));
+                        }),
+                )
+                .child(
+                    small("lines-reset", "Reset")
+                        .w(48.)
+                        .pad(0.)
+                        .tooltip("Back to each engine's default number of lines")
+                        .on_click(move |_, cx| {
+                            reset_this.update(cx, |screen, cx| {
+                                screen.set_lines(LinesTarget::Default, cx)
+                            });
+                        }),
+                )
+                .child(
+                    small("lines-max", "Max")
+                        .w(40.)
+                        .pad(0.)
+                        .tooltip("A line for every legal move, as far as the engine allows")
+                        .on_click(move |_, cx| {
+                            max_this
+                                .update(cx, |screen, cx| screen.set_lines(LinesTarget::All, cx));
                         }),
                 )
         });
@@ -369,20 +417,36 @@ impl AnalyseScreen {
     /// Steps MultiPV on every analysis engine that has it, saved in each engine's
     /// options, without restarting them.
     pub(super) fn step_lines(&mut self, up: bool, cx: &mut Context<Self>) {
+        self.set_lines(LinesTarget::Step(up), cx);
+    }
+
+    /// Sets MultiPV on every analysis engine that has it, each within its own range,
+    /// saved in its options and applied without restarting it.
+    pub(super) fn set_lines(&mut self, target: LinesTarget, cx: &mut Context<Self>) {
         let Some(current) = self.shown_lines(cx) else {
             return;
         };
+        let legal = self.analysed_pos().legal_moves().len().max(1) as i64;
         let changes: Vec<(EngineId, i64)> = self
             .live
             .read(cx)
             .engines
             .iter()
             .filter_map(|engine| {
-                let (_, min, max) = spin_option(&engine.config, "MultiPV")?;
-                Some((
-                    engine.config.id,
-                    step_value("MultiPV", current, up, min, max),
-                ))
+                let (value, min, max) = spin_option(&engine.config, "MultiPV")?;
+                let default = match engine
+                    .config
+                    .info
+                    .options
+                    .iter()
+                    .find(|option| option.name == "MultiPV")
+                    .map(|option| &option.kind)
+                {
+                    Some(OptionKind::Spin { default, .. }) => *default,
+                    _ => 1,
+                };
+                let next = lines_target(target, current, default, legal, min, max);
+                (next != value).then_some((engine.config.id, next))
             })
             .collect();
         for (id, value) in changes {
@@ -1397,6 +1461,16 @@ mod tests {
         config.options.insert("Hash".to_owned(), "32".to_owned());
         assert_eq!(spin_option(&config, "Hash"), Some((32, 1, 64)));
         assert_eq!(spin_option(&config, "Threads"), None);
+    }
+
+    #[test]
+    fn lines_buttons_stay_in_the_engine_range() {
+        assert_eq!(lines_target(LinesTarget::Step(true), 3, 1, 20, 1, 500), 4);
+        assert_eq!(lines_target(LinesTarget::Default, 7, 1, 20, 1, 500), 1);
+        assert_eq!(lines_target(LinesTarget::All, 1, 1, 34, 1, 500), 34);
+        // An engine allowing fewer lines than there are moves gets its maximum.
+        assert_eq!(lines_target(LinesTarget::All, 1, 1, 34, 1, 8), 8);
+        assert_eq!(lines_target(LinesTarget::Default, 4, 0, 34, 1, 8), 1);
     }
 
     #[test]
