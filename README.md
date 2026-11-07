@@ -18,6 +18,9 @@ ten kept in memory). Closing a Play tab pauses that game; reopening resumes it.
 Unsaved games have separate recovery snapshots, offered in tabs after a restart.
 Train and Settings each have a single shared tab.
 
+A king in check is highlighted in red on every board, including checkmate. The
+highlight clears when check ends and is hidden while editing a position.
+
 ## Run it
 
 ```sh

@@ -924,6 +924,15 @@ fn arrow_path(from: Point<Pixels>, to: Point<Pixels>, cell: Pixels) -> Option<gp
     builder.build().ok()
 }
 
+/// Only the side to move can be in check in a legal position.
+fn checked_king(pos: &Chess) -> Option<Square> {
+    if pos.is_check() {
+        pos.board().king_of(pos.turn())
+    } else {
+        None
+    }
+}
+
 impl Render for BoardView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let entity = cx.entity();
@@ -936,6 +945,7 @@ impl Render for BoardView {
             .filter(|drag| drag.moved)
             .map(|drag| drag.from);
         let editing = self.edit.is_some();
+        let checked = (!editing).then(|| checked_king(&self.pos)).flatten();
         let targets: Vec<Square> = if self.prefs.show_legal && self.interactive && !editing {
             self.selected
                 .map(|from| {
@@ -986,6 +996,16 @@ impl Render for BoardView {
                     .is_some_and(|(from, to)| from == square || to == square)
                 {
                     sq = sq.child(div().absolute().inset_0().bg(premove_tint()));
+                }
+                if checked == Some(square) {
+                    sq = sq.child(
+                        div()
+                            .absolute()
+                            .inset_0()
+                            .bg(rgba(0xD93636B8))
+                            .border_2()
+                            .border_color(rgba(0xF46B6BE0)),
+                    );
                 }
                 if on_squares && x == 0 {
                     sq = sq.child(
@@ -1331,6 +1351,23 @@ pub fn theme_swatch(theme: BoardTheme, size: Pixels, _cx: &App) -> impl IntoElem
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn check_highlight_tracks_the_checked_king_and_clears_after_escape() {
+        let mut tree = chess_core::GameTree::from_fen("4k3/8/8/8/8/8/4r3/4K3 w - - 0 1").unwrap();
+        assert_eq!(
+            checked_king(&tree.node(chess_core::GameTree::ROOT).pos),
+            Some(Square::E1)
+        );
+        let escaped = tree.add_san(chess_core::GameTree::ROOT, "Kxe2").unwrap();
+        assert_eq!(checked_king(&tree.node(escaped).pos), None);
+        let tree = chess_core::GameTree::from_fen("4k3/4R3/8/8/8/8/8/4K3 b - - 0 1").unwrap();
+        assert_eq!(
+            checked_king(&tree.node(chess_core::GameTree::ROOT).pos),
+            Some(Square::E8)
+        );
+        assert_eq!(checked_king(&Chess::default()), None);
+    }
 
     #[test]
     fn arrows_are_hit_along_the_shaft_and_head_but_not_at_the_origin() {
