@@ -1470,9 +1470,10 @@ impl TournamentScreen {
             Source::Form => self.render_form(window, cx).into_any_element(),
             Source::Paste => self.render_paste(cx).into_any_element(),
         };
+        let dialog_width = (f32::from(window.viewport_size().width) * 0.7).clamp(760., 1200.);
         let dialog = v_flex()
             .id("tournament-setup")
-            .w(px(760.))
+            .w(px(dialog_width))
             .max_w_full()
             .max_h_full()
             .overflow_y_scroll()

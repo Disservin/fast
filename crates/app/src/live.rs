@@ -826,6 +826,9 @@ impl LiveAnalysis {
             };
             if terminal {
                 handle.stop();
+                // No search is started for this position, so there will be no
+                // matching bestmove event to clear the previous running state.
+                engine.running = false;
                 self.model.update(cx, |model, cx| {
                     model
                         .engine_status
