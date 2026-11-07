@@ -227,9 +227,49 @@ impl AnalyseScreen {
         let all_this = this.clone();
         let arrows_this = this.clone();
         let small = |id: &'static str, label: &'static str| btn(id, label).h(26.).pad(8.).text(12.);
+        let lines = self.shown_lines(cx);
+        let lines_stepper = lines.map(|value| {
+            let (down_this, up_this) = (this.clone(), this.clone());
+            h_flex()
+                .gap(px(2.))
+                .mr(px(4.))
+                .child(
+                    div()
+                        .mr(px(2.))
+                        .text_size(px(12.))
+                        .text_color(rgb(T.muted))
+                        .child("Lines"),
+                )
+                .child(
+                    small("lines-down", "−")
+                        .w(24.)
+                        .pad(0.)
+                        .disabled(value <= 1)
+                        .on_click(move |_, cx| {
+                            down_this.update(cx, |screen, cx| screen.step_lines(false, cx));
+                        }),
+                )
+                .child(
+                    mono(value.to_string())
+                        .min_w(px(22.))
+                        .flex()
+                        .justify_center()
+                        .text_size(px(13.)),
+                )
+                .child(
+                    small("lines-up", "+")
+                        .w(24.)
+                        .pad(0.)
+                        .tooltip("MultiPV: lines each engine searches, saved in its options")
+                        .on_click(move |_, cx| {
+                            up_this.update(cx, |screen, cx| screen.step_lines(true, cx));
+                        }),
+                )
+        });
         let view_tools = h_flex()
             .gap(px(4.))
             .mr(px(6.))
+            .children(lines_stepper)
             .child(
                 small(
                     "sort-lines",
@@ -327,6 +367,43 @@ impl AnalyseScreen {
                         });
                     }),
             )
+    }
+
+    /// Lines shown by the analysis engines: the first one's MultiPV.
+    fn shown_lines(&self, cx: &gpui::App) -> Option<i64> {
+        self.live
+            .read(cx)
+            .engines
+            .iter()
+            .find_map(|engine| spin_option(&engine.config, "MultiPV"))
+            .map(|(value, ..)| value)
+    }
+
+    /// Steps MultiPV on every analysis engine that has it, saved in each engine's
+    /// options, without restarting them.
+    fn step_lines(&mut self, up: bool, cx: &mut Context<Self>) {
+        let Some(current) = self.shown_lines(cx) else {
+            return;
+        };
+        let changes: Vec<(EngineId, i64)> = self
+            .live
+            .read(cx)
+            .engines
+            .iter()
+            .filter_map(|engine| {
+                let (_, min, max) = spin_option(&engine.config, "MultiPV")?;
+                Some((
+                    engine.config.id,
+                    step_value("MultiPV", current, up, min, max),
+                ))
+            })
+            .collect();
+        for (id, value) in changes {
+            self.live.update(cx, |live, cx| {
+                live.set_option(id, "MultiPV", value.to_string(), cx);
+            });
+        }
+        self.rebuild_rows(cx);
     }
 
     fn set_spin(&mut self, id: EngineId, name: &str, value: i64, cx: &mut Context<Self>) {

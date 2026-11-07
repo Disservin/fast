@@ -47,6 +47,10 @@ returns to the game.
   By depth** changes the order, **All moves** adds every legal move like Nibbler, and **Arrows**
   draws one arrow per engine line, coloured from best (blue) through good (green), inaccuracy
   (yellow) and mistake (orange) to blunder (red).
+- Click an engine arrow on the board to play its move, as in Nibbler (turn it off under
+  **Settings › Board & pieces**). Clicking one of your pieces still selects it.
+- **Lines − +** in the table sets MultiPV for every analysis engine, saved in its options; the
+  **Engine** panel sets it per engine.
 - Lines are remembered per position, so stepping back and forth keeps them, and a position
   reached by another move order (a transposition) shows what was already found.
 - Stepping forward returns into the variation you came back from.

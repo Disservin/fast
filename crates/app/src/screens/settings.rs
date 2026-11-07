@@ -931,7 +931,9 @@ impl SettingsScreen {
         let coords_this = this.clone();
         let notation_this = this.clone();
         let check_row = h_flex()
-            .gap(px(24.))
+            .flex_wrap()
+            .gap_x(px(24.))
+            .gap_y(px(8.))
             .child(board_check(
                 "legal",
                 config.show_legal,
@@ -952,6 +954,13 @@ impl SettingsScreen {
                 "Auto-promote to queen",
                 this.clone(),
                 |b, v| b.auto_queen = v,
+            ))
+            .child(board_check(
+                "click-arrows",
+                config.click_arrows,
+                "Click an engine arrow to play it",
+                this.clone(),
+                |b, v| b.click_arrows = v,
             ))
             .child(board_check(
                 "sounds",

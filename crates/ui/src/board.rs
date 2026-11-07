@@ -72,6 +72,8 @@ pub struct BoardPrefs {
     pub show_legal: bool,
     pub highlight_last: bool,
     pub auto_queen: bool,
+    /// Clicking an engine arrow plays its move, as in Nibbler.
+    pub click_arrows: bool,
 }
 
 impl Default for BoardPrefs {
@@ -84,6 +86,7 @@ impl Default for BoardPrefs {
             show_legal: true,
             highlight_last: true,
             auto_queen: false,
+            click_arrows: true,
         }
     }
 }
@@ -109,6 +112,31 @@ impl Arrow {
         self.color = Some(color);
         self
     }
+}
+
+/// Whether a point lies on an arrow drawn between two square centres, in board
+/// pixels. The shaft is widened a little so it is easy to hit; the origin square is
+/// left out, since that is where its piece stands.
+pub fn arrow_hit(point: (f32, f32), from: (f32, f32), to: (f32, f32), cell: f32) -> bool {
+    let (dx, dy) = (to.0 - from.0, to.1 - from.1);
+    let length = (dx * dx + dy * dy).sqrt();
+    if length < 1.0 {
+        return false;
+    }
+    let (ux, uy) = (dx / length, dy / length);
+    let (px, py) = (point.0 - from.0, point.1 - from.1);
+    let along = px * ux + py * uy;
+    let across = (px * -uy + py * ux).abs();
+    if along < cell * 0.5 || along > length + cell * 0.05 {
+        return false;
+    }
+    let head_len = cell * 0.56;
+    let reach = if along >= length - head_len {
+        cell * 0.3
+    } else {
+        cell * 0.16
+    };
+    across <= reach
 }
 
 /// An arrow in grid coordinates: from, to and colour.
@@ -394,6 +422,15 @@ impl BoardView {
                     cx.notify();
                     return;
                 }
+                if !self.can_move_piece(square)
+                    && self.prefs.click_arrows
+                    && self.interactive
+                    && let Some((from, to)) = self.arrow_at(event.position)
+                    && self.attempt_move(from, to, cx)
+                {
+                    cx.notify();
+                    return;
+                }
                 if self.can_move_piece(square) {
                     if let Some(piece) = self.pos.board().piece_at(square) {
                         self.drag = Some(Drag {
@@ -414,6 +451,26 @@ impl BoardView {
             }
             _ => {}
         }
+    }
+
+    /// The topmost engine arrow under a point. Arrows drawn by the user are not moves.
+    fn arrow_at(&self, position: Point<Pixels>) -> Option<(Square, Square)> {
+        let cell = f32::from(self.bounds.size.width) / 8.;
+        let origin = self.bounds.origin;
+        let center = |square: Square| {
+            let (x, y) = self.grid(square);
+            (
+                f32::from(origin.x) + cell * (x as f32 + 0.5),
+                f32::from(origin.y) + cell * (y as f32 + 0.5),
+            )
+        };
+        let point = (f32::from(position.x), f32::from(position.y));
+        // The last arrow is drawn on top, so it wins.
+        self.arrows
+            .iter()
+            .rev()
+            .find(|arrow| arrow_hit(point, center(arrow.from), center(arrow.to), cell))
+            .map(|arrow| (arrow.from, arrow.to))
     }
 
     fn mouse_move(&mut self, event: &MouseMoveEvent, cx: &mut Context<Self>) {
@@ -972,6 +1029,23 @@ pub fn theme_swatch(theme: BoardTheme, size: Pixels, _cx: &App) -> impl IntoElem
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn arrows_are_hit_along_the_shaft_and_head_but_not_at_the_origin() {
+        let cell = 100.0;
+        // e2 to e4 on a board drawn from (0, 0): x centre 450, from y 650 to y 450.
+        let (from, to) = ((450.0, 650.0), (450.0, 450.0));
+        assert!(arrow_hit((450.0, 450.0), from, to, cell), "head");
+        assert!(arrow_hit((470.0, 470.0), from, to, cell), "wide head");
+        assert!(arrow_hit((455.0, 550.0), from, to, cell), "shaft");
+        assert!(!arrow_hit((450.0, 640.0), from, to, cell), "origin square");
+        assert!(
+            !arrow_hit((490.0, 550.0), from, to, cell),
+            "beside the shaft"
+        );
+        assert!(!arrow_hit((450.0, 300.0), from, to, cell), "past the head");
+        assert!(!arrow_hit((0.0, 0.0), from, from, cell), "no length");
+    }
 
     #[test]
     fn last_move_tint_blends_toward_lichess_green_yellow() {

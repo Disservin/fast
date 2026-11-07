@@ -100,6 +100,8 @@ pub struct BoardConfig {
     pub move_sounds: bool,
     /// Analyse shows Black at the bottom. Kept across games and restarts.
     pub flipped: bool,
+    /// Clicking an engine arrow plays that move.
+    pub click_arrows: bool,
 }
 
 impl Default for BoardConfig {
@@ -115,6 +117,7 @@ impl Default for BoardConfig {
             auto_queen: false,
             move_sounds: true,
             flipped: false,
+            click_arrows: true,
         }
     }
 }
@@ -142,6 +145,7 @@ impl BoardConfig {
             show_legal: self.show_legal,
             highlight_last: self.highlight_last,
             auto_queen: self.auto_queen,
+            click_arrows: self.click_arrows,
         }
     }
 }
