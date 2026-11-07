@@ -956,7 +956,6 @@ impl Workspace {
             );
         }
         let add = cx.entity();
-        let reopen = cx.entity();
         h_flex()
             .flex_none()
             .h(px(38.))
@@ -988,14 +987,7 @@ impl Workspace {
                         }),
                 ),
             )
-            .child(
-                btn("reopen-tab", ui::i18n::t("Reopen"))
-                    .h(26.)
-                    .pad(7.)
-                    .text(12.)
-                    .disabled(self.closed_tabs.is_empty())
-                    .on_click(move |_, cx| reopen.update(cx, |this, cx| this.reopen_tab(cx))),
-            )
+
     }
 
     /// Runs an Analyse-only shortcut, ignored on other screens where its effect
