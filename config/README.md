@@ -49,20 +49,16 @@ count and total sizes. Downloads are bounded to 256 MiB; extracted payloads to
 DMG installers and engines requiring an additional runtime or separately fetched
 network are not supported by this schema; do not add misleading download entries.
 
-Live tests are explicit so the normal test suite stays offline:
+Release archive verification is explicit so the normal test suite stays offline:
 
 ```sh
-cargo test -p fast download_and_handshake_fairy_stockfish -- --ignored --nocapture
 FAST_ENGINE_ARCHIVES=/path/to/official/archives cargo test -p fast verify_downloaded_release_archives -- --ignored --nocapture
 ```
 
 The archive test checks matching files present in that directory using the exact
-asset basenames from the URLs. The live test installs into a temporary directory,
-checks a repeat installation and verifies the actual engine UCI handshake.
+asset basenames from the URLs.
 
 Release assets and license URLs were checked on 2026-11-07. Stockfish and
-Berserk checksums come from official GitHub release metadata; Fairy-Stockfish 14
-checksums were computed from the pinned official release assets (older release
-metadata does not include digests). Source and license references are retained in
-each installed version for redistribution compliance; engine binaries are not
-bundled with Fast itself.
+Berserk checksums come from official GitHub release metadata. Source and license
+references are retained in each installed version for redistribution compliance;
+engine binaries are not bundled with Fast itself.

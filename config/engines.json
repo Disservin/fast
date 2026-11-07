@@ -67,38 +67,6 @@
       ]
     },
     {
-      "id": "fairy-stockfish",
-      "name": "Fairy-Stockfish",
-      "version": "14",
-      "description": "A lightweight Stockfish derivative. Runs standard chess here; no network download is required.",
-      "homepage": "https://fairy-stockfish.github.io/",
-      "source_url": "https://github.com/fairy-stockfish/Fairy-Stockfish/tree/fairy_sf_14",
-      "license": "GPL-3.0-or-later",
-      "license_url": "https://raw.githubusercontent.com/fairy-stockfish/Fairy-Stockfish/fairy_sf_14/Copying.txt",
-      "protocol": "uci",
-      "defaults": {
-        "MultiPV": "3"
-      },
-      "downloads": [
-        {
-          "os": "linux",
-          "arch": "x86_64",
-          "url": "https://github.com/fairy-stockfish/Fairy-Stockfish/releases/download/fairy_sf_14/fairy-stockfish_x86-64",
-          "sha256": "ab6b85823152e78654092dc2fbb154956a559c6ef0455d728268544390ee150f",
-          "format": "binary",
-          "executable": "fairy-stockfish_x86-64"
-        },
-        {
-          "os": "windows",
-          "arch": "x86_64",
-          "url": "https://github.com/fairy-stockfish/Fairy-Stockfish/releases/download/fairy_sf_14/fairy-stockfish_x86-64.exe",
-          "sha256": "28d5c18fd7352d66800d13e1fdd57ba7d64d95c38d93642fd12cbd89e9d0ed73",
-          "format": "binary",
-          "executable": "fairy-stockfish_x86-64.exe"
-        }
-      ]
-    },
-    {
       "id": "berserk",
       "name": "Berserk",
       "version": "14",

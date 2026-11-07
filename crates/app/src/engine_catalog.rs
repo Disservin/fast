@@ -383,7 +383,7 @@ mod tests {
     #[test]
     fn catalog_has_valid_unique_platforms_and_complete_provenance() {
         let catalog = Catalog::bundled().unwrap();
-        assert!(catalog.engines.len() >= 3);
+        assert!(catalog.engines.len() >= 2);
         for engine in &catalog.engines {
             assert!(
                 !engine.name.is_empty()
@@ -509,44 +509,6 @@ mod tests {
             .unwrap();
         tar.into_inner().unwrap().finish().unwrap();
         assert!(unpack(&asset, &path, &output, &cancel()).is_err());
-    }
-    /// Live end-to-end verification, deliberately excluded from offline tests.
-    #[test]
-    #[ignore = "downloads an official engine and requires internet access"]
-    fn download_and_handshake_fairy_stockfish() {
-        let catalog = Catalog::bundled().unwrap();
-        let entry = catalog
-            .engines
-            .iter()
-            .find(|e| e.id == "fairy-stockfish")
-            .unwrap();
-        let dir = tempfile::tempdir().unwrap();
-        let executable = install(entry, dir.path(), Arc::new(cancel()), |message| {
-            eprintln!("{message}")
-        })
-        .unwrap();
-        assert!(executable.is_file());
-        let repeated = install(entry, dir.path(), Arc::new(cancel()), |_| {}).unwrap();
-        assert_eq!(executable, repeated);
-        let handle = engine::EngineHandle::spawn(executable, vec![], vec![]);
-        let events = handle.events();
-        let ready = smol::block_on(smol::future::or(
-            async {
-                loop {
-                    match events.recv().await.unwrap() {
-                        engine::EngineEvent::Ready(info) => break Ok(info),
-                        engine::EngineEvent::Crashed(reason) => break Err(reason),
-                        _ => {}
-                    }
-                }
-            },
-            async {
-                smol::Timer::after(Duration::from_secs(15)).await;
-                Err("UCI handshake timed out".into())
-            },
-        ));
-        handle.quit();
-        assert!(ready.unwrap().name.contains("Fairy"));
     }
     /// Check previously downloaded release archives without using the network.
     #[test]
