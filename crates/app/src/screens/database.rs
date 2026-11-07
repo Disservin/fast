@@ -4,8 +4,8 @@ use std::{collections::HashMap, ops::Range, path::PathBuf};
 
 use chess_core::{Chess, GameTree, Position, classify, position_hash};
 use db::{
-    Database, Filter, FilterStats, GameDetails, GameRow, ImportControl, ImportProgress, SideFilter,
-    TimeClass, import_games,
+    Database, Filter, FilterStats, GameDetails, GameRow, ImportControl, ImportProgress,
+    ReviewPosition, ReviewSummary, SideFilter, TimeClass, import_games,
 };
 use gpui::{
     AppContext as _, Context, Entity, FontWeight, IntoElement, Render, ScrollStrategy,
@@ -1294,6 +1294,25 @@ impl DatabaseScreen {
                         .mb(px(9.))
                         .child(meta.join(", ")),
                 );
+            if let Some(review) = &preview.review_summary {
+                column = column.child(
+                    div()
+                        .text_size(px(12.))
+                        .text_color(rgb(T.fg_2))
+                        .mb(px(8.))
+                        .child(format!(
+                            "Review · White {} / Black {} · {} ({})",
+                            review
+                                .white_accuracy
+                                .map_or_else(|| "—".to_owned(), |value| format!("{value:.1}%")),
+                            review
+                                .black_accuracy
+                                .map_or_else(|| "—".to_owned(), |value| format!("{value:.1}%")),
+                            review.engine,
+                            review.search_limit
+                        )),
+                );
+            }
         }
         column
             .child(
@@ -1462,6 +1481,29 @@ fn win_percent(cp: i32) -> f64 {
     50.0 + 50.0 * (2.0 / (1.0 + (-0.00368208 * f64::from(cp)).exp()) - 1.0)
 }
 
+fn review_accuracy(evals: &[Option<i32>], white: bool) -> Option<f64> {
+    if evals.iter().any(Option::is_none) {
+        return None;
+    }
+    let losses: Vec<_> = evals
+        .windows(2)
+        .enumerate()
+        .filter(|(ply, _)| (ply % 2 == 0) == white)
+        .map(|(_, pair)| {
+            let before = win_percent(pair[0].expect("checked above"));
+            let after = win_percent(pair[1].expect("checked above"));
+            (if white {
+                before - after
+            } else {
+                after - before
+            })
+            .max(0.0)
+        })
+        .collect();
+    (!losses.is_empty())
+        .then(|| accuracy_from_loss(losses.iter().sum::<f64>() / losses.len() as f64))
+}
+
 /// Runs engine review for each game on a worker thread and stores the accuracy.
 fn review_games(
     engine: &engine::EngineConfig,
@@ -1493,6 +1535,8 @@ fn review_games(
     let _quit = QuitGuard(handle.clone());
     let events = handle.events();
     let mut search_id = 0;
+    let limit_label = settings.limit.label();
+    let job_key = crate::analysis_store::identity("batch-review", engine, &limit_label);
     'games: for (done, &id) in ids.iter().enumerate() {
         if cancelled.load(Ordering::Relaxed) {
             break;
@@ -1518,19 +1562,30 @@ fn review_games(
         let mut pos = start_tree.node(chess_core::GameTree::ROOT).pos.clone();
         let mut history = vec![pos.clone()];
         let mut evals: Vec<Option<i32>> = Vec::with_capacity(game.sans.len() + 1);
+        let mut positions: HashMap<usize, ReviewPosition> = database
+            .review_positions(id, &job_key)?
+            .into_iter()
+            .map(|position| (position.ply as usize, position))
+            .collect();
         for san_index in 0..=game.sans.len() {
             if cancelled.load(Ordering::Relaxed) {
                 handle.stop();
                 break 'games;
             }
-            let eval = if let Some(end) = chess_core::game_end(&pos, &history) {
-                Some(match end {
+            let fen = chess_core::GameTree::fen_of(&pos);
+            let (eval, depth, pv) = if let Some(saved) = positions.get(&san_index) {
+                (Some(saved.eval_cp), saved.depth, saved.pv.clone())
+            } else if let Some(end) = chess_core::game_end(&pos, &history) {
+                let eval = match end {
                     chess_core::GameEnd::Checkmate { winner } if winner.is_white() => 3000,
                     chess_core::GameEnd::Checkmate { .. } => -3000,
                     _ => 0,
-                })
+                };
+                (Some(eval), 0, String::new())
             } else {
                 let mut eval = None;
+                let mut depth = 0;
+                let mut pv = String::new();
                 'position_search: loop {
                     if paused.load(Ordering::Relaxed) {
                         handle.stop();
@@ -1575,6 +1630,10 @@ fn review_games(
                                 search_id: from,
                                 update,
                             }) if from == search_id => {
+                                if update.depth >= depth {
+                                    depth = update.depth;
+                                    pv = update.pv.join(" ");
+                                }
                                 if let Some(score) = update.score {
                                     let white = if pos.turn().is_white() {
                                         score
@@ -1597,8 +1656,19 @@ fn review_games(
                         }
                     }
                 }
-                eval
+                (eval, depth, pv)
             };
+            if let Some(eval_cp) = eval {
+                let result = ReviewPosition {
+                    ply: san_index as u32,
+                    fen,
+                    eval_cp,
+                    depth,
+                    pv: pv.clone(),
+                };
+                database.set_review_position(id, &job_key, &result)?;
+                positions.insert(san_index, result);
+            }
             evals.push(eval);
             on_progress(ReviewProgress {
                 games: ids.len(),
@@ -1622,29 +1692,32 @@ fn review_games(
             2 => false,
             _ => player.is_empty() || player_is_white,
         };
-        let losses: Vec<f64> = evals
-            .windows(2)
-            .enumerate()
-            .filter(|(ply, _)| settings.side == 3 || (ply % 2 == 0) == reviewed_white)
-            .filter_map(|(ply, pair)| Some((ply, pair[0]?, pair[1]?)))
-            .map(|(ply, before_eval, after_eval)| {
-                let (before, after) = (win_percent(before_eval), win_percent(after_eval));
-                let white_moved = if settings.side == 3 {
-                    ply % 2 == 0
-                } else {
-                    reviewed_white
-                };
-                if white_moved {
-                    before - after
-                } else {
-                    after - before
-                }
-                .max(0.0)
-            })
-            .collect();
-        if !losses.is_empty() && evals.iter().all(Option::is_some) {
-            let average = losses.iter().sum::<f64>() / losses.len() as f64;
-            database.set_accuracy(id, accuracy_from_loss(average))?;
+        if evals.len() == game.sans.len() + 1 && evals.iter().all(Option::is_some) {
+            let white_accuracy = review_accuracy(&evals, true);
+            let black_accuracy = review_accuracy(&evals, false);
+            database.set_review_summary(
+                id,
+                &job_key,
+                &ReviewSummary {
+                    engine: format!("{} {}", engine.name, engine.version),
+                    search_limit: limit_label.clone(),
+                    white_accuracy,
+                    black_accuracy,
+                },
+                crate::analysis_store::timestamp(),
+            )?;
+            if let Some(accuracy) = match settings.side {
+                0 if reviewed_white => white_accuracy,
+                0 => black_accuracy,
+                1 => white_accuracy,
+                2 => black_accuracy,
+                _ => match (white_accuracy, black_accuracy) {
+                    (Some(white), Some(black)) => Some((white + black) / 2.0),
+                    _ => None,
+                },
+            } {
+                database.set_accuracy(id, accuracy)?;
+            }
         }
     }
     Ok(())

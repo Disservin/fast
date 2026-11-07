@@ -187,6 +187,24 @@ pub struct GameDetails {
     /// starting positions were retained.
     pub start_fen: String,
     pub sans: Vec<String>,
+    pub review_summary: Option<ReviewSummary>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ReviewSummary {
+    pub engine: String,
+    pub search_limit: String,
+    pub white_accuracy: Option<f64>,
+    pub black_accuracy: Option<f64>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ReviewPosition {
+    pub ply: u32,
+    pub fen: String,
+    pub eval_cp: i32,
+    pub depth: u32,
+    pub pv: String,
 }
 
 impl GameDetails {
@@ -305,7 +323,7 @@ impl Database {
     }
 
     pub fn game(&self, id: i64) -> Result<Option<GameDetails>> {
-        let found = self
+        let mut found = self
             .conn
             .query_row(
                 &format!("SELECT {ROW_COLUMNS}, moves, start_fen FROM games WHERE id = ?1"),
@@ -317,11 +335,93 @@ impl Database {
                         row: GameRow::from_row(row)?,
                         start_fen,
                         sans: moves.split_ascii_whitespace().map(str::to_owned).collect(),
+                        review_summary: None,
                     })
                 },
             )
             .optional()?;
+        if let Some(game) = &mut found {
+            game.review_summary = self.review_summary(id)?;
+        }
         Ok(found)
+    }
+
+    pub fn review_positions(&self, game_id: i64, job_key: &str) -> Result<Vec<ReviewPosition>> {
+        let mut statement = self.conn.prepare(
+            "SELECT ply,fen,eval_cp,depth,pv FROM review_positions
+             WHERE game_id=?1 AND job_key=?2 ORDER BY ply",
+        )?;
+        let rows = statement.query_map(params![game_id, job_key], |row| {
+            Ok(ReviewPosition {
+                ply: row.get::<_, i64>(0)? as u32,
+                fen: row.get(1)?,
+                eval_cp: row.get(2)?,
+                depth: row.get::<_, i64>(3)? as u32,
+                pv: row.get(4)?,
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn set_review_position(
+        &self,
+        game_id: i64,
+        job_key: &str,
+        result: &ReviewPosition,
+    ) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO review_positions(game_id,job_key,ply,fen,eval_cp,depth,pv)
+             VALUES(?1,?2,?3,?4,?5,?6,?7)
+             ON CONFLICT(game_id,job_key,ply) DO UPDATE SET
+             fen=excluded.fen,eval_cp=excluded.eval_cp,depth=excluded.depth,pv=excluded.pv",
+            params![
+                game_id,
+                job_key,
+                result.ply as i64,
+                result.fen,
+                result.eval_cp,
+                result.depth as i64,
+                result.pv
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn set_review_summary(
+        &self,
+        game_id: i64,
+        job_key: &str,
+        summary: &ReviewSummary,
+        updated_at: i64,
+    ) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO review_summaries(game_id,job_key,engine,search_limit,white_accuracy,black_accuracy,updated_at)
+             VALUES(?1,?2,?3,?4,?5,?6,?7)
+             ON CONFLICT(game_id,job_key) DO UPDATE SET
+             engine=excluded.engine,search_limit=excluded.search_limit,white_accuracy=excluded.white_accuracy,
+             black_accuracy=excluded.black_accuracy,updated_at=excluded.updated_at",
+            params![game_id, job_key, summary.engine, summary.search_limit, summary.white_accuracy, summary.black_accuracy, updated_at],
+        )?;
+        Ok(())
+    }
+
+    fn review_summary(&self, game_id: i64) -> Result<Option<ReviewSummary>> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT engine,search_limit,white_accuracy,black_accuracy FROM review_summaries
+             WHERE game_id=?1 ORDER BY updated_at DESC LIMIT 1",
+                [game_id],
+                |row| {
+                    Ok(ReviewSummary {
+                        engine: row.get(0)?,
+                        search_limit: row.get(1)?,
+                        white_accuracy: row.get(2)?,
+                        black_accuracy: row.get(3)?,
+                    })
+                },
+            )
+            .optional()?)
     }
 
     pub fn stats(&self, filter: &Filter) -> Result<FilterStats> {

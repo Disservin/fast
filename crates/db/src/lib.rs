@@ -7,7 +7,8 @@ mod queries;
 pub use import::{ImportControl, ImportProgress, ImportSummary, import_games};
 pub use notes::NoteStore;
 pub use queries::{
-    Filter, FilterStats, GameDetails, GameRow, MoveStat, PlayerLine, SideFilter, TimeClass,
+    Filter, FilterStats, GameDetails, GameRow, MoveStat, PlayerLine, ReviewPosition, ReviewSummary,
+    SideFilter, TimeClass,
 };
 
 use std::path::{Path, PathBuf};
@@ -57,6 +58,26 @@ CREATE TABLE IF NOT EXISTS positions (
     ply INTEGER NOT NULL,
     next_san TEXT,
     PRIMARY KEY (hash, game_id, ply)
+) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS review_positions (
+    game_id INTEGER NOT NULL,
+    job_key TEXT NOT NULL,
+    ply INTEGER NOT NULL,
+    fen TEXT NOT NULL,
+    eval_cp INTEGER NOT NULL,
+    depth INTEGER NOT NULL,
+    pv TEXT NOT NULL,
+    PRIMARY KEY (game_id, job_key, ply)
+) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS review_summaries (
+    game_id INTEGER NOT NULL,
+    job_key TEXT NOT NULL,
+    engine TEXT NOT NULL,
+    search_limit TEXT NOT NULL,
+    white_accuracy REAL,
+    black_accuracy REAL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (game_id, job_key)
 ) WITHOUT ROWID;
 "#;
 
