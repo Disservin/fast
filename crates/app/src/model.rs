@@ -186,6 +186,7 @@ impl AppModel {
         if demo {
             crate::demo::prepare(&paths, &mut config);
         }
+        ui::i18n::set_language(config.language);
         let mut repertoire: Repertoire = [
             paths.repertoire_file(),
             paths.repertoire_file().with_extension("previous"),

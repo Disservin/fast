@@ -72,42 +72,42 @@ actions!(
 fn app_menus() -> Vec<gpui::Menu> {
     use gpui::{Menu, MenuItem};
     vec![
-        Menu::new("File").items([
-            MenuItem::action("New game", NewGame),
-            MenuItem::action("New tab", NewTab),
-            MenuItem::action("Close tab", CloseTab),
-            MenuItem::action("Reopen closed tab", ReopenTab),
-            MenuItem::action("Open PGN or FEN…", OpenGame),
+        Menu::new(ui::i18n::t("File")).items([
+            MenuItem::action(ui::i18n::t("New game"), NewGame),
+            MenuItem::action(ui::i18n::t("New tab"), NewTab),
+            MenuItem::action(ui::i18n::t("Close tab"), CloseTab),
+            MenuItem::action(ui::i18n::t("Reopen closed tab"), ReopenTab),
+            MenuItem::action(ui::i18n::t("Open PGN or FEN…"), OpenGame),
             MenuItem::separator(),
-            MenuItem::action("Save to My games", SaveGame),
-            MenuItem::action("Save as PGN…", SavePgnAs),
+            MenuItem::action(ui::i18n::t("Save to My games"), SaveGame),
+            MenuItem::action(ui::i18n::t("Save as PGN…"), SavePgnAs),
             MenuItem::separator(),
-            MenuItem::action("Settings", ShowSettings),
+            MenuItem::action(ui::i18n::t("Settings"), ShowSettings),
             MenuItem::separator(),
-            MenuItem::action("Quit", Quit),
+            MenuItem::action(ui::i18n::t("Quit"), Quit),
         ]),
-        Menu::new("Edit").items([
-            MenuItem::action("Copy FEN", CopyFen),
-            MenuItem::action("Copy PGN", CopyPgn),
+        Menu::new(ui::i18n::t("Edit")).items([
+            MenuItem::action(ui::i18n::t("Copy FEN"), CopyFen),
+            MenuItem::action(ui::i18n::t("Copy PGN"), CopyPgn),
             MenuItem::action("Paste FEN or PGN", PasteGame),
         ]),
-        Menu::new("View").items([
-            MenuItem::action("Analyse", ShowAnalyse),
-            MenuItem::action("Database", ShowDatabase),
-            MenuItem::action("Train", ShowTrain),
-            MenuItem::action("Play", ShowPlay),
-            MenuItem::action("Next tab", NextTab),
-            MenuItem::action("Previous tab", PrevTab),
+        Menu::new(ui::i18n::t("View")).items([
+            MenuItem::action(ui::i18n::t("Analyse"), ShowAnalyse),
+            MenuItem::action(ui::i18n::t("Database"), ShowDatabase),
+            MenuItem::action(ui::i18n::t("Train"), ShowTrain),
+            MenuItem::action(ui::i18n::t("Play"), ShowPlay),
+            MenuItem::action(ui::i18n::t("Next tab"), NextTab),
+            MenuItem::action(ui::i18n::t("Previous tab"), PrevTab),
             MenuItem::separator(),
-            MenuItem::action("Flip board", FlipBoard),
+            MenuItem::action(ui::i18n::t("Flip board"), FlipBoard),
         ]),
         Menu::new("Go").items([
             MenuItem::action("Start of game", FirstMove),
-            MenuItem::action("Previous move", PrevMove),
-            MenuItem::action("Next move", NextMove),
+            MenuItem::action(ui::i18n::t("Previous move"), PrevMove),
+            MenuItem::action(ui::i18n::t("Next move"), NextMove),
             MenuItem::action("End of line", LastMove),
         ]),
-        Menu::new("Engine").items([
+        Menu::new(ui::i18n::t("Engine")).items([
             MenuItem::action("Engine on / off", ToggleEngine),
             MenuItem::action("Pause / resume", PauseEngine),
             MenuItem::action("Analyse game backwards", AnalyseBackward),
@@ -214,6 +214,10 @@ pub fn unbind_shortcut(keystroke: &str, name: &str, cx: &mut App) {
 
 pub fn init(cx: &mut App) {
     cx.on_action(|_: &Quit, cx| cx.quit());
+    refresh_menus(cx);
+}
+
+pub fn refresh_menus(cx: &mut App) {
     cx.set_menus(app_menus());
     gpui_component::GlobalState::global_mut(cx)
         .set_app_menus(app_menus().into_iter().map(gpui::Menu::owned).collect());
@@ -253,12 +257,12 @@ impl TabContent {
     /// The tab's screen and, where it has one, what that screen is showing.
     fn title(&self, cx: &App) -> (&'static str, Option<SharedString>) {
         match self {
-            Self::Analyse(screen) => ("Analyse", Some(screen.read(cx).breadcrumb())),
-            Self::Database(screen) => ("Database", Some(screen.read(cx).breadcrumb())),
-            Self::Train(_) => ("Train", None),
-            Self::Settings(_) => ("Settings", None),
-            Self::Play(screen) => ("Play", Some(screen.read(cx).breadcrumb())),
-            Self::Tournament(screen) => ("Tournament", screen.read(cx).tab_detail()),
+            Self::Analyse(screen) => (ui::i18n::t("Analyse"), Some(screen.read(cx).breadcrumb())),
+            Self::Database(screen) => (ui::i18n::t("Database"), Some(screen.read(cx).breadcrumb())),
+            Self::Train(_) => (ui::i18n::t("Train"), None),
+            Self::Settings(_) => (ui::i18n::t("Settings"), None),
+            Self::Play(screen) => (ui::i18n::t("Play"), Some(screen.read(cx).breadcrumb())),
+            Self::Tournament(screen) => (ui::i18n::t("Tournament"), screen.read(cx).tab_detail()),
         }
     }
 }
@@ -730,31 +734,33 @@ impl Workspace {
 
     /// Covers the content area when the + button is open: one card per kind of tab.
     fn new_tab_picker(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        const CHOICES: [(Mode, &str, &str); 4] = [
+        let choices: [(Mode, &str, &str); 4] = [
             (
                 Mode::Analyse,
-                "Analyse",
-                "A board, engine analysis and the move list for a new position or game.",
+                ui::i18n::t("Analyse"),
+                ui::i18n::t(
+                    "A board, engine analysis and the move list for a new position or game.",
+                ),
             ),
             (
                 Mode::Play,
-                "Play",
-                "Play a game against an engine, with clocks.",
+                ui::i18n::t("Play"),
+                ui::i18n::t("Play a game against an engine, with clocks."),
             ),
             (
                 Mode::Database,
-                "Database",
-                "Browse, search and import your game collections.",
+                ui::i18n::t("Database"),
+                ui::i18n::t("Browse, search and import your game collections."),
             ),
             (
                 Mode::Tournament,
-                "Tournament",
-                "Engine-vs-engine matches run with fastchess.",
+                ui::i18n::t("Tournament"),
+                ui::i18n::t("Engine-vs-engine matches run with fastchess."),
             ),
         ];
         // Two by two, in one column with the header so their edges line up.
         let mut cards = div().grid().grid_cols(2).gap(px(16.)).w_full();
-        for (index, (mode, title, description)) in CHOICES.into_iter().enumerate() {
+        for (index, (mode, title, description)) in choices.into_iter().enumerate() {
             let pick = cx.entity();
             cards = cards.child(
                 v_flex()
@@ -816,14 +822,14 @@ impl Workspace {
                                     .text_size(px(22.))
                                     .font_weight(FontWeight::BOLD)
                                     .text_color(rgb(T.fg))
-                                    .child("New tab"),
+                                    .child(ui::i18n::t("New tab")),
                             )
                             .child(
                                 btn("new-tab-picker-close", "×")
                                     .h(28.)
                                     .w(28.)
                                     .pad(4.)
-                                    .tooltip("Close")
+                                    .tooltip(ui::i18n::t("Close"))
                                     .on_click(move |_, cx| {
                                         close.update(cx, |this, cx| {
                                             this.new_tab_menu_open = false;
@@ -983,7 +989,7 @@ impl Workspace {
                 ),
             )
             .child(
-                btn("reopen-tab", "Reopen")
+                btn("reopen-tab", ui::i18n::t("Reopen"))
                     .h(26.)
                     .pad(7.)
                     .text(12.)
@@ -1109,18 +1115,20 @@ impl Workspace {
                     crate::controls::text_input(&self.path_input).into_any_element()
                 }))
                 .child(
-                    btn("path-ok", "Open")
+                    btn("path-ok", ui::i18n::t("Open"))
                         .primary()
                         .on_click(move |window, cx| {
                             this.update(cx, |this, cx| this.submit_path(window, cx));
                         }),
                 )
-                .child(btn("path-cancel", "Cancel").on_click(move |_, cx| {
-                    cancel.update(cx, |model, cx| {
-                        model.pending_path = None;
-                        cx.notify();
-                    });
-                })),
+                .child(
+                    btn("path-cancel", ui::i18n::t("Cancel")).on_click(move |_, cx| {
+                        cancel.update(cx, |model, cx| {
+                            model.pending_path = None;
+                            cx.notify();
+                        });
+                    }),
+                ),
         )
     }
 
@@ -1134,7 +1142,7 @@ impl Workspace {
                 format!("Settings › {}", self.settings.read(cx).page().title()).into()
             }
             Mode::Tournament => self.tournament.as_ref().map_or_else(
-                || "Tournament".into(),
+                || ui::i18n::t("Tournament").into(),
                 |screen| screen.read(cx).breadcrumb(),
             ),
         }
@@ -1278,20 +1286,22 @@ impl Workspace {
             }
             Mode::Database => {
                 let db = self.database.clone();
-                row = row.child(btn("import", "Import").on_click(move |window, cx| {
-                    db.update(cx, |database, cx| database.prompt_import(window, cx));
-                }));
+                row = row.child(btn("import", ui::i18n::t("Import")).on_click(
+                    move |window, cx| {
+                        db.update(cx, |database, cx| database.prompt_import(window, cx));
+                    },
+                ));
             }
             Mode::Train => {
                 let settings_this = this.clone();
-                row = row.child(
-                    btn("repertoires", "Repertoires").on_click(move |window, cx| {
+                row = row.child(btn("repertoires", ui::i18n::t("Repertoires")).on_click(
+                    move |window, cx| {
                         settings_this.update(cx, |this, cx| {
                             this.train
                                 .update(cx, |train, cx| train.prompt_open(window, cx));
                         });
-                    }),
-                );
+                    },
+                ));
             }
             _ => {}
         }
@@ -1300,7 +1310,7 @@ impl Workspace {
             icon_btn("settings", "icons/settings.svg")
                 .w(48.)
                 .selected(settings_active)
-                .tooltip("Settings")
+                .tooltip(ui::i18n::t("Settings"))
                 .on_click(move |_, cx| {
                     this.update(cx, |this, cx| {
                         let next = if this.mode == Mode::Settings {
@@ -1395,10 +1405,10 @@ impl Workspace {
                             .gap(px(2.))
                             .rounded(px(6.))
                             .bg(rgb(T.bg))
-                            .child(self.mode_button(Mode::Analyse, "Analyse", cx))
-                            .child(self.mode_button(Mode::Database, "Database", cx))
-                            .child(self.mode_button(Mode::Train, "Train", cx))
-                            .child(self.mode_button(Mode::Play, "Play", cx)),
+                            .child(self.mode_button(Mode::Analyse, ui::i18n::t("Analyse"), cx))
+                            .child(self.mode_button(Mode::Database, ui::i18n::t("Database"), cx))
+                            .child(self.mode_button(Mode::Train, ui::i18n::t("Train"), cx))
+                            .child(self.mode_button(Mode::Play, ui::i18n::t("Play"), cx)),
                     ),
             )
     }
@@ -1439,9 +1449,16 @@ impl Render for Workspace {
             window.context_stack()
         };
         let typing = stack.iter().any(|context| {
-            ["Input", "Select", "Popover", "Menu", "List", "Dialog"]
-                .iter()
-                .any(|name| context.contains(name))
+            [
+                "Input",
+                ui::i18n::t("Select"),
+                "Popover",
+                "Menu",
+                "List",
+                "Dialog",
+            ]
+            .iter()
+            .any(|name| context.contains(name))
         });
         let path_bar = self.path_bar(cx);
         let viewport_w = f32::from(window.viewport_size().width);
@@ -1700,8 +1717,12 @@ fn window_controls(window: &Window) -> impl IntoElement {
         .when(available.minimize || DRAWS_TITLE_BAR, |row| {
             row.child(system_control(
                 WindowControlArea::Min,
-                control("window-minimize", "icons/minus.svg", "Minimize")
-                    .on_click(|window, _| window.minimize_window()),
+                control(
+                    "window-minimize",
+                    "icons/minus.svg",
+                    ui::i18n::t("Minimize"),
+                )
+                .on_click(|window, _| window.minimize_window()),
             ))
         })
         .when(available.maximize || DRAWS_TITLE_BAR, |row| {
@@ -1710,14 +1731,18 @@ fn window_controls(window: &Window) -> impl IntoElement {
                 control(
                     "window-maximize",
                     "icons/square.svg",
-                    if maximized { "Restore" } else { "Maximize" },
+                    if maximized {
+                        ui::i18n::t("Restore")
+                    } else {
+                        ui::i18n::t("Maximize")
+                    },
                 )
                 .on_click(|window, _| window.zoom_window()),
             ))
         })
         .child(system_control(
             WindowControlArea::Close,
-            control("window-close", "icons/x.svg", "Close")
+            control("window-close", "icons/x.svg", ui::i18n::t("Close"))
                 .on_click(|window, _| window.remove_window()),
         ))
 }

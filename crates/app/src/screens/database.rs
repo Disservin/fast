@@ -194,18 +194,23 @@ impl DatabaseScreen {
         let colour = new_select(
             COLOURS
                 .iter()
-                .map(|text| SharedString::from(*text))
+                .map(|text| SharedString::from(ui::i18n::t(text)))
                 .collect(),
             usize::from(demo),
             window,
             cx,
         );
         let eco = new_input(if demo { "B90–B99" } else { "" }, "A00–E99", window, cx);
-        let opp_rating = new_input(if demo { "1900" } else { "" }, "Any", window, cx);
+        let opp_rating = new_input(
+            if demo { "1900" } else { "" },
+            ui::i18n::t("Any"),
+            window,
+            cx,
+        );
         let time_control = new_select(
             TIME_CONTROLS
                 .iter()
-                .map(|text| SharedString::from(*text))
+                .map(|text| SharedString::from(ui::i18n::t(text)))
                 .collect(),
             usize::from(demo),
             window,
@@ -897,7 +902,7 @@ impl DatabaseScreen {
             .bg(rgb(T.surface))
             .border_r_1()
             .border_color(rgb(T.border))
-            .child(section_label("Databases").mb(px(5.)))
+            .child(section_label(ui::i18n::t("Databases")).mb(px(5.)))
             .child(list)
             .child(section_label("Filter").mb(px(8.)))
             .child(field("Player", text_input(&self.player)).mb(px(7.)))
@@ -1053,7 +1058,12 @@ impl DatabaseScreen {
                     "review-side",
                     format!(
                         "Side: {}  ›",
-                        ["Filtered player", "White", "Black", "Both"][self.review_side]
+                        [
+                            "Filtered player",
+                            ui::i18n::t("White"),
+                            ui::i18n::t("Black"),
+                            "Both"
+                        ][self.review_side]
                     ),
                 )
                 .tooltip("Choose which player's moves to review")
@@ -1081,9 +1091,9 @@ impl DatabaseScreen {
                     btn(
                         "review-pause",
                         if reviewing.paused.load(std::sync::atomic::Ordering::Relaxed) {
-                            "Resume"
+                            ui::i18n::t("Resume")
                         } else {
-                            "Pause"
+                            ui::i18n::t("Pause")
                         },
                     )
                     .on_click(move |_, cx| {
@@ -1114,7 +1124,7 @@ impl DatabaseScreen {
             .flex_none()
             .h(px(77.))
             .child(cell(
-                "Score",
+                ui::i18n::t("Score"),
                 mono(format!("{:.1}%", self.stats.score_percent))
                     .text_size(px(22.))
                     .font_weight(FontWeight::MEDIUM)
@@ -1140,13 +1150,38 @@ impl DatabaseScreen {
             .bg(rgb(T.surface_2))
             .border_b_1()
             .border_color(rgb(T.border))
-            .child(div().w(px(W_WHITE)).child(section_label("White")))
-            .child(div().flex_1().min_w_0().child(section_label("Black")))
-            .child(div().w(px(W_RESULT)).child(section_label("Result")))
+            .child(
+                div()
+                    .w(px(W_WHITE))
+                    .child(section_label(ui::i18n::t("White"))),
+            )
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .child(section_label(ui::i18n::t("Black"))),
+            )
+            .child(
+                div()
+                    .w(px(W_RESULT))
+                    .child(section_label(ui::i18n::t("Result"))),
+            )
             .child(div().w(px(W_LEFT)).child(section_label("Left rep.")))
-            .child(div().w(px(W_MOVES)).child(section_label("Moves")))
-            .child(div().w(px(W_DATE)).child(section_label("Date")))
-            .child(div().w(px(W_SOURCE)).child(section_label("Source")))
+            .child(
+                div()
+                    .w(px(W_MOVES))
+                    .child(section_label(ui::i18n::t("Moves"))),
+            )
+            .child(
+                div()
+                    .w(px(W_DATE))
+                    .child(section_label(ui::i18n::t("Date"))),
+            )
+            .child(
+                div()
+                    .w(px(W_SOURCE))
+                    .child(section_label(ui::i18n::t("Source"))),
+            )
             .child(div().w(px(W_ACC)).flex_none().child(section_label("Acc.")));
         let count = self.ids.len();
         let list = uniform_list(
@@ -1272,7 +1307,7 @@ impl DatabaseScreen {
     fn render_preview(&mut self, scale: f32, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let this = cx.entity();
         let mut column = v_flex().p(px(16.));
-        column = column.child(section_label("Preview").mb(px(9.)));
+        column = column.child(section_label(ui::i18n::t("Preview")).mb(px(9.)));
         if let Some(preview) = &self.preview {
             let row = &preview.row;
             let mut meta = Vec::new();
@@ -1309,13 +1344,13 @@ impl DatabaseScreen {
                         .mb(px(8.))
                         .child(section_label("Review").mr(px(4.)))
                         .child(stat(
-                            "White",
+                            ui::i18n::t("White"),
                             review
                                 .white_accuracy
                                 .map_or_else(|| "—".to_owned(), |value| format!("{value:.1}%")),
                         ))
                         .child(stat(
-                            "Black",
+                            ui::i18n::t("Black"),
                             review
                                 .black_accuracy
                                 .map_or_else(|| "—".to_owned(), |value| format!("{value:.1}%")),
@@ -1384,17 +1419,15 @@ impl DatabaseScreen {
                     importing.file,
                     format_count(importing.progress.games)
                 )))
-                .child(
-                    btn("cancel-import", "Cancel")
-                        .h(30.)
-                        .on_click(move |_, cx| {
-                            this.update(cx, |screen, _| {
-                                if let Some(importing) = &screen.importing {
-                                    importing.control.cancel();
-                                }
-                            });
-                        }),
-                ),
+                .child(btn("cancel-import", ui::i18n::t("Cancel")).h(30.).on_click(
+                    move |_, cx| {
+                        this.update(cx, |screen, _| {
+                            if let Some(importing) = &screen.importing {
+                                importing.control.cancel();
+                            }
+                        });
+                    },
+                )),
         )
     }
 }
@@ -1589,7 +1622,11 @@ fn review_findings(game: &GameDetails) -> Vec<ReviewFinding> {
                 ply + 1,
                 game.sans[ply],
                 before.mate_distance.unwrap_or_default().abs(),
-                if white_moved { "White" } else { "Black" },
+                if white_moved {
+                    ui::i18n::t("White")
+                } else {
+                    ui::i18n::t("Black")
+                },
             )
         } else {
             format!(
@@ -1597,7 +1634,11 @@ fn review_findings(game: &GameDetails) -> Vec<ReviewFinding> {
                 ply + 1,
                 game.sans[ply],
                 f64::from(loss) / 100.0,
-                if white_moved { "White" } else { "Black" },
+                if white_moved {
+                    ui::i18n::t("White")
+                } else {
+                    ui::i18n::t("Black")
+                },
             )
         };
         let material_before = chess_core::material_balance(before_pos.board()).score;

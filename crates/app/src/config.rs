@@ -9,7 +9,7 @@ use anyhow::{Context as _, Result};
 use chess_core::Notation;
 use engine::EngineConfig;
 use serde::{Deserialize, Serialize};
-use ui::{BoardPrefs, BoardTheme, CoordinateStyle, PieceSet};
+use ui::{BoardPrefs, BoardTheme, CoordinateStyle, PieceSet, i18n::Language};
 
 /// Where Fast keeps its files. Demo mode uses a separate tree.
 #[derive(Clone, Debug)]
@@ -360,7 +360,7 @@ pub struct Config {
     /// The user's player name in game headers, for "My games" and leak detection.
     pub player_name: String,
     pub player_rating: Option<u32>,
-    pub language: String,
+    pub language: Language,
     pub ui_theme: ui::UiTheme,
     pub board: BoardConfig,
     pub shortcuts: BTreeMap<String, String>,
@@ -386,7 +386,7 @@ impl Default for Config {
         Self {
             player_name: "me".to_owned(),
             player_rating: None,
-            language: "English".to_owned(),
+            language: Language::default(),
             ui_theme: ui::UiTheme::default(),
             board: BoardConfig::default(),
             shortcuts: default_shortcuts(),
@@ -462,6 +462,20 @@ mod tests {
     use engine::EngineConfig;
 
     #[test]
+    fn language_uses_only_locale_codes() {
+        for (value, expected) in [("en", Language::English), ("de", Language::German)] {
+            let config: Config = toml::from_str(&format!("language = {value:?}")).unwrap();
+            assert_eq!(config.language, expected);
+            let saved = toml::to_string(&config).unwrap();
+            assert!(saved.contains(&format!("language = {:?}", expected.code())));
+        }
+        for value in ["English", "German", "Deutsch", "de-DE", "unknown"] {
+            assert!(toml::from_str::<Config>(&format!("language = {value:?}")).is_err());
+        }
+        assert_eq!(Config::default().language, Language::English);
+    }
+
+    #[test]
     fn config_round_trips_through_toml() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("nested/config.toml");
@@ -469,6 +483,7 @@ mod tests {
             player_name: "someone".to_owned(),
             ..Default::default()
         };
+        config.language = Language::German;
         config.ui_theme = ui::UiTheme::Sand;
         config.board.theme = SavedTheme::Moss;
         config.board.sound_profile = crate::sound::SoundProfile::Bell;

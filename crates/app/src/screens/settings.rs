@@ -57,14 +57,14 @@ impl SettingsPage {
 
     pub fn title(self) -> &'static str {
         match self {
-            Self::General => "General",
-            Self::Board => "Board & pieces",
-            Self::Engines => "Engines",
-            Self::Analysis => "Analysis",
-            Self::Databases => "Databases",
-            Self::Shortcuts => "Keyboard shortcuts",
-            Self::Accounts => "Accounts",
-            Self::Licenses => "Licenses",
+            Self::General => ui::i18n::t("General"),
+            Self::Board => ui::i18n::t("Board & pieces"),
+            Self::Engines => ui::i18n::t("Engines"),
+            Self::Analysis => ui::i18n::t("Analysis"),
+            Self::Databases => ui::i18n::t("Databases"),
+            Self::Shortcuts => ui::i18n::t("Keyboard shortcuts"),
+            Self::Accounts => ui::i18n::t("Accounts"),
+            Self::Licenses => ui::i18n::t("Licenses"),
         }
     }
 }
@@ -145,7 +145,10 @@ fn shortcut_label(action: &str) -> &'static str {
 /// Friendly hint and display name for well-known UCI options.
 fn option_label(name: &str) -> (String, Option<&'static str>) {
     match name {
-        "Threads" => ("Threads".to_owned(), Some("CPU cores to use")),
+        "Threads" => (
+            ui::i18n::t("Threads").to_owned(),
+            Some(ui::i18n::t("CPU cores to use")),
+        ),
         "Hash" => (
             "Hash".to_owned(),
             Some("Memory for the transposition table"),
@@ -258,7 +261,19 @@ impl Drop for SettingsScreen {
 
 impl SettingsScreen {
     pub fn new(model: Entity<AppModel>, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let language = new_select(vec!["English".into()], 0, window, cx);
+        let current_language = model.read(cx).config.language;
+        let language = new_select(
+            ui::i18n::Language::ALL
+                .iter()
+                .map(|language| language.name().into())
+                .collect(),
+            ui::i18n::Language::ALL
+                .iter()
+                .position(|language| *language == current_language)
+                .unwrap_or(0),
+            window,
+            cx,
+        );
         let current_ms = model.read(cx).config.board.animation_ms;
         let current_volume = model.read(cx).config.board.sound_volume;
         let volume = cx.new(|_| {
@@ -276,7 +291,7 @@ impl SettingsScreen {
                 .default_value(current_ms as f32)
         });
         let name = model.read(cx).config.player_name.clone();
-        let player_name = new_input(name, "Your name in game headers", window, cx);
+        let player_name = new_input(name, ui::i18n::t("Your name in game headers"), window, cx);
         let nodes = model.read(cx).config.backward_nodes;
         let backward_nodes = new_input(nodes.to_string(), "e.g. 500000 or 500k", window, cx);
         let path_input = cx.new(|cx| InputState::new(window, cx));
@@ -286,6 +301,24 @@ impl SettingsScreen {
         let license_filter =
             cx.new(|cx| InputState::new(window, cx).placeholder("Filter by name or licence"));
         let subscriptions = vec![
+            cx.subscribe(
+                &language,
+                |this, state, _: &gpui_component::select::SelectEvent<_>, cx| {
+                    let Some(index) = state.read(cx).selected_index(cx) else {
+                        return;
+                    };
+                    let Some(language) = ui::i18n::Language::ALL.get(index.row).copied() else {
+                        return;
+                    };
+                    ui::i18n::set_language(language);
+                    this.model.update(cx, |model, cx| {
+                        model.config.language = language;
+                        model.save_config(cx);
+                    });
+                    crate::shell::refresh_menus(cx);
+                    cx.refresh_windows();
+                },
+            ),
             cx.subscribe(&license_filter, |_, _, event: &InputEvent, cx| {
                 if matches!(event, InputEvent::Change) {
                     cx.notify();
@@ -813,7 +846,7 @@ impl SettingsScreen {
                     let fallback = path
                         .file_stem()
                         .map(|stem| stem.to_string_lossy().into_owned())
-                        .unwrap_or_else(|| "Engine".to_owned());
+                        .unwrap_or_else(|| ui::i18n::t("Engine").to_owned());
                     let (name, version) = split_engine_name(&info.name, &fallback);
                     let wdl = info
                         .options
@@ -1092,7 +1125,7 @@ impl SettingsScreen {
                 div()
                     .px(px(12.))
                     .mb(px(14.))
-                    .child(section_label("Settings")),
+                    .child(section_label(ui::i18n::t("Settings"))),
             )
             .child(nav)
     }
@@ -1123,14 +1156,14 @@ impl SettingsScreen {
                     })),
             );
         }
-        section("Appearance")
+        section(ui::i18n::t("Appearance"))
             .child(option_row(
-                "Theme",
-                Some("Applies to the entire interface"),
+                ui::i18n::t("Theme"),
+                Some(ui::i18n::t("Applies to the entire interface")),
                 choices,
             ))
             .child(option_row(
-                "Language",
+                ui::i18n::t("Language"),
                 None,
                 div().w(px(190.)).child(select_el(&self.language)),
             ))
@@ -1249,14 +1282,14 @@ impl SettingsScreen {
             .child(board_check(
                 "legal",
                 config.show_legal,
-                "Show legal moves",
+                ui::i18n::t("Show legal moves"),
                 this.clone(),
                 |b, v| b.show_legal = v,
             ))
             .child(board_check(
                 "last",
                 config.highlight_last,
-                "Highlight last move",
+                ui::i18n::t("Highlight last move"),
                 this.clone(),
                 |b, v| b.highlight_last = v,
             ))
@@ -1277,7 +1310,7 @@ impl SettingsScreen {
             .child(board_check(
                 "sounds",
                 config.move_sounds,
-                "Move sounds",
+                ui::i18n::t("Move sounds"),
                 this.clone(),
                 |b, v| b.move_sounds = v,
             ));
@@ -1298,18 +1331,26 @@ impl SettingsScreen {
                 })
             },
         );
-        section("Board & pieces")
-            .child(option_row("Board", None, boards))
-            .child(option_row("Pieces", None, pieces))
+        section(ui::i18n::t("Board & pieces"))
+            .child(option_row(ui::i18n::t("Board"), None, boards))
+            .child(option_row(ui::i18n::t("Pieces"), None, pieces))
             .child(option_row(
-                "Coordinates",
+                ui::i18n::t("Coordinates"),
                 None,
                 segmented(
                     "coords",
                     vec![
-                        (SavedCoordinates::OnSquares, "On squares".into(), false),
-                        (SavedCoordinates::Outside, "Outside".into(), false),
-                        (SavedCoordinates::Off, "Off".into(), false),
+                        (
+                            SavedCoordinates::OnSquares,
+                            ui::i18n::t("On squares").into(),
+                            false,
+                        ),
+                        (
+                            SavedCoordinates::Outside,
+                            ui::i18n::t("Outside").into(),
+                            false,
+                        ),
+                        (SavedCoordinates::Off, ui::i18n::t("Off").into(), false),
                     ],
                     config.coordinates,
                     move |value, _, cx| {
@@ -1320,14 +1361,16 @@ impl SettingsScreen {
                 ),
             ))
             .child(option_row(
-                "Move sound",
-                Some("Choose a sound and preview it at your current volume"),
+                ui::i18n::t("Move sound"),
+                Some(ui::i18n::t(
+                    "Choose a sound and preview it at your current volume",
+                )),
                 h_flex()
                     .flex_wrap()
                     .gap(px(10.))
                     .child(sound_choices)
                     .child(
-                        btn("preview-move-sound", "Preview")
+                        btn("preview-move-sound", ui::i18n::t("Preview"))
                             .disabled(!config.move_sounds || config.sound_volume == 0)
                             .on_click(move |_, cx| {
                                 let board = &preview_this.read(cx).model.read(cx).config.board;
@@ -1340,8 +1383,8 @@ impl SettingsScreen {
                     ),
             ))
             .child(option_row(
-                "Sound volume",
-                Some("For move sounds"),
+                ui::i18n::t("Sound volume"),
+                Some(ui::i18n::t("For move sounds")),
                 h_flex()
                     .gap(px(10.))
                     .child(
@@ -1353,14 +1396,14 @@ impl SettingsScreen {
                         mono(if config.move_sounds {
                             format!("{}%", config.sound_volume)
                         } else {
-                            "Off".to_owned()
+                            ui::i18n::t("Off").to_owned()
                         })
                         .text_size(px(13.))
                         .text_color(rgb(T.muted)),
                     ),
             ))
             .child(option_row(
-                "Move animation",
+                ui::i18n::t("Move animation"),
                 None,
                 h_flex()
                     .gap(px(10.))
@@ -1375,7 +1418,7 @@ impl SettingsScreen {
                             .text_color(rgb(T.muted)),
                     ),
             ))
-            .child(option_row("Notation", None, {
+            .child(option_row(ui::i18n::t("Notation"), None, {
                 let mut row = h_flex().gap(px(6.));
                 for (index, (value, label)) in [
                     (Notation::San, "Nf3"),
@@ -1400,7 +1443,7 @@ impl SettingsScreen {
                 }
                 row
             }))
-            .child(option_row("Board behaviour", None, check_row))
+            .child(option_row(ui::i18n::t("Board behaviour"), None, check_row))
     }
 
     fn render_shortcut_summary(&mut self, cx: &mut Context<Self>) -> Div {
@@ -1431,7 +1474,7 @@ impl SettingsScreen {
         };
         let pair =
             |first: &str, second: &str| h_flex().gap(px(4.)).child(keys(first)).child(keys(second));
-        section("Keyboard shortcuts")
+        section(ui::i18n::t("Keyboard shortcuts"))
             .child(row(
                 "Previous / next move",
                 pair("prev_move", "next_move"),
@@ -1441,11 +1484,11 @@ impl SettingsScreen {
             .child(row(
                 "Engine on / off",
                 keys("toggle_engine"),
-                "Flip board",
+                ui::i18n::t("Flip board"),
                 keys("flip_board"),
             ))
             .child(row(
-                "Search",
+                ui::i18n::t("Search"),
                 keys("search"),
                 "Save game",
                 keys("save_game"),
@@ -1615,7 +1658,7 @@ impl SettingsScreen {
     fn render_general(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         v_flex()
             .gap(px(16.))
-            .child(page_title("General"))
+            .child(page_title(ui::i18n::t("General")))
             .child(self.render_storage(cx))
             .child(self.render_appearance(cx))
             .when(
@@ -1644,7 +1687,7 @@ impl SettingsScreen {
     fn render_board_page(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         v_flex()
             .gap(px(16.))
-            .child(page_title("Board & pieces"))
+            .child(page_title(ui::i18n::t("Board & pieces")))
             .child(self.render_board_section(cx))
     }
 
@@ -1755,8 +1798,8 @@ impl SettingsScreen {
                         .child(div().text_size(px(12.)).text_color(rgb(T.muted)).child(entry.description))
                         .when(!supported, |column| column.child(format!("No catalog build for {} / {}. You can still add a local executable.", std::env::consts::OS, std::env::consts::ARCH))))
                     .child(btn(("engine-site", index), "Website").h(30.).on_click(move |_, cx| cx.open_url(&homepage)))
-                    .child(btn(("engine-source", index), "Source").h(30.).on_click(move |_, cx| cx.open_url(&source)))
-                    .child(btn(("engine-install", index), if installed { "Installed" } else { "Download & install" }).h(30.).disabled(busy || !supported || installed)
+                    .child(btn(("engine-source", index), ui::i18n::t("Source")).h(30.).on_click(move |_, cx| cx.open_url(&source)))
+                    .child(btn(("engine-install", index), if installed { ui::i18n::t("Installed") } else { ui::i18n::t("Download & install") }).h(30.).disabled(busy || !supported || installed)
                         .on_click(move |_, cx| this.update(cx, |screen, cx| screen.download_engine(index, cx)))));
                 }
             }
@@ -1766,7 +1809,7 @@ impl SettingsScreen {
         }
         if let Some(cancel) = self.install_cancel.clone() {
             body = body.child(
-                btn("cancel-engine-install", "Cancel download")
+                btn("cancel-engine-install", ui::i18n::t("Cancel download"))
                     .on_click(move |_, _| cancel.store(true, std::sync::atomic::Ordering::Relaxed)),
             );
         }
@@ -1783,13 +1826,15 @@ impl SettingsScreen {
         let model = self.model.read(cx);
         let header = h_flex()
             .justify_between()
-            .child(page_title("Engines"))
+            .child(page_title(ui::i18n::t("Engines")))
             .child(
                 h_flex()
                     .gap(px(12.))
-                    .child(btn("add-engine", "Add from file").on_click(move |_, cx| {
-                        add_this.update(cx, |screen, cx| screen.add_from_file(cx));
-                    }))
+                    .child(btn("add-engine", ui::i18n::t("Add from file")).on_click(
+                        move |_, cx| {
+                            add_this.update(cx, |screen, cx| screen.add_from_file(cx));
+                        },
+                    ))
                     .child(
                         btn("download-engine", "Download engine")
                             .primary()
@@ -1816,11 +1861,15 @@ impl SettingsScreen {
                 .bg(rgb(T.surface_2))
                 .border_b_1()
                 .border_color(rgb(T.border))
-                .child(div().w(col_engine).child(section_label("Engine")))
+                .child(
+                    div()
+                        .w(col_engine)
+                        .child(section_label(ui::i18n::t("Engine"))),
+                )
                 .child(div().w(col_protocol).child(section_label("Protocol")))
                 .child(div().w(col_runs).child(section_label("Runs on")))
                 .child(div().w(col_used).child(section_label("Used for")))
-                .child(section_label("Status")),
+                .child(section_label(ui::i18n::t("Status"))),
         );
         for (index, engine) in model.config.engines.iter().enumerate() {
             let selected = self.selected_engine == Some(engine.id);
@@ -1837,7 +1886,7 @@ impl SettingsScreen {
                 EngineStatus::Searching => ("Searching", T.good),
                 EngineStatus::Paused => ("Paused", T.accent),
                 EngineStatus::Stopped => ("Stopped", T.muted),
-                EngineStatus::Disabled => ("Disabled", T.muted),
+                EngineStatus::Disabled => (ui::i18n::t("Disabled"), T.muted),
                 EngineStatus::Error => ("Error", T.warn),
             };
             table = table.child(
@@ -1916,7 +1965,9 @@ impl SettingsScreen {
                     .p(px(20.))
                     .text_size(px(14.))
                     .text_color(rgb(T.muted))
-                    .child("No engines yet. Add a UCI engine executable with Add from file."),
+                    .child(ui::i18n::t(
+                        "No engines yet. Add a UCI engine executable with Add from file.",
+                    )),
             );
         }
         let detail = self
@@ -2148,7 +2199,7 @@ impl SettingsScreen {
                     .w_full()
                     .gap(px(8.))
                     .child(div().flex_1().min_w_0().child(text_input(&self.path_input)))
-                    .child(btn("browse-executable", "Browse…").on_click({
+                    .child(btn("browse-executable", ui::i18n::t("Browse…")).on_click({
                         let this = this.clone();
                         move |_, cx| {
                             this.update(cx, |screen, cx| screen.choose_engine_path(None, false, cx))
@@ -2284,7 +2335,7 @@ impl SettingsScreen {
                             .child(btn("duplicate-engine", "Duplicate").h(32.).tooltip("Another entry for this binary with its own options, e.g. Lc0 with another network").on_click(move |window, cx| {
                                 duplicate_this.update(cx, |screen, cx| screen.duplicate_engine(window, cx));
                             }))
-                            .child(btn("remove-engine", "Remove").h(32.).on_click(move |window, cx| {
+                            .child(btn("remove-engine", ui::i18n::t("Remove")).h(32.).on_click(move |window, cx| {
                                 remove_this.update(cx, |screen, cx| screen.remove_engine(window, cx));
                             })),
                     ),
@@ -2332,7 +2383,7 @@ impl SettingsScreen {
                             .w(px(236.))
                             .flex_none()
                             .font_weight(FontWeight::MEDIUM)
-                            .child("Use this engine for"),
+                            .child(ui::i18n::t("Use this engine for")),
                     )
                     .child(
                         h_flex()
@@ -2382,7 +2433,7 @@ impl SettingsScreen {
                 div()
                     .text_size(px(13.))
                     .text_color(rgb(T.muted))
-                    .child("None yet"),
+                    .child(ui::i18n::t("None yet")),
             );
         }
         let save_this = this;
@@ -2436,20 +2487,22 @@ impl SettingsScreen {
                 div()
                     .py(px(10.))
                     .text_color(rgb(T.muted))
-                    .child("No databases yet. Import a PGN from the Database screen."),
+                    .child(ui::i18n::t(
+                        "No databases yet. Import a PGN from the Database screen.",
+                    )),
             );
         }
         let location = model.paths.databases_dir().display().to_string();
         v_flex()
             .gap(px(16.))
-            .child(page_title("Databases"))
-            .child(section("You").child(option_row(
+            .child(page_title(ui::i18n::t("Databases")))
+            .child(section(ui::i18n::t("You")).child(option_row(
                 "Player name",
                 Some("How you appear in PGN headers. Used for My games and leak detection."),
                 div().w(px(320.)).child(text_input(&self.player_name)),
             )))
             .child(
-                section("Files").child(rows).child(
+                section(ui::i18n::t("Files")).child(rows).child(
                     div()
                         .mt(px(10.))
                         .text_size(px(13.))
@@ -2466,8 +2519,8 @@ impl SettingsScreen {
         let mut page = v_flex().gap(px(16.)).child(
             h_flex()
                 .justify_between()
-                .child(page_title("Keyboard shortcuts"))
-                .child(btn("reset-shortcuts", "Reset all").on_click({
+                .child(page_title(ui::i18n::t("Keyboard shortcuts")))
+                .child(btn("reset-shortcuts", ui::i18n::t("Reset all")).on_click({
                     let this = this.clone();
                     move |_, cx| this.update(cx, |screen, cx| screen.reset_all_shortcuts(cx))
                 })),
@@ -2494,7 +2547,11 @@ impl SettingsScreen {
                         .justify_between()
                         .border_b_1()
                         .border_color(rgb(T.divider))
-                        .child(div().font_weight(FontWeight::MEDIUM).child(label))
+                        .child(
+                            div()
+                                .font_weight(FontWeight::MEDIUM)
+                                .child(ui::i18n::t(label)),
+                        )
                         .child(
                             h_flex()
                                 .gap(px(8.))
@@ -2502,12 +2559,12 @@ impl SettingsScreen {
                                     div()
                                         .text_size(px(13.))
                                         .text_color(rgb(T.warn))
-                                        .child("Press a key… (Esc cancels)")
+                                        .child(ui::i18n::t("Press a key… (Esc cancels)"))
                                 } else if current.is_empty() {
                                     div()
                                         .text_size(px(13.))
                                         .text_color(rgb(T.muted))
-                                        .child("None")
+                                        .child(ui::i18n::t("None"))
                                 } else {
                                     keycaps(Some(&current))
                                 })
@@ -2724,7 +2781,7 @@ impl SettingsScreen {
                                         .text_color(rgb(T.accent))
                                         .hover(|style| style.underline())
                                         .on_click(move |_, _, cx| cx.open_url(&url))
-                                        .child("Source")
+                                        .child(ui::i18n::t("Source"))
                                 })),
                         )
                     })
@@ -2735,7 +2792,7 @@ impl SettingsScreen {
         .h(px(460.));
         v_flex()
             .gap(px(16.))
-            .child(page_title("Licenses"))
+            .child(page_title(ui::i18n::t("Licenses")))
             .child(
                 section("Fast").child(
                     div()
@@ -2746,9 +2803,9 @@ impl SettingsScreen {
                         )),
                 ),
             )
-            .child(section("Bundled assets").child(assets))
+            .child(section(ui::i18n::t("Bundled assets")).child(assets))
             .child(
-                section("Libraries")
+                section(ui::i18n::t("Libraries"))
                     .child(
                         div()
                             .mb(px(10.))
@@ -2786,13 +2843,16 @@ impl SettingsScreen {
     }
 
     fn render_accounts(&mut self) -> impl IntoElement + use<> {
-        v_flex().gap(px(16.)).child(page_title("Accounts")).child(
-            section("Offline by design").child(div().text_color(rgb(T.fg_2)).child(
-                "Fast has no accounts or cloud sync: everything stays on this computer. \
+        v_flex()
+            .gap(px(16.))
+            .child(page_title(ui::i18n::t("Accounts")))
+            .child(section(ui::i18n::t("Offline by design")).child(
+                div().text_color(rgb(T.fg_2)).child(
+                    "Fast has no accounts or cloud sync: everything stays on this computer. \
                      Only Analyse's Online panel, while open, sends the position on the board \
                      to chesstb-explorer.hf.space and chessdb.cn.",
-            )),
-        )
+                ),
+            ))
     }
 }
 
@@ -2874,28 +2934,31 @@ impl SettingsScreen {
                     .text_color(rgb(T.warn))
                     .child(error)
             }));
-        v_flex().gap(px(16.)).child(page_title("Analysis")).child(
-            section("Backwards analysis")
-                .child(option_row(
-                    "Nodes per position",
-                    Some(
-                        "Each analysis engine searches this many nodes in every position, \
+        v_flex()
+            .gap(px(16.))
+            .child(page_title(ui::i18n::t("Analysis")))
+            .child(
+                section(ui::i18n::t("Backwards analysis"))
+                    .child(option_row(
+                        "Nodes per position",
+                        Some(
+                            "Each analysis engine searches this many nodes in every position, \
                              from the last move back to the first. A fixed node count gives \
                              every position the same effort on any machine.",
-                    ),
-                    field,
-                ))
-                .child(
-                    div()
-                        .pt(px(10.))
-                        .text_size(px(12.))
-                        .text_color(rgb(T.muted))
-                        .child(
-                            "Start it with Analyse backwards above the game graph, or its \
-                                 shortcut. The search limit for ordinary analysis is not used.",
                         ),
-                ),
-        )
+                        field,
+                    ))
+                    .child(
+                        div()
+                            .pt(px(10.))
+                            .text_size(px(12.))
+                            .text_color(rgb(T.muted))
+                            .child(
+                                "Start it with Analyse backwards above the game graph, or its \
+                                 shortcut. The search limit for ordinary analysis is not used.",
+                            ),
+                    ),
+            )
     }
 }
 
@@ -2905,7 +2968,7 @@ fn section(title: &'static str) -> Div {
             .mb(px(10.))
             .text_size(px(15.))
             .font_weight(FontWeight::BOLD)
-            .child(title),
+            .child(ui::i18n::t(title)),
     )
 }
 
@@ -2913,7 +2976,7 @@ fn page_title(title: &'static str) -> Div {
     div()
         .text_size(px(24.))
         .font_weight(FontWeight::SEMIBOLD)
-        .child(title)
+        .child(ui::i18n::t(title))
 }
 
 /// Two-column option row: label + hint on the left, control on the right.
@@ -2931,14 +2994,14 @@ fn option_row(label: &'static str, hint: Option<&'static str>, control: impl Int
                     div()
                         .font_weight(FontWeight::SEMIBOLD)
                         .text_size(px(14.))
-                        .child(label),
+                        .child(ui::i18n::t(label)),
                 )
                 .children(hint.map(|hint| {
                     div()
                         .text_size(px(13.))
                         .text_color(rgb(T.muted))
                         .pr(px(12.))
-                        .child(hint)
+                        .child(ui::i18n::t(hint))
                 })),
         )
         .child(control)
@@ -2964,7 +3027,7 @@ fn detail_row(label: &str, hint: Option<&'static str>, control: impl IntoElement
                     div()
                         .text_size(px(13.))
                         .text_color(rgb(T.muted))
-                        .child(hint)
+                        .child(ui::i18n::t(hint))
                 })),
         )
         .child(div().flex_1().min_w_0().child(control))
@@ -2976,7 +3039,7 @@ fn icon_x(id: impl Into<gpui::ElementId>) -> ui::widgets::Btn {
         .w(22.)
         .h(28.)
         .pad(0.)
-        .tooltip("Delete")
+        .tooltip(ui::i18n::t("Delete"))
 }
 
 fn tile(id: impl Into<gpui::ElementId>, selected: bool) -> gpui::Stateful<Div> {

@@ -69,6 +69,7 @@ impl Cli {
 
 fn open_main_window(cli: Cli, cx: &mut App) -> anyhow::Result<()> {
     let model = cx.new(|_| AppModel::load(cli.demo));
+    shell::refresh_menus(cx);
     let saved = model.read(cx).config.window.clone();
     let (width, height) = cli.size.unwrap_or_else(|| {
         saved.as_ref().map_or((1440, 900), |saved| {

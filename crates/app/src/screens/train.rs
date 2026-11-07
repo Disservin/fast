@@ -667,7 +667,7 @@ impl TrainScreen {
                     .px(px(18.))
                     .pt(px(16.))
                     .pb(px(10.))
-                    .child(section_label("Repertoire").mb(px(9.)))
+                    .child(section_label(ui::i18n::t("Repertoire")).mb(px(9.)))
                     .child(
                         h_flex()
                             .justify_between()
@@ -750,7 +750,11 @@ impl TrainScreen {
         let this = cx.entity();
         let drill = self.current().cloned();
         let white = self.model.read(cx).repertoire.white;
-        let side = if white { "White" } else { "Black" };
+        let side = if white {
+            ui::i18n::t("White")
+        } else {
+            ui::i18n::t("Black")
+        };
         let position = self.finished + usize::from(drill.is_some());
         let total = self.total.max(position);
         let fraction = if total == 0 {

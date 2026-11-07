@@ -227,7 +227,11 @@ impl AnalyseScreen {
                 });
             });
         let side = |color: Color| {
-            let label = if color.is_white() { "White" } else { "Black" };
+            let label = if color.is_white() {
+                ui::i18n::t("White")
+            } else {
+                ui::i18n::t("Black")
+            };
             let turn_this = this.clone();
             btn(("editor-turn", color as u32), label)
                 .h(30.)
@@ -278,8 +282,8 @@ impl AnalyseScreen {
                     .text_color(rgb(T.muted))
                     .child("Castling"),
             )
-            .child(castle_row("White", 0))
-            .child(castle_row("Black", 2));
+            .child(castle_row(ui::i18n::t("White"), 0))
+            .child(castle_row(ui::i18n::t("Black"), 2));
         let status = match editor.position() {
             Ok(pos) => (GameTree::fen_of(&pos), T.muted),
             Err(reason) => (reason, T.warn),
@@ -345,25 +349,27 @@ impl AnalyseScreen {
                             });
                         }),
                     )
-                    .child(tool("editor-clear", "Clear").on_click(move |_, cx| {
-                        clear_this.update(cx, |screen, cx| {
-                            screen.edit_position(cx, |editor| {
-                                editor.board = Board::empty();
-                                editor.castling = [false; 4];
-                            });
-                        });
-                    }))
-                    .child(div().flex_1())
-                    .child(tool("editor-cancel", "Cancel").on_click(move |_, cx| {
-                        cancel_this.update(cx, |screen, cx| screen.close_editor(cx));
-                    }))
                     .child(
-                        tool("editor-done", "Done")
-                            .primary()
-                            .on_click(move |window, cx| {
-                                done_this.update(cx, |screen, cx| screen.apply_editor(window, cx));
-                            }),
-                    ),
+                        tool("editor-clear", ui::i18n::t("Clear")).on_click(move |_, cx| {
+                            clear_this.update(cx, |screen, cx| {
+                                screen.edit_position(cx, |editor| {
+                                    editor.board = Board::empty();
+                                    editor.castling = [false; 4];
+                                });
+                            });
+                        }),
+                    )
+                    .child(div().flex_1())
+                    .child(
+                        tool("editor-cancel", ui::i18n::t("Cancel")).on_click(move |_, cx| {
+                            cancel_this.update(cx, |screen, cx| screen.close_editor(cx));
+                        }),
+                    )
+                    .child(tool("editor-done", ui::i18n::t("Done")).primary().on_click(
+                        move |window, cx| {
+                            done_this.update(cx, |screen, cx| screen.apply_editor(window, cx));
+                        },
+                    )),
             )
             .into_any_element()
     }

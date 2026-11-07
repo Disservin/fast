@@ -243,7 +243,7 @@ impl PlayScreen {
     pub fn breadcrumb(&self) -> SharedString {
         match &self.game {
             Some(game) => format!("vs {}, {}", game.opponent_name, game.label).into(),
-            None => "New game".into(),
+            None => ui::i18n::t("New game").into(),
         }
     }
 
@@ -807,7 +807,7 @@ impl PlayScreen {
             .border_r_1()
             .border_color(rgb(T.border))
             .child(section_label("New game vs engine").mb(px(14.)))
-            .child(field("Opponent", select_el(&self.opponent)).mb(px(14.)))
+            .child(field(ui::i18n::t("Opponent"), select_el(&self.opponent)).mb(px(14.)))
             .child(
                 v_flex()
                     .mb(px(16.))
@@ -833,7 +833,7 @@ impl PlayScreen {
                         .gap(px(6.))
                         .child(colour_button(
                             "white",
-                            "White",
+                            ui::i18n::t("White"),
                             ColourChoice::White,
                             self.colour,
                             this.clone(),
@@ -847,7 +847,7 @@ impl PlayScreen {
                         ))
                         .child(colour_button(
                             "black",
-                            "Black",
+                            ui::i18n::t("Black"),
                             ColourChoice::Black,
                             self.colour,
                             this.clone(),
@@ -931,11 +931,11 @@ impl PlayScreen {
         });
         let name: SharedString = match (opponent, game) {
             (true, Some(game)) => game.opponent_name.clone().into(),
-            (true, None) => self
-                .opponents
-                .first()
-                .map_or_else(|| "Opponent".into(), |engine| engine.name.clone().into()),
-            (false, _) => "You".into(),
+            (true, None) => self.opponents.first().map_or_else(
+                || ui::i18n::t("Opponent").into(),
+                |engine| engine.name.clone().into(),
+            ),
+            (false, _) => ui::i18n::t("You").into(),
         };
         let rating = if opponent {
             game.and_then(|game| game.opponent_rating)
@@ -1098,7 +1098,7 @@ impl PlayScreen {
             .child(
                 panel()
                     .p(px(16.))
-                    .child(section_label("Moves"))
+                    .child(section_label(ui::i18n::t("Moves")))
                     .child(list)
                     .child(
                         div()
@@ -1118,7 +1118,7 @@ impl PlayScreen {
                 h_flex()
                     .gap(px(6.))
                     .child(
-                        btn("offer-draw", "Offer draw")
+                        btn("offer-draw", ui::i18n::t("Offer draw"))
                             .flex_1()
                             .disabled(!in_game)
                             .on_click(move |_, cx| {
@@ -1134,7 +1134,7 @@ impl PlayScreen {
                             }),
                     )
                     .child(
-                        btn("resign", "Resign")
+                        btn("resign", ui::i18n::t("Resign"))
                             .flex_1()
                             .disabled(!in_game)
                             .on_click(move |_, cx| {

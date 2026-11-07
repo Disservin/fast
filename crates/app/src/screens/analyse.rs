@@ -472,7 +472,7 @@ impl AnalyseScreen {
                 .map(|variation| format!("Najdorf — {variation}"))
                 .unwrap_or_else(|| opening.name.to_owned())
                 .into(),
-            None => "New game".into(),
+            None => ui::i18n::t("New game").into(),
         }
     }
 
@@ -1237,32 +1237,35 @@ impl AnalyseScreen {
         };
         let fen_this = this.clone();
         let pgn_this = this;
-        let menu =
-            self.copy_menu.then(|| {
-                deferred(
-                    v_flex()
-                        .id("copy-menu")
-                        .absolute()
-                        .right_0()
-                        .bottom(px(44.))
-                        .w(px(220.))
-                        .py(px(4.))
-                        .bg(rgb(T.surface))
-                        .border_1()
-                        .border_color(rgb(T.border_strong))
-                        .rounded(px(6.))
-                        .shadow_lg()
-                        // Keeps the screen's click-away handler from closing it first.
-                        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                        .child(item("copy-fen", "Copy FEN", "this position").on_click(
+        let menu = self.copy_menu.then(|| {
+            deferred(
+                v_flex()
+                    .id("copy-menu")
+                    .absolute()
+                    .right_0()
+                    .bottom(px(44.))
+                    .w(px(220.))
+                    .py(px(4.))
+                    .bg(rgb(T.surface))
+                    .border_1()
+                    .border_color(rgb(T.border_strong))
+                    .rounded(px(6.))
+                    .shadow_lg()
+                    // Keeps the screen's click-away handler from closing it first.
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    .child(
+                        item("copy-fen", ui::i18n::t("Copy FEN"), "this position").on_click(
                             move |_, _, cx| fen_this.update(cx, |screen, cx| screen.copy_fen(cx)),
-                        ))
-                        .child(item("copy-pgn", "Copy PGN", "whole game").on_click(
+                        ),
+                    )
+                    .child(
+                        item("copy-pgn", ui::i18n::t("Copy PGN"), "whole game").on_click(
                             move |_, _, cx| pgn_this.update(cx, |screen, cx| screen.copy_pgn(cx)),
-                        )),
-                )
-                .with_priority(1)
-            });
+                        ),
+                    ),
+            )
+            .with_priority(1)
+        });
         div()
             .relative()
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
@@ -1476,8 +1479,16 @@ impl AnalyseScreen {
 
     fn render_scoresheet(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let this = cx.entity();
-        let white = self.tree.header("White").unwrap_or("White").to_owned();
-        let black = self.tree.header("Black").unwrap_or("Black").to_owned();
+        let white = self
+            .tree
+            .header("White")
+            .unwrap_or(ui::i18n::t("White"))
+            .to_owned();
+        let black = self
+            .tree
+            .header("Black")
+            .unwrap_or(ui::i18n::t("Black"))
+            .to_owned();
         let elo = |tag: &str| {
             self.tree
                 .header(tag)
@@ -1525,8 +1536,14 @@ impl AnalyseScreen {
         let style_toggle = {
             let this = this.clone();
             let (label, tip) = match style {
-                ScoresheetStyle::Table => ("Table", "Lichess style. Click for running text."),
-                ScoresheetStyle::Inline => ("Inline", "Nibbler style. Click for the move table."),
+                ScoresheetStyle::Table => (
+                    ui::i18n::t("Table"),
+                    "Lichess style. Click for running text.",
+                ),
+                ScoresheetStyle::Inline => (
+                    ui::i18n::t("Inline"),
+                    "Nibbler style. Click for the move table.",
+                ),
             };
             btn("sheet-style", label)
                 .h(22.)
@@ -1638,19 +1655,24 @@ impl AnalyseScreen {
                     .child(nag_button("nag-blunder", "??", 4, this.clone()))
                     .child(nag_button("nag-inaccuracy", "?!", 6, this.clone()))
                     .child(nag_button("nag-interesting", "!?", 5, this.clone()))
-                    .child(btn("comment", "Comment").h(30.).pad(13.).on_click({
-                        let this = this.clone();
-                        move |window, cx| {
-                            this.update(cx, |screen, cx| {
-                                screen.editing_comment = !screen.editing_comment;
-                                let text = screen.tree.node(screen.current).comment.clone();
-                                screen.comment.update(cx, |state, cx| {
-                                    state.set_value(text, window, cx);
-                                });
-                                cx.notify();
-                            });
-                        }
-                    }))
+                    .child(
+                        btn("comment", ui::i18n::t("Comment"))
+                            .h(30.)
+                            .pad(13.)
+                            .on_click({
+                                let this = this.clone();
+                                move |window, cx| {
+                                    this.update(cx, |screen, cx| {
+                                        screen.editing_comment = !screen.editing_comment;
+                                        let text = screen.tree.node(screen.current).comment.clone();
+                                        screen.comment.update(cx, |state, cx| {
+                                            state.set_value(text, window, cx);
+                                        });
+                                        cx.notify();
+                                    });
+                                }
+                            }),
+                    )
                     .child(btn("promote", "Promote").h(30.).pad(13.).on_click({
                         let this = this.clone();
                         move |_, cx| {
@@ -1673,9 +1695,9 @@ impl AnalyseScreen {
         let nav_width = if compact { 34. } else { 42. };
         let shown = self.analysed_pos();
         let turn = if shown.turn().is_white() {
-            "White"
+            ui::i18n::t("White")
         } else {
-            "Black"
+            ui::i18n::t("Black")
         };
         let end = self.live.read(cx).end;
         let status = if self.editor.is_some() {
@@ -1748,7 +1770,7 @@ impl AnalyseScreen {
         let flipped = self.board.read(cx).is_flipped();
         let flip_tip = match self.model.read(cx).config.shortcuts.get("flip_board") {
             Some(key) => format!("Flip board ({})", key.to_uppercase()),
-            None => "Flip board".to_owned(),
+            None => ui::i18n::t("Flip board").to_owned(),
         };
         v_flex()
             .flex_none()
@@ -1812,28 +1834,28 @@ impl AnalyseScreen {
                             .child(nav(
                                 "first",
                                 "icons/skip-back.svg",
-                                "First move",
+                                ui::i18n::t("First move"),
                                 this.clone(),
                                 Self::go_first,
                             ))
                             .child(nav(
                                 "prev",
                                 "icons/chevron-left.svg",
-                                "Previous move",
+                                ui::i18n::t("Previous move"),
                                 this.clone(),
                                 |s, w, c| s.step(-1, w, c),
                             ))
                             .child(nav(
                                 "next",
                                 "icons/chevron-right.svg",
-                                "Next move",
+                                ui::i18n::t("Next move"),
                                 this.clone(),
                                 |s, w, c| s.step(1, w, c),
                             ))
                             .child(nav(
                                 "last",
                                 "icons/skip-forward.svg",
-                                "Last move",
+                                ui::i18n::t("Last move"),
                                 this.clone(),
                                 Self::go_last,
                             )),
@@ -2045,7 +2067,7 @@ impl AnalyseScreen {
                                 let nodes = self.model.read(cx).config.backward_nodes;
                                 btn(
                                     "analyse-backward",
-                                    if running { "Stop" } else { "Analyse backwards" },
+                                    if running { ui::i18n::t("Stop") } else { ui::i18n::t("Analyse backwards") },
                                 )
                                 .h(22.)
                                 .pad(7.)
@@ -2088,7 +2110,7 @@ impl AnalyseScreen {
             })
             .collect();
         if eval_titles.is_empty() {
-            eval_titles.push("Eval".to_owned());
+            eval_titles.push(ui::i18n::t("Eval").to_owned());
         }
         let eval_columns = eval_titles.len();
         let wdl_title = wdl_engine
@@ -2118,7 +2140,7 @@ impl AnalyseScreen {
                 div()
                     .w(px(COL_MOVE))
                     .flex_none()
-                    .child(section_label("Move")),
+                    .child(section_label(ui::i18n::t("Move"))),
             )
             .children(eval_titles.iter().map(|title| {
                 div()
@@ -2162,9 +2184,14 @@ impl AnalyseScreen {
                 div()
                     .w(px(COL_MY))
                     .flex_none()
-                    .child(section_label("My games")),
+                    .child(section_label(ui::i18n::t("My games"))),
             )
-            .child(div().flex_1().min_w_0().child(section_label("Repertoire")));
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .child(section_label(ui::i18n::t("Repertoire"))),
+            );
         let ply = self.analysed_ply();
         let pos = self.analysed_pos();
         let white_to_move = pos.turn().is_white();
@@ -2437,7 +2464,7 @@ impl AnalyseScreen {
                         .text_size(px(9.5))
                         .font_weight(FontWeight::SEMIBOLD)
                         .text_color(rgb(T.faint))
-                        .child(label.to_uppercase()),
+                        .child(ui::i18n::t(label).to_uppercase()),
                 )
                 .child(mono(value).text_size(px(12.)).text_color(rgb(T.fg_2)))
         };
@@ -2571,7 +2598,7 @@ impl AnalyseScreen {
                             }),
                     )
                     .child(
-                        btn("copy-line", "Copy")
+                        btn("copy-line", ui::i18n::t("Copy"))
                             .pad(9.)
                             .disabled(!has_row)
                             .on_click({

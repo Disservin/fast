@@ -175,3 +175,15 @@ Ensure `~/.local/bin` is on your `PATH`, then launch **Fast** from the applicati
 Engine download entries live in [config/engines.json](config/engines.json). See
 [the catalog guide](config/README.md) and [JSON schema](config/engines.schema.json)
 for adding pinned, checksummed platform builds without changing app code.
+
+### Interface languages
+
+Choose **Settings → General → Language → Deutsch** for German. The choice is
+saved and applies immediately to translated labels and menus. English remains
+the fallback for messages that do not yet have translations. Configuration files
+store languages as `en` or `de`.
+
+Translations live in `crates/ui/src/i18n.rs`. Use `ui::i18n::t("English source")`
+for interface labels; keep PGN tags, UCI option keys, file formats, and user data
+unchanged. To add another language, extend `Language`, its config code and native
+name, and the translation catalog.

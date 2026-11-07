@@ -284,7 +284,7 @@ impl AnalyseScreen {
                         }),
                 )
                 .child(
-                    small("lines-reset", "Reset")
+                    small("lines-reset", ui::i18n::t("Reset"))
                         .w(48.)
                         .pad(0.)
                         .tooltip("Back to each engine's default number of lines")
@@ -332,7 +332,7 @@ impl AnalyseScreen {
                 }),
             )
             .child(
-                small("all-moves", "All moves")
+                small("all-moves", ui::i18n::t("All moves"))
                     .selected(view.all_moves)
                     .tooltip("List every legal move, analysed or not")
                     .on_click(move |_, cx| {
@@ -386,7 +386,7 @@ impl AnalyseScreen {
                 )
             })
             .child(
-                btn("engine-panel", "Engine")
+                btn("engine-panel", ui::i18n::t("Engine"))
                     .h(26.)
                     .pad(8.)
                     .text(12.)
@@ -675,7 +675,7 @@ impl AnalyseScreen {
                 .justify_between()
                 .border_b_1()
                 .border_color(rgb(T.border))
-                .child(section_label("Engine"))
+                .child(section_label(ui::i18n::t("Engine")))
                 .child(
                     btn("reset-panel-sizes", "Reset panel sizes")
                         .h(26.)
@@ -739,7 +739,7 @@ impl AnalyseScreen {
                             "Search moves · selected only"
                         }))
                         .child(
-                            btn("search-all-moves", "All moves")
+                            btn("search-all-moves", ui::i18n::t("All moves"))
                                 .h(26.)
                                 .disabled(restricted.is_empty())
                                 .on_click(move |_, cx| {
@@ -1029,94 +1029,97 @@ impl AnalyseScreen {
         let follow_this = this.clone();
         let copy_this = this.clone();
         let clear_this = this.clone();
-        let tools =
-            h_flex()
-                .h(px(40.))
-                .px(px(16.))
-                .gap(px(10.))
-                .border_b_1()
-                .border_color(rgb(T.border))
-                .child(section_label("Log"))
-                .child(
+        let tools = h_flex()
+            .h(px(40.))
+            .px(px(16.))
+            .gap(px(10.))
+            .border_b_1()
+            .border_color(rgb(T.border))
+            .child(section_label("Log"))
+            .child(
+                div()
+                    .text_size(px(12.))
+                    .text_color(rgb(T.muted))
+                    .child(name),
+            )
+            .when(holding, |row| {
+                row.child(
                     div()
                         .text_size(px(12.))
-                        .text_color(rgb(T.muted))
-                        .child(name),
+                        .text_color(rgb(T.warn))
+                        .child("Held while selected. Ctrl+C copies, Esc releases."),
                 )
-                .when(holding, |row| {
-                    row.child(
-                        div()
-                            .text_size(px(12.))
-                            .text_color(rgb(T.warn))
-                            .child("Held while selected. Ctrl+C copies, Esc releases."),
-                    )
-                })
-                .child(div().flex_1())
-                .child(
-                    div().flex_none().w(px(58.)).child(
-                        check("log-info", self.log_show_info, "Info")
-                            .text(12.)
-                            .on_change(move |value, _, cx| {
-                                info_this.update(cx, |screen, cx| {
-                                    screen.log_selection = None;
-                                    screen.log_show_info = value;
-                                    cx.notify();
-                                });
-                            }),
-                    ),
-                )
-                .child(
-                    div().flex_none().w(px(72.)).child(
-                        check("log-follow", self.log_follow, "Follow")
-                            .text(12.)
-                            .on_change(move |value, _, cx| {
-                                follow_this.update(cx, |screen, cx| {
-                                    screen.log_follow = value;
-                                    cx.notify();
-                                });
-                            }),
-                    ),
-                )
-                .child(
-                    btn("log-copy", "Copy")
-                        .h(26.)
-                        .pad(8.)
+            })
+            .child(div().flex_1())
+            .child(
+                div().flex_none().w(px(58.)).child(
+                    check("log-info", self.log_show_info, "Info")
                         .text(12.)
-                        .on_click(move |_, cx| {
-                            copy_this.update(cx, |screen, cx| {
-                                // The selection if there is one, else the whole log.
-                                let (text, message) = match screen.log_selection {
-                                    Some(selection) => {
-                                        (selection.text(&screen.log_lines), "Selection copied.")
-                                    }
-                                    None => (
-                                        screen
-                                            .log_lines
-                                            .iter()
-                                            .map(|line| line.text.as_str())
-                                            .collect::<Vec<_>>()
-                                            .join("\n"),
-                                        "Log copied.",
-                                    ),
-                                };
-                                cx.write_to_clipboard(ClipboardItem::new_string(text));
-                                screen.toast(message, cx);
+                        .on_change(move |value, _, cx| {
+                            info_this.update(cx, |screen, cx| {
+                                screen.log_selection = None;
+                                screen.log_show_info = value;
+                                cx.notify();
                             });
                         }),
-                )
-                .child(
-                    btn("log-window", "Window")
-                        .h(26.)
-                        .pad(8.)
+                ),
+            )
+            .child(
+                div().flex_none().w(px(72.)).child(
+                    check("log-follow", self.log_follow, "Follow")
                         .text(12.)
-                        .tooltip("Follow this engine's raw output in its own window")
-                        .on_click({
-                            let this = cx.entity();
-                            move |_, cx| this.update(cx, |screen, cx| screen.open_engine_output(cx))
+                        .on_change(move |value, _, cx| {
+                            follow_this.update(cx, |screen, cx| {
+                                screen.log_follow = value;
+                                cx.notify();
+                            });
                         }),
-                )
-                .child(btn("log-clear", "Clear").h(26.).pad(8.).text(12.).on_click(
-                    move |_, cx| {
+                ),
+            )
+            .child(
+                btn("log-copy", ui::i18n::t("Copy"))
+                    .h(26.)
+                    .pad(8.)
+                    .text(12.)
+                    .on_click(move |_, cx| {
+                        copy_this.update(cx, |screen, cx| {
+                            // The selection if there is one, else the whole log.
+                            let (text, message) = match screen.log_selection {
+                                Some(selection) => {
+                                    (selection.text(&screen.log_lines), "Selection copied.")
+                                }
+                                None => (
+                                    screen
+                                        .log_lines
+                                        .iter()
+                                        .map(|line| line.text.as_str())
+                                        .collect::<Vec<_>>()
+                                        .join("\n"),
+                                    "Log copied.",
+                                ),
+                            };
+                            cx.write_to_clipboard(ClipboardItem::new_string(text));
+                            screen.toast(message, cx);
+                        });
+                    }),
+            )
+            .child(
+                btn("log-window", ui::i18n::t("Window"))
+                    .h(26.)
+                    .pad(8.)
+                    .text(12.)
+                    .tooltip("Follow this engine's raw output in its own window")
+                    .on_click({
+                        let this = cx.entity();
+                        move |_, cx| this.update(cx, |screen, cx| screen.open_engine_output(cx))
+                    }),
+            )
+            .child(
+                btn("log-clear", ui::i18n::t("Clear"))
+                    .h(26.)
+                    .pad(8.)
+                    .text(12.)
+                    .on_click(move |_, cx| {
                         clear_this.update(cx, |screen, cx| {
                             screen.log_selection = None;
                             let chosen = screen.panel_engine_config(cx).map(|config| config.id);
@@ -1131,8 +1134,8 @@ impl AnalyseScreen {
                             }
                             cx.notify();
                         });
-                    },
-                ));
+                    }),
+            );
         let longest = self
             .log_lines
             .iter()

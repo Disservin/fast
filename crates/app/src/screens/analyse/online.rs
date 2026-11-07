@@ -189,7 +189,13 @@ impl AnalyseScreen {
         let white = self.analysed_pos().turn().is_white();
         let tablebase = match &self.online.tablebase {
             Lookup::Ready(Some(probe)) => {
-                let side = |win: bool| if win == white { "White" } else { "Black" };
+                let side = |win: bool| {
+                    if win == white {
+                        ui::i18n::t("White")
+                    } else {
+                        ui::i18n::t("Black")
+                    }
+                };
                 let verdict = match probe.outcome() {
                     Outcome::Win => format!("{} wins", side(true)),
                     Outcome::CursedWin => {

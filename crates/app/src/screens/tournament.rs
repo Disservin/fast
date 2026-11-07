@@ -70,10 +70,10 @@ impl GameFilter {
 
     fn label(self) -> &'static str {
         match self {
-            Self::All => "All",
-            Self::Decisive => "Decisive",
-            Self::Adjudicated => "Adjudicated",
-            Self::Repetition => "Repetition",
+            Self::All => ui::i18n::t("All"),
+            Self::Decisive => ui::i18n::t("Decisive"),
+            Self::Adjudicated => ui::i18n::t("Adjudicated"),
+            Self::Repetition => ui::i18n::t("Repetition"),
         }
     }
 
@@ -1092,15 +1092,21 @@ impl TournamentScreen {
                     .when(
                         !installed && !custom && self.install_cancel.is_none(),
                         |row| {
-                            row.child(btn("fastchess-download", "Download now").on_click(
-                                move |_, cx| this.update(cx, |screen, cx| screen.download(cx)),
-                            ))
+                            row.child(
+                                btn("fastchess-download", ui::i18n::t("Download now")).on_click(
+                                    move |_, cx| this.update(cx, |screen, cx| screen.download(cx)),
+                                ),
+                            )
                         },
                     )
                     .when(self.install_cancel.is_some(), |row| {
-                        row.child(btn("fastchess-cancel", "Cancel download").on_click(
-                            move |_, cx| cancel.update(cx, |screen, cx| screen.cancel_download(cx)),
-                        ))
+                        row.child(
+                            btn("fastchess-cancel", ui::i18n::t("Cancel download")).on_click(
+                                move |_, cx| {
+                                    cancel.update(cx, |screen, cx| screen.cancel_download(cx))
+                                },
+                            ),
+                        )
                     }),
             )
             .child(field(
@@ -1108,9 +1114,9 @@ impl TournamentScreen {
                 h_flex()
                     .gap(px(6.))
                     .child(div().flex_1().child(text_input(&self.fastchess_path)))
-                    .child(btn("fastchess-path-save", "Use").on_click(move |_, cx| {
-                        save.update(cx, |screen, cx| screen.save_fastchess_path(cx))
-                    })),
+                    .child(btn("fastchess-path-save", ui::i18n::t("Use")).on_click(
+                        move |_, cx| save.update(cx, |screen, cx| screen.save_fastchess_path(cx)),
+                    )),
             ))
     }
 
@@ -1186,7 +1192,7 @@ impl TournamentScreen {
                             .h(24.)
                             .w(24.)
                             .pad(3.)
-                            .tooltip("Remove")
+                            .tooltip(ui::i18n::t("Remove"))
                             .on_click(move |_, cx| {
                                 this.update(cx, |screen, cx| {
                                     screen.extra_engines.remove(index);
@@ -1199,7 +1205,7 @@ impl TournamentScreen {
         let add = cx.entity();
         v_flex()
             .gap(px(8.))
-            .child(section_label("Engines"))
+            .child(section_label(ui::i18n::t("Engines")))
             .child(list)
             .child(
                 h_flex().child(
@@ -1251,7 +1257,7 @@ impl TournamentScreen {
         let basic = v_flex()
             .gap(px(14.))
             .child(self.render_engines(cx))
-            .child(section_label("Time"))
+            .child(section_label(ui::i18n::t("Time")))
             .child(segmented(
                 "tournament-limit",
                 Limit::ALL
@@ -1267,7 +1273,7 @@ impl TournamentScreen {
                 },
             ))
             .child(field(self.limit.hint(), text_input(&self.limit_value)))
-            .child(section_label("Games"))
+            .child(section_label(ui::i18n::t("Games")))
             .child(pair(
                 field("Rounds", text_input(&self.rounds)),
                 field("Concurrency", text_input(&self.concurrency)),
@@ -1282,7 +1288,7 @@ impl TournamentScreen {
                     .gap(px(6.))
                     .child(div().flex_1().child(text_input(&self.openings)))
                     .child(
-                        btn("tournament-book", "Browse…").on_click(move |window, cx| {
+                        btn("tournament-book", ui::i18n::t("Browse…")).on_click(move |window, cx| {
                             browse.update(cx, |screen, cx| screen.browse_openings(window, cx))
                         }),
                     ),
@@ -1353,7 +1359,7 @@ impl TournamentScreen {
                 .pl(px(12.))
                 .border_l_2()
                 .border_color(rgb(T.border))
-                .child(section_label("Engines"))
+                .child(section_label(ui::i18n::t("Engines")))
                 .child(pair(
                     field("Hash (MB)", text_input(&self.hash)),
                     field("Threads", text_input(&self.threads)),
@@ -1629,14 +1635,14 @@ impl TournamentScreen {
                                 div()
                                     .text_size(px(18.))
                                     .font_weight(FontWeight::SEMIBOLD)
-                                    .child("New tournament"),
+                                    .child(ui::i18n::t("New tournament")),
                             )
                             .child(
                                 btn("tournament-setup-close", "×")
                                     .h(28.)
                                     .w(28.)
                                     .pad(4.)
-                                    .tooltip("Close")
+                                    .tooltip(ui::i18n::t("Close"))
                                     .on_click(move |_, cx| {
                                         close.update(cx, |screen, cx| screen.close_setup(cx))
                                     }),
@@ -1853,14 +1859,14 @@ impl TournamentScreen {
             .when(!run.active(), |row| {
                 let new = this.clone();
                 row.child(
-                    btn("tournament-new", "New tournament")
+                    btn("tournament-new", ui::i18n::t("New tournament"))
                         .on_click(move |_, cx| new.update(cx, |screen, cx| screen.open_setup(cx))),
                 )
             })
             .when(can_resume, |row| {
                 let resume = this.clone();
                 row.child(
-                    btn("tournament-resume", "Continue")
+                    btn("tournament-resume", ui::i18n::t("Continue"))
                         .primary()
                         .on_click(move |_, cx| {
                             let (dir, cwd, config) = (dir.clone(), cwd.clone(), config.clone());
@@ -1884,7 +1890,7 @@ impl TournamentScreen {
                         .text_size(px(13.))
                         .text_color(rgb(T.danger_fg))
                         .cursor_pointer()
-                        .child("Stop")
+                        .child(ui::i18n::t("Stop"))
                         .on_click(move |_, _, cx| stop.update(cx, |screen, cx| screen.stop(cx))),
                 )
             })
@@ -2362,7 +2368,7 @@ impl TournamentScreen {
             )
             .child(
                 div().mt(px(6.)).child(
-                    btn("tournament-new-empty", "New tournament")
+                    btn("tournament-new-empty", ui::i18n::t("New tournament"))
                         .primary()
                         .h(38.)
                         .on_click(move |_, cx| new.update(cx, |screen, cx| screen.open_setup(cx))),
