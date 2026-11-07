@@ -701,6 +701,47 @@ impl AnalyseScreen {
             .children(menu)
     }
 
+    /// Copies the board as an image and saves it under Pictures.
+    fn snapshot_board(&mut self, cx: &mut Context<Self>) {
+        let board = self.board.read(cx);
+        let (light, dark) = board.prefs().theme.colors();
+        let look = crate::snapshot::BoardLook {
+            light,
+            dark,
+            flipped: board.is_flipped(),
+            last_move: board.last_move(),
+        };
+        let pos = board.position().clone();
+        let ply = self.analysed_ply();
+        cx.spawn(async move |this, cx| {
+            let saved = cx
+                .background_spawn(async move {
+                    let png = crate::snapshot::board_png(&pos, &look)?;
+                    let dir = crate::snapshot::image_dir();
+                    std::fs::create_dir_all(&dir)?;
+                    let stamp = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map_or(0, |elapsed| elapsed.as_secs());
+                    let path = dir.join(format!("board-{stamp}-ply{ply}.png"));
+                    std::fs::write(&path, &png)?;
+                    anyhow::Ok((png, path))
+                })
+                .await;
+            let _ = this.update(cx, |screen, cx| match saved {
+                Ok((png, path)) => {
+                    let image = gpui::Image::from_bytes(gpui::ImageFormat::Png, png);
+                    cx.write_to_clipboard(ClipboardItem::new_image(&image));
+                    screen.toast(
+                        format!("Board image copied and saved to {}", path.display()),
+                        cx,
+                    );
+                }
+                Err(err) => screen.toast(format!("Could not save the board image: {err}"), cx),
+            });
+        })
+        .detach();
+    }
+
     /// Saves the game to "My games".
     pub fn save_game(&mut self, cx: &mut Context<Self>) {
         let mut tree = self.tree.clone();
@@ -1180,7 +1221,18 @@ impl AnalyseScreen {
                                     });
                                 }
                             }))
-                            .child(copy_menu),
+                            .child(copy_menu)
+                            .child(
+                                icon_btn("snapshot", "icons/camera.svg")
+                                    .w(nav_width)
+                                    .tooltip("Copy the board as an image and save it")
+                                    .on_click({
+                                        let this = this.clone();
+                                        move |_, cx| {
+                                            this.update(cx, |screen, cx| screen.snapshot_board(cx));
+                                        }
+                                    }),
+                            ),
                     ),
             )
             .when(self.setting_up, |column| {

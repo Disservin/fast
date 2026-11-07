@@ -174,6 +174,20 @@ impl BoardView {
         self.flipped
     }
 
+    /// The position being shown.
+    pub fn position(&self) -> &Chess {
+        &self.pos
+    }
+
+    /// The highlighted last move, if highlighting is on.
+    pub fn last_move(&self) -> Option<(Square, Square)> {
+        self.last_move.filter(|_| self.prefs.highlight_last)
+    }
+
+    pub fn prefs(&self) -> BoardPrefs {
+        self.prefs
+    }
+
     pub fn set_flipped(&mut self, flipped: bool, cx: &mut Context<Self>) {
         self.flipped = flipped;
         cx.notify();

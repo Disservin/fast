@@ -28,6 +28,8 @@ toml.workspace = true
 dirs.workspace = true
 smol.workspace = true
 rust-embed = "8"
+# Same version and features as gpui, so it adds nothing to the build.
+resvg = { version = "0.46", default-features = false, features = ["text"] }
 
 [dev-dependencies]
 tempfile.workspace = true

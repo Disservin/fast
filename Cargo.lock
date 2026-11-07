@@ -1695,6 +1695,7 @@ dependencies = [
  "gpui-pre",
  "gpui-pre-platform",
  "log",
+ "resvg 0.46.0",
  "rust-embed",
  "serde",
  "serde_json",

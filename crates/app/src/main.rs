@@ -8,6 +8,7 @@ mod live;
 mod model;
 mod screens;
 mod shell;
+mod snapshot;
 
 use gpui::{
     App, AppContext as _, Bounds, WindowBounds, WindowDecorations, WindowOptions, px, size,
