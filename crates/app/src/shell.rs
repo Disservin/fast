@@ -696,16 +696,18 @@ impl Workspace {
                 "Engine-vs-engine matches run with fastchess.",
             ),
         ];
-        let mut cards = h_flex().flex_wrap().justify_center().gap(px(16.));
+        // Two by two, in one column with the header so their edges line up.
+        let mut cards = div().grid().grid_cols(2).gap(px(16.)).w_full();
         for (index, (mode, title, description)) in CHOICES.into_iter().enumerate() {
             let pick = cx.entity();
             cards = cards.child(
                 v_flex()
                     .id(("new-tab-card", index))
-                    .w(px(240.))
-                    .p(px(18.))
-                    .gap(px(8.))
-                    .rounded(px(10.))
+                    .min_w_0()
+                    .min_h(px(132.))
+                    .p(px(24.))
+                    .gap(px(10.))
+                    .rounded(px(12.))
                     .bg(rgb(T.surface))
                     .border_1()
                     .border_color(rgb(T.border))
@@ -713,14 +715,15 @@ impl Workspace {
                     .hover(|card| card.border_color(rgb(T.border_strong)).bg(rgb(T.selected)))
                     .child(
                         div()
-                            .text_size(px(16.))
+                            .text_size(px(19.))
                             .font_weight(FontWeight::SEMIBOLD)
                             .text_color(rgb(T.fg))
                             .child(title),
                     )
                     .child(
                         div()
-                            .text_size(px(13.))
+                            .text_size(px(14.))
+                            .line_height(px(20.))
                             .text_color(rgb(T.muted))
                             .child(description),
                     )
@@ -740,36 +743,41 @@ impl Workspace {
             .occlude()
             .items_center()
             .justify_center()
-            .gap(px(20.))
             .p(px(16.))
             .bg(rgb(T.bg))
             .child(
-                h_flex()
+                v_flex()
                     .w_full()
-                    .max_w(px(760.))
-                    .justify_between()
+                    .max_w(px(820.))
+                    .gap(px(20.))
                     .child(
-                        div()
-                            .text_size(px(18.))
-                            .font_weight(FontWeight::BOLD)
-                            .text_color(rgb(T.fg))
-                            .child("New tab"),
+                        h_flex()
+                            .w_full()
+                            .justify_between()
+                            .items_center()
+                            .child(
+                                div()
+                                    .text_size(px(22.))
+                                    .font_weight(FontWeight::BOLD)
+                                    .text_color(rgb(T.fg))
+                                    .child("New tab"),
+                            )
+                            .child(
+                                btn("new-tab-picker-close", "×")
+                                    .h(28.)
+                                    .w(28.)
+                                    .pad(4.)
+                                    .tooltip("Close")
+                                    .on_click(move |_, cx| {
+                                        close.update(cx, |this, cx| {
+                                            this.new_tab_menu_open = false;
+                                            cx.notify();
+                                        })
+                                    }),
+                            ),
                     )
-                    .child(
-                        btn("new-tab-picker-close", "×")
-                            .h(28.)
-                            .w(28.)
-                            .pad(4.)
-                            .tooltip("Close")
-                            .on_click(move |_, cx| {
-                                close.update(cx, |this, cx| {
-                                    this.new_tab_menu_open = false;
-                                    cx.notify();
-                                })
-                            }),
-                    ),
+                    .child(cards),
             )
-            .child(cards)
     }
 
     fn tab_bar(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
