@@ -267,6 +267,23 @@ struct WorkspaceTab {
     content: TabContent,
 }
 
+#[derive(Clone)]
+struct DraggedTab {
+    id: u64,
+    title: SharedString,
+}
+
+impl Render for DraggedTab {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .px(px(12.))
+            .py(px(6.))
+            .rounded(px(6.))
+            .bg(rgb(T.selected))
+            .child(self.title.clone())
+    }
+}
+
 pub struct Workspace {
     pub model: Entity<AppModel>,
     pub mode: Mode,
@@ -793,6 +810,25 @@ impl Workspace {
             tabs = tabs.child(
                 h_flex()
                     .id(("tab", id as usize))
+                    .on_drag(
+                        DraggedTab {
+                            id,
+                            title: tab.content.title(cx).0.into(),
+                        },
+                        |drag, _, _, cx| cx.new(|_| drag.clone()),
+                    )
+                    .drag_over::<DraggedTab>(|style, _, _, _| {
+                        style.border_color(rgb(T.accent))
+                    })
+                    .on_drop(cx.listener(move |this, drag: &DraggedTab, _, cx| {
+                        let source = this.tabs.iter().position(|tab| tab.id == drag.id);
+                        let target = this.tabs.iter().position(|tab| tab.id == id);
+                        if let (Some(source), Some(target)) = (source, target) {
+                            let tab = this.tabs.remove(source);
+                            this.tabs.insert(target, tab);
+                            cx.notify();
+                        }
+                    }))
                     .flex_none()
                     .gap(px(2.))
                     .h(px(30.))
