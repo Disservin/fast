@@ -2709,11 +2709,11 @@ impl SettingsScreen {
 
     fn render_accounts(&mut self) -> impl IntoElement + use<> {
         v_flex().gap(px(16.)).child(page_title("Accounts")).child(
-            section("Offline by design").child(
-                div().text_color(rgb(T.fg_2)).child(
-                    "Fast has no accounts or cloud sync: everything stays on this computer.",
-                ),
-            ),
+            section("Offline by design").child(div().text_color(rgb(T.fg_2)).child(
+                "Fast has no accounts or cloud sync: everything stays on this computer. \
+                     Only Analyse's Online panel, while open, sends the position on the board \
+                     to chesstb-explorer.hf.space and chessdb.cn.",
+            )),
         )
     }
 }

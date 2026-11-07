@@ -352,7 +352,8 @@ impl AnalyseScreen {
             );
         let pause_this = this.clone();
         let engine_this = this.clone();
-        let log_this = this;
+        let log_this = this.clone();
+        let online_this = this;
         h_flex()
             .gap(px(6.))
             .child(view_tools)
@@ -398,6 +399,20 @@ impl AnalyseScreen {
                             screen.log_panel_open = !screen.log_panel_open;
                             cx.notify();
                         });
+                    }),
+            )
+            .child(
+                btn("online-panel", "Online")
+                    .h(26.)
+                    .pad(8.)
+                    .text(12.)
+                    .selected(self.online.open)
+                    .tooltip(
+                        "Look the position up in the ChessTB Explorer tablebase and chessdb.cn. \
+                         Sends each position you visit while open.",
+                    )
+                    .on_click(move |_, cx| {
+                        online_this.update(cx, |screen, cx| screen.toggle_online(cx));
                     }),
             )
     }

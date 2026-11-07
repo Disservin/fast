@@ -11,6 +11,7 @@ mod engine_catalog;
 mod licenses;
 mod live;
 mod model;
+mod online;
 mod persistence;
 mod recovery;
 mod screens;

@@ -186,6 +186,7 @@ pub fn quality_color(quality: Quality) -> u32 {
 }
 
 mod editor;
+mod online;
 mod panels;
 
 use editor::PositionEditor;
@@ -233,6 +234,8 @@ pub struct AnalyseScreen {
     show_wdl: bool,
     engine_panel_open: bool,
     log_panel_open: bool,
+    /// The Online panel and its tablebase and cloud lookups.
+    online: online::OnlineState,
     /// The engine the Engine and Log panels are showing.
     panel_engine: Option<EngineId>,
     log_show_info: bool,
@@ -390,6 +393,7 @@ impl AnalyseScreen {
             show_wdl: true,
             engine_panel_open: false,
             log_panel_open: false,
+            online: online::OnlineState::default(),
             panel_engine: None,
             log_show_info: true,
             log_follow: true,
@@ -2638,6 +2642,8 @@ impl Render for AnalyseScreen {
         let editor = self.editor.is_some().then(|| self.render_editor(cx));
         let engine_panel = self.engine_panel_open.then(|| self.render_engine_panel(cx));
         let log_panel = self.log_panel_open.then(|| self.render_log_panel(cx));
+        self.sync_online(cx);
+        let online_panel = self.online.open.then(|| self.render_online_panel(cx));
         let note = self.note.clone();
         let menu = self.render_context_menu(cx);
         h_flex()
@@ -2664,6 +2670,7 @@ impl Render for AnalyseScreen {
                             .children(engine_panel)
                             .child(table)
                             .child(preview)
+                            .children(online_panel)
                             .children(log_panel)
                             .child(
                                 panel()

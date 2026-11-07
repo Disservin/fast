@@ -84,6 +84,13 @@ survive navigation and transpositions share them. Restored lines are marked `cac
 until the new search reaches their depth. Changing an engine's options or configuration
 forgets its entries; the cache starts over past 50,000 positions.
 
+## Online lookups
+
+`online.rs` queries the ChessTB Explorer tablebase (`POST /probe`, up to 8 pieces) and
+chessdb.cn (`queryall`) with blocking `ureq` calls on background tasks. Analyse's Online panel
+is the only caller and sends nothing while closed. Lookups wait 300 ms so quick navigation only
+queries where it stops, results are cached per FEN for the session, and clicking a move plays it.
+
 ## Threads
 
 The UI thread never blocks on engines or databases.
