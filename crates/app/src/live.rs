@@ -93,6 +93,21 @@ impl LineCache {
 
 /// The options an engine is started with for analysis: UCI asks the GUI to set
 /// `UCI_AnalyseMode` when the engine is analysing rather than playing.
+/// Whether a running process for `old` can keep serving `new`: same binary.
+fn same_process(old: &EngineConfig, new: &EngineConfig) -> bool {
+    old.id == new.id && old.path == new.path && old.version == new.version
+}
+
+/// Whether every UCI option has the same value, counting unset options as their
+/// engine defaults, so saving a default does not count as a change.
+fn same_options(old: &EngineConfig, new: &EngineConfig) -> bool {
+    let (old, new) = (analysis_config(old), analysis_config(new));
+    old.options
+        .keys()
+        .chain(new.options.keys())
+        .all(|name| old.option_value(name) == new.option_value(name))
+}
+
 pub fn analysis_config(config: &EngineConfig) -> EngineConfig {
     let mut config = config.clone();
     if config
@@ -254,19 +269,40 @@ impl LiveAnalysis {
         cx.notify();
     }
 
-    /// Reconciles running engines with the configuration, restarting everything.
+    /// Reconciles running engines with the configuration. A process is only
+    /// relaunched when its binary changed; option changes are applied in place by
+    /// whoever changed them, and the search only restarts when option values differ.
     pub fn restart(&mut self, cx: &mut Context<Self>) {
+        let configs = self.model.read(cx).analysis_engines();
+        let unchanged = self.engines.len() == configs.len()
+            && self.engines.iter().zip(&configs).all(|(live, config)| {
+                same_process(&live.config, config)
+                    && same_options(&live.config, config)
+                    && (!self.active
+                        || !self.on
+                        || live.handle.is_some()
+                            && self.model.read(cx).manager.get(config.id).is_some())
+            });
+        if unchanged {
+            // Names, colours or other uses changed: nothing the engines need to hear.
+            for (live, config) in self.engines.iter_mut().zip(configs) {
+                live.config = config;
+            }
+            cx.emit(LiveEvent::Updated);
+            cx.notify();
+            return;
+        }
         for engine in &self.engines {
             if let Some(handle) = &engine.handle {
                 handle.stop();
             }
         }
-        let configs = self.model.read(cx).analysis_engines();
         let demo = self.model.read(cx).demo;
         let previous: Vec<_> = std::mem::take(&mut self.engines);
         for config in configs {
-            let existing = previous.iter().find(|live| live.config == config);
-            if existing.is_none() {
+            let old = previous.iter().find(|live| live.config.id == config.id);
+            let relaunch = old.is_none_or(|old| !same_process(&old.config, &config));
+            if old.is_none_or(|old| relaunch || !same_options(&old.config, &config)) {
                 self.cache.forget_engine(config.id);
             }
             let mut live = LiveEngine {
@@ -286,7 +322,7 @@ impl LiveAnalysis {
             };
             if !demo && self.on && self.active {
                 let handle = self.model.update(cx, |model, _| {
-                    if existing.is_none() {
+                    if relaunch {
                         model.manager.shutdown(config.id);
                     }
                     model.engine_status.insert(config.id, EngineStatus::Loading);
@@ -524,6 +560,14 @@ impl LiveAnalysis {
 
     /// Applies an option to a running engine without restarting it, and saves it.
     pub fn set_option(&mut self, id: EngineId, name: &str, value: String, cx: &mut Context<Self>) {
+        let current = self
+            .engines
+            .iter()
+            .find(|live| live.config.id == id)
+            .and_then(|live| live.config.option_value(name));
+        if current.as_ref() == Some(&value) {
+            return;
+        }
         self.model.update(cx, |model, cx| {
             if let Some(config) = model.engine_mut(id) {
                 config.options.insert(name.to_owned(), value.clone());

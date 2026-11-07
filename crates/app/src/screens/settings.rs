@@ -562,7 +562,7 @@ impl SettingsScreen {
             let Some(config) = model.engine_mut(id) else {
                 return;
             };
-            if config.options.get(name) == Some(&value) {
+            if config.option_value(name).as_ref() == Some(&value) {
                 return;
             }
             config.options.insert(name.to_owned(), value.clone());
@@ -675,7 +675,7 @@ impl SettingsScreen {
             .update(cx, |input, cx| input.set_value("", window, cx));
     }
 
-    /// Switches the engine to a saved set of options; a running engine restarts with them.
+    /// Switches the engine to a saved set of options, applied to a running engine in place.
     fn apply_profile(&mut self, name: &str, window: &mut Window, cx: &mut Context<Self>) {
         let Some(id) = self.selected_engine else {
             return;
@@ -684,7 +684,15 @@ impl SettingsScreen {
             let Some(config) = model.engine_mut(id) else {
                 return;
             };
-            config.apply_profile(name);
+            let changed = config.apply_profile(name);
+            if changed.is_empty() {
+                return;
+            }
+            if let Some(handle) = model.manager.get(id) {
+                for (option, value) in changed {
+                    handle.set_option(option, value);
+                }
+            }
             model.save_config(cx);
             cx.emit(ModelEvent::Engines);
         });
@@ -784,9 +792,13 @@ impl SettingsScreen {
                 let value = path.to_string_lossy().into_owned();
                 this.update(cx, |screen, cx| {
                     screen.model.update(cx, |model, cx| {
-                        if let Some(config) = model.engine_mut(id) {
-                            config.options.insert(option.clone(), value.clone());
+                        let Some(config) = model.engine_mut(id) else {
+                            return;
+                        };
+                        if config.option_value(&option).as_ref() == Some(&value) {
+                            return;
                         }
+                        config.options.insert(option.clone(), value.clone());
                         if let Some(handle) = model.manager.get(id) {
                             handle.set_option(option.clone(), Some(value.clone()));
                         }

@@ -129,6 +129,14 @@ impl EngineConfig {
             })
     }
 
+    /// The value an option currently has: the saved one, else the engine's default.
+    pub fn option_value(&self, name: &str) -> Option<String> {
+        self.options
+            .get(name)
+            .cloned()
+            .or_else(|| self.default_value(name))
+    }
+
     /// The engine's own default for an option, as UCI text.
     pub fn default_value(&self, name: &str) -> Option<String> {
         let option = self.info.options.iter().find(|o| o.name == name)?;
