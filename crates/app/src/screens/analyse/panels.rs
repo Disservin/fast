@@ -704,6 +704,14 @@ impl AnalyseScreen {
             return body.into_any_element();
         };
         let id = config.id;
+        let has_cached = self
+            .live
+            .read(cx)
+            .engines
+            .iter()
+            .find(|engine| engine.config.id == id)
+            .is_some_and(|engine| engine.lines.values().any(|line| line.cached));
+        let replace_this = this.clone();
         let workspace = self.workspace.clone();
         body.child(
             div()
@@ -743,6 +751,19 @@ impl AnalyseScreen {
                         }),
                 ),
         )
+        .when(has_cached, |panel| {
+            panel.child(
+                btn("replace-cached-analysis", "Replace cached analysis")
+                    .tooltip("Discard this saved result and run a fresh search")
+                    .on_click(move |_, cx| {
+                        replace_this.update(cx, |screen, cx| {
+                            screen
+                                .live
+                                .update(cx, |live, cx| live.replace_cached(id, cx));
+                        });
+                    }),
+            )
+        })
         .into_any_element()
     }
 

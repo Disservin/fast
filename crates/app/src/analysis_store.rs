@@ -84,6 +84,12 @@ impl AnalysisStore {
         )?;
         Ok(())
     }
+
+    pub fn delete(&self, key: &str) -> Result<()> {
+        self.0
+            .execute("DELETE FROM analyses WHERE cache_key=?1", [key])?;
+        Ok(())
+    }
 }
 
 pub fn identity(position: &str, engine: &engine::EngineConfig, limit: &str) -> String {

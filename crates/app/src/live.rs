@@ -124,6 +124,10 @@ pub struct LiveLine {
     /// Cached from a different engine signature or search limit.
     #[serde(default)]
     pub stale: bool,
+    #[serde(default)]
+    search_limit: String,
+    #[serde(default)]
+    engine_signature: String,
 }
 
 pub struct LiveEngine {
@@ -334,6 +338,11 @@ impl LiveAnalysis {
         let Some(live) = self.engines.iter_mut().find(|live| live.config.id == id) else {
             return;
         };
+        let current_limit = crate::analysis_store::current_limit(
+            self.limit_override
+                .unwrap_or(self.model.read(cx).config.analysis_limit),
+        );
+        let current_signature = crate::analysis_store::engine_signature(&live.config);
         for event in batch {
             match event {
                 EngineEvent::Ready(info) => {
@@ -402,6 +411,8 @@ impl LiveAnalysis {
                             sans,
                             cached: false,
                             stale: false,
+                            search_limit: current_limit.clone(),
+                            engine_signature: current_signature.clone(),
                         },
                     );
                 }
@@ -525,6 +536,42 @@ impl LiveAnalysis {
         cx.notify();
     }
 
+    /// Explicitly replaces a restored record with a fresh search under current settings.
+    pub fn replace_cached(&mut self, id: EngineId, cx: &mut Context<Self>) {
+        let position = crate::analysis_store::position_key(&self.fen, &self.moves);
+        let limit = crate::analysis_store::current_limit(
+            self.limit_override
+                .unwrap_or(self.model.read(cx).config.analysis_limit),
+        );
+        let config = self
+            .engines
+            .iter()
+            .find(|engine| engine.config.id == id)
+            .map(|e| e.config.clone());
+        if let Some(config) = config {
+            let key = crate::analysis_store::identity(&position, &config, &limit);
+            if let Some(store) = self.model.read(cx).analyses.as_ref()
+                && let Err(err) = store.delete(&key)
+            {
+                self.model.update(cx, |model, cx| {
+                    model.toast(format!("Could not replace cached analysis: {err:#}"), cx);
+                });
+                return;
+            }
+        }
+        self.cache.forget_engine(id);
+        if let Some(engine) = self
+            .engines
+            .iter_mut()
+            .find(|engine| engine.config.id == id)
+        {
+            engine.lines.clear();
+        }
+        self.search(cx);
+        cx.emit(LiveEvent::Updated);
+        cx.notify();
+    }
+
     /// Holds or resumes searching. Resuming searches the current position afresh.
     pub fn set_paused(&mut self, paused: bool, cx: &mut Context<Self>) {
         if self.paused == paused {
@@ -609,6 +656,15 @@ impl LiveAnalysis {
                 self.cache
                     .get(engine.config.id, hash)
                     .cloned()
+                    .map(|mut lines| {
+                        let signature = crate::analysis_store::engine_signature(&engine.config);
+                        for line in lines.values_mut() {
+                            line.cached = true;
+                            line.stale = line.search_limit != search_limit
+                                || line.engine_signature != signature;
+                        }
+                        lines
+                    })
                     .or_else(|| {
                         let key = crate::analysis_store::identity(
                             &position_key,
@@ -629,6 +685,8 @@ impl LiveAnalysis {
                                     for line in record.lines.values_mut() {
                                         line.cached = true;
                                         line.stale = stale;
+                                        line.search_limit = record.limit.clone();
+                                        line.engine_signature = record.engine.clone();
                                     }
                                     Some(record.lines)
                                 }
@@ -688,7 +746,9 @@ impl LiveAnalysis {
         if demo {
             let mut scripted = crate::demo::scripted_lines(hash);
             let white_to_move = pos.turn().is_white();
+            let search_limit = crate::analysis_store::current_limit(limit);
             for engine in &mut self.engines {
+                let signature = crate::analysis_store::engine_signature(&engine.config);
                 engine.lines.clear();
                 if let Some(lines) = scripted.remove(engine.config.name.as_str()) {
                     let requested = engine
@@ -727,6 +787,8 @@ impl LiveAnalysis {
                                 sans,
                                 cached: false,
                                 stale: false,
+                                search_limit: search_limit.clone(),
+                                engine_signature: signature.clone(),
                             },
                         );
                     }
