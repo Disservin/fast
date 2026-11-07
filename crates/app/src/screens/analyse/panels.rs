@@ -6,10 +6,11 @@ use chess_core::{Chess, Move, Position, format_pv, shakmaty::san::San};
 use engine::{EngineConfig, EngineId, LogKind, LogLine, OptionKind};
 use gpui::{
     AnyElement, ClipboardItem, Context, Div, FontWeight, IntoElement, KeyDownEvent, MouseButton,
-    MouseMoveEvent, ScrollStrategy, SharedString, Window, div, prelude::*, px, rgb, uniform_list,
+    MouseMoveEvent, ScrollStrategy, SharedString, Window, anchored, deferred, div, point,
+    prelude::*, px, rgb, uniform_list,
 };
 use ui::{
-    Arrow, MONO, T,
+    Arrow, CoordinateStyle, MONO, T,
     widgets::{btn, check, h_flex, mono, panel, section_label, v_flex},
 };
 
@@ -19,6 +20,10 @@ use crate::config::AnalysisLimit;
 const LOG_ROW_H: f32 = 19.;
 /// A hovered PV move has to stand out against the panel surface.
 const HOVER_BG: u32 = 0x3F4753;
+/// Side of the board that follows the cursor over a hovered PV move.
+const PEEK_SIZE: f32 = 200.;
+/// How far the peek board sits below and right of the cursor, so it never covers the move.
+const PEEK_OFFSET: f32 = 14.;
 const LIMITS: [(AnalysisLimit, &str); 5] = [
     (AnalysisLimit::Infinite, "∞"),
     (AnalysisLimit::Depth(20), "d20"),
@@ -670,8 +675,8 @@ impl AnalyseScreen {
                     .rounded(px(3.))
                     .when(highlighted, |chip| chip.bg(rgb(T.fg)).text_color(rgb(T.bg)))
                     .when(hovered, |chip| chip.bg(rgb(HOVER_BG)).text_color(rgb(T.fg)))
-                    .on_hover(cx.listener(move |this, hovering: &bool, _, cx| {
-                        this.hover_pv_move(index, *hovering, &hover_sans, cx);
+                    .on_hover(cx.listener(move |this, hovering: &bool, window, cx| {
+                        this.hover_pv_move(index, *hovering, &hover_sans, window, cx);
                     }))
                     .on_mouse_down(
                         MouseButton::Left,
@@ -683,6 +688,10 @@ impl AnalyseScreen {
                     .on_mouse_move(cx.listener(move |this, event: &MouseMoveEvent, _, cx| {
                         if this.pv_dragging && event.dragging() {
                             this.extend_pv_highlight(index, cx);
+                        } else if this.pv_hover == Some(index) {
+                            // The peek board follows the cursor across the move.
+                            this.pv_peek_at = Some(event.position);
+                            cx.notify();
                         }
                     }))
                     .on_mouse_up(
@@ -693,29 +702,52 @@ impl AnalyseScreen {
             );
         }
         let back_this = cx.entity();
-        v_flex().child(flow).when(self.pv_view.is_some(), |column| {
-            column.child(
-                h_flex()
-                    .mb(px(12.))
-                    .gap(px(10.))
-                    .child(
-                        div()
-                            .flex_1()
-                            .text_size(px(12.))
-                            .text_color(rgb(T.muted))
-                            .child("Drag across moves to highlight. Ctrl+C copies, Esc returns."),
-                    )
-                    .child(
-                        btn("pv-back", "Back to game")
-                            .h(26.)
-                            .pad(8.)
-                            .text(12.)
-                            .on_click(move |_, cx| {
-                                back_this.update(cx, |screen, cx| screen.exit_pv_preview(cx));
-                            }),
-                    ),
-            )
-        })
+        let peek = self
+            .pv_peek_at
+            .filter(|_| self.pv_hover.is_some())
+            .map(|at| {
+                let offset = px(PEEK_OFFSET);
+                deferred(
+                    anchored()
+                        .position(at + point(offset, offset))
+                        .snap_to_window_with_margin(px(8.))
+                        .child(
+                            div()
+                                .size(px(PEEK_SIZE))
+                                .shadow_lg()
+                                .child(self.pv_peek.clone()),
+                        ),
+                )
+                .with_priority(1)
+            });
+        v_flex()
+            .child(flow)
+            .children(peek)
+            .when(self.pv_view.is_some(), |column| {
+                column.child(
+                    h_flex()
+                        .mb(px(12.))
+                        .gap(px(10.))
+                        .child(
+                            div()
+                                .flex_1()
+                                .text_size(px(12.))
+                                .text_color(rgb(T.muted))
+                                .child(
+                                    "Drag across moves to highlight. Ctrl+C copies, Esc returns.",
+                                ),
+                        )
+                        .child(
+                            btn("pv-back", "Back to game")
+                                .h(26.)
+                                .pad(8.)
+                                .text(12.)
+                                .on_click(move |_, cx| {
+                                    back_this.update(cx, |screen, cx| screen.exit_pv_preview(cx));
+                                }),
+                        ),
+                )
+            })
     }
 
     fn begin_pv_highlight(
@@ -769,6 +801,7 @@ impl AnalyseScreen {
         index: usize,
         hovering: bool,
         sans: &[String],
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         // The move being previewed is already on the board.
@@ -790,15 +823,26 @@ impl AnalyseScreen {
         }
         self.pv_hover = Some(index);
         let base = &self.tree.node(self.current).pos;
-        let (_, moves) = replay(base, &sans[..sans.len().min(index + 1)]);
-        let arrows: Vec<Arrow> = moves
-            .get(index)
-            .and_then(move_squares)
+        let (after, moves) = replay(base, &sans[..sans.len().min(index + 1)]);
+        // A line that stops applying before this move has no position to show.
+        self.pv_peek_at = (moves.len() > index).then(|| window.mouse_position());
+        let squares = moves.get(index).and_then(move_squares);
+        let arrows: Vec<Arrow> = squares
             .map(|(from, to)| Arrow { from, to })
             .into_iter()
             .collect();
         self.board
             .update(cx, |board, cx| board.set_arrows(arrows, cx));
+        // The peek board shows the position after the move, the way the main board faces.
+        let flipped = self.board.read(cx).is_flipped();
+        let mut prefs = self.model.read(cx).config.board.prefs();
+        prefs.coordinates = CoordinateStyle::Off;
+        prefs.animation_ms = 0;
+        self.pv_peek.update(cx, |peek, cx| {
+            peek.set_prefs(prefs, cx);
+            peek.set_flipped(flipped, cx);
+            peek.set_position(after, squares, false, cx);
+        });
         cx.notify();
     }
 

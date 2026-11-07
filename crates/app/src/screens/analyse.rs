@@ -163,6 +163,9 @@ pub struct AnalyseScreen {
     pv_toggle_off: bool,
     pv_played: Option<usize>,
     pv_hover: Option<usize>,
+    /// The small board that follows the cursor over a hovered PV move.
+    pv_peek: Entity<BoardView>,
+    pv_peek_at: Option<Point<Pixels>>,
     pv_focus: FocusHandle,
     _subscriptions: Vec<Subscription>,
 }
@@ -270,6 +273,8 @@ impl AnalyseScreen {
             pv_toggle_off: false,
             pv_played: None,
             pv_hover: None,
+            pv_peek: cx.new(|_| BoardView::new("pv-peek-board").read_only()),
+            pv_peek_at: None,
             pv_focus: cx.focus_handle(),
             _subscriptions: subscriptions,
         };
@@ -327,6 +332,7 @@ impl AnalyseScreen {
         self.pv_view = None;
         self.pv_dragging = false;
         self.pv_hover = None;
+        self.pv_peek_at = None;
         self.pv_played = None;
         self.board
             .update(cx, |board, cx| board.set_interactive(true, cx));
