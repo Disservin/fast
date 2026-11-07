@@ -1239,52 +1239,71 @@ pub fn review_games(
         let Some(game) = database.game(id)? else {
             continue;
         };
+        let start_fen = if game.start_fen.is_empty() {
+            START
+        } else {
+            &game.start_fen
+        };
+        let Ok(start_tree) = chess_core::GameTree::from_fen(start_fen) else {
+            on_progress(done + 1);
+            continue;
+        };
         let mut moves: Vec<String> = Vec::new();
-        let mut pos = Chess::default();
-        let mut evals: Vec<i32> = Vec::with_capacity(game.sans.len() + 1);
+        let mut pos = start_tree.node(chess_core::GameTree::ROOT).pos.clone();
+        let mut history = vec![pos.clone()];
+        let mut evals: Vec<Option<i32>> = Vec::with_capacity(game.sans.len() + 1);
         for san_index in 0..=game.sans.len() {
             if cancelled.load(Ordering::Relaxed) {
                 break;
             }
-            search_id += 1;
-            handle.search(SearchRequest {
-                fen: START.to_owned(),
-                moves: moves.clone(),
-                limits: Some(Limits {
-                    movetime_ms: Some(MS_PER_MOVE),
-                    ..Default::default()
-                }),
-                search_id,
-                game: id as u64,
-            });
-            let mut eval = 0;
-            loop {
-                match smol::block_on(events.recv()) {
-                    Ok(EngineEvent::Analysis {
-                        search_id: from,
-                        update,
-                    }) if from == search_id => {
-                        if let Some(score) = update.score {
-                            let white = if pos.turn().is_white() {
-                                score
-                            } else {
-                                score.negate()
-                            };
-                            eval = match white {
-                                Score::Cp(cp) => cp,
-                                Score::Mate(mate) if mate > 0 => 3000,
-                                Score::Mate(_) => -3000,
-                            };
+            let eval = if let Some(end) = chess_core::game_end(&pos, &history) {
+                Some(match end {
+                    chess_core::GameEnd::Checkmate { winner } if winner.is_white() => 3000,
+                    chess_core::GameEnd::Checkmate { .. } => -3000,
+                    _ => 0,
+                })
+            } else {
+                search_id += 1;
+                handle.search(SearchRequest {
+                    fen: start_fen.to_owned(),
+                    moves: moves.clone(),
+                    limits: Some(Limits {
+                        movetime_ms: Some(MS_PER_MOVE),
+                        ..Default::default()
+                    }),
+                    search_id,
+                    game: id as u64,
+                });
+                let mut eval = None;
+                loop {
+                    match smol::block_on(events.recv()) {
+                        Ok(EngineEvent::Analysis {
+                            search_id: from,
+                            update,
+                        }) if from == search_id => {
+                            if let Some(score) = update.score {
+                                let white = if pos.turn().is_white() {
+                                    score
+                                } else {
+                                    score.negate()
+                                };
+                                eval = Some(match white {
+                                    Score::Cp(cp) => cp,
+                                    Score::Mate(mate) if mate > 0 => 3000,
+                                    Score::Mate(_) => -3000,
+                                });
+                            }
                         }
+                        Ok(EngineEvent::BestMove {
+                            search_id: from, ..
+                        }) if from == search_id => break,
+                        Ok(EngineEvent::Crashed(reason)) => anyhow::bail!(reason),
+                        Ok(_) => {}
+                        Err(_) => anyhow::bail!("engine channel closed"),
                     }
-                    Ok(EngineEvent::BestMove {
-                        search_id: from, ..
-                    }) if from == search_id => break,
-                    Ok(EngineEvent::Crashed(reason)) => anyhow::bail!(reason),
-                    Ok(_) => {}
-                    Err(_) => anyhow::bail!("engine channel closed"),
                 }
-            }
+                eval
+            };
             evals.push(eval);
             let Some(san) = game.sans.get(san_index) else {
                 break;
@@ -1293,14 +1312,16 @@ pub fn review_games(
             let mv = parsed.to_move(&pos)?;
             moves.push(chess_core::shakmaty::uci::UciMove::from_standard(mv).to_string());
             pos.play_unchecked(mv);
+            history.push(pos.clone());
         }
         let reviewed_white = player.is_empty() || game.row.white.eq_ignore_ascii_case(player);
         let losses: Vec<f64> = evals
             .windows(2)
             .enumerate()
             .filter(|(ply, _)| (ply % 2 == 0) == reviewed_white)
-            .map(|(_, pair)| {
-                let (before, after) = (win_percent(pair[0]), win_percent(pair[1]));
+            .filter_map(|(_, pair)| Some((pair[0]?, pair[1]?)))
+            .map(|(before_eval, after_eval)| {
+                let (before, after) = (win_percent(before_eval), win_percent(after_eval));
                 if reviewed_white {
                     before - after
                 } else {
@@ -1309,7 +1330,7 @@ pub fn review_games(
                 .max(0.0)
             })
             .collect();
-        if !losses.is_empty() {
+        if !losses.is_empty() && evals.iter().all(Option::is_some) {
             let average = losses.iter().sum::<f64>() / losses.len() as f64;
             database.set_accuracy(id, accuracy_from_loss(average))?;
         }

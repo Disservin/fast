@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS games (
     eco TEXT NOT NULL,
     event TEXT NOT NULL,
     round TEXT NOT NULL,
+    start_fen TEXT NOT NULL DEFAULT '',
     source TEXT NOT NULL,
     time_class TEXT NOT NULL,
     plies INTEGER NOT NULL,
@@ -73,6 +74,20 @@ impl Database {
         }
         let conn = Connection::open(&path)?;
         conn.execute_batch(SCHEMA)?;
+        let has_start_fen = {
+            let mut columns = conn.prepare("PRAGMA table_info(games)")?;
+            columns
+                .query_map([], |row| row.get::<_, String>(1))?
+                .collect::<rusqlite::Result<Vec<_>>>()?
+                .iter()
+                .any(|column| column == "start_fen")
+        };
+        if !has_start_fen {
+            conn.execute(
+                "ALTER TABLE games ADD COLUMN start_fen TEXT NOT NULL DEFAULT ''",
+                [],
+            )?;
+        }
         Ok(Self { conn, path })
     }
 

@@ -183,6 +183,9 @@ const ROW_COLUMNS: &str = "id, white, black, white_elo, black_elo, result, date,
 #[derive(Clone, Debug, PartialEq)]
 pub struct GameDetails {
     pub row: GameRow,
+    /// Empty means the standard initial position for databases created before custom
+    /// starting positions were retained.
+    pub start_fen: String,
     pub sans: Vec<String>,
 }
 
@@ -214,6 +217,10 @@ impl GameDetails {
         tag("White", &row.white);
         tag("Black", &row.black);
         tag("Result", &row.result);
+        if !self.start_fen.is_empty() {
+            tag("SetUp", "1");
+            tag("FEN", &self.start_fen);
+        }
         if let Some(elo) = row.white_elo {
             tag("WhiteElo", &elo.to_string());
         }
@@ -301,12 +308,14 @@ impl Database {
         let found = self
             .conn
             .query_row(
-                &format!("SELECT {ROW_COLUMNS}, moves FROM games WHERE id = ?1"),
+                &format!("SELECT {ROW_COLUMNS}, moves, start_fen FROM games WHERE id = ?1"),
                 params![id],
                 |row| {
                     let moves: String = row.get(14)?;
+                    let start_fen: String = row.get(15)?;
                     Ok(GameDetails {
                         row: GameRow::from_row(row)?,
+                        start_fen,
                         sans: moves.split_ascii_whitespace().map(str::to_owned).collect(),
                     })
                 },

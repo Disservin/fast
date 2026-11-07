@@ -60,11 +60,12 @@ struct Tags {
     round: String,
     site: String,
     time_control: String,
-    fen: bool,
+    fen: String,
 }
 
 struct Game {
     tags: Tags,
+    start_fen: String,
     pos: Chess,
     sans: Vec<String>,
     hashes: Vec<u64>,
@@ -105,20 +106,28 @@ impl Visitor for ImportVisitor {
             b"Round" => tags.round = text(),
             b"Site" => tags.site = text(),
             b"TimeControl" => tags.time_control = text(),
-            b"FEN" => tags.fen = true,
+            b"FEN" => tags.fen = text(),
             _ => {}
         }
         ControlFlow::Continue(())
     }
 
     fn begin_movetext(&mut self, tags: Self::Tags) -> ControlFlow<Self::Output, Self::Movetext> {
-        // Custom starting positions cannot use the shared position index.
-        if tags.fen {
-            return ControlFlow::Break(None);
-        }
+        let (start_fen, pos) = if tags.fen.is_empty() {
+            (String::new(), Chess::default())
+        } else {
+            let Ok(tree) = chess_core::GameTree::from_fen(&tags.fen) else {
+                return ControlFlow::Break(None);
+            };
+            (
+                tags.fen.clone(),
+                tree.node(chess_core::GameTree::ROOT).pos.clone(),
+            )
+        };
         ControlFlow::Continue(Game {
             tags,
-            pos: Chess::default(),
+            start_fen,
+            pos,
             sans: Vec::with_capacity(100),
             hashes: Vec::with_capacity(100),
             failed: false,
@@ -167,8 +176,8 @@ fn insert_game(tx: &Transaction<'_>, game: &Game, source: &str) -> Result<()> {
     };
     let mut insert_game = tx.prepare_cached(
         "INSERT INTO games (white, black, white_elo, black_elo, result, date, eco, event, round,
-            source, time_class, plies, moves)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+            start_fen, source, time_class, plies, moves)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
     )?;
     let source = if source.is_empty() {
         guess_source(&tags.site)
@@ -189,6 +198,7 @@ fn insert_game(tx: &Transaction<'_>, game: &Game, source: &str) -> Result<()> {
         eco,
         tags.event,
         tags.round,
+        game.start_fen,
         source,
         TimeClass::from_time_control(&tags.time_control).as_str(),
         game.sans.len() as i64,
