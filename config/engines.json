@@ -1,0 +1,126 @@
+{
+  "schema_version": 1,
+  "engines": [
+    {
+      "id": "stockfish",
+      "name": "Stockfish",
+      "version": "19",
+      "description": "Strong general-purpose analysis and play. Universal builds select CPU features automatically.",
+      "homepage": "https://stockfishchess.org/",
+      "source_url": "https://github.com/official-stockfish/Stockfish/tree/sf_19",
+      "license": "GPL-3.0-or-later",
+      "license_url": "https://raw.githubusercontent.com/official-stockfish/Stockfish/sf_19/Copying.txt",
+      "protocol": "uci",
+      "defaults": {
+        "MultiPV": "3",
+        "UCI_ShowWDL": "true"
+      },
+      "downloads": [
+        {
+          "os": "linux",
+          "arch": "x86_64",
+          "url": "https://github.com/official-stockfish/Stockfish/releases/download/sf_19/stockfish-linux-x86-64-universal.tar.gz",
+          "sha256": "9defc0d4e55d49c65a6d042f3e571a39fcea499ade6dbe741b53b8c65e03611f",
+          "format": "tar_gz",
+          "executable": "stockfish/stockfish-linux-x86-64-universal"
+        },
+        {
+          "os": "linux",
+          "arch": "aarch64",
+          "url": "https://github.com/official-stockfish/Stockfish/releases/download/sf_19/stockfish-linux-arm64-universal.tar.gz",
+          "sha256": "fe26cfd1d9db4c8af3d21e24d9ff34cacb31c1f940085a7583da11796f2bac01",
+          "format": "tar_gz",
+          "executable": "stockfish/stockfish-linux-arm64-universal"
+        },
+        {
+          "os": "macos",
+          "arch": "x86_64",
+          "url": "https://github.com/official-stockfish/Stockfish/releases/download/sf_19/stockfish-macos-universal.tar.gz",
+          "sha256": "a1f0e3bcc5a6927a11fe6fc8e54a779754645f3c2bae2cf13420fd1957adaa77",
+          "format": "tar_gz",
+          "executable": "stockfish/stockfish-macos-universal"
+        },
+        {
+          "os": "macos",
+          "arch": "aarch64",
+          "url": "https://github.com/official-stockfish/Stockfish/releases/download/sf_19/stockfish-macos-universal.tar.gz",
+          "sha256": "a1f0e3bcc5a6927a11fe6fc8e54a779754645f3c2bae2cf13420fd1957adaa77",
+          "format": "tar_gz",
+          "executable": "stockfish/stockfish-macos-universal"
+        },
+        {
+          "os": "windows",
+          "arch": "x86_64",
+          "url": "https://github.com/official-stockfish/Stockfish/releases/download/sf_19/stockfish-windows-x86-64-universal.zip",
+          "sha256": "3c8bf1f9ea66a09350a40df4f632288285ac206d99f33ab5842c408fc30b48a7",
+          "format": "zip",
+          "executable": "stockfish/stockfish-windows-x86-64-universal.exe"
+        },
+        {
+          "os": "windows",
+          "arch": "aarch64",
+          "url": "https://github.com/official-stockfish/Stockfish/releases/download/sf_19/stockfish-windows-arm64-universal.zip",
+          "sha256": "8372ad3f0d7276deb2c70f801f541ec7db463219fc6d9c7592864e542aa4f401",
+          "format": "zip",
+          "executable": "stockfish/stockfish-windows-arm64-universal.exe"
+        }
+      ]
+    },
+    {
+      "id": "fairy-stockfish",
+      "name": "Fairy-Stockfish",
+      "version": "14",
+      "description": "A lightweight Stockfish derivative. Runs standard chess here; no network download is required.",
+      "homepage": "https://fairy-stockfish.github.io/",
+      "source_url": "https://github.com/fairy-stockfish/Fairy-Stockfish/tree/fairy_sf_14",
+      "license": "GPL-3.0-or-later",
+      "license_url": "https://raw.githubusercontent.com/fairy-stockfish/Fairy-Stockfish/fairy_sf_14/Copying.txt",
+      "protocol": "uci",
+      "defaults": {
+        "MultiPV": "3"
+      },
+      "downloads": [
+        {
+          "os": "linux",
+          "arch": "x86_64",
+          "url": "https://github.com/fairy-stockfish/Fairy-Stockfish/releases/download/fairy_sf_14/fairy-stockfish_x86-64",
+          "sha256": "ab6b85823152e78654092dc2fbb154956a559c6ef0455d728268544390ee150f",
+          "format": "binary",
+          "executable": "fairy-stockfish_x86-64"
+        },
+        {
+          "os": "windows",
+          "arch": "x86_64",
+          "url": "https://github.com/fairy-stockfish/Fairy-Stockfish/releases/download/fairy_sf_14/fairy-stockfish_x86-64.exe",
+          "sha256": "28d5c18fd7352d66800d13e1fdd57ba7d64d95c38d93642fd12cbd89e9d0ed73",
+          "format": "binary",
+          "executable": "fairy-stockfish_x86-64.exe"
+        }
+      ]
+    },
+    {
+      "id": "berserk",
+      "name": "Berserk",
+      "version": "14",
+      "description": "A strong independent NNUE engine. The portable Windows build includes its network.",
+      "homepage": "https://github.com/jhonnold/berserk",
+      "source_url": "https://github.com/jhonnold/berserk/tree/14",
+      "license": "GPL-3.0-or-later",
+      "license_url": "https://raw.githubusercontent.com/jhonnold/berserk/14/LICENSE",
+      "protocol": "uci",
+      "defaults": {
+        "MultiPV": "3"
+      },
+      "downloads": [
+        {
+          "os": "windows",
+          "arch": "x86_64",
+          "url": "https://github.com/jhonnold/berserk/releases/download/14/berserk-14-x86-64.exe",
+          "sha256": "84572e3f3c8fb345aebdc63a7658508edce16a6b5d4d144e5bd3d1bfdb909dbe",
+          "format": "binary",
+          "executable": "berserk-14-x86-64.exe"
+        }
+      ]
+    }
+  ]
+}

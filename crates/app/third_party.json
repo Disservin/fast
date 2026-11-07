@@ -792,6 +792,12 @@
   "repository": "https://github.com/jhpratt/deranged"
  },
  {
+  "name": "derive_arbitrary",
+  "version": "1.5.0",
+  "license": "MIT OR Apache-2.0",
+  "repository": "https://github.com/rust-fuzz/arbitrary"
+ },
+ {
   "name": "derive_more",
   "version": "2.1.1",
   "license": "MIT",
@@ -1054,6 +1060,12 @@
   "version": "0.8.3",
   "license": "MIT",
   "repository": "https://github.com/wezterm/wezterm"
+ },
+ {
+  "name": "filetime",
+  "version": "0.2.29",
+  "license": "MIT/Apache-2.0",
+  "repository": "https://github.com/alexcrichton/filetime"
  },
  {
   "name": "find-msvc-tools",
@@ -3726,6 +3738,12 @@
   "repository": null
  },
  {
+  "name": "tar",
+  "version": "0.4.46",
+  "license": "MIT OR Apache-2.0",
+  "repository": "https://github.com/composefs/tar-rs"
+ },
+ {
   "name": "tauri-winrt-notification",
   "version": "0.8.1",
   "license": "MIT OR Apache-2.0",
@@ -4056,6 +4074,18 @@
   "repository": "https://github.com/briansmith/untrusted"
  },
  {
+  "name": "ureq",
+  "version": "3.5.1",
+  "license": "MIT OR Apache-2.0",
+  "repository": "https://github.com/algesten/ureq"
+ },
+ {
+  "name": "ureq-proto",
+  "version": "0.7.1",
+  "license": "MIT OR Apache-2.0",
+  "repository": "https://github.com/algesten/ureq-proto"
+ },
+ {
   "name": "url",
   "version": "2.5.8",
   "license": "MIT OR Apache-2.0",
@@ -4078,6 +4108,12 @@
   "version": "0.7.6",
   "license": "MIT OR Apache-2.0",
   "repository": "https://github.com/SimonSapin/rust-utf8"
+ },
+ {
+  "name": "utf8-zero",
+  "version": "0.8.1",
+  "license": "MIT OR Apache-2.0",
+  "repository": "https://github.com/algesten/utf8-zero"
  },
  {
   "name": "utf8_iter",
@@ -4264,6 +4300,12 @@
   "version": "1.1.0",
   "license": "MIT OR Apache-2.0",
   "repository": "https://github.com/daxpedda/web-time"
+ },
+ {
+  "name": "webpki-roots",
+  "version": "1.0.11",
+  "license": "CDLA-Permissive-2.0",
+  "repository": "https://github.com/rustls/webpki-roots"
  },
  {
   "name": "weezl",
@@ -4800,6 +4842,12 @@
   "repository": "https://github.com/psychon/x11rb"
  },
  {
+  "name": "xattr",
+  "version": "1.7.0",
+  "license": "MIT OR Apache-2.0",
+  "repository": "https://github.com/Stebalien/xattr"
+ },
+ {
   "name": "xcb",
   "version": "1.7.1",
   "license": "MIT",
@@ -5004,6 +5052,12 @@
   "repository": "https://github.com/unicode-org/icu4x"
  },
  {
+  "name": "zip",
+  "version": "4.6.1",
+  "license": "MIT",
+  "repository": "https://github.com/zip-rs/zip2.git"
+ },
+ {
   "name": "zlib-rs",
   "version": "0.6.8",
   "license": "Zlib",
@@ -5014,6 +5068,12 @@
   "version": "1.0.23",
   "license": "MIT",
   "repository": "https://github.com/dtolnay/zmij"
+ },
+ {
+  "name": "zopfli",
+  "version": "0.8.4",
+  "license": "Apache-2.0",
+  "repository": "https://github.com/zopfli-rs/zopfli"
  },
  {
   "name": "zune-core",

@@ -20,7 +20,9 @@ Choose a full interface palette under **Settings › General › Appearance**: S
 Forest, or Plum. Themes apply immediately and are remembered across restarts; chessboard colors
 remain a separate choice under **Settings › Board & pieces**.
 
-In normal mode, add a UCI engine under **Settings › Engines › Add from file**, and import PGNs
+In normal mode, choose **Settings › Engines › Download engine** to install a catalog engine,
+or use **Add from file** for a local UCI executable. Downloads need internet access;
+installed engines run offline. Import PGNs
 with **Database › Import**. Set your name under **Settings › Databases** so Fast can tell which
 games are yours.
 
@@ -147,3 +149,7 @@ install -Dm644 assets/app/dev.fast.app.desktop ~/.local/share/applications/dev.f
 ```
 
 Ensure `~/.local/bin` is on your `PATH`, then launch **Fast** from the application menu.
+
+Engine download entries live in [config/engines.json](config/engines.json). See
+[the catalog guide](config/README.md) and [JSON schema](config/engines.schema.json)
+for adding pinned, checksummed platform builds without changing app code.

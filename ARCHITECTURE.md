@@ -150,3 +150,15 @@ contents. Restore validates payloads, migrates legacy JSON/TOML defaults, previe
 offers keep/replace conflict policies. It stages rollback data before applying any files and
 rolls back on an apply failure. Applying a restore is currently exclusive on the UI thread;
 large restores can pause the window. Restart after restoring engine and shortcut settings.
+
+## Optional engine downloads
+
+`config/engines.json` is the versioned bundled catalog, documented and accompanied
+by a JSON schema in `config/`. Settings lists compatible builds and can download,
+verify, install and register them. `engine_catalog.rs` uses blocking HTTPS on a
+background task, streams bounded downloads, checks pinned SHA-256, extracts only
+safe ordinary files, and atomically publishes a staged version directory. License
+and corresponding-source references remain with every installation. Cancellation
+and failures preserve existing engines; UCI handshake success is required before
+registration. Installed engines need no network connection. Catalog entries carry
+options as data and never run shell install commands.

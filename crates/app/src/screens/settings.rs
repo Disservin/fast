@@ -228,8 +228,20 @@ pub struct SettingsScreen {
     capture_focus: FocusHandle,
     capturing: Option<&'static str>,
     benchmark: Option<SharedString>,
+    catalog_open: bool,
+    install_status: Option<SharedString>,
+    install_cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+    install_task: Option<gpui::Task<()>>,
     _subscriptions: Vec<Subscription>,
     _option_subscriptions: Vec<Subscription>,
+}
+
+impl Drop for SettingsScreen {
+    fn drop(&mut self) {
+        if let Some(cancel) = &self.install_cancel {
+            cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+    }
 }
 
 impl SettingsScreen {
@@ -336,6 +348,10 @@ impl SettingsScreen {
             capture_focus: cx.focus_handle(),
             capturing: None,
             benchmark: None,
+            catalog_open: false,
+            install_status: None,
+            install_cancel: None,
+            install_task: None,
             _subscriptions: subscriptions,
             _option_subscriptions: Vec::new(),
         };
@@ -726,6 +742,16 @@ impl SettingsScreen {
     }
 
     fn probe_engine(&mut self, path: PathBuf, replace: Option<EngineId>, cx: &mut Context<Self>) {
+        self.probe_engine_defaults(path, replace, Default::default(), cx);
+    }
+
+    fn probe_engine_defaults(
+        &mut self,
+        path: PathBuf,
+        replace: Option<EngineId>,
+        defaults: std::collections::BTreeMap<String, String>,
+        cx: &mut Context<Self>,
+    ) {
         let handle = EngineHandle::spawn(path.clone(), Vec::new(), Vec::new());
         let events = handle.events();
         let this = cx.entity().downgrade();
@@ -771,6 +797,11 @@ impl SettingsScreen {
                     if info.options.iter().any(|option| option.name == "MultiPV") {
                         options.insert("MultiPV".to_owned(), "3".to_owned());
                     }
+                    for (name, value) in defaults {
+                        if info.options.iter().any(|option| option.name == name) {
+                            options.insert(name, value);
+                        }
+                    }
                     if let Some(existing) = replace.and_then(|id| model.engine_mut(id)) {
                         existing.path = path.clone();
                         existing.info = info;
@@ -812,6 +843,10 @@ impl SettingsScreen {
                         let _ = window.update(cx, |_, window, cx| {
                             this.update(cx, |this, cx| {
                                 this.select_engine(Some(id), window, cx);
+                                this.install_status = Some(
+                                    "Engine ready. Select it for analysis, review or play below."
+                                        .into(),
+                                );
                             });
                         });
                     }
@@ -1583,6 +1618,131 @@ impl SettingsScreen {
             .child(self.render_board_section(cx))
     }
 
+    fn download_engine(&mut self, index: usize, cx: &mut Context<Self>) {
+        if self.install_cancel.is_some() {
+            return;
+        }
+        let entry = match crate::engine_catalog::Catalog::bundled().and_then(|catalog| {
+            catalog
+                .engines
+                .get(index)
+                .cloned()
+                .ok_or_else(|| anyhow::anyhow!("Unknown engine"))
+        }) {
+            Ok(entry) => entry,
+            Err(err) => {
+                self.model.update(cx, |model, cx| {
+                    model.toast(format!("Cannot load engine catalog: {err:#}"), cx)
+                });
+                return;
+            }
+        };
+        let data = self.model.read(cx).paths.data_dir.clone();
+        let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        self.install_cancel = Some(cancel.clone());
+        self.install_status = Some(format!("Preparing {}…", entry.name).into());
+        let (sender, receiver) = smol::channel::unbounded::<String>();
+        let defaults = entry.defaults.clone();
+        let worker = cx.background_spawn(async move {
+            crate::engine_catalog::install(&entry, &data, cancel, |message| {
+                let _ = sender.try_send(message);
+            })
+        });
+        self.install_task = Some(cx.spawn(async move |this, cx| {
+            while let Ok(message) = receiver.recv().await {
+                if this
+                    .update(cx, |screen, cx| {
+                        screen.install_status = Some(message.into());
+                        cx.notify();
+                    })
+                    .is_err()
+                {
+                    return;
+                }
+            }
+            let result = worker.await;
+            let _ = this.update(cx, |screen, cx| {
+                screen.install_cancel = None;
+                match result {
+                    Ok(path) => {
+                        screen.install_status = Some("Installed. Checking UCI handshake…".into());
+                        let existing = screen
+                            .model
+                            .read(cx)
+                            .config
+                            .engines
+                            .iter()
+                            .find(|engine| engine.path == path)
+                            .map(|engine| engine.id);
+                        screen.probe_engine_defaults(path, existing, defaults, cx);
+                    }
+                    Err(err) => {
+                        let message =
+                            format!("Engine installation stopped: {err:#}. You can retry.");
+                        screen.install_status = Some(message.clone().into());
+                        screen
+                            .model
+                            .update(cx, |model, cx| model.toast(message, cx));
+                    }
+                }
+                cx.notify();
+            });
+        }));
+        cx.notify();
+    }
+
+    fn render_catalog(&self, cx: &mut Context<Self>) -> Div {
+        let mut body =
+            v_flex()
+                .gap(px(12.))
+                .child(section_label("Download an engine"))
+                .child(div().text_size(px(13.)).text_color(rgb(T.muted)).child(
+                    "Downloads require an internet connection. Installed engines run offline.",
+                ));
+        let busy = self.install_cancel.is_some();
+        match crate::engine_catalog::Catalog::bundled() {
+            Err(err) => body = body.child(format!("Engine catalog unavailable: {err:#}")),
+            Ok(catalog) => {
+                for (index, entry) in catalog.engines.into_iter().enumerate() {
+                    let this = cx.entity();
+                    let supported = entry.native_download().is_some();
+                    let installed = entry.native_download().is_some_and(|asset| {
+                        let path = entry
+                            .install_dir(&self.model.read(cx).paths.data_dir, asset)
+                            .join(&asset.executable);
+                        self.model
+                            .read(cx)
+                            .config
+                            .engines
+                            .iter()
+                            .any(|engine| engine.path == path)
+                    });
+                    let homepage = entry.homepage.clone();
+                    let source = entry.source_url.clone();
+                    body = body.child(h_flex().gap(px(16.)).items_start()
+                    .child(v_flex().flex_1().min_w_0().gap(px(4.))
+                        .child(format!("{} {} · {}", entry.name, entry.version, entry.license))
+                        .child(div().text_size(px(12.)).text_color(rgb(T.muted)).child(entry.description))
+                        .when(!supported, |column| column.child(format!("No catalog build for {} / {}. You can still add a local executable.", std::env::consts::OS, std::env::consts::ARCH))))
+                    .child(btn(("engine-site", index), "Website").h(30.).on_click(move |_, cx| cx.open_url(&homepage)))
+                    .child(btn(("engine-source", index), "Source").h(30.).on_click(move |_, cx| cx.open_url(&source)))
+                    .child(btn(("engine-install", index), if installed { "Installed" } else { "Download & install" }).h(30.).disabled(busy || !supported || installed)
+                        .on_click(move |_, cx| this.update(cx, |screen, cx| screen.download_engine(index, cx)))));
+                }
+            }
+        }
+        if let Some(status) = &self.install_status {
+            body = body.child(div().text_size(px(13.)).child(status.clone()));
+        }
+        if let Some(cancel) = self.install_cancel.clone() {
+            body = body.child(
+                btn("cancel-engine-install", "Cancel download")
+                    .on_click(move |_, _| cancel.store(true, std::sync::atomic::Ordering::Relaxed)),
+            );
+        }
+        panel().p(px(16.)).child(body)
+    }
+
     fn render_engines(
         &mut self,
         window: &mut Window,
@@ -1603,8 +1763,15 @@ impl SettingsScreen {
                     .child(
                         btn("download-engine", "Download engine")
                             .primary()
-                            .tooltip("Opens stockfishchess.org in your browser")
-                            .on_click(|_, cx| cx.open_url("https://stockfishchess.org/download/")),
+                            .on_click({
+                                let this = this.clone();
+                                move |_, cx| {
+                                    this.update(cx, |screen, cx| {
+                                        screen.catalog_open = !screen.catalog_open;
+                                        cx.notify();
+                                    })
+                                }
+                            }),
                     ),
             );
         // Fractions of the table so it fits any window width.
@@ -1725,6 +1892,9 @@ impl SettingsScreen {
         v_flex()
             .gap(px(21.))
             .child(header)
+            .when(self.catalog_open, |column| {
+                column.child(self.render_catalog(cx))
+            })
             .child(table)
             .children(detail)
     }
@@ -2019,7 +2189,7 @@ impl SettingsScreen {
                                 let name = name.clone();
                                 update_model.update(cx, |model, cx| {
                                     model.toast(
-                                        format!("Fast works offline, so it cannot look up {name} versions. Compare with the engine's website."),
+                                        format!("Compare {name} with the pinned versions under Download engine. Existing installations are kept until you choose a new version."),
                                         cx,
                                     );
                                 });

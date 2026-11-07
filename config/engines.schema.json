@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fast.local/schemas/engines.schema.json",
+  "title": "Fast engine catalog",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "engines"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "engines": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/engine"
+      }
+    }
+  },
+  "$defs": {
+    "engine": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "version",
+        "description",
+        "homepage",
+        "source_url",
+        "license",
+        "license_url",
+        "protocol",
+        "downloads"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "license": {
+          "type": "string",
+          "minLength": 1
+        },
+        "homepage": {
+          "type": "string",
+          "pattern": "^https://"
+        },
+        "source_url": {
+          "type": "string",
+          "pattern": "^https://"
+        },
+        "license_url": {
+          "type": "string",
+          "pattern": "^https://"
+        },
+        "protocol": {
+          "const": "uci"
+        },
+        "defaults": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "downloads": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/download"
+          }
+        }
+      }
+    },
+    "download": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "os",
+        "arch",
+        "url",
+        "sha256",
+        "format",
+        "executable"
+      ],
+      "properties": {
+        "os": {
+          "enum": [
+            "linux",
+            "macos",
+            "windows"
+          ]
+        },
+        "arch": {
+          "enum": [
+            "x86_64",
+            "aarch64"
+          ]
+        },
+        "url": {
+          "type": "string",
+          "pattern": "^https://"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{64}$"
+        },
+        "format": {
+          "enum": [
+            "binary",
+            "zip",
+            "tar_gz"
+          ]
+        },
+        "executable": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Exact safe relative path within archive, or filename for a bare binary."
+        }
+      }
+    }
+  }
+}
