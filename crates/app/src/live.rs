@@ -47,11 +47,11 @@ impl LineCache {
         let deepest =
             |lines: &BTreeMap<u32, LiveLine>| lines.get(&1).map_or(0, |line| line.update.depth);
         let key = (engine, hash);
-        if self
-            .entries
-            .get(&key)
-            .is_some_and(|known| deepest(known) > deepest(lines))
-        {
+        if self.entries.get(&key).is_some_and(|known| {
+            known.get(&1).map(|line| line.position_context.as_str())
+                == lines.get(&1).map(|line| line.position_context.as_str())
+                && deepest(known) > deepest(lines)
+        }) {
             return;
         }
         let stored: BTreeMap<_, _> = lines
@@ -75,9 +75,17 @@ impl LineCache {
 
     /// The best line's White-relative eval and depth for a position from any engine,
     /// preferring the order given.
-    pub fn eval(&self, engines: &[EngineId], hash: u64) -> Option<(i32, u32)> {
+    pub fn eval(
+        &self,
+        engines: &[EngineId],
+        hash: u64,
+        position_context: &str,
+    ) -> Option<(i32, u32)> {
         engines.iter().find_map(|&id| {
             let line = self.get(id, hash)?.get(&1)?;
+            if line.position_context != position_context {
+                return None;
+            }
             Some((score_cp(line.score?), line.update.depth))
         })
     }
@@ -128,6 +136,8 @@ pub struct LiveLine {
     search_limit: String,
     #[serde(default)]
     engine_signature: String,
+    #[serde(default)]
+    position_context: String,
 }
 
 pub struct LiveEngine {
@@ -413,6 +423,10 @@ impl LiveAnalysis {
                             stale: false,
                             search_limit: current_limit.clone(),
                             engine_signature: current_signature.clone(),
+                            position_context: crate::analysis_store::position_key(
+                                &self.fen,
+                                &self.moves,
+                            ),
                         },
                     );
                 }
@@ -661,7 +675,8 @@ impl LiveAnalysis {
                         for line in lines.values_mut() {
                             line.cached = true;
                             line.stale = line.search_limit != search_limit
-                                || line.engine_signature != signature;
+                                || line.engine_signature != signature
+                                || line.position_context != position_key;
                         }
                         lines
                     })
@@ -687,6 +702,7 @@ impl LiveAnalysis {
                                         line.stale = stale;
                                         line.search_limit = record.limit.clone();
                                         line.engine_signature = record.engine.clone();
+                                        line.position_context = record.position.clone();
                                     }
                                     Some(record.lines)
                                 }
@@ -789,6 +805,10 @@ impl LiveAnalysis {
                                 stale: false,
                                 search_limit: search_limit.clone(),
                                 engine_signature: signature.clone(),
+                                position_context: crate::analysis_store::position_key(
+                                    &self.fen,
+                                    &self.moves,
+                                ),
                             },
                         );
                     }
@@ -910,6 +930,7 @@ mod tests {
                 ..Default::default()
             },
             score: Some(Score::Cp(cp)),
+            position_context: "ctx".to_owned(),
             ..Default::default()
         };
         [(1, line)].into_iter().collect()
@@ -935,11 +956,11 @@ mod tests {
         assert_eq!(kept[&1].update.depth, 20);
         assert!(kept[&1].cached);
         cache.store(1, 42, &lines(25, 15));
-        assert_eq!(cache.eval(&[1], 42), Some((15, 25)));
+        assert_eq!(cache.eval(&[1], 42, "ctx"), Some((15, 25)));
         // Another engine's analysis of the same position is separate.
-        assert_eq!(cache.eval(&[2], 42), None);
+        assert_eq!(cache.eval(&[2], 42, "ctx"), None);
         cache.store(2, 42, &lines(8, 50));
-        assert_eq!(cache.eval(&[2, 1], 42), Some((50, 8)));
+        assert_eq!(cache.eval(&[2, 1], 42, "ctx"), Some((50, 8)));
         cache.forget_engine(1);
         assert!(cache.get(1, 42).is_none());
         assert!(cache.get(2, 42).is_some());

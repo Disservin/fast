@@ -1803,8 +1803,11 @@ impl AnalyseScreen {
         ids.iter()
             .map(|id| {
                 let cached = || {
-                    live.cache
-                        .eval(&engines, position_hash(&self.tree.node(*id).pos))
+                    live.cache.eval(
+                        &engines,
+                        position_hash(&self.tree.node(*id).pos),
+                        &crate::analysis_store::tree_position_key(&self.tree, *id),
+                    )
                 };
                 match self.evals.get(id) {
                     Some(cp) => (Some(*cp), self.depths.get(id).copied().filter(|d| *d > 0)),
