@@ -8,6 +8,7 @@
 | `pieces/chessnut/*` | [Alexis Luengas](https://github.com/LexLuengas/chessnut-pieces), via Lichess | Apache-2.0, see `pieces/chessnut/LICENSE.txt` |
 | `pieces/mpchess/*` | [Maxime Chupin](https://github.com/chupinmaxime), via Lichess | GPL-3.0-or-later |
 | `pieces/fantasy/*` | [Maurizio Monge](https://github.com/maurimo/chess-art), via Lichess | MIT, see `pieces/fantasy/LICENSE` |
+| `sounds/classic/*` | [Chess Puzzle Blitz SFX by el_boss](https://freesound.org/people/el_boss/packs/30764/) | CC0-1.0, see `sounds/classic/CC0-1.0.txt` and `sounds/classic/README.md` |
 | `icons/*` | [Lucide](https://lucide.dev) | ISC, see `icons/LICENSE` |
 
 Piece sets licensed only for non-commercial use (most of Lichess' others) are not bundled.

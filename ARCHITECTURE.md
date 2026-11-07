@@ -51,13 +51,18 @@ and stderr, which outlives the process so a crash can still be read.
 
 ## Sound
 
-Move sounds are synthesised in `sound.rs` (taps, a check ping, an end chime), so no audio
-files are bundled. Settings offers Wood (the original default), Soft, Click, Bell, Deep wood and Thud
-profiles with previews and saved volume. Synthesis and playback run on the sound thread,
-with a bounded request queue that drops excess previews. Deep wood and Thud use
-low fundamentals and two low-pass stages to soften impact harmonics. Playback goes through rodio without decoders. The output device is opened
-on first use on a thread of its own, because its stream cannot move between threads on every
-platform; without a device the sounds are skipped.
+Classic (the default for new profiles) uses real wooden-board recordings by el_boss,
+released under CC0. MP3 originals, source links and the license are in `assets/sounds/classic`.
+`scripts/prepare_chess_sounds.py` converts them to embedded mono 44.1 kHz PCM; playback
+needs no decoder, external files or network. Classic plays placement/capture recordings,
+two placements for castling and a board-reset recording at game end, without electronic
+check tones. Existing saved sound choices remain selectable; Classic is available in Settings.
+
+Wood, Soft, Click, Bell, Deep wood and Thud remain as optional synthesized profiles.
+Previews and saved volume apply to every profile. PCM loading, synthesis and playback run
+on the sound thread with a bounded request queue. The output device opens there on first
+use, because its stream cannot move between threads on every platform; unavailable audio
+is skipped without blocking the UI.
 
 ## UCI protocol
 

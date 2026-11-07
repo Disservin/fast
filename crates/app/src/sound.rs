@@ -1,6 +1,5 @@
-//! Selectable move sounds, synthesised so no audio files need bundling: a wooden tap for a move,
-//! a sharper double knock for a capture, two taps for castling, a small ping for
-//! check and a soft chime when the game ends.
+//! Recorded chess-piece sounds by default, with optional synthesized profiles.
+//! Classic uses CC0 wooden-board recordings by el_boss (see assets/sounds/classic).
 //!
 //! The audio device is opened on first use, on a thread of its own (its stream cannot
 //! move between threads on every platform). Without a device the sounds are skipped.
@@ -31,6 +30,7 @@ pub enum Sound {
 #[serde(rename_all = "snake_case")]
 pub enum SoundProfile {
     #[default]
+    Classic,
     Wood,
     Soft,
     Click,
@@ -39,7 +39,8 @@ pub enum SoundProfile {
     Thud,
 }
 impl SoundProfile {
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 7] = [
+        Self::Classic,
         Self::Wood,
         Self::Soft,
         Self::Click,
@@ -49,6 +50,7 @@ impl SoundProfile {
     ];
     pub fn name(self) -> &'static str {
         match self {
+            Self::Classic => "Classic",
             Self::Wood => "Wood",
             Self::Soft => "Soft",
             Self::Click => "Click",
@@ -226,10 +228,52 @@ fn tone(out: &mut [f32], at: usize, freq: f32, loudness: f32, decay: f32) {
     }
 }
 
+/// Decode embedded mono PCM once, away from the UI thread. No runtime downloads.
+fn classic(sound: Sound) -> Vec<f32> {
+    fn decode(bytes: &[u8]) -> Vec<f32> {
+        bytes
+            .chunks_exact(2)
+            .map(|sample| i16::from_le_bytes([sample[0], sample[1]]) as f32 / 32768.0)
+            .collect()
+    }
+    static PLACEMENT: OnceLock<Vec<f32>> = OnceLock::new();
+    static CAPTURE: OnceLock<Vec<f32>> = OnceLock::new();
+    static RESET: OnceLock<Vec<f32>> = OnceLock::new();
+    let placement = || {
+        PLACEMENT.get_or_init(|| {
+            decode(include_bytes!(
+                "../../../assets/sounds/classic/placement.pcm"
+            ))
+        })
+    };
+    match sound {
+        Sound::Move => placement().clone(),
+        Sound::Capture => CAPTURE
+            .get_or_init(|| decode(include_bytes!("../../../assets/sounds/classic/capture.pcm")))
+            .clone(),
+        Sound::Castle => {
+            let samples = placement();
+            let mut out = vec![0.0; samples.len() + ms(90)];
+            for (index, sample) in samples.iter().enumerate() {
+                out[index] += sample * 0.85;
+                out[index + ms(90)] += sample * 0.85;
+            }
+            out
+        }
+        // The piece impact already announces check; avoid adding electronic tones.
+        Sound::Check => Vec::new(),
+        Sound::GameEnd => RESET
+            .get_or_init(|| decode(include_bytes!("../../../assets/sounds/classic/reset.pcm")))
+            .clone(),
+    }
+}
+
 /// Alternate profiles use distinct envelopes and timbres, including event cues.
 pub fn synthesise_profile(profile: SoundProfile, sound: Sound) -> Vec<f32> {
-    if profile == SoundProfile::Wood {
-        return synthesise(sound);
+    match profile {
+        SoundProfile::Classic => return classic(sound),
+        SoundProfile::Wood => return synthesise(sound),
+        _ => {}
     }
     let length = match sound {
         Sound::Move => 100,
@@ -263,7 +307,7 @@ pub fn synthesise_profile(profile: SoundProfile, sound: Sound) -> Vec<f32> {
             tone(&mut out, 0, pitch * 0.23, 0.65, 0.025);
             tone(&mut out, 0, pitch * 0.36, 0.16, 0.012);
         }
-        SoundProfile::Wood => unreachable!(),
+        SoundProfile::Wood | SoundProfile::Classic => unreachable!(),
     }
     if matches!(sound, Sound::Castle | Sound::GameEnd) {
         let multiplier = match profile {
@@ -466,6 +510,23 @@ mod tests {
     }
 
     #[test]
+    fn classic_uses_recordings_and_no_electronic_check_overlay() {
+        assert_eq!(SoundProfile::default(), SoundProfile::Classic);
+        let placement = synthesise_profile(SoundProfile::Classic, Sound::Move);
+        let capture = synthesise_profile(SoundProfile::Classic, Sound::Capture);
+        assert!((ms(50)..ms(250)).contains(&placement.len()));
+        assert!((ms(100)..ms(400)).contains(&capture.len()));
+        assert!(placement.iter().any(|sample| sample.abs() > 0.1));
+        assert_ne!(placement, capture);
+        assert_ne!(placement, synthesise(Sound::Move));
+        assert!(synthesise_profile(SoundProfile::Classic, Sound::Check).is_empty());
+        assert_eq!(
+            mix(SoundProfile::Classic, &[Sound::Move, Sound::Check], 1.0),
+            mix(SoundProfile::Classic, &[Sound::Move], 1.0)
+        );
+    }
+
+    #[test]
     fn darker_profiles_keep_all_event_cues_in_the_low_register() {
         for profile in [SoundProfile::DeepWood, SoundProfile::Thud] {
             for sound in [
@@ -506,7 +567,9 @@ mod tests {
                     clip.iter()
                         .all(|sample| sample.is_finite() && sample.abs() <= 0.951)
                 );
-                assert!(clip.last().unwrap().abs() < 0.001);
+                if let Some(last) = clip.last() {
+                    assert!(last.abs() < 0.001);
+                }
             }
             assert!(mix(profile, &[Sound::Move], 0.0).is_empty());
         }

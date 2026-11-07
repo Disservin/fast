@@ -40,7 +40,7 @@ pub fn libraries() -> &'static [Library] {
 pub const FAST_LICENSE: &str = "GPL-3.0-or-later";
 
 /// Bundled assets: what, by whom, and under which licence.
-pub const ASSETS: [(&str, &str, &str); 8] = [
+pub const ASSETS: [(&str, &str, &str); 9] = [
     (
         "Geist and Geist Mono",
         "The Geist Project Authors (Vercel)",
@@ -56,7 +56,12 @@ pub const ASSETS: [(&str, &str, &str); 8] = [
     ("MPChess pieces", "Maxime Chupin", "GPL-3.0-or-later"),
     ("Fantasy pieces", "Maurizio Monge", "MIT"),
     ("Lucide icons", "Lucide contributors", "ISC"),
-    ("Move sounds", "Synthesised by Fast", "GPL-3.0-or-later"),
+    (
+        "Classic chess recordings",
+        "el_boss (Chess Puzzle Blitz SFX)",
+        "CC0-1.0",
+    ),
+    ("Synthesized move sounds", "Fast", "GPL-3.0-or-later"),
 ];
 
 /// How many libraries use each licence, commonest first. `A/B` is the old way of
