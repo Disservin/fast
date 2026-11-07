@@ -22,7 +22,6 @@ use ui::{
 };
 
 use crate::{
-    controls::text_input,
     live::{LiveAnalysis, LiveEvent},
     model::{AppModel, ModelEvent},
     shell::Workspace,
@@ -118,8 +117,10 @@ pub fn merge_rows(
     rows
 }
 
+mod editor;
 mod panels;
 
+use editor::PositionEditor;
 use panels::{LOG_POLL, LogSelection, PvView};
 
 type MenuHandler = Box<dyn Fn(&mut Window, &mut gpui::App)>;
@@ -142,7 +143,8 @@ pub struct AnalyseScreen {
     comment: Entity<TextareaState>,
     editing_comment: bool,
     fen_input: Entity<InputState>,
-    setting_up: bool,
+    /// Edit position is open, with the position being set up.
+    editor: Option<PositionEditor>,
     context_menu: Option<(NodeId, Point<Pixels>)>,
     /// The board toolbar's copy menu is open.
     copy_menu: bool,
@@ -196,6 +198,10 @@ impl AnalyseScreen {
         let subscriptions = vec![
             cx.subscribe_in(&board, window, |this, _, event, window, cx| match event {
                 BoardEvent::Moved(mv) => this.play_move(*mv, window, cx),
+                BoardEvent::Square { square, erase } => {
+                    let (square, erase) = (*square, *erase);
+                    this.edit_position(cx, |editor| editor.paint(square, erase));
+                }
             }),
             cx.subscribe_in(&live, window, |this, _, event, _, cx| match event {
                 LiveEvent::Updated => this.rebuild_rows(cx),
@@ -269,7 +275,7 @@ impl AnalyseScreen {
             comment,
             editing_comment: false,
             fen_input,
-            setting_up: false,
+            editor: None,
             context_menu: None,
             copy_menu: false,
             scoresheet_scroll: ScrollHandle::new(),
@@ -361,6 +367,7 @@ impl AnalyseScreen {
     }
 
     fn position_changed(&mut self, animate: bool, window: &mut Window, cx: &mut Context<Self>) {
+        self.close_editor(cx);
         self.pv_view = None;
         self.pv_dragging = false;
         self.pv_hover = None;
@@ -580,7 +587,6 @@ impl AnalyseScreen {
         self.tree = tree;
         self.current = GameTree::ROOT;
         self.evals.clear();
-        self.setting_up = false;
         self.position_changed(false, window, cx);
     }
 
@@ -1060,14 +1066,16 @@ impl AnalyseScreen {
         } else {
             "Black"
         };
-        let status = if shown.is_checkmate() {
+        let status = if self.editor.is_some() {
+            "Edit position".to_owned()
+        } else if shown.is_checkmate() {
             "Checkmate".to_owned()
         } else if shown.is_stalemate() {
             "Stalemate".to_owned()
         } else {
             format!("{turn} to move")
         };
-        let after = (self.current != GameTree::ROOT)
+        let after = (self.current != GameTree::ROOT && self.editor.is_none())
             .then(|| format!("after {}", self.tree.move_label(self.current)));
         let after = self
             .pv_preview_label(self.tree.node(self.current).ply)
@@ -1084,6 +1092,7 @@ impl AnalyseScreen {
                     .filter(|_| self.pv_view.is_none())
                     .map(|cp| Score::Cp(*cp).display())
             })
+            .filter(|_| self.editor.is_none())
             .unwrap_or_else(|| "–".to_owned());
         let ids = self.timeline_ids();
         let evals: Vec<Option<i32>> = ids.iter().map(|id| self.evals.get(id).copied()).collect();
@@ -1108,7 +1117,6 @@ impl AnalyseScreen {
             Some(key) => format!("Flip board ({})", key.to_uppercase()),
             None => "Flip board".to_owned(),
         };
-        let tool_pad = if compact { 5. } else { 13. };
         v_flex()
             .flex_none()
             .w(board_size)
@@ -1207,20 +1215,18 @@ impl AnalyseScreen {
                                         }
                                     }),
                             )
-                            .child(btn("setup", "Set up").pad(tool_pad).on_click({
-                                let this = this.clone();
-                                move |window, cx| {
-                                    this.update(cx, |screen, cx| {
-                                        screen.setting_up = !screen.setting_up;
-                                        if screen.setting_up {
-                                            screen.fen_input.update(cx, |input, cx| {
-                                                input.focus(window, cx);
-                                            });
+                            .child(
+                                icon_btn("edit-position", "icons/pencil.svg")
+                                    .w(nav_width)
+                                    .selected(self.editor.is_some())
+                                    .tooltip("Edit position")
+                                    .on_click({
+                                        let this = this.clone();
+                                        move |_, cx| {
+                                            this.update(cx, |screen, cx| screen.toggle_editor(cx));
                                         }
-                                        cx.notify();
-                                    });
-                                }
-                            }))
+                                    }),
+                            )
                             .child(copy_menu)
                             .child(
                                 icon_btn("snapshot", "icons/camera.svg")
@@ -1235,9 +1241,6 @@ impl AnalyseScreen {
                             ),
                     ),
             )
-            .when(self.setting_up, |column| {
-                column.child(div().mt(px(8.)).child(text_input(&self.fen_input)))
-            })
     }
 
     fn render_moves_table(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
@@ -1681,6 +1684,7 @@ impl Render for AnalyseScreen {
         let board_column = self.render_board_column(board_size, cx);
         let table = self.render_moves_table(cx);
         let preview = self.render_line_preview(cx);
+        let editor = self.editor.is_some().then(|| self.render_editor(cx));
         let engine_panel = self.engine_panel_open.then(|| self.render_engine_panel(cx));
         let log_panel = self.log_panel_open.then(|| self.render_log_panel(cx));
         let note = self.note.clone();
@@ -1705,6 +1709,7 @@ impl Render for AnalyseScreen {
                             .gap(px(18.))
                             // The search changes the height of everything below the table, so the
                             // Engine panel goes above it to keep its buttons still.
+                            .children(editor)
                             .children(engine_panel)
                             .child(table)
                             .child(preview)

@@ -4,7 +4,7 @@ use std::{collections::HashSet, time::Duration};
 
 use chess_core::{
     Chess, Color, Move, Position, Role, Square,
-    shakmaty::{File, Piece, Rank},
+    shakmaty::{Board, File, Piece, Rank},
 };
 use gpui::{
     Animation, AnimationExt as _, App, Bounds, Context, ElementId, EventEmitter, FontWeight,
@@ -96,6 +96,11 @@ pub struct Arrow {
 
 pub enum BoardEvent {
     Moved(Move),
+    /// A square was clicked while editing: `erase` for the right button.
+    Square {
+        square: Square,
+        erase: bool,
+    },
 }
 
 /// Dims the board behind the promotion choices.
@@ -138,6 +143,8 @@ pub struct BoardView {
     bounds: Bounds<Pixels>,
     animate_serial: u64,
     animate: Option<(Square, Square)>,
+    /// A board being edited, shown instead of the position. It need not be legal.
+    edit: Option<Board>,
 }
 
 impl EventEmitter<BoardEvent> for BoardView {}
@@ -162,6 +169,7 @@ impl BoardView {
             bounds: Bounds::default(),
             animate_serial: 0,
             animate: None,
+            edit: None,
         }
     }
 
@@ -172,6 +180,18 @@ impl BoardView {
 
     pub fn is_flipped(&self) -> bool {
         self.flipped
+    }
+
+    /// Shows a board being edited, which may be illegal, and reports clicked squares
+    /// instead of moves. `None` goes back to the position.
+    pub fn set_editing(&mut self, board: Option<Board>, cx: &mut Context<Self>) {
+        self.selected = None;
+        self.drag = None;
+        self.promotion = None;
+        self.user_arrows.clear();
+        self.circles.clear();
+        self.edit = board;
+        cx.notify();
     }
 
     /// The position being shown.
@@ -254,7 +274,7 @@ impl BoardView {
     }
 
     fn can_move_piece(&self, square: Square) -> bool {
-        if !self.interactive {
+        if !self.interactive || self.edit.is_some() {
             return false;
         }
         let turn = self.pos.turn();
@@ -306,6 +326,13 @@ impl BoardView {
             return;
         };
         if self.promotion.is_some() {
+            return;
+        }
+        if self.edit.is_some() {
+            if matches!(event.button, MouseButton::Left | MouseButton::Right) {
+                let erase = event.button == MouseButton::Right;
+                cx.emit(BoardEvent::Square { square, erase });
+            }
             return;
         }
         match event.button {
@@ -515,7 +542,8 @@ impl Render for BoardView {
             .as_ref()
             .filter(|drag| drag.moved)
             .map(|drag| drag.from);
-        let targets: Vec<Square> = if self.prefs.show_legal && self.interactive {
+        let editing = self.edit.is_some();
+        let targets: Vec<Square> = if self.prefs.show_legal && self.interactive && !editing {
             self.selected
                 .map(|from| self.legal_targets(from))
                 .unwrap_or_default()
@@ -528,7 +556,9 @@ impl Render for BoardView {
             .size_full()
             .border_1()
             .border_color(rgb(T.border_strong));
-        let last = self.last_move.filter(|_| self.prefs.highlight_last);
+        let last = self
+            .last_move
+            .filter(|_| self.prefs.highlight_last && !editing);
         let on_squares = self.prefs.coordinates == CoordinateStyle::OnSquares;
 
         let mut grid = div().absolute().inset_0().flex().flex_col();
@@ -591,7 +621,11 @@ impl Render for BoardView {
 
         // Pieces, absolutely positioned so moves can animate.
         let mut pieces_el = div().absolute().inset_0();
-        for (square, piece) in self.pos.board().clone() {
+        let shown = self
+            .edit
+            .clone()
+            .unwrap_or_else(|| self.pos.board().clone());
+        for (square, piece) in shown {
             if Some(square) == hidden {
                 continue;
             }
@@ -652,7 +686,11 @@ impl Render for BoardView {
 
         // Arrows and pointer capture. Listeners are window-level so drags keep
         // tracking outside the board.
-        let mut arrows: Vec<Arrow> = self.arrows.clone();
+        let mut arrows: Vec<Arrow> = if editing {
+            Vec::new()
+        } else {
+            self.arrows.clone()
+        };
         arrows.extend(self.user_arrows.iter().copied());
         let arrow_cells: Vec<((u32, u32), (u32, u32))> = arrows
             .iter()

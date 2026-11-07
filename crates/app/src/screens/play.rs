@@ -128,6 +128,7 @@ impl PlayScreen {
         let subscriptions = vec![
             cx.subscribe_in(&board, window, |this, _, event, _, cx| match event {
                 BoardEvent::Moved(mv) => this.user_move(*mv, cx),
+                BoardEvent::Square { .. } => {}
             }),
             cx.subscribe(&strength, |this, _, event: &SliderEvent, cx| {
                 if let SliderEvent::Change(value) = event {

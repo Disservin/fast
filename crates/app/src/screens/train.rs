@@ -88,6 +88,7 @@ impl TrainScreen {
         let subscriptions = vec![
             cx.subscribe_in(&board, window, |this, _, event, _, cx| match event {
                 BoardEvent::Moved(mv) => this.user_move(*mv, cx),
+                BoardEvent::Square { .. } => {}
             }),
             cx.subscribe_in(&add_line, window, |this, state, event, window, cx| {
                 if matches!(event, InputEvent::PressEnter { .. }) {
