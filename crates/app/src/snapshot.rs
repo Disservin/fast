@@ -112,8 +112,8 @@ mod tests {
     #[test]
     fn draws_every_piece_once_with_its_own_gradients() {
         let look = BoardLook {
-            light: 0xDCD8D0,
-            dark: 0x9A948A,
+            light: 0xDEE3E6,
+            dark: 0x8CA2AD,
             flipped: true,
             last_move: None,
         };

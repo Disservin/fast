@@ -18,18 +18,19 @@ use crate::theme::{MONO, SANS, T};
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum BoardTheme {
     #[default]
-    Stone,
+    Blue,
     Walnut,
     Moss,
     Graphite,
 }
 
 impl BoardTheme {
-    pub const ALL: [Self; 4] = [Self::Stone, Self::Walnut, Self::Moss, Self::Graphite];
+    pub const ALL: [Self; 4] = [Self::Blue, Self::Walnut, Self::Moss, Self::Graphite];
 
     pub fn colors(self) -> (u32, u32) {
         match self {
-            Self::Stone => (0xDCD8D0, 0x9A948A),
+            // Lichess' blue board: cool, clear contrast that sits well with the slate UI.
+            Self::Blue => (0xDEE3E6, 0x8CA2AD),
             Self::Walnut => (0xE9D7B4, 0xA97A50),
             Self::Moss => (0xE6E9D8, 0x7F956B),
             Self::Graphite => (0xC9CBCE, 0x55595F),
@@ -38,7 +39,7 @@ impl BoardTheme {
 
     pub fn name(self) -> &'static str {
         match self {
-            Self::Stone => "Stone",
+            Self::Blue => "Blue",
             Self::Walnut => "Walnut",
             Self::Moss => "Moss",
             Self::Graphite => "Graphite",
@@ -79,7 +80,7 @@ pub struct BoardPrefs {
 impl Default for BoardPrefs {
     fn default() -> Self {
         Self {
-            theme: BoardTheme::Stone,
+            theme: BoardTheme::Blue,
             pieces: PieceSet::Classic,
             coordinates: CoordinateStyle::OnSquares,
             animation_ms: 150,
@@ -691,7 +692,8 @@ impl Render for BoardView {
                     (true, true) => last_move_color(light),
                     (false, true) => last_move_color(dark),
                 };
-                let coordinate_color = if is_light { 0x5C5851 } else { 0xF0EEE9 };
+                // Like Lichess: each coordinate takes the other square colour.
+                let coordinate_color = if is_light { dark } else { light };
                 let mut sq = div().relative().flex_1().bg(rgb(color));
                 if self.selected == Some(square) && self.interactive && !editing {
                     sq = sq.child(div().absolute().inset_0().bg(dest_green()));
@@ -1080,9 +1082,9 @@ mod tests {
     fn last_move_tint_blends_toward_lichess_green_yellow() {
         assert_eq!(blend(0x000000, 0xFFFFFF, 0.5), 0x808080);
         assert_eq!(blend(0x123456, 0xABCDEF, 0.0), 0x123456);
-        let tinted = last_move_color(0xDCD8D0);
+        let tinted = last_move_color(0xDEE3E6);
         // Green rises above red and blue drops, like Lichess' highlight.
         let (r, g, b) = (tinted >> 16, (tinted >> 8) & 0xFF, tinted & 0xFF);
-        assert!(g > r && b < 0xD0);
+        assert!(g > r && b < 0xE6);
     }
 }

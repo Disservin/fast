@@ -859,7 +859,7 @@ impl SettingsScreen {
         let config = self.model.read(cx).config.board.clone();
         let mut boards = h_flex().gap(px(8.));
         let themes = [
-            (SavedTheme::Stone, ui::BoardTheme::Stone),
+            (SavedTheme::Blue, ui::BoardTheme::Blue),
             (SavedTheme::Walnut, ui::BoardTheme::Walnut),
             (SavedTheme::Moss, ui::BoardTheme::Moss),
             (SavedTheme::Graphite, ui::BoardTheme::Graphite),
@@ -922,7 +922,7 @@ impl SettingsScreen {
                             .items_center()
                             .justify_center()
                             .rounded(px(2.))
-                            .bg(rgb(0xDCD8D0))
+                            .bg(rgb(config.prefs().theme.colors().0))
                             .child(preview),
                     )
                     .child(tile_label(name)),

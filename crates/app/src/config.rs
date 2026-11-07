@@ -64,7 +64,9 @@ fn migrate_dir(old: &Path, new: &Path) {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SavedTheme {
-    Stone,
+    /// Configs from before the Blue board named its predecessor "stone".
+    #[serde(alias = "stone")]
+    Blue,
     Walnut,
     Moss,
     Graphite,
@@ -107,7 +109,7 @@ pub struct BoardConfig {
 impl Default for BoardConfig {
     fn default() -> Self {
         Self {
-            theme: SavedTheme::Stone,
+            theme: SavedTheme::Blue,
             pieces: SavedPieces::Classic,
             coordinates: SavedCoordinates::OnSquares,
             animation_ms: 150,
@@ -126,7 +128,7 @@ impl BoardConfig {
     pub fn prefs(&self) -> BoardPrefs {
         BoardPrefs {
             theme: match self.theme {
-                SavedTheme::Stone => BoardTheme::Stone,
+                SavedTheme::Blue => BoardTheme::Blue,
                 SavedTheme::Walnut => BoardTheme::Walnut,
                 SavedTheme::Moss => BoardTheme::Moss,
                 SavedTheme::Graphite => BoardTheme::Graphite,
@@ -376,6 +378,14 @@ mod tests {
         std::fs::create_dir(&old).unwrap();
         migrate_dir(&old, &new);
         assert!(old.exists() && new.exists());
+    }
+
+    #[test]
+    fn the_retired_stone_board_loads_as_blue() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(&path, "[board]\ntheme = \"stone\"\n").unwrap();
+        assert_eq!(Config::load(&path).board.theme, SavedTheme::Blue);
     }
 
     #[test]
