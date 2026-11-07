@@ -46,6 +46,7 @@ pub struct TrainScreen {
     selected_path: Option<Vec<String>>,
     add_line: Entity<InputState>,
     adding: bool,
+    _autosave: gpui::Task<()>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -125,9 +126,53 @@ impl TrainScreen {
             selected_path: None,
             add_line,
             adding: false,
+            _autosave: cx.spawn(async move |this: WeakEntity<Self>, cx| {
+                loop {
+                    cx.background_executor()
+                        .timer(std::time::Duration::from_secs(10))
+                        .await;
+                    if this
+                        .update(cx, |this, cx| {
+                            if !this.queue.is_empty() {
+                                this.persist_session(cx);
+                            }
+                        })
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+            }),
             _subscriptions: subscriptions,
         };
-        this.reload_queue(cx);
+        let saved = this.model.read(cx).repertoire.session.clone();
+        if let Some(saved) = saved {
+            this.queue = saved.queue;
+            this.finished = saved.finished;
+            this.total = saved.total;
+            this.every_reply = saved.every_reply;
+            this.attempts = saved.attempts;
+            this.start_drill(cx);
+            this.phase = match saved.phase {
+                1 => Phase::Correct,
+                2 => Phase::Wrong,
+                3 => Phase::Revealed,
+                _ => Phase::Asking,
+            };
+            if matches!(this.phase, Phase::Correct | Phase::Revealed) {
+                this.board
+                    .update(cx, |board, cx| board.set_interactive(false, cx));
+            }
+            this.message = Some(
+                format!(
+                    "Resumed study saved at Unix time {}. Earlier hints and mistakes are retained.",
+                    saved.saved_at
+                )
+                .into(),
+            );
+        } else {
+            this.reload_queue(cx);
+        }
         this
     }
 
@@ -141,28 +186,8 @@ impl TrainScreen {
         }
         // Demo mode opens mid-session, as in the design.
         self.finished = if model.demo { 6 } else { 0 };
-        self.total = self
-            .queue
-            .iter()
-            .filter(|drill| self.is_due(drill, cx))
-            .count()
-            + self.finished;
+        self.total = self.queue.len() + self.finished;
         self.start_drill(cx);
-    }
-
-    fn is_due(&self, drill: &Drill, cx: &gpui::App) -> bool {
-        let path: Vec<&str> = drill
-            .path
-            .iter()
-            .map(String::as_str)
-            .chain([drill.answer.as_str()])
-            .collect();
-        self.model
-            .read(cx)
-            .repertoire
-            .node(&path)
-            .and_then(|node| node.card)
-            .is_some_and(|card| card.is_due(today()))
     }
 
     fn current(&self) -> Option<&Drill> {
@@ -180,6 +205,30 @@ impl TrainScreen {
             last = Some(mv);
         }
         Some((pos, last))
+    }
+
+    fn persist_session(&mut self, cx: &mut Context<Self>) {
+        self.evidence();
+        let session = trainer::StudySession {
+            saved_at: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |time| time.as_secs()),
+            queue: self.queue.clone(),
+            finished: self.finished,
+            total: self.total,
+            every_reply: self.every_reply,
+            attempts: self.attempts.clone(),
+            phase: match self.phase {
+                Phase::Asking => 0,
+                Phase::Correct => 1,
+                Phase::Wrong => 2,
+                Phase::Revealed => 3,
+            },
+        };
+        self.model.update(cx, |model, cx| {
+            model.repertoire.session = Some(session);
+            model.save_repertoire(cx);
+        });
     }
 
     fn attempt_key(&self) -> String {
@@ -244,6 +293,7 @@ impl TrainScreen {
             board.set_flipped(!white, cx);
             board.set_interactive(drill.is_some(), cx);
         });
+        self.persist_session(cx);
         cx.notify();
     }
 
@@ -294,6 +344,7 @@ impl TrainScreen {
                 format!("{played} is not in your repertoire here. Try again.").into()
             });
         }
+        self.persist_session(cx);
         cx.notify();
     }
 
@@ -317,6 +368,7 @@ impl TrainScreen {
             chess_core::Role::King => "the king",
         };
         self.message = Some(format!("Hint: move {name}.").into());
+        self.persist_session(cx);
         cx.notify();
     }
 
@@ -330,6 +382,7 @@ impl TrainScreen {
             board.set_arrows(vec![Arrow::new(from, mv.to())], cx);
             board.set_interactive(false, cx);
         });
+        self.persist_session(cx);
         cx.notify();
     }
 
@@ -366,25 +419,26 @@ impl TrainScreen {
         let applied = attempt.scheduling_grade(grade);
         let attempt_key = self.attempt_key();
         let id = self.exercise_id;
-        let was_due = self.is_due(&drill, cx);
         let path: Vec<String> = drill
             .path
             .iter()
             .cloned()
             .chain([drill.answer.clone()])
             .collect();
-        self.model.update(cx, |model, cx| {
+        let submitted = self.model.update(cx, |model, _| {
             model
                 .repertoire
-                .submit_review(id, &path, grade, attempt, today());
-            model.save_repertoire(cx);
+                .submit_review(id, &path, grade, attempt, today())
         });
+        if !submitted {
+            return;
+        }
         self.attempts.remove(&attempt_key);
         self.queue.remove(0);
         // "Again" returns the card to the end of today's session.
         if applied == Grade::Again {
             self.queue.push(drill);
-        } else if was_due {
+        } else {
             self.finished += 1;
         }
         self.start_drill(cx);
@@ -731,7 +785,35 @@ impl TrainScreen {
                     .h(px(14.))
                     .mt(px(24.))
                     .gap(px(14.))
-                    .child(section_label(format!("Drill: {position} of {total} due")))
+                    .child(section_label(format!(
+                        "Drill: {position} of {total} · {} due · {} new",
+                        self.queue
+                            .iter()
+                            .filter(|d| {
+                                let mut path = d.path.clone();
+                                path.push(d.answer.clone());
+                                self.model
+                                    .read(cx)
+                                    .repertoire
+                                    .node(&path)
+                                    .and_then(|n| n.card)
+                                    .is_some_and(|c| c.is_due(today()))
+                            })
+                            .count(),
+                        self.queue
+                            .iter()
+                            .filter(|d| {
+                                let mut path = d.path.clone();
+                                path.push(d.answer.clone());
+                                self.model
+                                    .read(cx)
+                                    .repertoire
+                                    .node(&path)
+                                    .and_then(|n| n.card)
+                                    .is_some_and(|c| c.state == trainer::CardState::New)
+                            })
+                            .count()
+                    )))
                     .child(
                         div()
                             .flex_1()
@@ -998,7 +1080,20 @@ impl Render for TrainScreen {
                 this.reload_queue(cx);
             })
         });
-        let tree = v_flex().child(mode).child(self.render_tree(cx));
+        let reset = cx.entity();
+        let history = self.model.read(cx).repertoire.history.len();
+        let tree = v_flex()
+            .child(mode)
+            .child(format!("{history} completed reviews"))
+            .child(
+                btn("restart-study", "Discard session and start fresh").on_click(move |_, cx| {
+                    reset.update(cx, |this, cx| {
+                        this.attempts.clear();
+                        this.reload_queue(cx);
+                    })
+                }),
+            )
+            .child(self.render_tree(cx));
         let center = self.render_center(board_size, cx);
         let leaks = self.render_leaks(cx);
         h_flex()

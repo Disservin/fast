@@ -48,3 +48,15 @@ mod tests {
         assert_eq!(attempt.scheduling_grade(Grade::Good), Grade::Again);
     }
 }
+
+/// Queue, evidence and counters commit alongside cards and review history.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct StudySession {
+    pub saved_at: u64,
+    pub queue: Vec<crate::Drill>,
+    pub finished: usize,
+    pub total: usize,
+    pub every_reply: bool,
+    pub attempts: std::collections::HashMap<String, Attempt>,
+    pub phase: u8,
+}

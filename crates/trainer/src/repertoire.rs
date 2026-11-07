@@ -59,6 +59,8 @@ pub struct Repertoire {
     pub roots: Vec<RepNode>,
     #[serde(default)]
     pub history: Vec<crate::ReviewEvent>,
+    #[serde(default)]
+    pub session: Option<crate::StudySession>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -82,7 +84,7 @@ impl Coverage {
 }
 
 /// A due or new user move to quiz: the moves leading to it and the expected answer.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Drill {
     pub path: Vec<String>,
     pub answer: String,
@@ -96,6 +98,7 @@ impl Repertoire {
             white,
             roots: Vec::new(),
             history: Vec::new(),
+            session: None,
         }
     }
 
@@ -756,6 +759,32 @@ mod tests {
         assert_eq!(rep.history[0].requested, Grade::Easy);
         assert_eq!(rep.history[0].attempt.failures, 1);
         assert_eq!(rep.history[0].after.lapses, 1);
+    }
+
+    #[test]
+    fn interrupted_session_round_trips_with_queue_and_evidence() {
+        let mut rep = sample();
+        let queue = rep.drills(0);
+        rep.session = Some(crate::StudySession {
+            queue: queue.clone(),
+            finished: 2,
+            total: 6,
+            attempts: [(
+                "position".to_owned(),
+                crate::Attempt {
+                    failures: 1,
+                    ..Default::default()
+                },
+            )]
+            .into(),
+            ..Default::default()
+        });
+        let restored: Repertoire =
+            serde_json::from_slice(&serde_json::to_vec(&rep).unwrap()).unwrap();
+        let session = restored.session.unwrap();
+        assert_eq!(session.queue, queue);
+        assert_eq!(session.finished, 2);
+        assert_eq!(session.attempts["position"].failures, 1);
     }
 
     #[test]
