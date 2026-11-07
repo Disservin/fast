@@ -1378,6 +1378,50 @@ mod tests {
         assert!(count_games(&pgn) >= 6);
     }
 
+    /// Verifies selfplay against any local fastchess build, including builds without events.
+    #[test]
+    #[ignore = "set FAST_TEST_FASTCHESS and FAST_TEST_ENGINE to local executables"]
+    fn selfplay_runs_two_processes_of_the_same_engine_and_saves_legal_games() {
+        let program = PathBuf::from(std::env::var("FAST_TEST_FASTCHESS").expect("fastchess"));
+        let engine_path = PathBuf::from(std::env::var("FAST_TEST_ENGINE").expect("engine path"));
+        let data = tempfile::tempdir().unwrap();
+        let dir = new_run_dir(data.path()).unwrap();
+        let participant = Participant {
+            name: "Selfplay".into(),
+            cmd: engine_path,
+            options: BTreeMap::new(),
+        };
+        let mut setup = setup(vec![participant.clone(), participant]);
+        setup.rounds = "1".into();
+        setup.concurrency = "1".into();
+        setup.limit = Limit::Nodes;
+        setup.limit_value = "100".into();
+        setup.maxmoves = "8".into();
+        setup.sprt = false;
+        setup.extra.clear();
+        let process = spawn(&program, &setup.args(&dir).unwrap(), &dir, None).unwrap();
+        let mut finished = 0;
+        let mut output = Vec::new();
+        while let Ok(line) = process.lines.recv_blocking() {
+            if matches!(parse_line(&line), Line::Finished { .. }) {
+                finished += 1;
+            }
+            output.push(line);
+        }
+        assert!(process.wait().success, "{output:?}");
+        assert_eq!(finished, 2, "{output:?}");
+        let pgn = std::fs::read_to_string(dir.join("games.pgn")).unwrap();
+        let games = chess_core::parse_pgn(&pgn).unwrap();
+        assert_eq!(games.len(), 2);
+        for game in games {
+            assert!(!game.mainline().is_empty());
+            let names = [game.header("White").unwrap(), game.header("Black").unwrap()];
+            assert!(names.contains(&"Selfplay"));
+            assert!(names.contains(&"Selfplay (2)"));
+            assert_ne!(game.header("Result"), Some("*"));
+        }
+    }
+
     /// Runs a fastchess build with `-events` and follows it as the Tournament tab does.
     #[test]
     #[ignore = "set FAST_TEST_FASTCHESS to a fastchess build with -events and FAST_TEST_ENGINE"]
