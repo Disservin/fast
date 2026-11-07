@@ -1791,6 +1791,7 @@ dependencies = [
  "gpui-kit-assets",
  "gpui-pre",
  "gpui-pre-platform",
+ "libc",
  "log",
  "resvg 0.46.0",
  "rodio",

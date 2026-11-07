@@ -8,6 +8,7 @@ mod controls;
 mod debug_window;
 mod demo;
 mod engine_catalog;
+mod fastchess;
 mod licenses;
 mod live;
 mod model;
@@ -18,6 +19,7 @@ mod screens;
 mod shell;
 mod snapshot;
 mod sound;
+mod tournament_live;
 
 use gpui::{
     App, AppContext as _, Bounds, TitlebarOptions, WindowBounds, WindowDecorations, WindowOptions,
@@ -32,7 +34,7 @@ use crate::{model::AppModel, shell::Workspace};
 pub struct Cli {
     /// Run with the generated demo profile.
     pub demo: bool,
-    /// Initial screen: analyse, database, train, play, settings[:section].
+    /// Initial screen: analyse, database, train, play, tournament, settings[:section].
     pub screen: Option<String>,
     /// Draw the window controls even under server decorations (to test them on X11).
     pub client_decorations: bool,

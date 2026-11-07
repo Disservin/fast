@@ -77,6 +77,27 @@ is skipped without blocking the UI.
   `position fen`, with the moves after `moves`.
 - Analysis engines that offer `UCI_AnalyseMode` get it set to `true`.
 
+## Engine tournaments
+
+The optional Tournament tab (opened from the new-tab menu, or `--screen tournament`) runs
+engine matches with fastchess. fastchess is not bundled: the pinned release in
+`fastchess.rs` is downloaded on first use into `<data>/tools/fastchess/<version>/`, verified by
+SHA-256 like catalog engines, or the user points Fast at their own executable
+(`fastchess_path` in the config). A tournament comes from the form, a pasted command line or a
+pasted `config.json`, and runs in its own folder, `<data>/tournaments/<id>/`, with `games.pgn`
+and `config.json`. Fast reads fastchess's human-readable stdout on two reader threads. Stop
+sends SIGINT on Unix, so fastchess saves its config and Continue resumes with
+`-config file=…`; on Windows it terminates the process and the last autosave counts. Quitting
+Fast stops running tournaments.
+
+Live boards come from fastchess's engine log, sent to its stdout (`-log file=/dev/stdout
+engine=true realtime=true`, Unix only). The stdout reader thread passes engine lines to
+`LiveGames` (`tournament_live.rs`) instead of the UI, which rebuilds one game per fastchess
+thread; the tab copies a snapshot into its boards at most five times a second. Commands that
+set their own `-log` run without live boards, and the log options are removed from the saved
+`config.json` after the run. `docs/fastchess-integration.md` lists fastchess changes that
+would replace the output parsing and other workarounds.
+
 ## Analysis cache
 
 `LiveAnalysis` keeps a `LineCache` of each engine's lines per position hash (Zobrist), so lines

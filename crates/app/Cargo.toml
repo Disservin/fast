@@ -40,6 +40,9 @@ rodio = { version = "0.23", default-features = false, features = ["playback"] }
 
 tempfile.workspace = true
 
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [dev-dependencies]
 
 [package.metadata.bundle]

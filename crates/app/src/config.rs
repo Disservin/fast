@@ -339,6 +339,8 @@ pub struct Config {
     pub engine_on: bool,
     pub analysis_limit: AnalysisLimit,
     pub view: AnalysisView,
+    /// A fastchess executable to use instead of the pinned download.
+    pub fastchess_path: Option<PathBuf>,
 }
 
 impl Default for Config {
@@ -355,6 +357,7 @@ impl Default for Config {
             engine_on: true,
             analysis_limit: AnalysisLimit::default(),
             view: AnalysisView::default(),
+            fastchess_path: None,
         }
     }
 }

@@ -21,6 +21,7 @@ use crate::{
         database::DatabaseScreen,
         play::PlayScreen,
         settings::{SettingsPage, SettingsScreen},
+        tournament::TournamentScreen,
         train::TrainScreen,
     },
 };
@@ -224,6 +225,8 @@ pub enum Mode {
     Train,
     Play,
     Settings,
+    /// Optional: only opened from the new-tab menu.
+    Tournament,
 }
 
 #[derive(Clone)]
@@ -233,6 +236,7 @@ enum TabContent {
     Train(Entity<TrainScreen>),
     Play(Entity<PlayScreen>),
     Settings(Entity<SettingsScreen>),
+    Tournament(Entity<TournamentScreen>),
 }
 impl TabContent {
     fn mode(&self) -> Mode {
@@ -242,6 +246,7 @@ impl TabContent {
             Self::Train(_) => Mode::Train,
             Self::Play(_) => Mode::Play,
             Self::Settings(_) => Mode::Settings,
+            Self::Tournament(_) => Mode::Tournament,
         }
     }
     /// The tab's screen and, where it has one, what that screen is showing.
@@ -252,6 +257,7 @@ impl TabContent {
             Self::Train(_) => ("Train", None),
             Self::Settings(_) => ("Settings", None),
             Self::Play(screen) => ("Play", Some(screen.read(cx).breadcrumb())),
+            Self::Tournament(screen) => ("Tournament", screen.read(cx).tab_detail()),
         }
     }
 }
@@ -269,6 +275,8 @@ pub struct Workspace {
     pub train: Entity<TrainScreen>,
     pub play: Entity<PlayScreen>,
     pub settings: Entity<SettingsScreen>,
+    /// The tournament tab shown last, if one was ever opened.
+    tournament: Option<Entity<TournamentScreen>>,
     tabs: Vec<WorkspaceTab>,
     closed_tabs: Vec<WorkspaceTab>,
     active_tab: u64,
@@ -352,7 +360,8 @@ impl Workspace {
             Mode::Database => TabContent::Database(database.clone()),
             Mode::Train => TabContent::Train(train.clone()),
             Mode::Play => TabContent::Play(play.clone()),
-            Mode::Settings => TabContent::Settings(settings.clone()),
+            // `--screen` never names the optional tournament tab.
+            Mode::Settings | Mode::Tournament => TabContent::Settings(settings.clone()),
         };
         let mut workspace = Self {
             tabs: vec![WorkspaceTab {
@@ -371,6 +380,7 @@ impl Workspace {
             train,
             play,
             settings,
+            tournament: None,
             search,
             path_input,
             menu_bar: draws_own_menus().then(|| gpui_component::menu::AppMenuBar::new(cx)),
@@ -380,17 +390,21 @@ impl Workspace {
             _subscriptions: vec![search_sub, path_sub, model_sub],
         };
         workspace.restore_recovery_tabs(window, cx);
+        if screen == Some("tournament") {
+            workspace.new_tab(Mode::Tournament, window, cx);
+        }
         workspace
     }
 
-    fn existing_content(&self, mode: Mode) -> TabContent {
-        match mode {
+    fn existing_content(&self, mode: Mode) -> Option<TabContent> {
+        Some(match mode {
             Mode::Analyse => TabContent::Analyse(self.analyse.clone()),
             Mode::Database => TabContent::Database(self.database.clone()),
             Mode::Train => TabContent::Train(self.train.clone()),
             Mode::Play => TabContent::Play(self.play.clone()),
             Mode::Settings => TabContent::Settings(self.settings.clone()),
-        }
+            Mode::Tournament => TabContent::Tournament(self.tournament.clone()?),
+        })
     }
 
     pub fn set_mode(&mut self, mode: Mode, cx: &mut Context<Self>) {
@@ -417,13 +431,10 @@ impl Workspace {
             let id = tab.id;
             self.tabs.push(tab);
             self.activate_tab(id, cx);
-        } else {
+        } else if let Some(content) = self.existing_content(mode) {
             let id = self.next_tab_id;
             self.next_tab_id += 1;
-            self.tabs.push(WorkspaceTab {
-                id,
-                content: self.existing_content(mode),
-            });
+            self.tabs.push(WorkspaceTab { id, content });
             self.activate_tab(id, cx);
         }
     }
@@ -474,6 +485,7 @@ impl Workspace {
                 self.play.update(cx, |screen, cx| screen.resume(cx));
             }
             TabContent::Settings(screen) => self.settings = screen,
+            TabContent::Tournament(screen) => self.tournament = Some(screen),
         }
         cx.notify();
     }
@@ -511,7 +523,12 @@ impl Workspace {
             Mode::Database => {
                 TabContent::Database(cx.new(|cx| DatabaseScreen::new(model, workspace, window, cx)))
             }
-            _ => self.existing_content(mode),
+            Mode::Tournament => TabContent::Tournament(
+                cx.new(|cx| TournamentScreen::new(model, workspace, window, cx)),
+            ),
+            _ => self
+                .existing_content(mode)
+                .expect("only tournament tabs are created on demand"),
         };
         WorkspaceTab { id, content }
     }
@@ -741,6 +758,7 @@ impl Workspace {
                         let analyse = cx.entity();
                         let play = analyse.clone();
                         let database = analyse.clone();
+                        let tournament = analyse.clone();
                         row.child(
                             btn("new-analysis-tab", "Analyse")
                                 .h(26.)
@@ -774,6 +792,19 @@ impl Workspace {
                                     database.update(cx, |this, cx| {
                                         this.new_tab_menu_open = false;
                                         this.new_tab(Mode::Database, window, cx)
+                                    })
+                                }),
+                        )
+                        .child(
+                            btn("new-tournament-tab", "Tournament")
+                                .h(26.)
+                                .pad(7.)
+                                .text(12.)
+                                .tooltip("Engine-vs-engine matches with fastchess")
+                                .on_click(move |window, cx| {
+                                    tournament.update(cx, |this, cx| {
+                                        this.new_tab_menu_open = false;
+                                        this.new_tab(Mode::Tournament, window, cx)
                                     })
                                 }),
                         )
@@ -898,6 +929,10 @@ impl Workspace {
             Mode::Settings => {
                 format!("Settings › {}", self.settings.read(cx).page().title()).into()
             }
+            Mode::Tournament => self.tournament.as_ref().map_or_else(
+                || "Tournament".into(),
+                |screen| screen.read(cx).breadcrumb(),
+            ),
         }
     }
 
@@ -1215,6 +1250,10 @@ impl Render for Workspace {
             Mode::Train => self.train.clone().into_any_element(),
             Mode::Play => self.play.clone().into_any_element(),
             Mode::Settings => self.settings.clone().into_any_element(),
+            Mode::Tournament => match &self.tournament {
+                Some(screen) => screen.clone().into_any_element(),
+                None => div().into_any_element(),
+            },
         };
         v_flex()
             .id("workspace")

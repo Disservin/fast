@@ -54,6 +54,8 @@ pub enum Format {
     Binary,
     Zip,
     TarGz,
+    /// An uncompressed tar, as fastchess releases are.
+    Tar,
 }
 impl Catalog {
     pub fn bundled() -> Result<Self> {
@@ -113,8 +115,11 @@ impl Entry {
             .find(|d| d.os == std::env::consts::OS && d.arch == std::env::consts::ARCH)
     }
     pub fn install_dir(&self, data: &Path, asset: &Download) -> PathBuf {
-        data.join("engines")
-            .join(&self.id)
+        self.install_dir_in(&data.join("engines"), asset)
+    }
+    /// The version directory under `root`, which holds one directory per catalog id.
+    pub fn install_dir_in(&self, root: &Path, asset: &Download) -> PathBuf {
+        root.join(&self.id)
             .join(&self.version)
             .join(format!("{}-{}", asset.os, asset.arch))
     }
@@ -249,8 +254,13 @@ fn unpack(asset: &Download, archive: &Path, destination: &Path, cancel: &AtomicB
                 )?;
             }
         }
-        Format::TarGz => {
-            let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(File::open(archive)?));
+        Format::TarGz | Format::Tar => {
+            let file = File::open(archive)?;
+            let reader: Box<dyn Read> = match asset.format {
+                Format::TarGz => Box::new(flate2::read::GzDecoder::new(file)),
+                _ => Box::new(file),
+            };
+            let mut archive = tar::Archive::new(reader);
             for (index, entry) in archive.entries()?.enumerate() {
                 cancelled(cancel)?;
                 ensure!(index < 8192, "Too many files in archive");
@@ -288,10 +298,19 @@ pub fn install(
     cancel: Arc<AtomicBool>,
     progress: impl Fn(String),
 ) -> Result<PathBuf> {
+    install_into(entry, &data.join("engines"), cancel, progress)
+}
+/// [`install`] into another root, for downloaded tools that are not engines.
+pub fn install_into(
+    entry: &Entry,
+    root: &Path,
+    cancel: Arc<AtomicBool>,
+    progress: impl Fn(String),
+) -> Result<PathBuf> {
     let asset = entry
         .native_download()
         .context("No build is available for this operating system and CPU")?;
-    let target = entry.install_dir(data, asset);
+    let target = entry.install_dir_in(root, asset);
     let executable = target.join(safe_relative(&asset.executable)?);
     if target.exists() {
         let receipt = fs::read(target.join("fast-install.json"))
@@ -321,6 +340,11 @@ pub fn install(
         .into();
     let mut last_mb = 0;
     progress(format!("Downloading {} {}…", entry.name, entry.version));
+    let what = if entry.protocol == "uci" {
+        "engine"
+    } else {
+        "tool"
+    };
     download(
         &agent,
         &asset.url,
@@ -337,7 +361,7 @@ pub fn install(
     )?;
     progress("Verifying SHA-256…".into());
     verify(&archive, &asset.sha256)?;
-    progress("Extracting engine and supporting files…".into());
+    progress(format!("Extracting {what} and supporting files…"));
     unpack(asset, &archive, &payload, &cancel)?;
     let staged_executable = payload.join(&asset.executable);
     ensure!(
@@ -370,7 +394,7 @@ pub fn install(
         serde_json::to_vec_pretty(entry)?,
     )?;
     cancelled(&cancel)?;
-    fs::rename(&payload, &target).context("Publishing engine installation")?;
+    fs::rename(&payload, &target).with_context(|| format!("Publishing {what} installation"))?;
     Ok(executable)
 }
 
