@@ -10,6 +10,7 @@ use gpui::{
     ScrollStrategy, SharedString, StyledText, Window, anchored, deferred, div, point, prelude::*,
     px, rgb, uniform_list,
 };
+use gpui_component::scroll::ScrollableElement;
 use ui::{
     Arrow, CoordinateStyle, MONO, T,
     widgets::{btn, check, h_flex, mono, panel, section_label, v_flex},
@@ -1021,6 +1022,10 @@ impl AnalyseScreen {
             .with_horizontal_sizing_behavior(ListHorizontalSizingBehavior::Unconstrained)
             .with_width_from_item(longest)
             .h(px(LOG_ROW_H * 12.))
+            .on_scroll(cx.listener(|this, _, _, cx| {
+                this.log_follow = false;
+                cx.notify();
+            }))
             .on_mouse_up(
                 MouseButton::Left,
                 cx.listener(|this, _, _, cx| this.end_log_selection(cx)),
@@ -1035,7 +1040,22 @@ impl AnalyseScreen {
             .flex_none()
             .overflow_hidden()
             .child(tools)
-            .child(div().py(px(6.)).bg(rgb(T.surface_2)).child(body))
+            .child(
+                div()
+                    .relative()
+                    .py(px(6.))
+                    .bg(rgb(T.surface_2))
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|this, _, _, cx| {
+                            this.log_follow = false;
+                            cx.notify();
+                        }),
+                    )
+                    .child(body)
+                    .vertical_scrollbar(&self.log_scroll)
+                    .horizontal_scrollbar(&self.log_scroll),
+            )
             .into_any_element()
     }
 

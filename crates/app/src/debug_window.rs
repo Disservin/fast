@@ -9,7 +9,7 @@ use gpui::{
     UniformListScrollHandle, WeakEntity, Window, WindowBounds, WindowOptions, div, prelude::*, px,
     rgb, size, uniform_list,
 };
-use gpui_component::Root;
+use gpui_component::{Root, scroll::ScrollableElement};
 use ui::{
     MONO, SANS, T,
     widgets::{btn, h_flex, v_flex},
@@ -119,6 +119,12 @@ impl Render for DebugWindow {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.refresh();
         let count = self.lines.len();
+        let longest = self
+            .lines
+            .iter()
+            .enumerate()
+            .max_by_key(|(_, line)| line.text.len())
+            .map(|(index, _)| index);
         let this = cx.entity();
         let (follow_this, info_this, clear_this, copy_this) =
             (this.clone(), this.clone(), this.clone(), this);
@@ -214,18 +220,39 @@ impl Render for DebugWindow {
                     ),
             )
             .child(
-                div().flex_1().min_h_0().py(px(6.)).child(
-                    uniform_list(
-                        "debug-log",
-                        count,
-                        cx.processor(|this, range: Range<usize>, _, _| {
-                            range.map(|index| this.row(index)).collect::<Vec<_>>()
+                div()
+                    .relative()
+                    .flex_1()
+                    .min_h_0()
+                    .py(px(6.))
+                    .on_mouse_down(
+                        gpui::MouseButton::Left,
+                        cx.listener(|this, _, _, cx| {
+                            this.follow = false;
+                            cx.notify();
                         }),
                     )
-                    .track_scroll(&self.scroll)
-                    .with_horizontal_sizing_behavior(ListHorizontalSizingBehavior::Unconstrained)
-                    .size_full(),
-                ),
+                    .child(
+                        uniform_list(
+                            "debug-log",
+                            count,
+                            cx.processor(|this, range: Range<usize>, _, _| {
+                                range.map(|index| this.row(index)).collect::<Vec<_>>()
+                            }),
+                        )
+                        .track_scroll(&self.scroll)
+                        .with_horizontal_sizing_behavior(
+                            ListHorizontalSizingBehavior::Unconstrained,
+                        )
+                        .with_width_from_item(longest)
+                        .on_scroll(cx.listener(|this, _, _, cx| {
+                            this.follow = false;
+                            cx.notify();
+                        }))
+                        .size_full(),
+                    )
+                    .vertical_scrollbar(&self.scroll)
+                    .horizontal_scrollbar(&self.scroll),
             )
     }
 }
