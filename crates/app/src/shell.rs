@@ -451,6 +451,9 @@ impl Workspace {
         let Some(tab) = self.tabs.iter().find(|tab| tab.id == id).cloned() else {
             return;
         };
+        // The new-tab picker covers the content, so going to any tab, even the one
+        // already active, dismisses it.
+        self.new_tab_menu_open = false;
         if self.active_tab == id {
             cx.notify();
             return;
