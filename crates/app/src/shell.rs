@@ -8,7 +8,7 @@ use gpui::{
     KeyBinding, MouseButton, Pixels, Render, ResizeEdge, SharedString, Subscription, Window,
     WindowControlArea, actions, deferred, div, prelude::*, px, rgb,
 };
-use gpui_component::input::{InputEvent, InputState};
+use gpui_component::input::{InputEvent, InputState, TextareaState};
 use ui::{
     SANS, T,
     widgets::{Btn, BtnKind, btn, h_flex, icon_btn, v_flex},
@@ -302,6 +302,7 @@ pub struct Workspace {
     new_tab_menu_open: bool,
     search: Entity<InputState>,
     path_input: Entity<InputState>,
+    paths_input: Entity<TextareaState>,
     menu_bar: Option<Entity<gpui_component::menu::AppMenuBar>>,
     focus: FocusHandle,
     first_frame: bool,
@@ -329,6 +330,7 @@ impl Workspace {
         let search = cx
             .new(|cx| InputState::new(window, cx).placeholder("Search positions, games, openings"));
         let path_input = cx.new(|cx| InputState::new(window, cx).placeholder("/path/to/file"));
+        let paths_input = cx.new(|cx| TextareaState::new(window, cx));
         let path_sub = cx.subscribe_in(&path_input, window, |this, _, event, window, cx| {
             if matches!(event, InputEvent::PressEnter { .. }) {
                 this.submit_path(window, cx);
@@ -346,8 +348,18 @@ impl Workspace {
             // The typed-path bar takes focus as soon as it opens.
             let open = model.read(cx).pending_path.is_some();
             if open && !path_prompt_open {
-                this.path_input
-                    .update(cx, |input, cx| input.focus(window, cx));
+                if model
+                    .read(cx)
+                    .pending_path
+                    .as_ref()
+                    .is_some_and(|pending| pending.multiple)
+                {
+                    this.paths_input
+                        .update(cx, |input, cx| input.focus(window, cx));
+                } else {
+                    this.path_input
+                        .update(cx, |input, cx| input.focus(window, cx));
+                }
             }
             path_prompt_open = open;
             // Turning background analysis off stops a hidden Analyse tab's engines now.
@@ -409,6 +421,7 @@ impl Workspace {
             tournament: None,
             search,
             path_input,
+            paths_input,
             menu_bar: draws_own_menus().then(|| gpui_component::menu::AppMenuBar::new(cx)),
             focus,
             first_frame: true,
@@ -989,7 +1002,18 @@ impl Workspace {
     }
 
     fn submit_path(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let text = self.path_input.read(cx).value().trim().to_owned();
+        let multiple = self
+            .model
+            .read(cx)
+            .pending_path
+            .as_ref()
+            .is_some_and(|pending| pending.multiple);
+        let text = if multiple {
+            self.paths_input.read(cx).value().to_string()
+        } else {
+            self.path_input.read(cx).value().to_string()
+        };
+        let text = text.trim();
         if text.is_empty() {
             return;
         }
@@ -999,14 +1023,28 @@ impl Workspace {
         });
         self.path_input
             .update(cx, |input, cx| input.set_value("", window, cx));
+        self.paths_input
+            .update(cx, |input, cx| input.set_value("", window, cx));
         if let Some(pending) = pending {
-            (pending.on_path)(std::path::PathBuf::from(text), cx);
+            let paths = if multiple {
+                text.lines()
+                    .map(str::trim)
+                    .filter(|line| !line.is_empty())
+                    .map(std::path::PathBuf::from)
+                    .collect()
+            } else {
+                vec![std::path::PathBuf::from(text)]
+            };
+            // File callbacks may update this workspace/window; run after its
+            // current event handler has released both update guards.
+            cx.defer(move |cx| (pending.on_paths)(paths, cx));
         }
     }
 
     /// Typed-path fallback, for desktops with no file dialog service (such as WSL).
     fn path_bar(&self, cx: &mut Context<Self>) -> Option<impl IntoElement + use<>> {
         let title = self.model.read(cx).pending_path.as_ref()?.title.clone();
+        let multiple = self.model.read(cx).pending_path.as_ref()?.multiple;
         let this = cx.entity();
         let cancel = self.model.clone();
         Some(
@@ -1020,13 +1058,20 @@ impl Workspace {
                 .border_b_1()
                 .border_color(rgb(T.border))
                 .child(div().flex_none().text_color(rgb(T.fg_2)).child(format!(
-                    "{title}: no file dialog is available here, enter a path"
+                    "{title}: {}",
+                    if multiple {
+                        "enter one file path per line"
+                    } else {
+                        "enter a path"
+                    }
                 )))
-                .child(
-                    div()
-                        .flex_1()
-                        .child(crate::controls::text_input(&self.path_input)),
-                )
+                .child(div().flex_1().child(if multiple {
+                    gpui_component::input::Textarea::new(&self.paths_input)
+                        .h(px(88.))
+                        .into_any_element()
+                } else {
+                    crate::controls::text_input(&self.path_input).into_any_element()
+                }))
                 .child(
                     btn("path-ok", "Open")
                         .primary()
@@ -1504,7 +1549,8 @@ impl Render for Workspace {
             .on_action(cx.listener(|this, _: &PrevTab, _, cx| this.cycle_tab(-1, cx)))
             .on_action(cx.listener(|this, _: &OpenGame, window, cx| {
                 this.new_tab(Mode::Analyse, window, cx);
-                this.analyse.update(cx, |screen, cx| screen.open_file(cx));
+                this.analyse
+                    .update(cx, |screen, cx| screen.open_file(window, cx));
                 this.set_mode(Mode::Analyse, cx);
             }))
             .on_action(cx.listener(|this, _: &SavePgnAs, _, cx| {

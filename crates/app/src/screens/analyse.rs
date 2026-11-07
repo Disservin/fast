@@ -900,32 +900,13 @@ impl AnalyseScreen {
     }
 
     /// Opens multiple PGN/FEN files, with each game in its own board tab.
-    pub fn open_file(&mut self, cx: &mut Context<Self>) {
+    pub fn open_file(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let this = cx.entity().downgrade();
         let workspace = self.workspace.clone();
+        let target_window = window.window_handle();
         crate::model::pick_paths(self.model.clone(), "Open games", cx, move |paths, cx| {
-            let mut games = Vec::new();
-            let mut errors = Vec::new();
-            for path in paths {
-                let result = std::fs::read_to_string(&path)
-                    .map_err(|err| err.to_string())
-                    .and_then(|text| {
-                        if let Ok(tree) = GameTree::from_fen(text.trim()) {
-                            Ok(vec![tree])
-                        } else {
-                            parse_pgn(&text).map_err(|err| err.to_string())
-                        }
-                    });
-                match result {
-                    Ok(mut loaded) if !loaded.is_empty() => games.append(&mut loaded),
-                    Ok(_) => errors.push(format!("{}: no games", path.display())),
-                    Err(err) => errors.push(format!("{}: {err}", path.display())),
-                }
-            }
-            let Some(window) = cx.active_window() else {
-                return;
-            };
-            let _ = window.update(cx, |_, window, cx| {
+            let (games, errors) = read_game_files(&paths);
+            let _ = target_window.update(cx, |_, window, cx| {
                 let mut games = games.into_iter();
                 if let Some(first) = games.next()
                     && let Some(this) = this.upgrade()
@@ -2679,6 +2660,29 @@ impl AnalyseScreen {
     }
 }
 
+/// Read every selected file without losing successful games when another file fails.
+fn read_game_files(paths: &[std::path::PathBuf]) -> (Vec<GameTree>, Vec<String>) {
+    let mut games = Vec::new();
+    let mut errors = Vec::new();
+    for path in paths {
+        let result = std::fs::read_to_string(&path)
+            .map_err(|err| err.to_string())
+            .and_then(|text| {
+                if let Ok(tree) = GameTree::from_fen(text.trim()) {
+                    Ok(vec![tree])
+                } else {
+                    parse_pgn(&text).map_err(|err| err.to_string())
+                }
+            });
+        match result {
+            Ok(mut loaded) if !loaded.is_empty() => games.append(&mut loaded),
+            Ok(_) => errors.push(format!("{}: no games", path.display())),
+            Err(err) => errors.push(format!("{}: {err}", path.display())),
+        }
+    }
+    (games, errors)
+}
+
 /// Height of one row in Moves from here.
 const MOVE_ROW_H: f32 = 46.;
 
@@ -2918,6 +2922,33 @@ impl Render for AnalyseScreen {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn opening_multiple_files_keeps_every_game_and_reports_individual_failures() {
+        let dir = tempfile::tempdir().unwrap();
+        let first = dir.path().join("two games.pgn");
+        let second = dir.path().join("another.pgn");
+        let fen = dir.path().join("position.fen");
+        std::fs::write(
+            &first,
+            "[Event \"One\"]\n\n1. e4 *\n\n[Event \"Two\"]\n\n1. d4 *",
+        )
+        .unwrap();
+        std::fs::write(&second, "[Event \"Three\"]\n\n1. c4 *").unwrap();
+        std::fs::write(&fen, GameTree::new().fen(GameTree::ROOT)).unwrap();
+        let (games, errors) =
+            read_game_files(&[first, dir.path().join("missing.pgn"), second, fen]);
+        assert_eq!(games.len(), 4);
+        assert_eq!(games[0].header("Event"), Some("One"));
+        assert_eq!(games[1].header("Event"), Some("Two"));
+        assert_eq!(games[2].header("Event"), Some("Three"));
+        assert_eq!(games[0].node(games[0].mainline()[0]).san, "e4");
+        assert_eq!(games[1].node(games[1].mainline()[0]).san, "d4");
+        assert_eq!(games[2].node(games[2].mainline()[0]).san, "c4");
+        assert!(games[3].mainline().is_empty());
+        assert_eq!(errors.len(), 1);
+        assert!(errors[0].contains("missing.pgn"));
+    }
 
     fn stat(san: &str, games: u64) -> MoveStat {
         MoveStat {

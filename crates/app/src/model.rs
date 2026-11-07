@@ -24,12 +24,13 @@ pub struct DbEntry {
     pub games: u64,
 }
 
-pub type PathCallback = Box<dyn FnOnce(PathBuf, &mut App)>;
+pub type PathCallback = Box<dyn FnOnce(Vec<PathBuf>, &mut App)>;
 
 /// A file request waiting for the user to type a path.
 pub struct PendingPath {
     pub title: SharedString,
-    pub on_path: PathCallback,
+    pub multiple: bool,
+    pub on_paths: PathCallback,
 }
 
 pub struct Toast {
@@ -159,7 +160,8 @@ fn pick_path_kind(
             model.update(cx, |model, cx| {
                 model.pending_path = Some(PendingPath {
                     title: title.into(),
-                    on_path: Box::new(move |path, cx| on_paths(vec![path], cx)),
+                    multiple,
+                    on_paths: Box::new(on_paths),
                 });
                 cx.notify();
             });
