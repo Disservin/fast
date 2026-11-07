@@ -38,13 +38,13 @@ impl BoardTheme {
 
     pub fn colors(self) -> (u32, u32) {
         match self {
-            // Lichess' blue board: cool, clear contrast that sits well with the slate UI.
-            Self::Blue => (0xDEE3E6, 0x8CA2AD),
-            Self::Walnut => (0xE9D7B4, 0xA97A50),
-            Self::Moss => (0xE6E9D8, 0x7F956B),
+            // Muted squares keep each palette's hue without bright, glaring highlights.
+            Self::Blue => (0xA7B1B8, 0x687E89),
+            Self::Walnut => (0xB9A887, 0x85613F),
+            Self::Moss => (0xB1B69F, 0x607451),
             Self::Graphite => (0x8C9096, 0x42464C),
-            Self::Paper => (0xEAF0F5, 0x91A5BF),
-            Self::Plum => (0xE8D8E8, 0x99759E),
+            Self::Paper => (0xB6BEC7, 0x71869E),
+            Self::Plum => (0xB7A5B7, 0x775B7C),
         }
     }
 
@@ -763,14 +763,8 @@ impl BoardView {
         cell: Pixels,
         id: impl Into<ElementId>,
     ) -> gpui::AnyElement {
-        let soften_white = self.prefs.theme == BoardTheme::Graphite && piece.color == Color::White;
-        let piece_color = if soften_white {
-            0xD0D2D5
-        } else if piece.color == Color::White {
-            0xFFFFFF
-        } else {
-            0x14161A
-        };
+        let soften_white = piece.color == Color::White;
+        let piece_color = if soften_white { 0xD0D2D5 } else { 0x14161A };
         match self.prefs.pieces {
             PieceSet::Classic
             | PieceSet::Cburnett
