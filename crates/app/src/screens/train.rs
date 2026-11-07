@@ -35,6 +35,9 @@ pub struct TrainScreen {
     board: Entity<BoardView>,
     queue: Vec<Drill>,
     every_reply: bool,
+    attempts: std::collections::HashMap<String, trainer::Attempt>,
+    exercise_id: u64,
+    attempt_tick: std::time::Instant,
     /// Drills finished in this session, counted into the header.
     finished: usize,
     total: usize,
@@ -112,6 +115,9 @@ impl TrainScreen {
             board,
             queue: Vec::new(),
             every_reply: false,
+            attempts: Default::default(),
+            exercise_id: 0,
+            attempt_tick: std::time::Instant::now(),
             finished: 0,
             total: 0,
             phase: Phase::Asking,
@@ -176,7 +182,40 @@ impl TrainScreen {
         Some((pos, last))
     }
 
+    fn attempt_key(&self) -> String {
+        self.current()
+            .map(|drill| {
+                format!(
+                    "{}:{}",
+                    trainer::Repertoire::position_key(&drill.path).unwrap_or_default(),
+                    drill.answer
+                )
+            })
+            .unwrap_or_default()
+    }
+
+    fn evidence(&mut self) -> &mut trainer::Attempt {
+        let elapsed = self
+            .attempt_tick
+            .elapsed()
+            .as_millis()
+            .min(u64::MAX as u128) as u64;
+        self.attempt_tick = std::time::Instant::now();
+        let key = self.attempt_key();
+        let attempt = self.attempts.entry(key).or_default();
+        attempt.elapsed_ms = attempt.elapsed_ms.saturating_add(elapsed);
+        attempt
+    }
+
     fn start_drill(&mut self, cx: &mut Context<Self>) {
+        self.exercise_id = self
+            .model
+            .read(cx)
+            .repertoire
+            .history
+            .last()
+            .map_or(1, |event| event.id + 1);
+        self.attempt_tick = std::time::Instant::now();
         self.phase = Phase::Asking;
         self.message = None;
         let white = self.model.read(cx).repertoire.white;
@@ -229,7 +268,11 @@ impl TrainScreen {
             .is_some_and(|moves| moves.iter().any(|node| node.san == clean));
         if clean == drill.answer || (prepared && !self.every_reply) {
             if clean != drill.answer {
+                self.evidence();
+                let old_key = self.attempt_key();
+                let evidence = self.attempts.remove(&old_key).unwrap_or_default();
                 self.queue[0].answer = clean.to_owned();
+                self.attempts.insert(self.attempt_key(), evidence);
             }
             self.phase = Phase::Correct;
             self.message = Some(format!("Correct: {played}. How well did you know it?").into());
@@ -241,6 +284,9 @@ impl TrainScreen {
                 board.set_interactive(false, cx);
             });
         } else {
+            if !prepared {
+                self.evidence().failures += 1;
+            }
             self.phase = Phase::Wrong;
             self.message = Some(if prepared {
                 format!("{played} is a valid repertoire move. This exercise asks for another prepared reply. Try again.").into()
@@ -260,6 +306,7 @@ impl TrainScreen {
 
     fn hint(&mut self, cx: &mut Context<Self>) {
         let Some(mv) = self.answer_move() else { return };
+        self.evidence().hints += 1;
         let role = mv.role();
         let name = match role {
             chess_core::Role::Pawn => "a pawn",
@@ -276,6 +323,7 @@ impl TrainScreen {
     fn show_answer(&mut self, cx: &mut Context<Self>) {
         let Some(mv) = self.answer_move() else { return };
         let Some(from) = mv.from() else { return };
+        self.evidence().reveals += 1;
         self.phase = Phase::Revealed;
         self.message = Some("Answer shown. Grade how well you knew it.".into());
         self.board.update(cx, |board, cx| {
@@ -299,6 +347,7 @@ impl TrainScreen {
     }
 
     fn skip(&mut self, cx: &mut Context<Self>) {
+        self.evidence();
         if self.queue.len() > 1 {
             let drill = self.queue.remove(0);
             self.queue.push(drill);
@@ -310,6 +359,13 @@ impl TrainScreen {
         let Some(drill) = self.current().cloned() else {
             return;
         };
+        if !matches!(self.phase, Phase::Correct | Phase::Revealed) {
+            return;
+        }
+        let attempt = self.evidence().clone();
+        let applied = attempt.scheduling_grade(grade);
+        let attempt_key = self.attempt_key();
+        let id = self.exercise_id;
         let was_due = self.is_due(&drill, cx);
         let path: Vec<String> = drill
             .path
@@ -318,12 +374,15 @@ impl TrainScreen {
             .chain([drill.answer.clone()])
             .collect();
         self.model.update(cx, |model, cx| {
-            model.repertoire.grade(&path, grade, today());
+            model
+                .repertoire
+                .submit_review(id, &path, grade, attempt, today());
             model.save_repertoire(cx);
         });
+        self.attempts.remove(&attempt_key);
         self.queue.remove(0);
         // "Again" returns the card to the end of today's session.
-        if grade == Grade::Again {
+        if applied == Grade::Again {
             self.queue.push(drill);
         } else if was_due {
             self.finished += 1;

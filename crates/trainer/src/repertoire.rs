@@ -57,6 +57,8 @@ pub struct Repertoire {
     pub name: String,
     pub white: bool,
     pub roots: Vec<RepNode>,
+    #[serde(default)]
+    pub history: Vec<crate::ReviewEvent>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -93,6 +95,7 @@ impl Repertoire {
             name: name.into(),
             white,
             roots: Vec::new(),
+            history: Vec::new(),
         }
     }
 
@@ -292,6 +295,43 @@ impl Repertoire {
         if let Some(card) = self.node(path).map(|node| node.card.unwrap_or_default()) {
             self.set_card(path, card.answered(grade, today));
         }
+    }
+
+    pub fn submit_review(
+        &mut self,
+        id: u64,
+        path: &[String],
+        requested: Grade,
+        attempt: crate::Attempt,
+        day: i64,
+    ) -> bool {
+        if self.history.iter().any(|event| event.id == id) {
+            return false;
+        }
+        let Some((answer, before_path)) = path.split_last() else {
+            return false;
+        };
+        let Some(position) = Self::position_key(before_path) else {
+            return false;
+        };
+        let Some(before) = self.node(path).and_then(|node| node.card) else {
+            return false;
+        };
+        let applied = attempt.scheduling_grade(requested);
+        let after = before.answered(applied, day);
+        self.set_card(path, after);
+        self.history.push(crate::ReviewEvent {
+            id,
+            day,
+            position,
+            answer: answer.clone(),
+            attempt,
+            requested,
+            applied,
+            before,
+            after,
+        });
+        true
     }
 
     pub fn card_status(card: Option<&Card>, today: i64) -> RepStatus {
@@ -697,6 +737,25 @@ mod tests {
         let mut other = Repertoire::new("other", true);
         other.add_line(&a).unwrap();
         assert_eq!(other.moves_after(&b[..4]).unwrap()[0].san, "Bg2");
+    }
+
+    #[test]
+    fn review_submission_is_once_and_keeps_attempt_evidence() {
+        let mut rep = sample();
+        let path = vec!["e4".to_owned()];
+        let attempt = crate::Attempt {
+            failures: 1,
+            hints: 2,
+            reveals: 1,
+            elapsed_ms: 3000,
+        };
+        assert!(rep.submit_review(1, &path, Grade::Easy, attempt.clone(), 10));
+        assert!(!rep.submit_review(1, &path, Grade::Good, attempt, 10));
+        assert_eq!(rep.history.len(), 1);
+        assert_eq!(rep.history[0].applied, Grade::Again);
+        assert_eq!(rep.history[0].requested, Grade::Easy);
+        assert_eq!(rep.history[0].attempt.failures, 1);
+        assert_eq!(rep.history[0].after.lapses, 1);
     }
 
     #[test]
