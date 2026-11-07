@@ -1780,7 +1780,23 @@ impl AnalyseScreen {
                         ),
                     ),
             )
-            .child(div().size(board_size).flex_none().child(self.board.clone()))
+            .child({
+                let (evals, _) = self.line_evals(&[self.current], cx);
+                let share = evals[0].map_or(0.5, |cp| {
+                    ((engine::quality::winning_chances(Score::Cp(cp)) + 1.) / 2.) as f32
+                });
+                div()
+                    .relative()
+                    .size(board_size)
+                    .flex_none()
+                    .child(
+                        div().absolute().left(px(-14.)).top(px(0.)).child(
+                            ui::eval_bar::EvalBar::new("analysis-eval", share, board_size)
+                                .flipped(self.board.read(cx).is_flipped()),
+                        ),
+                    )
+                    .child(self.board.clone())
+            })
             .child(graph)
             .child(
                 h_flex()

@@ -1,6 +1,7 @@
 //! Shared GPUI views and widgets used by every Fast screen.
 
 pub mod board;
+pub mod eval_bar;
 pub mod graph;
 pub mod scoresheet;
 pub mod theme;

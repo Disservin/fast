@@ -2499,25 +2499,9 @@ fn shown_search(game: &LiveGame) -> &Search {
 }
 
 /// The evaluation as a vertical bar: White's share fills from the bottom.
-fn eval_bar(game: &LiveGame, edge: Pixels) -> Div {
+fn eval_bar(game: &LiveGame, edge: Pixels) -> ui::eval_bar::EvalBar {
     let share = white_share(shown_search(game).score);
-    div()
-        .relative()
-        .w(px(8.))
-        .h(edge)
-        .flex_none()
-        .rounded(px(4.))
-        .overflow_hidden()
-        .bg(rgb(T.tour_tile_border))
-        .child(
-            div()
-                .absolute()
-                .bottom(px(0.))
-                .left(px(0.))
-                .w_full()
-                .h(edge * share)
-                .bg(rgb(T.fg)),
-        )
+    ui::eval_bar::EvalBar::new(("game-eval", game.number as usize), share, edge)
 }
 
 /// A player's name, colour and clock; the side to move gets a "to move" label and a lit clock.
