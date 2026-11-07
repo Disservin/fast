@@ -1367,7 +1367,7 @@ impl TournamentScreen {
         };
         let dialog = v_flex()
             .id("tournament-setup")
-            .w(px(560.))
+            .w(px(760.))
             .max_w_full()
             .max_h_full()
             .overflow_y_scroll()
