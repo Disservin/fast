@@ -10,6 +10,10 @@ use crate::{EngineHandle, EngineId, EngineInfo};
 pub enum EngineStatus {
     #[default]
     Ready,
+    Loading,
+    Searching,
+    Paused,
+    Stopped,
     Disabled,
     Error,
 }

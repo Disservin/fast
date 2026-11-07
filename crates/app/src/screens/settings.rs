@@ -1808,6 +1808,10 @@ impl SettingsScreen {
                 .unwrap_or(EngineStatus::Ready);
             let (status_text, status_color) = match status {
                 EngineStatus::Ready => ("Ready", T.good),
+                EngineStatus::Loading => ("Loading", T.accent),
+                EngineStatus::Searching => ("Searching", T.good),
+                EngineStatus::Paused => ("Paused", T.accent),
+                EngineStatus::Stopped => ("Stopped", T.muted),
                 EngineStatus::Disabled => ("Disabled", T.muted),
                 EngineStatus::Error => ("Error", T.warn),
             };

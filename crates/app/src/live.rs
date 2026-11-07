@@ -227,6 +227,11 @@ impl LiveAnalysis {
                 }
                 engine._reader = None;
                 engine.running = false;
+                let id = engine.config.id;
+                self.model.update(cx, |model, cx| {
+                    model.engine_status.insert(id, EngineStatus::Stopped);
+                    cx.notify();
+                });
             }
         }
         cx.notify();
@@ -264,6 +269,7 @@ impl LiveAnalysis {
                     if existing.is_none() {
                         model.manager.shutdown(config.id);
                     }
+                    model.engine_status.insert(config.id, EngineStatus::Loading);
                     model.manager.ensure_running(&analysis_config(&config))
                 });
                 live._reader = Some(self.spawn_reader(config.id, &handle, cx));
@@ -405,6 +411,10 @@ impl LiveAnalysis {
                 } => {
                     if from == search_id {
                         live.running = false;
+                        self.model.update(cx, |model, cx| {
+                            model.engine_status.insert(id, EngineStatus::Ready);
+                            cx.notify();
+                        });
                     }
                 }
                 EngineEvent::Crashed(reason) => crash = Some(reason),
@@ -468,6 +478,11 @@ impl LiveAnalysis {
                 engine._reader = None;
                 engine.running = false;
                 engine.lines.clear();
+                let id = engine.config.id;
+                self.model.update(cx, |model, cx| {
+                    model.engine_status.insert(id, EngineStatus::Stopped);
+                    cx.notify();
+                });
             }
         }
         cx.emit(LiveEvent::Updated);
@@ -522,6 +537,11 @@ impl LiveAnalysis {
                     handle.stop();
                 }
                 engine.running = false;
+                let id = engine.config.id;
+                self.model.update(cx, |model, cx| {
+                    model.engine_status.insert(id, EngineStatus::Paused);
+                    cx.notify();
+                });
             }
         } else {
             self.search(cx);
@@ -720,6 +740,12 @@ impl LiveAnalysis {
             };
             if terminal {
                 handle.stop();
+                self.model.update(cx, |model, cx| {
+                    model
+                        .engine_status
+                        .insert(engine.config.id, EngineStatus::Ready);
+                    cx.notify();
+                });
                 continue;
             }
             // A remembered line already reaches the depth limit: nothing to search.
@@ -731,9 +757,21 @@ impl LiveAnalysis {
             {
                 handle.stop();
                 engine.running = false;
+                self.model.update(cx, |model, cx| {
+                    model
+                        .engine_status
+                        .insert(engine.config.id, EngineStatus::Ready);
+                    cx.notify();
+                });
                 continue;
             }
             engine.running = true;
+            self.model.update(cx, |model, cx| {
+                model
+                    .engine_status
+                    .insert(engine.config.id, EngineStatus::Searching);
+                cx.notify();
+            });
             handle.search(SearchRequest {
                 fen: self.fen.clone(),
                 moves: self.moves.clone(),
