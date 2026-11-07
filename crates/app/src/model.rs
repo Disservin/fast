@@ -64,6 +64,7 @@ pub struct AppModel {
     next_toast: u64,
     pub pending_path: Option<PendingPath>,
     leak_task: Option<Task<()>>,
+    config_save_task: Option<Task<()>>,
     pub manager: EngineManager,
     pub engine_status: std::collections::BTreeMap<EngineId, EngineStatus>,
 }
@@ -79,11 +80,19 @@ pub fn pick_path(
     cx: &mut App,
     on_path: impl FnOnce(PathBuf, &mut App) + 'static,
 ) {
-    pick_path_kind(model, title, save_name, false, false, cx, move |paths, cx| {
-        if let Some(path) = paths.into_iter().next() {
-            on_path(path, cx);
-        }
-    });
+    pick_path_kind(
+        model,
+        title,
+        save_name,
+        false,
+        false,
+        cx,
+        move |paths, cx| {
+            if let Some(path) = paths.into_iter().next() {
+                on_path(path, cx);
+            }
+        },
+    );
 }
 
 /// Select several files in one native dialog.
@@ -227,6 +236,7 @@ impl AppModel {
             next_toast: 0,
             pending_path: None,
             leak_task: None,
+            config_save_task: None,
             manager: EngineManager::default(),
             engine_status,
         };
@@ -301,6 +311,18 @@ impl AppModel {
             });
         })
         .detach();
+    }
+
+    /// Coalesce live resize events into one write after the drag settles.
+    pub fn schedule_config_save(&mut self, cx: &mut Context<Self>) {
+        self.unsaved_config = !self.demo;
+        self.config_save_task = Some(cx.spawn(async move |this, cx| {
+            cx.background_executor()
+                .timer(Duration::from_millis(250))
+                .await;
+            let _ = this.update(cx, |model, cx| model.save_config(cx));
+        }));
+        cx.notify();
     }
 
     pub fn save_config(&mut self, cx: &mut Context<Self>) {

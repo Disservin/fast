@@ -67,11 +67,22 @@ impl Cli {
 }
 
 fn open_main_window(cli: Cli, cx: &mut App) -> anyhow::Result<()> {
-    let (width, height) = cli.size.unwrap_or((1440, 900));
+    let model = cx.new(|_| AppModel::load(cli.demo));
+    let saved = model.read(cx).config.window.clone();
+    let (width, height) = cli.size.unwrap_or_else(|| {
+        saved.as_ref().map_or((1440, 900), |saved| {
+            (saved.width.clamp(1100, 7680), saved.height.clamp(720, 4320))
+        })
+    });
     let bounds = Bounds::centered(None, size(px(width as f32), px(height as f32)), cx);
+    let maximized = cli.size.is_none() && saved.is_some_and(|saved| saved.maximized);
     let options = WindowOptions {
         app_id: Some("dev.fast.app".into()),
-        window_bounds: Some(WindowBounds::Windowed(bounds)),
+        window_bounds: Some(if maximized {
+            WindowBounds::Maximized(bounds)
+        } else {
+            WindowBounds::Windowed(bounds)
+        }),
         window_min_size: Some(size(px(1100.), px(720.))),
         // Native decorations where the system offers them; otherwise `Workspace` draws its own.
         window_decorations: Some(WindowDecorations::Server),
@@ -84,8 +95,17 @@ fn open_main_window(cli: Cli, cx: &mut App) -> anyhow::Result<()> {
         }),
         ..Default::default()
     };
+    let save_model = model.clone();
+    cx.on_app_quit(move |cx| {
+        save_model.update(cx, |model, cx| {
+            if model.unsaved_config {
+                model.save_config(cx);
+            }
+        });
+        async {}
+    })
+    .detach();
     cx.open_window(options, move |window, cx| {
-        let model = cx.new(|_| AppModel::load(cli.demo));
         ui::set_theme(model.read(cx).config.ui_theme, cx);
         let workspace = cx.new(|cx| {
             let mut workspace = Workspace::new(model, cli.screen.as_deref(), window, cx);

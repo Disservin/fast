@@ -660,6 +660,7 @@ impl AnalyseScreen {
         let limit = self.model.read(cx).config.analysis_limit;
         let chosen = self.panel_engine_config(cx);
         let on = self.live.read(cx).on;
+        let reset_layout = this.clone();
         let mut body = panel().flex_none().overflow_hidden().child(
             h_flex()
                 .h(px(40.))
@@ -668,6 +669,20 @@ impl AnalyseScreen {
                 .border_b_1()
                 .border_color(rgb(T.border))
                 .child(section_label("Engine"))
+                .child(
+                    btn("reset-panel-sizes", "Reset panel sizes")
+                        .h(26.)
+                        .text(12.)
+                        .on_click(move |_, cx| {
+                            reset_layout.update(cx, |screen, cx| {
+                                screen.model.update(cx, |model, cx| {
+                                    model.config.panels = crate::config::PanelSizes::default();
+                                    model.save_config(cx);
+                                });
+                                cx.notify();
+                            })
+                        }),
+                )
                 .child(
                     btn(
                         "engine-power",

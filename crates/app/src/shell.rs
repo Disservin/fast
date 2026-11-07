@@ -416,6 +416,27 @@ impl Workspace {
             _subscriptions: vec![search_sub, path_sub, model_sub],
         };
         workspace.restore_recovery_tabs(window, cx);
+        workspace
+            ._subscriptions
+            .push(cx.observe_window_bounds(window, |workspace, window, cx| {
+                let bounds = window.window_bounds();
+                let size = bounds.get_bounds().size;
+                let saved = crate::config::SavedWindow {
+                    width: f32::from(size.width).round().max(1.) as u32,
+                    height: f32::from(size.height).round().max(1.) as u32,
+                    maximized: matches!(bounds, gpui::WindowBounds::Maximized(_)),
+                };
+                // Fullscreen dimensions are transient; keep the last normal geometry.
+                if matches!(bounds, gpui::WindowBounds::Fullscreen(_)) {
+                    return;
+                }
+                workspace.model.update(cx, |model, cx| {
+                    if model.config.window.as_ref() != Some(&saved) {
+                        model.config.window = Some(saved);
+                        model.schedule_config_save(cx);
+                    }
+                });
+            }));
         if screen == Some("tournament") {
             workspace.new_tab(Mode::Tournament, window, cx);
         }
@@ -817,9 +838,7 @@ impl Workspace {
                         },
                         |drag, _, _, cx| cx.new(|_| drag.clone()),
                     )
-                    .drag_over::<DraggedTab>(|style, _, _, _| {
-                        style.border_color(rgb(T.accent))
-                    })
+                    .drag_over::<DraggedTab>(|style, _, _, _| style.border_color(rgb(T.accent)))
                     .on_drop(cx.listener(move |this, drag: &DraggedTab, _, cx| {
                         let source = this.tabs.iter().position(|tab| tab.id == drag.id);
                         let target = this.tabs.iter().position(|tab| tab.id == id);

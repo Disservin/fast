@@ -329,6 +329,31 @@ impl Default for AnalysisView {
     }
 }
 
+/// Window dimensions use logical pixels, so they survive display-scale changes.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SavedWindow {
+    pub width: u32,
+    pub height: u32,
+    pub maximized: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PanelSizes {
+    pub scoresheet_width: u32,
+    /// None keeps the board fitted to the available space.
+    pub board_size: Option<u32>,
+}
+
+impl Default for PanelSizes {
+    fn default() -> Self {
+        Self {
+            scoresheet_width: 300,
+            board_size: None,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
@@ -352,6 +377,8 @@ pub struct Config {
     pub view: AnalysisView,
     /// A fastchess executable to use instead of the pinned download.
     pub fastchess_path: Option<PathBuf>,
+    pub window: Option<SavedWindow>,
+    pub panels: PanelSizes,
 }
 
 impl Default for Config {
@@ -371,6 +398,8 @@ impl Default for Config {
             backward_nodes: DEFAULT_BACKWARD_NODES,
             view: AnalysisView::default(),
             fastchess_path: None,
+            window: None,
+            panels: PanelSizes::default(),
         }
     }
 }
@@ -447,6 +476,15 @@ mod tests {
         config.view.sort = LineSort::Depth;
         config.view.scoresheet = ScoresheetStyle::Inline;
         config.view.graph = GraphTab::Time;
+        config.window = Some(SavedWindow {
+            width: 1600,
+            height: 1000,
+            maximized: true,
+        });
+        config.panels = PanelSizes {
+            scoresheet_width: 360,
+            board_size: Some(480),
+        };
         config.engines.push(EngineConfig {
             id: 3,
             name: "Stockfish".to_owned(),
@@ -462,6 +500,7 @@ mod tests {
             }],
             icon: Some("/tmp/sf.png".into()),
             debug: true,
+            arrow_color: Some(0x4e9de0),
             ..Default::default()
         });
         config.save(&path).unwrap();

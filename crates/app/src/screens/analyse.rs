@@ -31,6 +31,29 @@ use crate::{
 /// Each position is shown at least this long, even when a search ends at once.
 const BACKWARD_DWELL: std::time::Duration = std::time::Duration::from_millis(250);
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum AnalysisPanel {
+    Scoresheet,
+    Board,
+}
+
+#[derive(Clone)]
+struct ResizeAnalysisPanel(AnalysisPanel);
+
+impl Render for ResizeAnalysisPanel {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        div().size(px(1.))
+    }
+}
+
+fn panel_resize_handle(id: &'static str, panel: AnalysisPanel) -> impl IntoElement {
+    gpui_component::resizable::resize_handle(id, gpui::Axis::Horizontal)
+        .inside(gpui_component::resizable::HandleEdge::Trailing)
+        .on_drag(ResizeAnalysisPanel(panel), |drag, _, _, cx| {
+            cx.new(|_| drag.clone())
+        })
+}
+
 /// A game being analysed from its last move to its first, one search per position,
 /// so the engine meets each position knowing what follows it.
 struct BackwardRun {
@@ -1548,7 +1571,7 @@ impl AnalyseScreen {
                 .on_click(move |_, cx| this.update(cx, |screen, cx| screen.annotate(nag, cx)))
         };
         v_flex()
-            .w(px(300.))
+            .w_full()
             .h_full()
             .flex_none()
             .bg(rgb(T.surface))
@@ -2757,12 +2780,17 @@ impl Render for AnalyseScreen {
         self.board
             .update(cx, |board, cx| board.set_move_tag(tag, cx));
         let viewport = window.viewport_size();
+        let panels = self.model.read(cx).config.panels.clone();
+        let scoresheet_width = (panels.scoresheet_width as f32)
+            .clamp(180., 480.)
+            .min((f32::from(viewport.width) - 720.).max(180.));
         // The side column keeps room for its table, so the board gives way first.
         self.scale = window.scale_factor();
         let board_size = ui::board::snap_board_size(
             (viewport.height - px(376.))
-                .min(viewport.width - px(820.))
-                .max(px(320.)),
+                .min(viewport.width - px(scoresheet_width + 420.))
+                .min(px(panels.board_size.unwrap_or(u32::MAX) as f32))
+                .max(px(240.)),
             self.scale,
         );
         self.show_wdl = self.live.read(cx).wdl_engine().is_some();
@@ -2779,15 +2807,63 @@ impl Render for AnalyseScreen {
         h_flex()
             .items_start()
             .size_full()
-            .child(scoresheet)
+            .child(
+                div()
+                    .id("scoresheet-panel")
+                    .relative()
+                    .w(px(scoresheet_width))
+                    .h_full()
+                    .flex_none()
+                    .on_drag_move(cx.listener(
+                        |screen, event: &gpui::DragMoveEvent<ResizeAnalysisPanel>, _, cx| {
+                            if event.drag(cx).0 != AnalysisPanel::Scoresheet {
+                                return;
+                            }
+                            let width = f32::from(event.event.position.x - event.bounds.origin.x)
+                                .clamp(180., 480.)
+                                .round() as u32;
+                            screen.model.update(cx, |model, cx| {
+                                model.config.panels.scoresheet_width = width;
+                                model.schedule_config_save(cx);
+                            });
+                            cx.notify();
+                        },
+                    ))
+                    .child(scoresheet)
+                    .child(panel_resize_handle(
+                        "scoresheet-resize",
+                        AnalysisPanel::Scoresheet,
+                    )),
+            )
             .child(
                 div()
                     .id("board-column")
+                    .relative()
+                    .on_drag_move(cx.listener(
+                        |screen, event: &gpui::DragMoveEvent<ResizeAnalysisPanel>, _, cx| {
+                            if event.drag(cx).0 != AnalysisPanel::Board {
+                                return;
+                            }
+                            let width = (f32::from(event.event.position.x - event.bounds.origin.x)
+                                - 56.)
+                                .clamp(240., 1600.)
+                                .round() as u32;
+                            screen.model.update(cx, |model, cx| {
+                                model.config.panels.board_size = Some(width);
+                                model.schedule_config_save(cx);
+                            });
+                            cx.notify();
+                        },
+                    ))
                     .px(px(28.))
                     .h_full()
                     .flex_none()
                     .overflow_y_scroll()
-                    .child(board_column),
+                    .child(board_column)
+                    .child(panel_resize_handle(
+                        "board-panel-resize",
+                        AnalysisPanel::Board,
+                    )),
             )
             .child(
                 div()
