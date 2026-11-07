@@ -40,5 +40,6 @@ tempfile.workspace = true
 [package.metadata.bundle]
 name = "Fast"
 identifier = "dev.fast.app"
+icon = ["../../assets/app/fast.png"]
 category = "Utility"
 short_description = "Desktop chess workstation"

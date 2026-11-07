@@ -2,6 +2,7 @@
 
 | Assets | Source | License |
 | --- | --- | --- |
+| `app/fast.svg`, `app/fast.png` | Original Fast app icon | GPL-3.0-or-later (workspace license) |
 | `fonts/Geist*` | [Geist and Geist Mono](https://github.com/vercel/geist-font) v1.9.2 by The Geist Project Authors | SIL Open Font License 1.1, see `fonts/OFL.txt` |
 | `pieces/merida/*` | Merida set by Armando Hernandez Marroquin | GPL-2.0-or-later |
 | `pieces/cburnett/*` | [Colin M.L. Burnett](https://en.wikipedia.org/wiki/User:Cburnett), via [Lichess](https://github.com/lichess-org/lila) | GPL-2.0-or-later |

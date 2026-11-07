@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Fast
+Comment=Desktop chess workstation
+Exec=fast %F
+Icon=dev.fast.app
+Terminal=false
+Categories=Game;BoardGame;
+StartupWMClass=dev.fast.app
+MimeType=application/x-chess-pgn;

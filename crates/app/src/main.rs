@@ -54,6 +54,7 @@ impl Cli {
 fn open_main_window(cli: Cli, cx: &mut App) -> anyhow::Result<()> {
     let bounds = Bounds::centered(None, size(px(1440.), px(900.)), cx);
     let options = WindowOptions {
+        app_id: Some("dev.fast.app".into()),
         window_bounds: Some(WindowBounds::Windowed(bounds)),
         window_min_size: Some(size(px(1100.), px(720.))),
         // Native decorations where the system offers them; otherwise `Workspace` draws its own.
@@ -86,6 +87,7 @@ fn main() {
     gpui_platform::application()
         .with_assets(assets::Assets)
         .run(move |cx| {
+            cx.set_app_identity("dev.fast.app", "Fast");
             gpui_component::init(cx);
             ui::apply_component_theme(cx);
             if let Err(err) = assets::load_fonts(cx) {

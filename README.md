@@ -135,3 +135,15 @@ matches `Cargo.lock`.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md). Package installers with
 [cargo-bundle](https://github.com/burtonageo/cargo-bundle): `cargo bundle --release -p fast`.
+
+The bundle uses the app icon in `assets/app/fast.png`; its editable source is
+`assets/app/fast.svg`. For a local Linux install with a launcher and taskbar icon:
+
+```sh
+cargo build --release -p fast
+install -Dm755 target/release/fast ~/.local/bin/fast
+install -Dm644 assets/app/fast.svg ~/.local/share/icons/hicolor/scalable/apps/dev.fast.app.svg
+install -Dm644 assets/app/dev.fast.app.desktop ~/.local/share/applications/dev.fast.app.desktop
+```
+
+Ensure `~/.local/bin` is on your `PATH`, then launch **Fast** from the application menu.
