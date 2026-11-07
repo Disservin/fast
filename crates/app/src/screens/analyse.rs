@@ -707,6 +707,10 @@ impl AnalyseScreen {
             Some(Arrow::new(mv.from()?, mv.to()))
         };
         let quality_arrows = self.model.read(cx).config.view.quality_arrows;
+        let engine_color = |row: &MoveRow| {
+            row.engine_id
+                .and_then(|id| self.model.read(cx).engine(id)?.arrow_color)
+        };
         let mut arrows: Vec<Arrow> = Vec::new();
         if quality_arrows {
             // Every engine line gets an arrow coloured by quality, worst drawn first
@@ -723,7 +727,11 @@ impl AnalyseScreen {
                     continue;
                 }
                 if let Some(arrow) = arrow_for(&row.san) {
-                    arrows.push(arrow.with_color(quality_color(quality)));
+                    arrows.push(
+                        arrow.with_color(
+                            engine_color(row).unwrap_or_else(|| quality_color(quality)),
+                        ),
+                    );
                 }
             }
         }
@@ -734,8 +742,12 @@ impl AnalyseScreen {
                 .selected_row()
                 .and_then(|row| row.quality)
                 .filter(|_| quality_arrows);
-            arrows.push(match quality {
+            let arrow = match quality {
                 Some(quality) => arrow.with_color(quality_color(quality)),
+                None => arrow,
+            };
+            arrows.push(match self.selected_row().and_then(engine_color) {
+                Some(color) => arrow.with_color(color),
                 None => arrow,
             });
         }

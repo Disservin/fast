@@ -60,6 +60,9 @@ pub struct EngineConfig {
     /// Sends `debug on` and keeps the raw output on screen.
     #[serde(default)]
     pub debug: bool,
+    /// Custom analysis arrow colour (`0xRRGGBB`), overriding quality colours.
+    #[serde(default)]
+    pub arrow_color: Option<u32>,
 }
 
 impl EngineConfig {

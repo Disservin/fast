@@ -2156,6 +2156,36 @@ impl SettingsScreen {
                     })),
             ))
             .child(self.render_profiles(config, cx))
+            .child(detail_row(
+                "Arrow colour",
+                Some("Overrides move-quality colours for this engine"),
+                h_flex().gap(px(6.)).children(
+                    [
+                        None,
+                        Some(0x4e9de0),
+                        Some(0xe09b45),
+                        Some(0x50b890),
+                        Some(0xb181d9),
+                        Some(0xe26878),
+                    ]
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, color)| {
+                        let this = this.clone();
+                        btn(
+                            ("engine-arrow-color", index),
+                            if color.is_none() { "Auto" } else { "●" },
+                        )
+                        .selected(config.arrow_color == color)
+                        .on_click(move |_, cx| {
+                            this.update(cx, |screen, cx| {
+                                screen.set_engine_use(|engine| engine.arrow_color = color, cx)
+                            });
+                        })
+                        .dot(color.unwrap_or(T.arrow))
+                    }),
+                ),
+            ))
             .child(grid);
         let usage_check = |id: &'static str,
                            value: bool,
