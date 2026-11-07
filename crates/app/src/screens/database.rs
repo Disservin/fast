@@ -55,6 +55,53 @@ struct Reviewing {
     cancelled: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub enum ReviewLimit {
+    Time(u64),
+    Depth(u32),
+    Nodes(u64),
+}
+
+#[derive(Clone, Copy, Debug)]
+struct ReviewSettings {
+    limit: ReviewLimit,
+    side: usize,
+}
+
+impl ReviewLimit {
+    const ALL: [Self; 4] = [
+        Self::Time(100),
+        Self::Time(500),
+        Self::Depth(18),
+        Self::Nodes(500_000),
+    ];
+
+    fn label(self) -> String {
+        match self {
+            Self::Time(ms) => format!("{ms} ms / position"),
+            Self::Depth(depth) => format!("Depth {depth}"),
+            Self::Nodes(nodes) => format!("{nodes} nodes"),
+        }
+    }
+
+    fn limits(self) -> engine::Limits {
+        match self {
+            Self::Time(ms) => engine::Limits {
+                movetime_ms: Some(ms),
+                ..Default::default()
+            },
+            Self::Depth(depth) => engine::Limits {
+                depth: Some(depth),
+                ..Default::default()
+            },
+            Self::Nodes(nodes) => engine::Limits {
+                nodes: Some(nodes),
+                ..Default::default()
+            },
+        }
+    }
+}
+
 pub struct DatabaseScreen {
     model: Entity<AppModel>,
     workspace: WeakEntity<Workspace>,
@@ -86,6 +133,10 @@ pub struct DatabaseScreen {
     scroll: UniformListScrollHandle,
     importing: Option<Importing>,
     reviewing: Option<Reviewing>,
+    review_engine: Option<engine::EngineId>,
+    review_limit: usize,
+    review_side: usize,
+    review_selected_only: bool,
     query_task: Option<Task<()>>,
     count_task: Option<Task<()>>,
     preview_task: Option<Task<()>>,
@@ -190,6 +241,13 @@ impl DatabaseScreen {
             .databases
             .first()
             .map(|entry| entry.path.clone());
+        let review_engine = model
+            .read(cx)
+            .config
+            .engines
+            .iter()
+            .find(|engine| engine.enabled && engine.use_review)
+            .map(|engine| engine.id);
         let mut this = Self {
             model,
             workspace,
@@ -218,6 +276,10 @@ impl DatabaseScreen {
             scroll: UniformListScrollHandle::new(),
             importing: None,
             reviewing: None,
+            review_engine,
+            review_limit: 0,
+            review_side: 0,
+            review_selected_only: false,
             query_task: None,
             count_task: None,
             preview_task: None,
@@ -604,6 +666,43 @@ impl DatabaseScreen {
     }
 
     /// Batch engine review: scores each filtered game and stores its accuracy.
+    fn cycle_review_engine(&mut self, cx: &mut Context<Self>) {
+        let available: Vec<_> = self
+            .model
+            .read(cx)
+            .config
+            .engines
+            .iter()
+            .filter(|engine| engine.enabled && engine.use_review)
+            .map(|engine| (engine.id, engine.name.clone()))
+            .collect();
+        if available.is_empty() {
+            self.review_engine = None;
+        } else {
+            let current = available
+                .iter()
+                .position(|(id, _)| Some(*id) == self.review_engine)
+                .unwrap_or(0);
+            self.review_engine = Some(available[(current + 1) % available.len()].0);
+        }
+        cx.notify();
+    }
+
+    fn cycle_review_limit(&mut self, cx: &mut Context<Self>) {
+        self.review_limit = (self.review_limit + 1) % ReviewLimit::ALL.len();
+        cx.notify();
+    }
+
+    fn cycle_review_side(&mut self, cx: &mut Context<Self>) {
+        self.review_side = (self.review_side + 1) % 4;
+        cx.notify();
+    }
+
+    fn toggle_review_scope(&mut self, cx: &mut Context<Self>) {
+        self.review_selected_only = !self.review_selected_only;
+        cx.notify();
+    }
+
     fn analyse_all(&mut self, cx: &mut Context<Self>) {
         if let Some(reviewing) = &self.reviewing {
             reviewing
@@ -616,7 +715,16 @@ impl DatabaseScreen {
             .config
             .engines
             .iter()
-            .find(|engine| engine.enabled && engine.use_review)
+            .find(|engine| {
+                engine.enabled && engine.use_review && Some(engine.id) == self.review_engine
+            })
+            .or_else(|| {
+                model
+                    .config
+                    .engines
+                    .iter()
+                    .find(|engine| engine.enabled && engine.use_review)
+            })
             .cloned()
         else {
             self.toast(
@@ -635,8 +743,19 @@ impl DatabaseScreen {
         let Some(path) = self.selected_db.clone() else {
             return;
         };
-        let ids = self.ids.clone();
+        let ids = if self.review_selected_only {
+            self.selected
+                .filter(|id| self.ids.contains(id))
+                .into_iter()
+                .collect()
+        } else {
+            self.ids.clone()
+        };
         let player = self.applied.player.trim().to_owned();
+        let settings = ReviewSettings {
+            limit: ReviewLimit::ALL[self.review_limit],
+            side: self.review_side,
+        };
         let cancelled = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         self.reviewing = Some(Reviewing {
             done: 0,
@@ -645,9 +764,17 @@ impl DatabaseScreen {
         });
         let (tx, rx) = smol::channel::bounded(1);
         let worker = cx.background_spawn(async move {
-            review_games(&engine, &path, &ids, &player, &cancelled, |done| {
-                let _ = tx.try_send(done);
-            })
+            review_games(
+                &engine,
+                &path,
+                &ids,
+                &player,
+                settings,
+                &cancelled,
+                |done| {
+                    let _ = tx.try_send(done);
+                },
+            )
         });
         cx.spawn(async move |this, cx| {
             while let Ok(done) = rx.recv().await {
@@ -828,12 +955,82 @@ impl DatabaseScreen {
             .child(
                 h_flex()
                     .gap(px(12.))
-                    .child(btn("analyse-all", analyse_label).on_click(move |_, cx| {
-                        analyse_this.update(cx, |screen, cx| screen.analyse_all(cx));
-                    }))
+                    .child(
+                        btn("analyse-all", analyse_label)
+                            .disabled(self.review_selected_only && self.selected.is_none())
+                            .on_click(move |_, cx| {
+                                analyse_this.update(cx, |screen, cx| screen.analyse_all(cx));
+                            }),
+                    )
                     .child(btn("export", "Export PGN").on_click(move |_, cx| {
                         this.update(cx, |screen, cx| screen.export_pgn(cx));
                     })),
+            )
+    }
+
+    fn render_review_controls(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let engines = self.model.read(cx).config.engines.clone();
+        let engine_name = engines
+            .iter()
+            .find(|engine| {
+                Some(engine.id) == self.review_engine && engine.enabled && engine.use_review
+            })
+            .or_else(|| {
+                engines
+                    .iter()
+                    .find(|engine| engine.enabled && engine.use_review)
+            })
+            .map_or("No review engine", |engine| engine.name.as_str());
+        let this = cx.entity();
+        let engine_this = this.clone();
+        let limit_this = this.clone();
+        let side_this = this.clone();
+        h_flex()
+            .gap(px(8.))
+            .child(section_label("Batch review"))
+            .child(
+                btn("review-engine", format!("Engine: {engine_name}  ›"))
+                    .tooltip("Choose an enabled review engine")
+                    .on_click(move |_, cx| {
+                        engine_this.update(cx, |screen, cx| screen.cycle_review_engine(cx))
+                    }),
+            )
+            .child(
+                btn(
+                    "review-limit",
+                    format!("Limit: {}  ›", ReviewLimit::ALL[self.review_limit].label()),
+                )
+                .tooltip("Cycle between time, depth, and node limits")
+                .on_click(move |_, cx| {
+                    limit_this.update(cx, |screen, cx| screen.cycle_review_limit(cx))
+                }),
+            )
+            .child(
+                btn(
+                    "review-side",
+                    format!(
+                        "Side: {}  ›",
+                        ["Filtered player", "White", "Black", "Both"][self.review_side]
+                    ),
+                )
+                .tooltip("Choose which player's moves to review")
+                .on_click(move |_, cx| {
+                    side_this.update(cx, |screen, cx| screen.cycle_review_side(cx))
+                }),
+            )
+            .child(
+                btn(
+                    "review-scope",
+                    if self.review_selected_only {
+                        "Scope: Selected"
+                    } else {
+                        "Scope: Filtered"
+                    },
+                )
+                .tooltip("Review the selected game or all filtered games")
+                .on_click(move |_, cx| {
+                    this.update(cx, |screen, cx| screen.toggle_review_scope(cx))
+                }),
             )
     }
 
@@ -1210,17 +1407,17 @@ fn win_percent(cp: i32) -> f64 {
 }
 
 /// Runs engine review for each game on a worker thread and stores the accuracy.
-pub fn review_games(
+fn review_games(
     engine: &engine::EngineConfig,
     path: &std::path::Path,
     ids: &[i64],
     player: &str,
+    settings: ReviewSettings,
     cancelled: &std::sync::atomic::AtomicBool,
     mut on_progress: impl FnMut(usize),
 ) -> anyhow::Result<()> {
-    use engine::{EngineEvent, EngineHandle, Limits, Score, SearchRequest};
+    use engine::{EngineEvent, EngineHandle, Score, SearchRequest};
     use std::sync::atomic::Ordering;
-    const MS_PER_MOVE: u64 = 40;
     const START: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
     let database = Database::open(path)?;
@@ -1267,10 +1464,7 @@ pub fn review_games(
                 handle.search(SearchRequest {
                     fen: start_fen.to_owned(),
                     moves: moves.clone(),
-                    limits: Some(Limits {
-                        movetime_ms: Some(MS_PER_MOVE),
-                        ..Default::default()
-                    }),
+                    limits: Some(settings.limit.limits()),
                     search_id,
                     game: id as u64,
                 });
@@ -1314,15 +1508,26 @@ pub fn review_games(
             pos.play_unchecked(mv);
             history.push(pos.clone());
         }
-        let reviewed_white = player.is_empty() || game.row.white.eq_ignore_ascii_case(player);
+        let player_is_white = !player.is_empty() && game.row.white.eq_ignore_ascii_case(player);
+        let reviewed_white = match settings.side {
+            0 => player.is_empty() || player_is_white,
+            1 => true,
+            2 => false,
+            _ => player.is_empty() || player_is_white,
+        };
         let losses: Vec<f64> = evals
             .windows(2)
             .enumerate()
-            .filter(|(ply, _)| (ply % 2 == 0) == reviewed_white)
-            .filter_map(|(_, pair)| Some((pair[0]?, pair[1]?)))
-            .map(|(before_eval, after_eval)| {
+            .filter(|(ply, _)| settings.side == 3 || (ply % 2 == 0) == reviewed_white)
+            .filter_map(|(ply, pair)| Some((ply, pair[0]?, pair[1]?)))
+            .map(|(ply, before_eval, after_eval)| {
                 let (before, after) = (win_percent(before_eval), win_percent(after_eval));
-                if reviewed_white {
+                let white_moved = if settings.side == 3 {
+                    ply % 2 == 0
+                } else {
+                    reviewed_white
+                };
+                if white_moved {
                     before - after
                 } else {
                     after - before
@@ -1360,6 +1565,7 @@ impl Render for DatabaseScreen {
                 .pb(px(16.))
                 .gap(px(16.))
                 .child(header)
+                .child(self.render_review_controls(cx))
                 .children(import_bar)
                 .child(stats)
                 .child(

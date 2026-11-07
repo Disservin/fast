@@ -31,6 +31,7 @@ pub struct Limits {
     pub black_inc_ms: u64,
     pub movetime_ms: Option<u64>,
     pub depth: Option<u32>,
+    pub nodes: Option<u64>,
 }
 
 impl Limits {
@@ -41,6 +42,9 @@ impl Limits {
         }
         if let Some(movetime) = self.movetime_ms {
             go.push_str(&format!(" movetime {movetime}"));
+        }
+        if let Some(nodes) = self.nodes {
+            go.push_str(&format!(" nodes {nodes}"));
         }
         if let (Some(white), Some(black)) = (self.white_ms, self.black_ms) {
             go.push_str(&format!(
