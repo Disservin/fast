@@ -844,6 +844,10 @@ impl Workspace {
             tabs = tabs.child(
                 h_flex()
                     .id(("tab", id as usize))
+                    .on_mouse_up(MouseButton::Middle, cx.listener(move |this, _, window, cx| {
+                        cx.stop_propagation();
+                        this.close_tab(id, window, cx);
+                    }))
                     .on_drag(
                         DraggedTab {
                             id,
