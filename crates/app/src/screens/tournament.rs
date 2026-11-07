@@ -13,7 +13,8 @@ use chess_core::{Position as _, format_pv, pv_to_san};
 use engine::EngineId;
 use gpui::{
     AnyElement, AppContext as _, ClipboardItem, Context, Div, Entity, FontWeight, IntoElement,
-    Pixels, Render, SharedString, Task, WeakEntity, Window, div, prelude::*, px, relative, rgb,
+    Pixels, Render, SharedString, Task, WeakEntity, Window, deferred, div, prelude::*, px,
+    relative, rgb,
 };
 use gpui_component::input::{InputState, Textarea, TextareaState};
 use ui::{
@@ -1519,40 +1520,47 @@ impl TournamentScreen {
         let folder = run.dir.clone();
         let (dir, cwd, config) = (run.dir.clone(), run.cwd.clone(), run.config.clone());
         let more = this.clone();
-        let menu = self.menu_open.then(|| {
-            let (copy, copy_config) = (this.clone(), this.clone());
-            v_flex()
-                .absolute()
-                .top(px(40.))
-                .right(px(0.))
-                .w(px(190.))
-                .p(px(6.))
-                .gap(px(4.))
-                .rounded(px(10.))
-                .bg(rgb(T.tour_card))
-                .border_1()
-                .border_color(rgb(T.tour_card_border))
-                .child(
-                    btn("tournament-copy", "Copy command")
-                        .full()
-                        .on_click(move |_, cx| {
-                            copy.update(cx, |screen, cx| {
-                                screen.menu_open = false;
-                                screen.copy_command(cx)
-                            })
-                        }),
+        let menu =
+            self.menu_open.then(|| {
+                let (copy, copy_config) = (this.clone(), this.clone());
+                // Deferred so it paints above the cards that follow the header, and occluding
+                // so they neither show through nor take its clicks.
+                deferred(
+                    v_flex()
+                        .id("tournament-more-menu")
+                        .absolute()
+                        .top(px(40.))
+                        .right(px(0.))
+                        .w(px(190.))
+                        .p(px(6.))
+                        .gap(px(4.))
+                        .rounded(px(10.))
+                        .bg(rgb(T.surface))
+                        .border_1()
+                        .border_color(rgb(T.border_strong))
+                        .shadow_lg()
+                        .occlude()
+                        .child(btn("tournament-copy", "Copy command").full().on_click(
+                            move |_, cx| {
+                                copy.update(cx, |screen, cx| {
+                                    screen.menu_open = false;
+                                    screen.copy_command(cx)
+                                })
+                            },
+                        ))
+                        .child(
+                            btn("tournament-copy-config", "Copy config")
+                                .full()
+                                .on_click(move |_, cx| {
+                                    copy_config.update(cx, |screen, cx| {
+                                        screen.menu_open = false;
+                                        screen.copy_config(cx)
+                                    })
+                                }),
+                        ),
                 )
-                .child(
-                    btn("tournament-copy-config", "Copy config")
-                        .full()
-                        .on_click(move |_, cx| {
-                            copy_config.update(cx, |screen, cx| {
-                                screen.menu_open = false;
-                                screen.copy_config(cx)
-                            })
-                        }),
-                )
-        });
+                .with_priority(1)
+            });
         let overflow = div()
             .relative()
             .child(
@@ -2093,7 +2101,9 @@ impl TournamentScreen {
     fn render_empty(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let folder = fastchess::tournaments_dir(&self.data_dir(cx));
         let new = cx.entity();
-        let saved = self.render_saved(cx).map(|saved| card().mt(px(14.)).child(saved));
+        let saved = self
+            .render_saved(cx)
+            .map(|saved| card().mt(px(14.)).child(saved));
         v_flex()
             .gap(px(10.))
             .max_w(px(620.))
