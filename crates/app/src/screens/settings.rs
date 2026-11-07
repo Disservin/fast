@@ -1291,6 +1291,13 @@ impl SettingsScreen {
         let mut body = v_flex()
             .gap(px(12.))
             .child(section_label("Storage and backup"))
+            .child(
+                if model.read(cx).unsaved_config || model.read(cx).unsaved_repertoire {
+                    "Unsaved changes — use Retry saving below"
+                } else {
+                    "Settings and repertoire saved"
+                },
+            )
             .child(format!("Settings: {}", paths.config_file.display()))
             .child(format!(
                 "Games, notes, repertoire and history: {}",
@@ -1306,20 +1313,30 @@ impl SettingsScreen {
                         cx,
                         move |path, cx| {
                             target.update(cx, |model, cx| {
-                                let result = crate::backup::Archive::capture(
-                                    &model.paths,
-                                    &model.config,
-                                    &model.repertoire,
-                                )
-                                .and_then(|archive| Ok(serde_json::to_vec(&archive)?))
-                                .and_then(|bytes| crate::persistence::atomic_write(&path, &bytes));
-                                model.toast(
-                                    match result {
-                                        Ok(()) => "Backup exported".into(),
-                                        Err(err) => format!("Backup failed: {err:#}"),
-                                    },
-                                    cx,
-                                );
+                                let paths = model.paths.clone();
+                                let config = model.config.clone();
+                                let repertoire = model.repertoire.clone();
+                                let task = cx.background_spawn(async move {
+                                    crate::backup::Archive::capture(&paths, &config, &repertoire)
+                                        .and_then(|archive| Ok(serde_json::to_vec(&archive)?))
+                                        .and_then(|bytes| {
+                                            crate::persistence::atomic_write(&path, &bytes)
+                                        })
+                                });
+                                model.toast("Exporting backup…", cx);
+                                cx.spawn(async move |this, cx| {
+                                    let result = task.await;
+                                    let _ = this.update(cx, |model, cx| {
+                                        model.toast(
+                                            match result {
+                                                Ok(()) => "Backup exported".into(),
+                                                Err(err) => format!("Backup failed: {err:#}"),
+                                            },
+                                            cx,
+                                        )
+                                    });
+                                })
+                                .detach();
                             });
                         },
                     );
@@ -1335,15 +1352,22 @@ impl SettingsScreen {
                         cx,
                         move |path, cx| {
                             target.update(cx, |model, cx| {
-                                match crate::backup::Archive::read(&path) {
-                                    Ok(archive) => {
-                                        model.pending_backup = Some(archive);
-                                        cx.notify();
-                                    }
-                                    Err(err) => {
-                                        model.toast(format!("Cannot restore backup: {err:#}"), cx)
-                                    }
-                                }
+                                let task = cx.background_spawn(async move {
+                                    crate::backup::Archive::read(&path)
+                                });
+                                model.toast("Reading backup preview…", cx);
+                                cx.spawn(async move |this, cx| {
+                                    let result = task.await;
+                                    let _ = this.update(cx, |model, cx| match result {
+                                        Ok(archive) => {
+                                            model.pending_backup = Some(archive);
+                                            cx.notify();
+                                        }
+                                        Err(err) => model
+                                            .toast(format!("Cannot restore backup: {err:#}"), cx),
+                                    });
+                                })
+                                .detach();
                             });
                         },
                     );
@@ -1353,7 +1377,27 @@ impl SettingsScreen {
             body = body.child(format!(
                 "Backup preview ({} files): {}",
                 archive.files.len(),
-                archive.files.keys().cloned().collect::<Vec<_>>().join(", ")
+                archive
+                    .files
+                    .keys()
+                    .map(|name| {
+                        let paths = &model.read(cx).paths;
+                        let target = if name == "config.toml" {
+                            paths.config_file.clone()
+                        } else {
+                            paths.data_dir.join(name)
+                        };
+                        format!(
+                            "{name} ({})",
+                            if target.exists() {
+                                "conflict: already exists"
+                            } else {
+                                "new"
+                            }
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ")
             ));
             for (id, label, replace) in [
                 (
@@ -1370,7 +1414,9 @@ impl SettingsScreen {
                             Ok(()) => {
                                 model.config = crate::config::Config::load(&model.paths.config_file);
                                 if let Ok(bytes) = std::fs::read(model.paths.repertoire_file()) && let Ok(rep) = serde_json::from_slice(&bytes) { model.repertoire = rep; }
+                                model.notes = db::NoteStore::open(model.paths.notes_file()).ok();
                                 model.refresh_databases();
+                                cx.emit(crate::model::ModelEvent::Restored);
                                 cx.emit(crate::model::ModelEvent::Repertoire);
                                 cx.emit(crate::model::ModelEvent::Databases);
                                 cx.emit(crate::model::ModelEvent::BoardPrefs);

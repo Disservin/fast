@@ -40,6 +40,7 @@ pub struct Toast {
 /// Emitted when something other screens should re-read has changed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ModelEvent {
+    Restored,
     BoardPrefs,
     Databases,
     Repertoire,
@@ -47,6 +48,8 @@ pub enum ModelEvent {
 }
 
 pub struct AppModel {
+    pub unsaved_config: bool,
+    pub unsaved_repertoire: bool,
     pub pending_backup: Option<crate::backup::Archive>,
     pub paths: Paths,
     pub demo: bool,
@@ -133,10 +136,14 @@ impl AppModel {
         if demo {
             crate::demo::prepare(&paths, &mut config);
         }
-        let mut repertoire: Repertoire = std::fs::read_to_string(paths.repertoire_file())
-            .ok()
-            .and_then(|text| serde_json::from_str(&text).ok())
-            .unwrap_or_else(|| Repertoire::new("My repertoire", true));
+        let mut repertoire: Repertoire = [
+            paths.repertoire_file(),
+            paths.repertoire_file().with_extension("previous"),
+        ]
+        .into_iter()
+        .filter_map(|path| std::fs::read(path).ok())
+        .find_map(|bytes| serde_json::from_slice(&bytes).ok())
+        .unwrap_or_else(|| Repertoire::new("My repertoire", true));
         repertoire.migrate_cards();
         let notes = match NoteStore::open(paths.notes_file()) {
             Ok(notes) => Some(notes),
@@ -158,6 +165,8 @@ impl AppModel {
             })
             .collect();
         let mut model = Self {
+            unsaved_config: false,
+            unsaved_repertoire: false,
             pending_backup: None,
             paths,
             demo,
@@ -253,21 +262,31 @@ impl AppModel {
             cx.notify();
             return;
         }
+        self.unsaved_config = true;
         if let Err(err) = self.config.save(&self.paths.config_file) {
             self.toast(format!("Settings remain unsaved: {err:#}. Check storage permissions and retry by changing the setting."), cx);
+        } else {
+            self.unsaved_config = false;
         }
         cx.notify();
     }
 
     pub fn save_repertoire(&mut self, cx: &mut Context<Self>) {
+        self.unsaved_repertoire = true;
         match serde_json::to_string(&self.repertoire) {
             Ok(text) => {
                 let path = self.paths.repertoire_file();
                 if let Some(parent) = path.parent() {
                     let _ = std::fs::create_dir_all(parent);
                 }
-                if let Err(err) = crate::persistence::atomic_write(&path, text.as_bytes()) {
+                if let Err(err) =
+                    crate::persistence::atomic_write_checked(&path, text.as_bytes(), |bytes| {
+                        serde_json::from_slice::<Repertoire>(bytes).is_ok()
+                    })
+                {
                     self.toast(format!("Repertoire remains unsaved: {err}. Check storage space and permissions, then retry Save."), cx);
+                } else {
+                    self.unsaved_repertoire = false;
                 }
             }
             Err(err) => log::error!("could not serialise repertoire: {err}"),

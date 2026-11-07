@@ -35,6 +35,7 @@ pub struct TrainScreen {
     board: Entity<BoardView>,
     queue: Vec<Drill>,
     every_reply: bool,
+    visible: bool,
     attempts: std::collections::HashMap<String, trainer::Attempt>,
     exercise_id: u64,
     attempt_tick: std::time::Instant,
@@ -108,6 +109,7 @@ impl TrainScreen {
                         .update(cx, |board, cx| board.set_prefs(prefs, cx));
                 }
                 ModelEvent::Repertoire => cx.notify(),
+                ModelEvent::Restored => self::TrainScreen::resume_session(this, cx),
                 _ => {}
             }),
         ];
@@ -116,6 +118,7 @@ impl TrainScreen {
             board,
             queue: Vec::new(),
             every_reply: false,
+            visible: false,
             attempts: Default::default(),
             exercise_id: 0,
             attempt_tick: std::time::Instant::now(),
@@ -145,35 +148,49 @@ impl TrainScreen {
             }),
             _subscriptions: subscriptions,
         };
-        let saved = this.model.read(cx).repertoire.session.clone();
+        this.resume_session(cx);
+        this
+    }
+
+    pub fn set_visible(&mut self, visible: bool, cx: &mut Context<Self>) {
+        if self.visible && !visible {
+            self.persist_session(cx);
+        }
+        self.visible = visible;
+        self.attempt_tick = std::time::Instant::now();
+    }
+
+    fn resume_session(&mut self, cx: &mut Context<Self>) {
+        let saved = self.model.read(cx).repertoire.session.clone();
         if let Some(saved) = saved {
-            this.queue = saved.queue;
-            this.finished = saved.finished;
-            this.total = saved.total;
-            this.every_reply = saved.every_reply;
-            this.attempts = saved.attempts;
-            this.start_drill(cx);
-            this.phase = match saved.phase {
+            self.queue = saved.queue;
+            self.finished = saved.finished;
+            self.total = saved.total;
+            self.every_reply = saved.every_reply;
+            self.attempts = saved.attempts;
+            self.start_drill(cx);
+            self.phase = match saved.phase {
                 1 => Phase::Correct,
                 2 => Phase::Wrong,
                 3 => Phase::Revealed,
                 _ => Phase::Asking,
             };
-            if matches!(this.phase, Phase::Correct | Phase::Revealed) {
-                this.board
+            if matches!(self.phase, Phase::Correct | Phase::Revealed) {
+                self.board
                     .update(cx, |board, cx| board.set_interactive(false, cx));
             }
-            this.message = Some(
+            self.message = Some(
                 format!(
                     "Resumed study saved at Unix time {}. Earlier hints and mistakes are retained.",
                     saved.saved_at
                 )
                 .into(),
             );
+            self.persist_session(cx);
         } else {
-            this.reload_queue(cx);
+            self.attempts.clear();
+            self.reload_queue(cx);
         }
-        this
     }
 
     fn reload_queue(&mut self, cx: &mut Context<Self>) {
@@ -244,11 +261,14 @@ impl TrainScreen {
     }
 
     fn evidence(&mut self) -> &mut trainer::Attempt {
-        let elapsed = self
-            .attempt_tick
-            .elapsed()
-            .as_millis()
-            .min(u64::MAX as u128) as u64;
+        let elapsed = if self.visible {
+            self.attempt_tick
+                .elapsed()
+                .as_millis()
+                .min(u64::MAX as u128) as u64
+        } else {
+            0
+        };
         self.attempt_tick = std::time::Instant::now();
         let key = self.attempt_key();
         let attempt = self.attempts.entry(key).or_default();
@@ -752,11 +772,7 @@ impl TrainScreen {
                     .map(String::as_str)
                     .chain([drill.answer.as_str()])
                     .collect();
-                self.model
-                    .read(cx)
-                    .repertoire
-                    .node(&path)
-                    .and_then(|node| node.card)
+                self.model.read(cx).repertoire.card_for(&path)
             })
             .unwrap_or_default();
         let intervals = card.intervals();
@@ -795,8 +811,7 @@ impl TrainScreen {
                                 self.model
                                     .read(cx)
                                     .repertoire
-                                    .node(&path)
-                                    .and_then(|n| n.card)
+                                    .card_for(&path)
                                     .is_some_and(|c| c.is_due(today()))
                             })
                             .count(),
@@ -808,8 +823,7 @@ impl TrainScreen {
                                 self.model
                                     .read(cx)
                                     .repertoire
-                                    .node(&path)
-                                    .and_then(|n| n.card)
+                                    .card_for(&path)
                                     .is_some_and(|c| c.state == trainer::CardState::New)
                             })
                             .count()

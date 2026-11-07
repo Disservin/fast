@@ -345,7 +345,11 @@ impl Default for Config {
 impl Config {
     /// Loads the config, keeping defaults if the file is missing or damaged.
     pub fn load(path: &Path) -> Self {
-        let Ok(text) = std::fs::read_to_string(path) else {
+        let text = [path.to_path_buf(), path.with_extension("previous")]
+            .into_iter()
+            .filter_map(|candidate| std::fs::read_to_string(candidate).ok())
+            .find(|text| toml::from_str::<Self>(text).is_ok());
+        let Some(text) = text else {
             return Self::default();
         };
         match toml::from_str::<Self>(&text) {
@@ -368,7 +372,12 @@ impl Config {
             std::fs::create_dir_all(parent).context("creating config directory")?;
         }
         let text = toml::to_string_pretty(self).context("serialising config")?;
-        crate::persistence::atomic_write(path, text.as_bytes()).context("writing config")
+        crate::persistence::atomic_write_checked(path, text.as_bytes(), |bytes| {
+            std::str::from_utf8(bytes)
+                .ok()
+                .is_some_and(|text| toml::from_str::<Self>(text).is_ok())
+        })
+        .context("writing config")
     }
 }
 
@@ -410,6 +419,29 @@ mod tests {
         });
         config.save(&path).unwrap();
         assert_eq!(Config::load(&path), config);
+    }
+
+    #[test]
+    fn damaged_current_keeps_previous_valid_version_recoverable() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        let original = Config::default();
+        original.save(&path).unwrap();
+        let changed = Config {
+            player_name: "changed".into(),
+            ..Default::default()
+        };
+        changed.save(&path).unwrap();
+        std::fs::write(&path, "damaged").unwrap();
+        assert_eq!(Config::load(&path), original);
+        changed.save(&path).unwrap();
+        assert_eq!(
+            toml::from_str::<Config>(
+                &std::fs::read_to_string(path.with_extension("previous")).unwrap()
+            )
+            .unwrap(),
+            original
+        );
     }
 
     #[test]

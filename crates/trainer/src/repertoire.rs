@@ -2,10 +2,7 @@
 
 use std::collections::HashMap;
 
-use chess_core::{
-    Chess, Color, Position,
-    shakmaty::san::{San, SanPlus},
-};
+use chess_core::{Chess, Color, Position, shakmaty::san::San};
 use serde::{Deserialize, Serialize};
 
 use crate::{Card, CardState, Grade};
@@ -61,6 +58,8 @@ pub struct Repertoire {
     pub history: Vec<crate::ReviewEvent>,
     #[serde(default)]
     pub session: Option<crate::StudySession>,
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub legacy_cards: std::collections::BTreeMap<String, Card>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -99,6 +98,7 @@ impl Repertoire {
             roots: Vec::new(),
             history: Vec::new(),
             session: None,
+            legacy_cards: Default::default(),
         }
     }
 
@@ -233,6 +233,18 @@ impl Repertoire {
     /// Merge legacy path cards conservatively: keep the most reviewed card, then
     /// propagate it to all occurrences without resetting its schedule or lapses.
     pub fn migrate_cards(&mut self) {
+        let legacy: Vec<_> = self
+            .entries()
+            .into_iter()
+            .filter_map(|(_, path, node)| {
+                node.card
+                    .filter(|card| card.state != CardState::New)
+                    .map(|card| (path.join(" "), card))
+            })
+            .collect();
+        for (path, card) in legacy {
+            self.legacy_cards.entry(path).or_insert(card);
+        }
         let mut shared: HashMap<(String, String), Card> = HashMap::new();
         for (key, _, node) in self.entries() {
             if let Some(card) = node.card {
@@ -293,9 +305,17 @@ impl Repertoire {
         }
     }
 
+    pub fn card_for(&self, path: &[impl AsRef<str>]) -> Option<Card> {
+        let (answer, before) = path.split_last()?;
+        self.moves_after(before)?
+            .into_iter()
+            .find(|node| node.san == clean(answer.as_ref()))?
+            .card
+    }
+
     pub fn grade(&mut self, path: &[impl AsRef<str>], grade: Grade, today: i64) {
         self.migrate_cards();
-        if let Some(card) = self.node(path).map(|node| node.card.unwrap_or_default()) {
+        if let Some(card) = self.card_for(path) {
             self.set_card(path, card.answered(grade, today));
         }
     }
@@ -317,7 +337,12 @@ impl Repertoire {
         let Some(position) = Self::position_key(before_path) else {
             return false;
         };
-        let Some(before) = self.node(path).and_then(|node| node.card) else {
+        let Some(before) = self.moves_after(before_path).and_then(|moves| {
+            moves
+                .into_iter()
+                .find(|node| node.san == *answer)
+                .and_then(|node| node.card)
+        }) else {
             return false;
         };
         let applied = attempt.scheduling_grade(requested);
@@ -548,29 +573,20 @@ impl Repertoire {
         }
         let mut gaps = Vec::new();
         walk(self, &self.roots, &mut Vec::new(), &mut gaps);
+        let mut seen = std::collections::HashSet::new();
+        gaps.retain(|path| seen.insert(Self::position_key(path)));
         gaps
     }
 
-    /// Hash → repertoire moves, for fast lookups by position (handles transpositions).
-    pub fn position_index(&self) -> HashMap<u64, Vec<(String, bool)>> {
-        fn walk(nodes: &[RepNode], pos: &Chess, index: &mut HashMap<u64, Vec<(String, bool)>>) {
-            let hash = chess_core::position_hash(pos);
-            for (rank, node) in nodes.iter().enumerate() {
-                index
-                    .entry(hash)
-                    .or_default()
-                    .push((node.san.clone(), rank == 0));
-                let Ok(san) = node.san.parse::<San>() else {
-                    continue;
-                };
-                let Ok(mv) = san.to_move(pos) else { continue };
-                let mut next = pos.clone();
-                let _ = SanPlus::from_move_and_play_unchecked(&mut next, mv);
-                walk(&node.children, &next, index);
+    /// Full identities are used as keys, so hash collisions cannot merge knowledge.
+    pub fn position_index(&self) -> HashMap<String, Vec<(String, bool)>> {
+        let mut index: HashMap<String, Vec<(String, bool)>> = HashMap::new();
+        for (key, _, node) in self.entries() {
+            let moves = index.entry(key).or_default();
+            if !moves.iter().any(|(san, _)| *san == node.san) {
+                moves.push((node.san.clone(), moves.is_empty()));
             }
         }
-        let mut index = HashMap::new();
-        walk(&self.roots, &Chess::default(), &mut index);
         index
     }
 }
@@ -681,10 +697,10 @@ mod tests {
     }
 
     #[test]
-    fn position_index_finds_moves_by_hash() {
+    fn position_index_finds_moves_by_full_identity() {
         let rep = sample();
         let index = rep.position_index();
-        let start = chess_core::position_hash(&Chess::default());
+        let start = identity(&Chess::default());
         assert_eq!(index[&start], vec![("e4".to_owned(), true)]);
     }
 

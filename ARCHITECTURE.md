@@ -113,3 +113,32 @@ needless frames: the board positions pieces proportionally so a resize needs onl
   `shakmaty-syzygy` is not a dependency yet.
 - **Check for update** cannot check anything, since Fast is offline; it says so.
 - The Line preview explanation is a hook with no content outside demo mode.
+
+## Recoverable work and study
+
+Profile and PGN replacement stages a file beside its destination, syncs it and atomically
+replaces the destination. A `.previous` sibling retains the preceding version; config and
+repertoire saves preserve only valid previous data and startup falls back to that version.
+Settings exposes storage paths, persistent unsaved status and retry controls. A cancelled
+PGN dialog does not mutate the game or its saved baseline.
+
+Analyse recovery uses `game-recovery.json`; engine games use `play-recovery.json` (PGN,
+including clock metadata). Startup offers a preview and explicit restore/discard. Engine-game
+recovery opens the preserved game in Analyse rather than automatically restarting an engine.
+Study recovery lives inside `repertoire.json`, alongside cards and append-only review events,
+so queue advancement and scheduling commit together. Evidence records hints, reveals,
+failures, active training time, requested/applied grades and before/after cards. Review IDs
+reject duplicate submission. Failed or revealed attempts schedule Again; hints cap at Hard.
+
+The visible repertoire remains a tree. Reply lookup, card propagation, unique coverage,
+drills, gaps and leak grouping compare full legal-en-passant FEN identity without clocks.
+Legacy path cards are retained in `legacy_cards` when merging schedules. Any-reply practice
+accepts prepared alternatives; every-reply practice asks for the queued answer explicitly.
+
+Settings exports versioned profile archives containing config, repertoire (including study
+history), recovery records, notes and all managed game databases. Export and preview validation
+run in background tasks. SQLite snapshots/restoration use its online backup API, including WAL
+contents. Restore validates payloads, migrates legacy JSON/TOML defaults, previews files and
+offers keep/replace conflict policies. It stages rollback data before applying any files and
+rolls back on an apply failure. Applying a restore is currently exclusive on the UI thread;
+large restores can pause the window. Restart after restoring engine and shortcut settings.

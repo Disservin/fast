@@ -3,6 +3,14 @@ use anyhow::{Context, Result};
 use std::{io::Write, path::Path};
 
 pub fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
+    atomic_write_checked(path, bytes, |_| true)
+}
+
+pub fn atomic_write_checked(
+    path: &Path,
+    bytes: &[u8],
+    valid: impl Fn(&[u8]) -> bool,
+) -> Result<()> {
     let parent = path
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
@@ -11,7 +19,7 @@ pub fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
     let mut staged = tempfile::NamedTempFile::new_in(parent)?;
     staged.write_all(bytes)?;
     staged.as_file().sync_all()?;
-    if path.exists() {
+    if path.exists() && valid(&std::fs::read(path)?) {
         let mut previous = tempfile::NamedTempFile::new_in(parent)?;
         previous.write_all(&std::fs::read(path)?)?;
         previous.as_file().sync_all()?;
@@ -38,7 +46,9 @@ mod tests {
             std::fs::read(path.with_extension("previous")).unwrap(),
             b"first"
         );
-        std::fs::create_dir(path.with_extension("previous")).err();
+        std::fs::remove_file(path.with_extension("previous")).unwrap();
+        std::fs::create_dir(path.with_extension("previous")).unwrap();
+        assert!(atomic_write(&path, b"third").is_err());
         assert_eq!(std::fs::read(&path).unwrap(), b"second");
         assert!(atomic_write(&path.join("invalid"), b"bad").is_err());
         assert_eq!(std::fs::read(path).unwrap(), b"second");

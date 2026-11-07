@@ -196,6 +196,8 @@ type MenuHandler = Box<dyn Fn(&mut Window, &mut gpui::App)>;
 pub struct AnalyseScreen {
     recovery: Option<crate::recovery::Recovery>,
     recovery_pgn: String,
+    saved_pgn: String,
+    recovery_error: Option<String>,
     model: Entity<AppModel>,
     workspace: WeakEntity<Workspace>,
     pub tree: GameTree,
@@ -317,7 +319,7 @@ impl AnalyseScreen {
                 ModelEvent::Databases | ModelEvent::Repertoire => {
                     this.query_databases(cx);
                 }
-                ModelEvent::Engines => {}
+                ModelEvent::Engines | ModelEvent::Restored => {}
             }),
         ];
         let demo = model.read(cx).demo;
@@ -347,6 +349,8 @@ impl AnalyseScreen {
                 &model.read(cx).paths.data_dir.join("game-recovery.json"),
             ),
             recovery_pgn: String::new(),
+            saved_pgn: write_pgn(&GameTree::new()),
+            recovery_error: None,
             model,
             workspace,
             tree,
@@ -845,6 +849,7 @@ impl AnalyseScreen {
     pub fn save_pgn_as(&mut self, cx: &mut Context<Self>) {
         let pgn = write_pgn(&self.tree);
         let model = self.model.clone();
+        let this = cx.entity().downgrade();
         crate::model::pick_path(
             self.model.clone(),
             "Save game as PGN",
@@ -852,6 +857,23 @@ impl AnalyseScreen {
             cx,
             move |path, cx| {
                 let result = crate::persistence::atomic_write(&path, pgn.as_bytes());
+                if result.is_ok()
+                    && let Some(this) = this.upgrade()
+                {
+                    this.update(cx, |screen, cx| {
+                        screen.saved_pgn = pgn;
+                        if write_pgn(&screen.tree) == screen.saved_pgn {
+                            let path = screen
+                                .model
+                                .read(cx)
+                                .paths
+                                .data_dir
+                                .join("game-recovery.json");
+                            let _ = crate::recovery::Recovery::discard(&path);
+                        }
+                        cx.notify();
+                    });
+                }
                 model.update(cx, |model, cx| match result {
                     Ok(()) => model.toast(format!("Saved {}", path.display()), cx),
                     Err(err) => model.toast(format!("Could not save: {err}"), cx),
@@ -1207,6 +1229,8 @@ impl AnalyseScreen {
 
     /// Saves the game to "My games".
     pub fn save_game(&mut self, cx: &mut Context<Self>) {
+        let original_pgn = write_pgn(&self.tree);
+        let this = cx.entity().downgrade();
         let mut tree = self.tree.clone();
         let player = self.model.read(cx).config.player_name.clone();
         if tree.header("White").is_none_or(|white| white == "White") {
@@ -1226,6 +1250,21 @@ impl AnalyseScreen {
                     Ok::<_, db::DbError>(summary)
                 })
                 .await;
+            if saved.as_ref().is_ok_and(|summary| summary.games > 0) {
+                let _ = this.update(cx, |screen, cx| {
+                    screen.saved_pgn = original_pgn;
+                    if write_pgn(&screen.tree) == screen.saved_pgn {
+                        let path = screen
+                            .model
+                            .read(cx)
+                            .paths
+                            .data_dir
+                            .join("game-recovery.json");
+                        let _ = crate::recovery::Recovery::discard(&path);
+                    }
+                    cx.notify();
+                });
+            }
             model.update(cx, |model, cx| {
                 match saved {
                     Ok(summary) if summary.games > 0 => model.toast("Saved to My games.", cx),
@@ -2483,13 +2522,15 @@ impl Render for AnalyseScreen {
                 .child(btn("discard-recovery", "Discard recovery").on_click({
                     let entity = cx.entity();
                     move |_, cx| {
-                        entity.update(cx, |this, cx| match std::fs::remove_file(&recovery_path) {
-                            Ok(()) => {
-                                this.recovery = None;
-                                cx.notify();
-                            }
-                            Err(err) => {
-                                this.toast(format!("Could not discard recovery: {err}"), cx)
+                        entity.update(cx, |this, cx| {
+                            match crate::recovery::Recovery::discard(&recovery_path) {
+                                Ok(()) => {
+                                    this.recovery = None;
+                                    cx.notify();
+                                }
+                                Err(err) => {
+                                    this.toast(format!("Could not discard recovery: {err}"), cx)
+                                }
                             }
                         })
                     }
@@ -2497,11 +2538,14 @@ impl Render for AnalyseScreen {
                 .into_any_element();
         }
         let pgn = write_pgn(&self.tree);
-        if pgn != self.recovery_pgn && self.current != GameTree::ROOT {
-            match crate::recovery::Recovery::save(&recovery_path, pgn.clone()) {
-                Ok(()) => self.recovery_pgn = pgn,
+        if pgn != self.recovery_pgn && pgn != self.saved_pgn && pgn != write_pgn(&GameTree::new()) {
+            self.recovery_pgn = pgn.clone();
+            match crate::recovery::Recovery::save(&recovery_path, pgn) {
+                Ok(()) => self.recovery_error = None,
                 Err(err) => {
-                    log::error!("Recovery snapshot failed: {err}");
+                    self.recovery_error = Some(format!(
+                        "Recovery unavailable: {err}. Save the game and check storage permissions."
+                    ))
                 }
             }
         }
@@ -2518,7 +2562,16 @@ impl Render for AnalyseScreen {
         // Each engine past the first adds an eval column.
         let extra_engines = self.live.read(cx).engines.len().saturating_sub(1) as f32;
         self.show_wdl = side_width >= px(460. + 66. * extra_engines);
-        let scoresheet = self.render_scoresheet(cx);
+        let dirty = write_pgn(&self.tree) != self.saved_pgn;
+        let scoresheet = v_flex()
+            .h_full()
+            .children(self.recovery_error.clone())
+            .child(if dirty {
+                "Unsaved game · Ctrl/Cmd+S to save"
+            } else {
+                "Game saved"
+            })
+            .child(self.render_scoresheet(cx));
         let board_column = self.render_board_column(board_size, cx);
         let table = self.render_moves_table(cx);
         let preview = self.render_line_preview(cx);

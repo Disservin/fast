@@ -283,6 +283,7 @@ impl Workspace {
             "settings:licenses" => (Mode::Settings, Some(SettingsPage::Licenses)),
             _ => (Mode::Analyse, None),
         };
+        train.update(cx, |train, cx| train.set_visible(mode == Mode::Train, cx));
         if let Some(page) = settings_page {
             settings.update(cx, |settings, cx| settings.set_page(page, window, cx));
         }
@@ -309,6 +310,8 @@ impl Workspace {
             return;
         }
         self.mode = mode;
+        self.train
+            .update(cx, |train, cx| train.set_visible(mode == Mode::Train, cx));
         // The engine only runs while Analyse is open.
         let visible = mode == Mode::Analyse;
         self.analyse

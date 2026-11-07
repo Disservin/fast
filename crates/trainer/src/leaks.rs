@@ -128,7 +128,7 @@ pub struct BookGap {
 
 /// Lines where the book ran out because of the opponent's move, most frequent first.
 pub fn find_book_gaps(repertoire: &Repertoire, games: &[GameLine]) -> Vec<BookGap> {
-    let mut gaps: HashMap<Vec<String>, u32> = HashMap::new();
+    let mut gaps: HashMap<String, (Vec<String>, u32)> = HashMap::new();
     for game in games {
         if game.user_white != repertoire.white {
             continue;
@@ -143,14 +143,17 @@ pub fn find_book_gaps(repertoire: &Repertoire, games: &[GameLine]) -> Vec<BookGa
             }
             let opponent_move = (ply % 2 == 0) != game.user_white;
             if moves.is_empty() && opponent_move {
-                *gaps.entry(game.sans[..=ply].to_vec()).or_default() += 1;
+                let path = game.sans[..=ply].to_vec();
+                if let Some(key) = Repertoire::position_key(&path) {
+                    gaps.entry(key).or_insert_with(|| (path, 0)).1 += 1;
+                }
             }
             break;
         }
     }
     let mut out: Vec<BookGap> = gaps
         .into_iter()
-        .map(|(path, games)| BookGap { path, games })
+        .map(|(_, (path, games))| BookGap { path, games })
         .collect();
     out.sort_by(|a, b| b.games.cmp(&a.games).then(a.path.cmp(&b.path)));
     out
@@ -202,6 +205,27 @@ mod tests {
         assert_eq!(gaps.len(), 1);
         assert_eq!(gaps[0].games, 2);
         assert_eq!(gaps[0].path.join(" "), "e4 e6 d4 a6");
+    }
+
+    #[test]
+    fn transposed_games_share_leak_and_gap_tallies() {
+        let mut rep = Repertoire::new("r", true);
+        rep.add_line(&["Nf3", "Nf6", "g3", "g6", "Bg2"]).unwrap();
+        rep.add_line(&["g3", "g6", "Nf3", "Nf6", "Bg2"]).unwrap();
+        let games = [
+            line("Nf3 Nf6 g3 g6 d3", true, 0.0),
+            line("g3 g6 Nf3 Nf6 d3", true, 1.0),
+        ];
+        let leaks = find_leaks(&rep, &games);
+        assert_eq!(leaks.len(), 1);
+        assert_eq!(leaks[0].games, 2);
+        let games = [
+            line("Nf3 Nf6 g3 g6 Bg2 a6", true, 0.0),
+            line("g3 g6 Nf3 Nf6 Bg2 a6", true, 1.0),
+        ];
+        let gaps = find_book_gaps(&rep, &games);
+        assert_eq!(gaps.len(), 1);
+        assert_eq!(gaps[0].games, 2);
     }
 
     #[test]

@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, path::Path};
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Archive {
+    #[serde(default)]
     pub version: u32,
     pub files: BTreeMap<String, Vec<u8>>,
 }
@@ -33,7 +34,7 @@ impl Archive {
             toml::to_string_pretty(config)?.into_bytes(),
         );
         files.insert("repertoire.json".into(), serde_json::to_vec(repertoire)?);
-        for name in ["game-recovery.json", "study.json"] {
+        for name in ["game-recovery.json", "play-recovery.json", "study.json"] {
             let path = paths.data_dir.join(name);
             if path.exists() {
                 files.insert(name.into(), std::fs::read(path)?);
@@ -58,8 +59,24 @@ impl Archive {
         Ok(Self { version: 1, files })
     }
     pub fn read(path: &Path) -> Result<Self> {
-        let archive: Self = serde_json::from_slice(&std::fs::read(path)?)?;
+        let mut archive: Self = serde_json::from_slice(&std::fs::read(path)?)?;
         archive.validate()?;
+        // Materialize defaults and migrate legacy tree cards before touching live files.
+        for (name, bytes) in &mut archive.files {
+            match name.as_str() {
+                "config.toml" => {
+                    let config: Config = toml::from_str(std::str::from_utf8(bytes)?)?;
+                    *bytes = toml::to_string_pretty(&config)?.into_bytes();
+                }
+                "repertoire.json" => {
+                    let mut repertoire: trainer::Repertoire = serde_json::from_slice(bytes)?;
+                    repertoire.migrate_cards();
+                    *bytes = serde_json::to_vec(&repertoire)?;
+                }
+                _ => {}
+            }
+        }
+        archive.version = 1;
         Ok(archive)
     }
     fn validate(&self) -> Result<()> {
@@ -74,6 +91,7 @@ impl Archive {
                     | "repertoire.json"
                     | "notes.sqlite"
                     | "game-recovery.json"
+                    | "play-recovery.json"
                     | "study.json"
             ) || (name.starts_with("databases/")
                 && name.ends_with(".sqlite")
@@ -179,6 +197,23 @@ fn restore_file(path: &Path, bytes: &[u8], staging: &Path) -> Result<()> {
 mod tests {
     use super::*;
     #[test]
+    fn legacy_archives_materialize_new_settings_defaults() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("legacy.json");
+        let archive = Archive {
+            version: 0,
+            files: [("config.toml".into(), b"player_name = 'legacy'".to_vec())].into(),
+        };
+        std::fs::write(&path, serde_json::to_vec(&archive).unwrap()).unwrap();
+        let migrated = Archive::read(&path).unwrap();
+        assert_eq!(migrated.version, 1);
+        let config: Config =
+            toml::from_str(std::str::from_utf8(&migrated.files["config.toml"]).unwrap()).unwrap();
+        assert_eq!(config.player_name, "legacy");
+        assert_eq!(config.board, Config::default().board);
+    }
+
+    #[test]
     fn rejects_traversal_and_future_schema() {
         let mut archive = Archive {
             version: 1,
@@ -189,6 +224,40 @@ mod tests {
         archive.version = 99;
         assert!(archive.validate().is_err());
     }
+    #[test]
+    fn failed_restore_rolls_back_already_applied_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths {
+            config_file: dir.path().join("config.toml"),
+            data_dir: dir.path().join("data"),
+        };
+        let original = Config {
+            player_name: "original".into(),
+            ..Default::default()
+        };
+        original.save(&paths.config_file).unwrap();
+        let source = dir.path().join("source.sqlite");
+        let _source = db::Database::open(&source).unwrap();
+        let archive = Archive {
+            version: 1,
+            files: [
+                (
+                    "config.toml".into(),
+                    toml::to_string(&Config::default()).unwrap().into_bytes(),
+                ),
+                (
+                    "databases/test.sqlite".into(),
+                    sqlite_snapshot(&source).unwrap(),
+                ),
+            ]
+            .into(),
+        };
+        std::fs::create_dir_all(&paths.data_dir).unwrap();
+        std::fs::write(paths.databases_dir(), "blocks directory creation").unwrap();
+        assert!(archive.restore(&paths, true).is_err());
+        assert_eq!(Config::load(&paths.config_file), original);
+    }
+
     #[test]
     fn captures_wal_and_restores_with_conflict_choice() {
         let dir = tempfile::tempdir().unwrap();

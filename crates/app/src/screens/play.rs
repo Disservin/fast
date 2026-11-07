@@ -75,6 +75,7 @@ struct Game {
 }
 
 pub struct PlayScreen {
+    recovery: Option<crate::recovery::Recovery>,
     model: Entity<AppModel>,
     workspace: WeakEntity<Workspace>,
     board: Entity<BoardView>,
@@ -169,6 +170,9 @@ impl PlayScreen {
         ];
         let demo = model.read(cx).demo;
         let mut this = Self {
+            recovery: crate::recovery::Recovery::load(
+                &model.read(cx).paths.data_dir.join("play-recovery.json"),
+            ),
             model,
             workspace,
             board,
@@ -496,6 +500,20 @@ impl PlayScreen {
             game.black_ms += game.increment_ms;
         }
         game.current = game.tree.add_move(game.current, mv);
+        let mut recovery_tree = game.tree.clone();
+        recovery_tree.set_header("FastWhiteMs", &game.white_ms.to_string());
+        recovery_tree.set_header("FastBlackMs", &game.black_ms.to_string());
+        let path = self
+            .model
+            .read(cx)
+            .paths
+            .data_dir
+            .join("play-recovery.json");
+        if let Err(err) =
+            crate::recovery::Recovery::save(&path, chess_core::write_pgn(&recovery_tree))
+        {
+            log::error!("Play recovery failed: {err}");
+        }
         // Repetition and the move-count rules end the game too, as on Lichess.
         let end = game.tree.game_end(game.current);
         let after = game.tree.node(game.current).pos.clone();
@@ -1119,6 +1137,56 @@ fn opponent_names(engines: &[EngineConfig]) -> Vec<SharedString> {
 
 impl Render for PlayScreen {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if let Some(recovery) = self.recovery.clone() {
+            let restore = cx.entity();
+            let discard = cx.entity();
+            return v_flex()
+                .p(px(24.))
+                .gap(px(16.))
+                .child(format!(
+                    "Recover engine game saved at Unix time {}",
+                    recovery.saved_at
+                ))
+                .child(recovery.pgn.chars().take(500).collect::<String>())
+                .child(btn("recover-play", "Restore game in Analyse").on_click(
+                    move |window, cx| {
+                        restore.update(cx, |this, cx| {
+                            if let Some(recovery) = this.recovery.take()
+                                && let Some(workspace) = this.workspace.upgrade()
+                            {
+                                workspace.update(cx, |workspace, cx| {
+                                    workspace.analyse.update(cx, |screen, cx| {
+                                        screen.load_text(&recovery.pgn, window, cx)
+                                    });
+                                    workspace.set_mode(Mode::Analyse, cx);
+                                });
+                            }
+                        });
+                    },
+                ))
+                .child(
+                    btn("discard-play-recovery", "Discard recovery").on_click(move |_, cx| {
+                        discard.update(cx, |this, cx| {
+                            let path = this
+                                .model
+                                .read(cx)
+                                .paths
+                                .data_dir
+                                .join("play-recovery.json");
+                            match crate::recovery::Recovery::discard(&path) {
+                                Ok(()) => {
+                                    this.recovery = None;
+                                    cx.notify();
+                                }
+                                Err(err) => {
+                                    this.toast(format!("Could not discard recovery: {err}"), cx)
+                                }
+                            }
+                        });
+                    }),
+                )
+                .into_any_element();
+        }
         let viewport = window.viewport_size();
         let board_size = ui::board::snap_board_size(
             (viewport.height - px(324.))
@@ -1146,6 +1214,7 @@ impl Render for PlayScreen {
                     .pb(px(16.))
                     .child(side),
             )
+            .into_any_element()
     }
 }
 

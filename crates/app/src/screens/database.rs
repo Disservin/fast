@@ -182,7 +182,7 @@ impl DatabaseScreen {
                 ModelEvent::Databases | ModelEvent::Repertoire => {
                     this.apply_filter(cx);
                 }
-                ModelEvent::Engines => {}
+                ModelEvent::Engines | ModelEvent::Restored => {}
             }),
         );
         let selected_db = model
