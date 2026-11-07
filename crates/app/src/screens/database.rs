@@ -1560,16 +1560,33 @@ fn review_findings(game: &GameDetails) -> Vec<ReviewFinding> {
         } else {
             after.eval_cp - before.eval_cp
         };
-        if loss < 75 {
+        let mate_lost = before.mate_distance.is_some_and(|mate| {
+            let favorable_to_mover = (white_moved && mate > 0) || (!white_moved && mate < 0);
+            favorable_to_mover
+                && after
+                    .mate_distance
+                    .is_none_or(|later| later.signum() != mate.signum() || later.abs() > mate.abs())
+        });
+        if loss < 75 && !mate_lost {
             continue;
         }
-        let mut text = format!(
-            "Move {} {}: engine score lost {:.2} pawns for {}.",
-            ply + 1,
-            game.sans[ply],
-            f64::from(loss) / 100.0,
-            if white_moved { "White" } else { "Black" },
-        );
+        let mut text = if mate_lost {
+            format!(
+                "Ply {} {} gives up a forced mate in {} for {}.",
+                ply + 1,
+                game.sans[ply],
+                before.mate_distance.unwrap_or_default().abs(),
+                if white_moved { "White" } else { "Black" },
+            )
+        } else {
+            format!(
+                "Ply {} {}: engine score lost {:.2} pawns for {}.",
+                ply + 1,
+                game.sans[ply],
+                f64::from(loss) / 100.0,
+                if white_moved { "White" } else { "Black" },
+            )
+        };
         let material_before = chess_core::material_balance(before_pos.board()).score;
         let material_after = chess_core::material_balance(after_pos.board()).score;
         let material_loss = if white_moved {
@@ -1667,17 +1684,23 @@ fn review_games(
                 break 'games;
             }
             let fen = chess_core::GameTree::fen_of(&pos);
-            let (eval, depth, pv) = if let Some(saved) = positions.get(&san_index) {
-                (Some(saved.eval_cp), saved.depth, saved.pv.clone())
+            let (eval, mate_distance, depth, pv) = if let Some(saved) = positions.get(&san_index) {
+                (
+                    Some(saved.eval_cp),
+                    saved.mate_distance,
+                    saved.depth,
+                    saved.pv.clone(),
+                )
             } else if let Some(end) = chess_core::game_end(&pos, &history) {
                 let eval = match end {
                     chess_core::GameEnd::Checkmate { winner } if winner.is_white() => 3000,
                     chess_core::GameEnd::Checkmate { .. } => -3000,
                     _ => 0,
                 };
-                (Some(eval), 0, String::new())
+                (Some(eval), None, 0, String::new())
             } else {
                 let mut eval = None;
+                let mut mate_distance = None;
                 let mut depth = 0;
                 let mut pv = String::new();
                 'position_search: loop {
@@ -1739,6 +1762,11 @@ fn review_games(
                                         Score::Mate(mate) if mate > 0 => 3000,
                                         Score::Mate(_) => -3000,
                                     });
+                                    mate_distance = match score {
+                                        Score::Mate(mate) if pos.turn().is_white() => Some(mate),
+                                        Score::Mate(mate) => Some(-mate),
+                                        Score::Cp(_) => None,
+                                    };
                                 }
                             }
                             Ok(EngineEvent::BestMove {
@@ -1750,13 +1778,14 @@ fn review_games(
                         }
                     }
                 }
-                (eval, depth, pv)
+                (eval, mate_distance, depth, pv)
             };
             if let Some(eval_cp) = eval {
                 let result = ReviewPosition {
                     ply: san_index as u32,
                     fen,
                     eval_cp,
+                    mate_distance,
                     depth,
                     pv: pv.clone(),
                 };

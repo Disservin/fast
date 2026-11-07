@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS review_positions (
     ply INTEGER NOT NULL,
     fen TEXT NOT NULL,
     eval_cp INTEGER NOT NULL,
+    mate_distance INTEGER,
     depth INTEGER NOT NULL,
     pv TEXT NOT NULL,
     PRIMARY KEY (game_id, job_key, ply)
@@ -106,6 +107,20 @@ impl Database {
         if !has_start_fen {
             conn.execute(
                 "ALTER TABLE games ADD COLUMN start_fen TEXT NOT NULL DEFAULT ''",
+                [],
+            )?;
+        }
+        let has_mate_distance = {
+            let mut columns = conn.prepare("PRAGMA table_info(review_positions)")?;
+            columns
+                .query_map([], |row| row.get::<_, String>(1))?
+                .collect::<rusqlite::Result<Vec<_>>>()?
+                .iter()
+                .any(|column| column == "mate_distance")
+        };
+        if !has_mate_distance {
+            conn.execute(
+                "ALTER TABLE review_positions ADD COLUMN mate_distance INTEGER",
                 [],
             )?;
         }

@@ -205,6 +205,7 @@ pub struct ReviewPosition {
     pub ply: u32,
     pub fen: String,
     pub eval_cp: i32,
+    pub mate_distance: Option<i32>,
     pub depth: u32,
     pub pv: String,
 }
@@ -354,7 +355,7 @@ impl Database {
 
     pub fn review_positions(&self, game_id: i64, job_key: &str) -> Result<Vec<ReviewPosition>> {
         let mut statement = self.conn.prepare(
-            "SELECT ply,fen,eval_cp,depth,pv FROM review_positions
+            "SELECT ply,fen,eval_cp,mate_distance,depth,pv FROM review_positions
              WHERE game_id=?1 AND job_key=?2 ORDER BY ply",
         )?;
         let rows = statement.query_map(params![game_id, job_key], |row| {
@@ -362,8 +363,9 @@ impl Database {
                 ply: row.get::<_, i64>(0)? as u32,
                 fen: row.get(1)?,
                 eval_cp: row.get(2)?,
-                depth: row.get::<_, i64>(3)? as u32,
-                pv: row.get(4)?,
+                mate_distance: row.get(3)?,
+                depth: row.get::<_, i64>(4)? as u32,
+                pv: row.get(5)?,
             })
         })?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
@@ -376,16 +378,18 @@ impl Database {
         result: &ReviewPosition,
     ) -> Result<()> {
         self.conn.execute(
-            "INSERT INTO review_positions(game_id,job_key,ply,fen,eval_cp,depth,pv)
-             VALUES(?1,?2,?3,?4,?5,?6,?7)
+            "INSERT INTO review_positions(game_id,job_key,ply,fen,eval_cp,mate_distance,depth,pv)
+             VALUES(?1,?2,?3,?4,?5,?6,?7,?8)
              ON CONFLICT(game_id,job_key,ply) DO UPDATE SET
-             fen=excluded.fen,eval_cp=excluded.eval_cp,depth=excluded.depth,pv=excluded.pv",
+             fen=excluded.fen,eval_cp=excluded.eval_cp,mate_distance=excluded.mate_distance,
+             depth=excluded.depth,pv=excluded.pv",
             params![
                 game_id,
                 job_key,
                 result.ply as i64,
                 result.fen,
                 result.eval_cp,
+                result.mate_distance,
                 result.depth as i64,
                 result.pv
             ],
