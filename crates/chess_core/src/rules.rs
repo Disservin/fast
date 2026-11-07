@@ -3,7 +3,7 @@
 
 use shakmaty::{Chess, Color, Position};
 
-use crate::{GameTree, NodeId, position_hash};
+use crate::{GameTree, NodeId};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GameEnd {
@@ -59,10 +59,10 @@ impl GameEnd {
     }
 }
 
-/// How the game stands at `pos`, given the hashes of every position from the start
-/// up to and including `pos` (see [`position_hash`]). Repetition compares side to
+/// How the game stands at `pos`, given every position from the start
+/// up to and including `pos`. Repetition compares piece placement, side to
 /// move, castling rights and legal en passant, as the rules do.
-pub fn game_end(pos: &Chess, history: &[u64]) -> Option<GameEnd> {
+pub fn game_end(pos: &Chess, history: &[Chess]) -> Option<GameEnd> {
     if pos.is_checkmate() {
         return Some(GameEnd::Checkmate {
             winner: pos.turn().other(),
@@ -74,12 +74,9 @@ pub fn game_end(pos: &Chess, history: &[u64]) -> Option<GameEnd> {
     if pos.is_insufficient_material() {
         return Some(GameEnd::InsufficientMaterial);
     }
-    let hash = position_hash(pos);
-    let seen = history
-        .iter()
-        .filter(|known| **known == hash)
-        .count()
-        .max(1);
+    // Chess equality compares the actual repetition state, ignoring move counters.
+    // A matching Zobrist hash alone is insufficient because hashes can collide.
+    let seen = history.iter().filter(|known| *known == pos).count().max(1);
     let halfmoves = pos.halfmoves();
     if seen >= 5 {
         Some(GameEnd::Fivefold)
@@ -95,11 +92,11 @@ pub fn game_end(pos: &Chess, history: &[u64]) -> Option<GameEnd> {
 }
 
 impl GameTree {
-    /// Hashes of the positions from the root to `id`, both included.
-    pub fn history(&self, id: NodeId) -> Vec<u64> {
+    /// Positions from the root to `id`, both included.
+    pub fn history(&self, id: NodeId) -> Vec<Chess> {
         std::iter::once(GameTree::ROOT)
             .chain(self.path_to(id))
-            .map(|node| position_hash(&self.node(node).pos))
+            .map(|node| self.node(node).pos.clone())
             .collect()
     }
 
@@ -141,6 +138,76 @@ mod tests {
         // The same squares, but with the other side to move each time.
         let (tree, node) = play(&["Nf3", "Nf6", "Ng1", "Ng8", "Nf3"]);
         assert_eq!(tree.game_end(node), None);
+    }
+
+    #[test]
+    fn repetition_compares_positions_and_ignores_move_counters() {
+        let position = |fen: &str| {
+            GameTree::from_fen(fen)
+                .unwrap()
+                .node(GameTree::ROOT)
+                .pos
+                .clone()
+        };
+        let pos = position("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 8 5");
+        let earlier = position("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1");
+        assert_eq!(
+            game_end(&pos, &[earlier.clone(), earlier, pos.clone()]),
+            Some(GameEnd::Threefold)
+        );
+        for fen in [
+            "r3k2r/8/8/8/8/8/8/R3K2R b KQkq - 0 1",
+            "r3k2r/8/8/8/8/8/8/R3K2R w Qq - 0 1",
+            "r3k2r/8/8/8/8/8/R7/4K2R w Kkq - 0 1",
+        ] {
+            let other = position(fen);
+            assert_eq!(game_end(&pos, &[other.clone(), other, pos.clone()]), None);
+        }
+    }
+
+    #[test]
+    fn only_legal_en_passant_distinguishes_repetitions() {
+        for (pawns, expected) in [("3pP3", None), ("3p4", Some(GameEnd::Threefold))] {
+            let position = |ep| {
+                GameTree::from_fen(&format!("4k3/8/8/{pawns}/8/8/8/R3K3 w - {ep} 0 2"))
+                    .unwrap()
+                    .node(GameTree::ROOT)
+                    .pos
+                    .clone()
+            };
+            let pos = position("d6");
+            let earlier = position("-");
+            assert_eq!(
+                game_end(&pos, &[earlier.clone(), earlier, pos.clone()]),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn zobrist_collision_is_not_a_repetition() {
+        // Collision example from Disservin/chess-library#252.
+        let mut tree = GameTree::from_fen("3q4/2q5/4q3/q4k2/8/8/R5q1/2K1B1BQ w - - 0 1").unwrap();
+        let mut node = GameTree::ROOT;
+        for san in [
+            "Rc2", "Qcb8", "Ra2", "Qbc7+", "Rc2", "Qgg8", "Bb6", "Qcg3", "Bb4", "Qec8", "Qg2",
+            "Qa1",
+        ] {
+            node = tree.add_san(node, san).unwrap();
+        }
+        let pos = &tree.node(node).pos;
+        let hash = crate::position_hash(pos);
+        let collision = tree
+            .history(node)
+            .into_iter()
+            .find(|earlier| crate::position_hash(earlier) == hash && earlier != pos)
+            .expect("fixture must contain a real Zobrist collision");
+        // Use the earlier, nonterminal position so checkmate precedence cannot
+        // hide a false repetition in this regression test.
+        assert_eq!(
+            game_end(&collision, &[pos.clone(), pos.clone(), collision.clone()]),
+            None
+        );
     }
 
     #[test]
