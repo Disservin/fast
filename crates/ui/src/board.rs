@@ -10,7 +10,7 @@ use gpui::{
     Animation, AnimationExt as _, App, Bounds, Context, ElementId, EventEmitter, FontWeight,
     IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, PathBuilder, Pixels,
     Point, Render, SharedString, Styled, Window, canvas, deferred, div, img, point, prelude::*, px,
-    relative, rgb, svg,
+    relative, rgb, rgba, svg,
 };
 
 use crate::theme::{MONO, SANS, T};
@@ -97,6 +97,11 @@ pub struct Arrow {
 pub enum BoardEvent {
     Moved(Move),
 }
+
+/// Dims the board behind the promotion choices.
+const PROMOTION_SCRIM: u32 = 0x0B0D1199;
+/// Outlines each promotion choice against light squares.
+const PROMOTION_RING: u32 = 0x5C5851;
 
 /// One square as a fraction of the board.
 const CELL: f32 = 1.0 / 8.0;
@@ -740,6 +745,8 @@ impl BoardView {
         let color = self.pos.turn();
         let from_top = y == 0;
         let (from, to) = (promotion.from, promotion.to);
+        // Light discs keep both colours of piece readable on any board theme.
+        let (light, _) = self.prefs.theme.colors();
         let mut column = div()
             .absolute()
             .left(cell * x as f32)
@@ -747,9 +754,7 @@ impl BoardView {
             .w(cell)
             .flex()
             .flex_col()
-            .bg(rgb(T.surface))
-            .border_1()
-            .border_color(rgb(T.fg));
+            .when(!from_top, |column| column.flex_col_reverse());
         let order = [Role::Queen, Role::Knight, Role::Rook, Role::Bishop];
         for role in order {
             let piece = Piece { color, role };
@@ -757,8 +762,24 @@ impl BoardView {
                 div()
                     .id(("promote", role as u32))
                     .size(cell)
+                    .p(cell * 0.04)
                     .cursor_pointer()
-                    .hover(|style| style.bg(rgb(T.hover)))
+                    .child(
+                        div()
+                            .id(("promote-disc", role as u32))
+                            .size_full()
+                            .rounded_full()
+                            .bg(rgb(light))
+                            .border_1()
+                            .border_color(rgb(PROMOTION_RING))
+                            .shadow_md()
+                            .hover(|style| style.rounded(px(4.)).bg(rgb(T.last_move_light)))
+                            .child(self.piece_element(
+                                piece,
+                                cell,
+                                ("promotion-piece", role as u32),
+                            )),
+                    )
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(move |board, _, _, cx| {
@@ -779,11 +800,24 @@ impl BoardView {
                             }
                             cx.notify();
                         }),
-                    )
-                    .child(self.piece_element(piece, cell, ("promotion-piece", role as u32))),
+                    ),
             );
         }
-        column
+        // The rest of the board dims; clicking it puts the pawn back.
+        div()
+            .id("promotion-scrim")
+            .absolute()
+            .inset_0()
+            .bg(rgba(PROMOTION_SCRIM))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|board, _, _, cx| {
+                    cx.stop_propagation();
+                    board.promotion = None;
+                    cx.notify();
+                }),
+            )
+            .child(column)
     }
 }
 
