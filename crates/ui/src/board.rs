@@ -22,10 +22,19 @@ pub enum BoardTheme {
     Walnut,
     Moss,
     Graphite,
+    Paper,
+    Plum,
 }
 
 impl BoardTheme {
-    pub const ALL: [Self; 4] = [Self::Blue, Self::Walnut, Self::Moss, Self::Graphite];
+    pub const ALL: [Self; 6] = [
+        Self::Blue,
+        Self::Walnut,
+        Self::Moss,
+        Self::Graphite,
+        Self::Paper,
+        Self::Plum,
+    ];
 
     pub fn colors(self) -> (u32, u32) {
         match self {
@@ -34,6 +43,8 @@ impl BoardTheme {
             Self::Walnut => (0xE9D7B4, 0xA97A50),
             Self::Moss => (0xE6E9D8, 0x7F956B),
             Self::Graphite => (0xC9CBCE, 0x55595F),
+            Self::Paper => (0xEAF0F5, 0x91A5BF),
+            Self::Plum => (0xE8D8E8, 0x99759E),
         }
     }
 
@@ -43,6 +54,8 @@ impl BoardTheme {
             Self::Walnut => "Walnut",
             Self::Moss => "Moss",
             Self::Graphite => "Graphite",
+            Self::Paper => "Paper",
+            Self::Plum => "Plum",
         }
     }
 }

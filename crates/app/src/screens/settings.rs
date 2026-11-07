@@ -1012,12 +1012,14 @@ impl SettingsScreen {
     fn render_board_section(&mut self, cx: &mut Context<Self>) -> Div {
         let this = cx.entity();
         let config = self.model.read(cx).config.board.clone();
-        let mut boards = h_flex().gap(px(8.));
+        let mut boards = h_flex().flex_wrap().gap(px(8.));
         let themes = [
             (SavedTheme::Blue, ui::BoardTheme::Blue),
             (SavedTheme::Walnut, ui::BoardTheme::Walnut),
             (SavedTheme::Moss, ui::BoardTheme::Moss),
             (SavedTheme::Graphite, ui::BoardTheme::Graphite),
+            (SavedTheme::Paper, ui::BoardTheme::Paper),
+            (SavedTheme::Plum, ui::BoardTheme::Plum),
         ];
         for (index, (saved, theme)) in themes.into_iter().enumerate() {
             let selected = config.theme == saved;

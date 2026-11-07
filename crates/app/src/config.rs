@@ -70,6 +70,8 @@ pub enum SavedTheme {
     Walnut,
     Moss,
     Graphite,
+    Paper,
+    Plum,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -153,6 +155,8 @@ impl BoardConfig {
                 SavedTheme::Walnut => BoardTheme::Walnut,
                 SavedTheme::Moss => BoardTheme::Moss,
                 SavedTheme::Graphite => BoardTheme::Graphite,
+                SavedTheme::Paper => BoardTheme::Paper,
+                SavedTheme::Plum => BoardTheme::Plum,
             },
             pieces: match self.pieces {
                 SavedPieces::Classic => PieceSet::Classic,
@@ -352,7 +356,8 @@ impl Config {
         self.ui_theme = theme;
         self.board.theme = match theme {
             ui::UiTheme::Slate => SavedTheme::Blue,
-            ui::UiTheme::Paper | ui::UiTheme::Plum => SavedTheme::Graphite,
+            ui::UiTheme::Paper => SavedTheme::Paper,
+            ui::UiTheme::Plum => SavedTheme::Plum,
             ui::UiTheme::Sand => SavedTheme::Walnut,
             ui::UiTheme::Forest => SavedTheme::Moss,
         };
