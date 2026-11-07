@@ -2220,8 +2220,8 @@ fn card() -> Div {
 /// A tile inside a panel.
 fn tile(label: &str) -> Div {
     v_flex()
-        .flex_1()
-        .min_w(px(150.))
+        .min_w_0()
+        .overflow_hidden()
         .gap(px(4.))
         .p(px(14.))
         .rounded(px(10.))
@@ -2519,12 +2519,18 @@ fn name_cell(name: &str, names: &[String]) -> Div {
 /// The results block as tiles, W/D/L and the pentanomial. Scores are from engine A's side.
 fn results_body(n: &fastchess::Results, a: &str, b: &str) -> Div {
     let games = n.games.max(1) as f64;
-    let mut tiles = h_flex().gap(px(12.)).flex_wrap();
+    // Equal columns, so every tile has the same width and, row by row, the same height:
+    // three across, or two by two once the LLR tile joins them.
+    let mut tiles = div()
+        .grid()
+        .grid_cols(if n.llr.is_some() { 2 } else { 3 })
+        .gap(px(12.));
     tiles = tiles.child(
         tile("Elo")
             .child(
                 h_flex()
-                    .gap(px(8.))
+                    .flex_wrap()
+                    .gap_x(px(8.))
                     .items_end()
                     .child(big(format!("{:+.2}", n.elo)))
                     .child(small(format!("± {:.2}", n.elo_err))),
