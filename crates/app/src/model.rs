@@ -78,6 +78,27 @@ pub fn pick_path(
     cx: &mut App,
     on_path: impl FnOnce(PathBuf, &mut App) + 'static,
 ) {
+    pick_path_kind(model, title, save_name, false, cx, on_path);
+}
+
+/// Select a directory using the platform's native folder dialog.
+pub fn pick_directory(
+    model: Entity<AppModel>,
+    title: &'static str,
+    cx: &mut App,
+    on_path: impl FnOnce(PathBuf, &mut App) + 'static,
+) {
+    pick_path_kind(model, title, None, true, cx, on_path);
+}
+
+fn pick_path_kind(
+    model: Entity<AppModel>,
+    title: &'static str,
+    save_name: Option<&'static str>,
+    directory: bool,
+    cx: &mut App,
+    on_path: impl FnOnce(PathBuf, &mut App) + 'static,
+) {
     let prompt = match save_name {
         Some(name) => {
             let dir = dirs::document_dir().unwrap_or_else(|| PathBuf::from("."));
@@ -90,8 +111,8 @@ pub fn pick_path(
         }
         None => {
             let answer = cx.prompt_for_paths(PathPromptOptions {
-                files: true,
-                directories: false,
+                files: !directory,
+                directories: directory,
                 multiple: false,
                 prompt: Some(title.into()),
             });

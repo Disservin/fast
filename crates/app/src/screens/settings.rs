@@ -675,6 +675,57 @@ impl SettingsScreen {
     }
 
     fn register_engine(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+        self.probe_engine(path, None, cx);
+    }
+
+    fn choose_engine_path(
+        &mut self,
+        option: Option<String>,
+        directory: bool,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(id) = self.selected_engine else {
+            return;
+        };
+        let this = cx.entity().downgrade();
+        let callback = move |path: PathBuf, cx: &mut gpui::App| {
+            let Some(this) = this.upgrade() else { return };
+            if let Some(option) = option {
+                let value = path.to_string_lossy().into_owned();
+                this.update(cx, |screen, cx| {
+                    screen.model.update(cx, |model, cx| {
+                        if let Some(config) = model.engine_mut(id) {
+                            config.options.insert(option.clone(), value.clone());
+                        }
+                        if let Some(handle) = model.manager.get(id) {
+                            handle.set_option(option.clone(), Some(value.clone()));
+                        }
+                        model.save_config(cx);
+                        cx.emit(ModelEvent::Engines);
+                    });
+                });
+                if let Some(window) = cx.active_window() {
+                    let _ = window.update(cx, |_, window, cx| {
+                        this.update(cx, |screen, cx| screen.select_engine(Some(id), window, cx))
+                    });
+                }
+            } else {
+                this.update(cx, |screen, cx| screen.probe_engine(path, Some(id), cx));
+            }
+        };
+        if directory {
+            crate::model::pick_directory(
+                self.model.clone(),
+                "Select tablebase directory",
+                cx,
+                callback,
+            );
+        } else {
+            pick_path(self.model.clone(), "Select engine file", None, cx, callback);
+        }
+    }
+
+    fn probe_engine(&mut self, path: PathBuf, replace: Option<EngineId>, cx: &mut Context<Self>) {
         let handle = EngineHandle::spawn(path.clone(), Vec::new(), Vec::new());
         let events = handle.events();
         let this = cx.entity().downgrade();
@@ -700,8 +751,10 @@ impl SettingsScreen {
             handle.quit();
             let added = model.update(cx, |model, cx| match result {
                 Ok(info) => {
-                    let id = model.config.next_engine_id;
-                    model.config.next_engine_id += 1;
+                    let id = replace.unwrap_or(model.config.next_engine_id);
+                    if replace.is_none() {
+                        model.config.next_engine_id += 1;
+                    }
                     let fallback = path
                         .file_stem()
                         .map(|stem| stem.to_string_lossy().into_owned())
@@ -718,21 +771,31 @@ impl SettingsScreen {
                     if info.options.iter().any(|option| option.name == "MultiPV") {
                         options.insert("MultiPV".to_owned(), "3".to_owned());
                     }
-                    model.config.engines.push(EngineConfig {
-                        id,
-                        name,
-                        version,
-                        path: path.clone(),
-                        runs_on_gpu: false,
-                        enabled: true,
-                        options,
-                        use_analysis: true,
-                        use_review: true,
-                        use_play: true,
-                        icon: find_icon(&path),
-                        info,
-                        ..Default::default()
-                    });
+                    if let Some(existing) = replace.and_then(|id| model.engine_mut(id)) {
+                        existing.path = path.clone();
+                        existing.info = info;
+                        existing.name = name;
+                        existing.version = version;
+                    } else if replace.is_some() {
+                        model.toast("The selected engine was removed while choosing a file.", cx);
+                        return None;
+                    } else {
+                        model.config.engines.push(EngineConfig {
+                            id,
+                            name,
+                            version,
+                            path: path.clone(),
+                            runs_on_gpu: false,
+                            enabled: true,
+                            options,
+                            use_analysis: true,
+                            use_review: true,
+                            use_play: true,
+                            icon: find_icon(&path),
+                            info,
+                            ..Default::default()
+                        });
+                    }
                     model.engine_status.insert(id, EngineStatus::Ready);
                     model.save_config(cx);
                     cx.emit(ModelEvent::Engines);
@@ -1741,11 +1804,44 @@ impl SettingsScreen {
                     let Some(input) = self.option_inputs.get(&option.name) else {
                         continue;
                     };
-                    cell(
-                        label,
-                        hint.map(str::to_owned),
-                        text_input(input).height(30.).into_any_element(),
-                    )
+                    cell(label, hint.map(str::to_owned), {
+                        let picker = this.clone();
+                        let name = option.name.clone();
+                        let directory = matches!(
+                            name.as_str(),
+                            "SyzygyPath" | "NalimovPath" | "GaviotaTbPath" | "TablebasePath"
+                        );
+                        let can_browse = directory
+                            || matches!(
+                                name.as_str(),
+                                "WeightsFile" | "EvalFile" | "EvalFileSmall"
+                            );
+                        h_flex()
+                            .gap(px(6.))
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .child(text_input(input).height(30.)),
+                            )
+                            .when(can_browse, move |row| {
+                                row.child(
+                                    btn(SharedString::from(format!("browse-{name}")), "Browse…")
+                                        .h(30.)
+                                        .pad(6.)
+                                        .on_click(move |_, cx| {
+                                            picker.update(cx, |screen, cx| {
+                                                screen.choose_engine_path(
+                                                    Some(name.clone()),
+                                                    directory,
+                                                    cx,
+                                                )
+                                            })
+                                        }),
+                                )
+                            })
+                            .into_any_element()
+                    })
                     .into_any_element()
                 }
                 OptionKind::Combo { choices, .. } => {
@@ -1821,7 +1917,16 @@ impl SettingsScreen {
             .child(detail_row(
                 "Executable",
                 None,
-                div().w_full().child(text_input(&self.path_input)),
+                h_flex()
+                    .w_full()
+                    .gap(px(8.))
+                    .child(div().flex_1().min_w_0().child(text_input(&self.path_input)))
+                    .child(btn("browse-executable", "Browse…").on_click({
+                        let this = this.clone();
+                        move |_, cx| {
+                            this.update(cx, |screen, cx| screen.choose_engine_path(None, false, cx))
+                        }
+                    })),
             ))
             .child(self.render_profiles(config, cx))
             .child(grid);
