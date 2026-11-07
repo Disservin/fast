@@ -123,7 +123,7 @@ pub struct BoardConfig {
 impl Default for BoardConfig {
     fn default() -> Self {
         Self {
-            theme: SavedTheme::Blue,
+            theme: SavedTheme::Graphite,
             pieces: SavedPieces::Classic,
             coordinates: SavedCoordinates::OnSquares,
             animation_ms: 150,
@@ -409,7 +409,8 @@ impl Config {
     pub fn set_ui_theme(&mut self, theme: ui::UiTheme) {
         self.ui_theme = theme;
         self.board.theme = match theme {
-            ui::UiTheme::Slate | ui::UiTheme::Obsidian => SavedTheme::Blue,
+            ui::UiTheme::Slate => SavedTheme::Blue,
+            ui::UiTheme::Obsidian => SavedTheme::Graphite,
             ui::UiTheme::Paper => SavedTheme::Paper,
             ui::UiTheme::Plum => SavedTheme::Plum,
             ui::UiTheme::Sand => SavedTheme::Walnut,
@@ -556,10 +557,10 @@ mod tests {
     }
 
     #[test]
-    fn every_ui_theme_round_trips_and_old_configs_default_to_slate() {
+    fn every_ui_theme_round_trips_and_missing_theme_defaults_to_obsidian() {
         assert_eq!(
             toml::from_str::<Config>("").unwrap().ui_theme,
-            ui::UiTheme::Slate
+            ui::UiTheme::Obsidian
         );
         for ui_theme in ui::UiTheme::ALL {
             let config = Config {

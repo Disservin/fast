@@ -115,12 +115,12 @@ const SLATE: Theme = Theme {
 #[serde(rename_all = "snake_case")]
 #[repr(usize)]
 pub enum UiTheme {
-    #[default]
     Slate,
     Paper,
     Sand,
     Forest,
     Plum,
+    #[default]
     Obsidian,
 }
 
@@ -358,7 +358,8 @@ const PALETTES: [Theme; 6] = [
     },
 ];
 
-static ACTIVE: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+static ACTIVE: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(UiTheme::Obsidian as usize);
 
 /// Shared palette accessor. Dereferencing always reads the current immutable palette.
 /// This keeps paint callbacks and every custom widget in sync without cached colors.

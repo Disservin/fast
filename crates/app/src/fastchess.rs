@@ -261,7 +261,9 @@ impl Setup {
                 engine.push(format!("dir={}", parent.display()));
             }
             for (option, value) in &participant.options {
-                if !SKIPPED_OPTIONS.contains(&option.as_str()) {
+                // fastchess rejects key=value arguments with an empty value.
+                // Leave unset string options at the engine's own defaults.
+                if !SKIPPED_OPTIONS.contains(&option.as_str()) && !value.trim().is_empty() {
                     engine.push(format!("option.{option}={value}"));
                 }
             }
@@ -1178,6 +1180,34 @@ mod tests {
             assert_eq!(asset.sha256.len(), 64);
             assert!(asset.executable.starts_with("fastchess-"));
         }
+    }
+
+    #[test]
+    fn registered_engine_omits_empty_options_and_preserves_configured_values() {
+        let mut registered = engine("sf");
+        registered.options.extend([
+            ("Debug Log File".into(), "".into()),
+            ("SyzygyPath".into(), "   ".into()),
+            ("Skill Level".into(), "0".into()),
+            ("UCI_ShowWDL".into(), "false".into()),
+            ("Some File".into(), "/books/path with spaces/file".into()),
+        ]);
+        let args = setup(vec![registered, engine("other")])
+            .args(Path::new("/tmp/run"))
+            .unwrap();
+        assert!(
+            !args
+                .iter()
+                .any(|arg| arg.starts_with("option.Debug Log File=")
+                    || arg.starts_with("option.SyzygyPath="))
+        );
+        assert!(args.iter().any(|arg| arg == "option.Skill Level=0"));
+        assert!(args.iter().any(|arg| arg == "option.UCI_ShowWDL=false"));
+        assert!(
+            args.iter()
+                .any(|arg| arg == "option.Some File=/books/path with spaces/file")
+        );
+        assert!(args.iter().any(|arg| arg == "option.EvalFile=nn.nnue"));
     }
 
     #[test]

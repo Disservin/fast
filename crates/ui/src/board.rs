@@ -17,10 +17,10 @@ use crate::theme::{MONO, SANS, T};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum BoardTheme {
-    #[default]
     Blue,
     Walnut,
     Moss,
+    #[default]
     Graphite,
     Paper,
     Plum,
@@ -138,7 +138,7 @@ pub struct BoardPrefs {
 impl Default for BoardPrefs {
     fn default() -> Self {
         Self {
-            theme: BoardTheme::Blue,
+            theme: BoardTheme::Graphite,
             pieces: PieceSet::Classic,
             coordinates: CoordinateStyle::OnSquares,
             animation_ms: 150,

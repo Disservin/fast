@@ -1967,24 +1967,8 @@ impl TournamentScreen {
         v_flex()
             .gap(px(20.))
             .child(header)
-            .child(
-                h_flex()
-                    .items_start()
-                    .flex_wrap()
-                    .gap(px(20.))
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w(px(480.))
-                            .child(self.render_results(run)),
-                    )
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w(px(360.))
-                            .child(self.render_live(run, cx)),
-                    ),
-            )
+            .child(self.render_results(run))
+            .child(self.render_live(run, cx))
             .child(self.render_games(run, cx))
             .child(locked_summary(run))
             .when(!run.active(), |column| {
@@ -2412,7 +2396,7 @@ impl Render for TournamentScreen {
                             // With no run, the intro sits in the middle of the tab.
                             .when(empty, |row| row.min_h_full().items_center())
                             .child(
-                                h_flex().justify_center().w_full().max_w(px(1440.)).child(
+                                h_flex().justify_center().w_full().child(
                                     div()
                                         .w_full()
                                         .when(empty, |main| main.max_w(px(620.)))
@@ -3054,22 +3038,19 @@ fn locked_summary(run: &Run) -> Div {
         rules = rules.child(def_row(label, value));
     }
 
-    h_flex()
-        .items_start()
-        .flex_wrap()
+    v_flex()
+        .w_full()
         .gap(px(20.))
         .child(
             card()
-                .flex_1()
-                .min_w(px(320.))
+                .w_full()
                 .gap(px(12.))
                 .child(heading("Engines"))
                 .child(list),
         )
         .child(
             card()
-                .flex_1()
-                .min_w(px(320.))
+                .w_full()
                 .gap(px(12.))
                 .child(heading("Settings"))
                 .child(defs)
