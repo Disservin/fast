@@ -44,6 +44,7 @@ actions!(
         CopyPgn,
         PauseEngine,
         EngineOutput,
+        AnalyseBackward,
         ShowAnalyse,
         ShowDatabase,
         ShowTrain,
@@ -90,6 +91,7 @@ fn app_menus() -> Vec<gpui::Menu> {
         Menu::new("Engine").items([
             MenuItem::action("Engine on / off", ToggleEngine),
             MenuItem::action("Pause / resume", PauseEngine),
+            MenuItem::action("Analyse game backwards", AnalyseBackward),
             MenuItem::separator(),
             MenuItem::action("Engine output window", EngineOutput),
         ]),
@@ -804,6 +806,11 @@ impl Render for Workspace {
             .on_action(cx.listener(|this, _: &PauseEngine, _, cx| {
                 this.analyse
                     .update(cx, |screen, cx| screen.toggle_pause(cx));
+            }))
+            .on_action(cx.listener(|this, _: &AnalyseBackward, window, cx| {
+                this.set_mode(Mode::Analyse, cx);
+                this.analyse
+                    .update(cx, |screen, cx| screen.toggle_backward(window, cx));
             }))
             .on_action(cx.listener(|this, _: &EngineOutput, _, cx| {
                 this.analyse

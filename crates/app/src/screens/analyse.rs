@@ -28,6 +28,20 @@ use crate::{
     shell::Workspace,
 };
 
+/// Time per move for backwards analysis when the search limit is infinite.
+const BACKWARD_SECONDS: u32 = 3;
+/// Each position is shown at least this long, even when a search ends at once.
+const BACKWARD_DWELL: std::time::Duration = std::time::Duration::from_millis(250);
+
+/// A game being analysed from its last move to its first, one search per position,
+/// so the engine meets each position knowing what follows it.
+struct BackwardRun {
+    /// The node being searched; moving elsewhere ends the run.
+    node: NodeId,
+    started: std::time::Instant,
+    _poll: Task<()>,
+}
+
 /// One candidate move merged from engines, databases and the repertoire.
 #[derive(Clone, Debug, Default)]
 pub struct MoveRow {
@@ -237,6 +251,7 @@ pub struct AnalyseScreen {
     pv_peek: Entity<BoardView>,
     pv_peek_at: Option<Point<Pixels>>,
     pv_focus: FocusHandle,
+    backward: Option<BackwardRun>,
     /// The window's scale factor at the last render, for snapping fixed-size boards.
     scale: f32,
     _subscriptions: Vec<Subscription>,
@@ -383,6 +398,7 @@ impl AnalyseScreen {
             pv_peek_at: None,
             pv_focus: cx.focus_handle(),
             scale: window.scale_factor(),
+            backward: None,
             _subscriptions: subscriptions,
         };
         this.position_changed(false, window, cx);
@@ -832,6 +848,116 @@ impl AnalyseScreen {
     /// Starts an empty game from the initial position.
     pub fn new_game(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.load_tree(GameTree::new(), window, cx);
+    }
+
+    /// Starts analysing the shown line from its end back to the first move, or stops.
+    pub fn toggle_backward(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.backward.is_some() {
+            self.stop_backward(Some("Backwards analysis stopped."), cx);
+            return;
+        }
+        if self.model.read(cx).analysis_engines().is_empty() {
+            self.toast(
+                "Add an engine for analysis first, in Settings › Engines.",
+                cx,
+            );
+            return;
+        }
+        if self.model.read(cx).demo {
+            self.toast(
+                "Backwards analysis needs a real engine; demo mode only has scripted lines.",
+                cx,
+            );
+            return;
+        }
+        let limit = self.model.read(cx).config.analysis_limit;
+        self.live.update(cx, |live, cx| {
+            live.limit_override = (limit == crate::config::AnalysisLimit::Infinite)
+                .then_some(crate::config::AnalysisLimit::Seconds(BACKWARD_SECONDS));
+            if !live.on {
+                live.toggle(cx);
+            }
+            live.set_paused(false, cx);
+        });
+        let end = self
+            .tree
+            .line_through(self.current)
+            .last()
+            .copied()
+            .unwrap_or(self.current);
+        // The jump searches the end position under the new limit.
+        self.jump(end, window, cx);
+        let poll = cx.spawn_in(window, async move |this, cx| {
+            loop {
+                cx.background_executor()
+                    .timer(std::time::Duration::from_millis(100))
+                    .await;
+                let alive = this.update_in(cx, |this, window, cx| this.backward_tick(window, cx));
+                if !matches!(alive, Ok(true)) {
+                    return;
+                }
+            }
+        });
+        self.backward = Some(BackwardRun {
+            node: end,
+            started: std::time::Instant::now(),
+            _poll: poll,
+        });
+        cx.notify();
+    }
+
+    /// Moves one position back once every engine has finished; false ends the poll.
+    fn backward_tick(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        let Some(run) = &self.backward else {
+            return false;
+        };
+        if run.node != self.current {
+            self.stop_backward(None, cx);
+            return false;
+        }
+        if run.started.elapsed() < BACKWARD_DWELL {
+            return true;
+        }
+        let (loaded, idle) = {
+            let live = self.live.read(cx);
+            (live.loaded(), live.idle())
+        };
+        if loaded == 0 {
+            self.stop_backward(
+                Some("Backwards analysis stopped: no engine is running."),
+                cx,
+            );
+            return false;
+        }
+        if !idle {
+            return true;
+        }
+        let Some(parent) = self.tree.node(self.current).parent else {
+            self.stop_backward(Some("Backwards analysis finished."), cx);
+            return false;
+        };
+        // Recorded before the jump, so the run sees its own move and carries on.
+        if let Some(run) = &mut self.backward {
+            run.node = parent;
+            run.started = std::time::Instant::now();
+        }
+        self.jump(parent, window, cx);
+        true
+    }
+
+    fn stop_backward(&mut self, message: Option<&str>, cx: &mut Context<Self>) {
+        // Dropping the run drops its poll task.
+        if self.backward.take().is_none() {
+            return;
+        }
+        self.live.update(cx, |live, cx| {
+            live.limit_override = None;
+            live.search(cx);
+        });
+        if let Some(message) = message {
+            self.toast(message.to_owned(), cx);
+        }
+        cx.notify();
     }
 
     /// Opens the raw-output window for the engine the panels show.
@@ -1682,7 +1808,29 @@ impl AnalyseScreen {
                     .mt(px(12.))
                     .mb(px(6.))
                     .justify_between()
-                    .child(section_label("Game graph"))
+                    .child(
+                        h_flex()
+                            .gap(px(8.))
+                            .child(section_label("Game graph"))
+                            .child({
+                                let this = this.clone();
+                                let running = self.backward.is_some();
+                                btn(
+                                    "analyse-backward",
+                                    if running { "Stop" } else { "Analyse backwards" },
+                                )
+                                .h(22.)
+                                .pad(7.)
+                                .text(11.)
+                                .selected(running)
+                                .tooltip(format!(
+                                    "Search every position from the last move to the first ({BACKWARD_SECONDS} s each unless a search limit is set)"
+                                ))
+                                .on_click(move |window, cx| {
+                                    this.update(cx, |screen, cx| screen.toggle_backward(window, cx));
+                                })
+                            }),
+                    )
                     .child(tabs),
             )
             .child(body)

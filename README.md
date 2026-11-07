@@ -51,6 +51,10 @@ returns to the game.
   **Settings › Board & pieces**). Clicking one of your pieces still selects it.
 - **Lines − +** in the table sets MultiPV for every analysis engine, saved in its options; the
   **Engine** panel sets it per engine.
+- **Analyse backwards** (above the graph, or **Engine › Analyse game backwards**) searches every
+  position from the last move to the first, like Nibbler, so each search benefits from what the
+  engine learned about the moves after it. Each position gets the search limit, or 3 seconds
+  when it is infinite; moving elsewhere or **Stop** ends the run.
 - Lines are remembered per position, so stepping back and forth keeps them, and a position
   reached by another move order (a transposition) shows what was already found.
 - Stepping forward returns into the variation you came back from.

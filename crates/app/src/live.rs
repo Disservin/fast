@@ -137,6 +137,9 @@ pub struct LiveAnalysis {
     pos: Option<chess_core::Chess>,
     hash: u64,
     pub cache: LineCache,
+    /// Replaces the configured search limit, e.g. a fixed time per move while a game
+    /// is analysed backwards.
+    pub limit_override: Option<AnalysisLimit>,
     fen: String,
     moves: Vec<String>,
     _model_sub: gpui::Subscription,
@@ -162,6 +165,7 @@ impl LiveAnalysis {
             pos: None,
             hash: 0,
             cache: LineCache::default(),
+            limit_override: None,
             fen: String::new(),
             moves: Vec::new(),
             _model_sub: sub,
@@ -518,12 +522,15 @@ impl LiveAnalysis {
         let terminal = pos.is_game_over();
         self.search_id += 1;
         let hash = position_hash(pos);
-        let depth_limit = match self.model.read(cx).config.analysis_limit {
+        let limit = self
+            .limit_override
+            .unwrap_or(self.model.read(cx).config.analysis_limit);
+        let depth_limit = match limit {
             AnalysisLimit::Depth(depth) => Some(depth),
             _ => None,
         };
         let demo = self.model.read(cx).demo;
-        let limits = match self.model.read(cx).config.analysis_limit {
+        let limits = match limit {
             AnalysisLimit::Infinite => None,
             AnalysisLimit::Depth(depth) => Some(Limits {
                 depth: Some(depth),
@@ -609,6 +616,24 @@ impl LiveAnalysis {
                 search_id: self.search_id,
             });
         }
+    }
+
+    /// Engines with a live process.
+    pub fn loaded(&self) -> usize {
+        self.engines
+            .iter()
+            .filter(|engine| engine.handle.is_some())
+            .count()
+    }
+
+    /// Every loaded engine has finished its search, and analysis is not paused.
+    pub fn idle(&self) -> bool {
+        !self.paused
+            && self
+                .engines
+                .iter()
+                .filter(|engine| engine.handle.is_some())
+                .all(|engine| !engine.running)
     }
 
     /// Engine ids in table order, for cache lookups.
