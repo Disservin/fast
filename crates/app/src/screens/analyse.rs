@@ -2468,23 +2468,7 @@ impl AnalyseScreen {
                 )
                 .child(mono(value).text_size(px(12.)).text_color(rgb(T.fg_2)))
         };
-        let mut row_el = h_flex().gap(px(8.)).items_center();
-        if let Some(engine) = engine {
-            row_el = row_el.child(
-                h_flex()
-                    .gap(px(6.))
-                    .mr(px(6.))
-                    .child(crate::controls::engine_icon(&engine.config, 18.))
-                    .child(
-                        div()
-                            .text_size(px(12.))
-                            .font_weight(FontWeight::MEDIUM)
-                            .text_color(rgb(T.fg_2))
-                            .child(engine.config.name.clone()),
-                    ),
-            );
-        }
-        row_el
+        h_flex().gap(px(8.)).items_center()
             .children(figures.into_iter().map(figure))
             .into_any_element()
     }
