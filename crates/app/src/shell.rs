@@ -273,6 +273,7 @@ pub struct Workspace {
     active_tab: u64,
     next_tab_id: u64,
     last_tab: BTreeMap<Mode, u64>,
+    new_tab_menu_open: bool,
     search: Entity<InputState>,
     path_input: Entity<InputState>,
     menu_bar: Option<Entity<gpui_component::menu::AppMenuBar>>,
@@ -361,6 +362,7 @@ impl Workspace {
             active_tab: 1,
             next_tab_id: 2,
             last_tab: [(mode, 1)].into(),
+            new_tab_menu_open: false,
             model,
             mode,
             analyse,
@@ -647,25 +649,39 @@ impl Workspace {
             let close = select.clone();
             tabs = tabs.child(
                 h_flex()
+                    .id(("tab", id as usize))
                     .flex_none()
                     .gap(px(2.))
+                    .h(px(30.))
+                    .pl(px(9.))
+                    .pr(px(3.))
+                    .rounded(px(6.))
+                    .bg(rgb(if id == self.active_tab {
+                        T.selected
+                    } else {
+                        T.surface
+                    }))
+                    .border_1()
+                    .border_color(rgb(if id == self.active_tab {
+                        T.border_strong
+                    } else {
+                        T.border
+                    }))
                     .child(
-                        btn(
-                            ("tab", id as usize),
-                            format!("{} · {}", id, tab.content.title(cx)),
-                        )
-                        .h(30.)
-                        .pad(9.)
-                        .text(12.)
-                        .selected(id == self.active_tab)
-                        .on_click(move |_, cx| {
-                            select.update(cx, |this, cx| this.activate_tab(id, cx))
-                        }),
+                        div()
+                            .id(("tab-select", id as usize))
+                            .cursor_pointer()
+                            .text_size(px(12.))
+                            .on_click(move |_, _, cx| {
+                                select.update(cx, |this, cx| this.activate_tab(id, cx))
+                            })
+                            .child(format!("{} · {}", id, tab.content.title(cx))),
                     )
                     .child(
                         btn(("close-tab", id as usize), "×")
-                            .h(26.)
-                            .pad(5.)
+                            .h(24.)
+                            .w(24.)
+                            .pad(3.)
                             .tooltip("Close tab; reopen with Ctrl/Cmd+Shift+T")
                             .on_click(move |window, cx| {
                                 close.update(cx, |this, cx| this.close_tab(id, window, cx))
@@ -673,10 +689,8 @@ impl Workspace {
                     ),
             );
         }
-        let analyse = cx.entity();
-        let play = analyse.clone();
-        let database = analyse.clone();
-        let reopen = analyse.clone();
+        let add = cx.entity();
+        let reopen = cx.entity();
         h_flex()
             .flex_none()
             .h(px(38.))
@@ -694,30 +708,61 @@ impl Workspace {
                     .child(tabs),
             )
             .child(
-                btn("new-analysis-tab", "+ Analyse")
-                    .h(26.)
-                    .pad(7.)
-                    .text(12.)
-                    .on_click(move |window, cx| {
-                        analyse.update(cx, |this, cx| this.new_tab(Mode::Analyse, window, cx))
-                    }),
-            )
-            .child(
-                btn("new-play-tab", "+ Play")
-                    .h(26.)
-                    .pad(7.)
-                    .text(12.)
-                    .on_click(move |window, cx| {
-                        play.update(cx, |this, cx| this.new_tab(Mode::Play, window, cx))
-                    }),
-            )
-            .child(
-                btn("new-database-tab", "+ Database")
-                    .h(26.)
-                    .pad(7.)
-                    .text(12.)
-                    .on_click(move |window, cx| {
-                        database.update(cx, |this, cx| this.new_tab(Mode::Database, window, cx))
+                h_flex()
+                    .gap(px(4.))
+                    .child(
+                        btn("new-tab", "+")
+                            .h(26.)
+                            .w(28.)
+                            .pad(4.)
+                            .tooltip("Add a tab")
+                            .on_click(move |_, cx| {
+                                add.update(cx, |this, cx| {
+                                    this.new_tab_menu_open = !this.new_tab_menu_open;
+                                    cx.notify();
+                                })
+                            }),
+                    )
+                    .when(self.new_tab_menu_open, |row| {
+                        let analyse = cx.entity();
+                        let play = analyse.clone();
+                        let database = analyse.clone();
+                        row.child(
+                            btn("new-analysis-tab", "Analyse")
+                                .h(26.)
+                                .pad(7.)
+                                .text(12.)
+                                .on_click(move |window, cx| {
+                                    analyse.update(cx, |this, cx| {
+                                        this.new_tab_menu_open = false;
+                                        this.new_tab(Mode::Analyse, window, cx)
+                                    })
+                                }),
+                        )
+                        .child(
+                            btn("new-play-tab", "Play")
+                                .h(26.)
+                                .pad(7.)
+                                .text(12.)
+                                .on_click(move |window, cx| {
+                                    play.update(cx, |this, cx| {
+                                        this.new_tab_menu_open = false;
+                                        this.new_tab(Mode::Play, window, cx)
+                                    })
+                                }),
+                        )
+                        .child(
+                            btn("new-database-tab", "Database")
+                                .h(26.)
+                                .pad(7.)
+                                .text(12.)
+                                .on_click(move |window, cx| {
+                                    database.update(cx, |this, cx| {
+                                        this.new_tab_menu_open = false;
+                                        this.new_tab(Mode::Database, window, cx)
+                                    })
+                                }),
+                        )
                     }),
             )
             .child(
