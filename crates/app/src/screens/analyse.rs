@@ -684,7 +684,7 @@ impl AnalyseScreen {
             })
             .unwrap_or_default();
         // Online moves join the rows of the same move rather than listing them twice.
-        self.merge_online(&mut lines);
+        self.merge_online(&mut lines, model.config.view.all_moves);
         let view = &model.config.view;
         let legal: Vec<String> = if view.all_moves {
             let pos = self.analysed_pos();

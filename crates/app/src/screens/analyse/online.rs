@@ -144,7 +144,7 @@ impl AnalyseScreen {
     /// Adds the online moves for the position on the board to `rows`, onto the row of
     /// the same move where there is one. Results for another position are left out, so
     /// a lookup still running for the last position never shows here.
-    pub(super) fn merge_online(&self, rows: &mut Vec<MoveRow>) {
+    pub(super) fn merge_online(&self, rows: &mut Vec<MoveRow>, all_moves: bool) {
         if !self.online.open {
             return;
         }
@@ -155,28 +155,31 @@ impl AnalyseScreen {
         fn clean(san: &str) -> &str {
             san.trim_end_matches(['+', '#'])
         }
-        let row_for = |rows: &mut Vec<MoveRow>, san: &str| -> usize {
+        let row_for = |rows: &mut Vec<MoveRow>, san: &str| -> Option<usize> {
             match rows.iter().position(|row| clean(&row.san) == clean(san)) {
-                Some(index) => index,
-                None => {
+                Some(index) => Some(index),
+                None if all_moves => {
                     rows.push(MoveRow {
                         san: san.to_owned(),
                         ..Default::default()
                     });
-                    rows.len() - 1
+                    Some(rows.len() - 1)
                 }
+                None => None,
             }
         };
         if let Lookup::Ready(Some(probe)) = &self.online.tablebase {
             for tb in probe.rows() {
-                let index = row_for(rows, &tb.san);
-                rows[index].tb = Some(tb);
+                if let Some(index) = row_for(rows, &tb.san) {
+                    rows[index].tb = Some(tb);
+                }
             }
         }
         if let Lookup::Ready(CloudReply::Moves(moves)) = &self.online.cloud {
             for cloud in moves {
-                let index = row_for(rows, &cloud.san);
-                rows[index].cloud = Some(cloud.clone());
+                if let Some(index) = row_for(rows, &cloud.san) {
+                    rows[index].cloud = Some(cloud.clone());
+                }
             }
         }
     }
