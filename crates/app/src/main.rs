@@ -9,6 +9,7 @@ mod licenses;
 mod live;
 mod model;
 mod persistence;
+mod recovery;
 mod screens;
 mod shell;
 mod snapshot;

@@ -194,6 +194,8 @@ use panels::{LOG_POLL, LogSelection, PvView};
 type MenuHandler = Box<dyn Fn(&mut Window, &mut gpui::App)>;
 
 pub struct AnalyseScreen {
+    recovery: Option<crate::recovery::Recovery>,
+    recovery_pgn: String,
     model: Entity<AppModel>,
     workspace: WeakEntity<Workspace>,
     pub tree: GameTree,
@@ -341,6 +343,10 @@ impl AnalyseScreen {
             board.set_flipped(flipped, cx);
         });
         let mut this = Self {
+            recovery: crate::recovery::Recovery::load(
+                &model.read(cx).paths.data_dir.join("game-recovery.json"),
+            ),
+            recovery_pgn: String::new(),
             model,
             workspace,
             tree,
@@ -2449,6 +2455,56 @@ fn wdl_bar(wdl: Option<Wdl>) -> impl IntoElement {
 
 impl Render for AnalyseScreen {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let recovery_path = self
+            .model
+            .read(cx)
+            .paths
+            .data_dir
+            .join("game-recovery.json");
+        if let Some(recovery) = self.recovery.clone() {
+            return v_flex()
+                .p(px(24.))
+                .gap(px(16.))
+                .child(format!(
+                    "Recover game saved at Unix time {}",
+                    recovery.saved_at
+                ))
+                .child(recovery.pgn.chars().take(500).collect::<String>())
+                .child(btn("restore-recovery", "Restore game").on_click({
+                    let entity = cx.entity();
+                    move |window, cx| {
+                        entity.update(cx, |this, cx| {
+                            if let Some(recovery) = this.recovery.take() {
+                                this.load_text(&recovery.pgn, window, cx);
+                            }
+                        })
+                    }
+                }))
+                .child(btn("discard-recovery", "Discard recovery").on_click({
+                    let entity = cx.entity();
+                    move |_, cx| {
+                        entity.update(cx, |this, cx| match std::fs::remove_file(&recovery_path) {
+                            Ok(()) => {
+                                this.recovery = None;
+                                cx.notify();
+                            }
+                            Err(err) => {
+                                this.toast(format!("Could not discard recovery: {err}"), cx)
+                            }
+                        })
+                    }
+                }))
+                .into_any_element();
+        }
+        let pgn = write_pgn(&self.tree);
+        if pgn != self.recovery_pgn && self.current != GameTree::ROOT {
+            match crate::recovery::Recovery::save(&recovery_path, pgn.clone()) {
+                Ok(()) => self.recovery_pgn = pgn,
+                Err(err) => {
+                    log::error!("Recovery snapshot failed: {err}");
+                }
+            }
+        }
         let viewport = window.viewport_size();
         // The side column keeps room for its table, so the board gives way first.
         self.scale = window.scale_factor();
@@ -2522,6 +2578,7 @@ impl Render for AnalyseScreen {
                     }
                 }),
             )
+            .into_any_element()
     }
 }
 
