@@ -37,6 +37,13 @@ pub fn classify(best: Score, score: Score) -> Quality {
     }
 }
 
+/// Continuous arrow size based on lost winning chances, from the mover's view.
+/// Equal evaluations stay full size; losing alternatives remain visible/clickable.
+pub fn secondary_arrow_scale(best: Score, score: Score) -> f32 {
+    let loss = (winning_chances(best) - winning_chances(score)).max(0.0);
+    (1.0 - loss * 1.5).clamp(0.3, 1.0) as f32
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -60,5 +67,16 @@ mod tests {
         let up = winning_chances(Score::Cp(300));
         assert!((up + winning_chances(Score::Cp(-300))).abs() < 1e-9);
         assert!(winning_chances(Score::Mate(1)) < 1.0);
+    }
+
+    #[test]
+    fn secondary_arrows_shrink_continuously_with_eval_loss() {
+        let best = Score::Cp(40);
+        let scale = |cp| secondary_arrow_scale(best, Score::Cp(cp));
+        assert_eq!(scale(40), 1.0);
+        assert_eq!(scale(50), 1.0);
+        assert!(scale(20) > scale(0));
+        assert!(scale(0) > scale(-100));
+        assert_eq!(secondary_arrow_scale(Score::Mate(2), Score::Mate(-2)), 0.3);
     }
 }

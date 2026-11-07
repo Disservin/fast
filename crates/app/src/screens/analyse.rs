@@ -707,6 +707,18 @@ impl AnalyseScreen {
             Some(Arrow::new(mv.from()?, mv.to()))
         };
         let quality_arrows = self.model.read(cx).config.view.quality_arrows;
+        let relative = |score: Score| {
+            if pos.turn().is_white() {
+                score
+            } else {
+                score.negate()
+            }
+        };
+        let best = self
+            .rows
+            .iter()
+            .filter_map(|row| row.score.map(relative))
+            .max_by_key(|score| score.sort_key());
         let engine_color = |row: &MoveRow| {
             row.engine_id
                 .and_then(|id| self.model.read(cx).engine(id)?.arrow_color)
@@ -727,6 +739,12 @@ impl AnalyseScreen {
                     continue;
                 }
                 if let Some(arrow) = arrow_for(&row.san) {
+                    let scale = best
+                        .zip(row.score.map(relative))
+                        .map_or(1.0, |(best, score)| {
+                            engine::quality::secondary_arrow_scale(best, score)
+                        });
+                    let arrow = arrow.with_scale(scale);
                     arrows.push(
                         arrow.with_color(
                             engine_color(row).unwrap_or_else(|| quality_color(quality)),

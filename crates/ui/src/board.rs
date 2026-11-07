@@ -156,6 +156,8 @@ pub struct Arrow {
     pub to: Square,
     /// `0xRRGGBB`; the theme's arrow orange when `None`.
     pub color: Option<u32>,
+    /// Thickness and arrowhead size, in thousandths of the normal size.
+    pub scale: u16,
 }
 
 impl Arrow {
@@ -164,11 +166,17 @@ impl Arrow {
             from,
             to,
             color: None,
+            scale: 1000,
         }
     }
 
     pub fn with_color(mut self, color: u32) -> Self {
         self.color = Some(color);
+        self
+    }
+
+    pub fn with_scale(mut self, scale: f32) -> Self {
+        self.scale = (scale.clamp(0.25, 1.0) * 1000.).round() as u16;
         self
     }
 }
@@ -222,7 +230,7 @@ pub fn snap_board_size(available: Pixels, scale: f32) -> Pixels {
 }
 
 /// An arrow in grid coordinates: from, to and colour.
-type ArrowCells = ((u32, u32), (u32, u32), u32);
+type ArrowCells = ((u32, u32), (u32, u32), u32, f32);
 
 /// Lichess' last-move tint, rgba(155, 199, 0, 0.41), laid over a square colour.
 pub fn last_move_color(base: u32) -> u32 {
@@ -905,7 +913,12 @@ fn piece_file(piece: Piece) -> String {
     )
 }
 
-fn arrow_path(from: Point<Pixels>, to: Point<Pixels>, cell: Pixels) -> Option<gpui::Path<Pixels>> {
+fn arrow_path(
+    from: Point<Pixels>,
+    to: Point<Pixels>,
+    cell: Pixels,
+    scale: f32,
+) -> Option<gpui::Path<Pixels>> {
     let dx = f32::from(to.x - from.x);
     let dy = f32::from(to.y - from.y);
     let length = (dx * dx + dy * dy).sqrt();
@@ -915,9 +928,9 @@ fn arrow_path(from: Point<Pixels>, to: Point<Pixels>, cell: Pixels) -> Option<gp
     let unit = (dx / length, dy / length);
     let normal = (-unit.1, unit.0);
     let cell = f32::from(cell);
-    let shaft = cell * 0.095;
-    let head_half = cell * 0.27;
-    let head_len = cell * 0.56;
+    let shaft = cell * 0.095 * scale;
+    let head_half = cell * 0.27 * scale;
+    let head_len = cell * 0.56 * scale;
     let at = |along: f32, across: f32| {
         point(
             from.x + px(unit.0 * along + normal.0 * across),
@@ -1145,6 +1158,7 @@ impl Render for BoardView {
                     self.grid(arrow.from),
                     self.grid(arrow.to),
                     arrow.color.unwrap_or(T.arrow),
+                    f32::from(arrow.scale) / 1000.,
                 )
             })
             .collect();
@@ -1174,8 +1188,9 @@ impl Render for BoardView {
                         let center = |(x, y): (u32, u32)| {
                             bounds.origin + point(cell * (x as f32 + 0.5), cell * (y as f32 + 0.5))
                         };
-                        for (from, to, color) in &arrow_cells {
-                            if let Some(path) = arrow_path(center(*from), center(*to), cell) {
+                        for (from, to, color, scale) in &arrow_cells {
+                            if let Some(path) = arrow_path(center(*from), center(*to), cell, *scale)
+                            {
                                 let mut color: gpui::Hsla = rgb(*color).into();
                                 color.a = 0.85;
                                 window.paint_path(path, color);
