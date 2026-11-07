@@ -34,6 +34,7 @@ pub struct TrainScreen {
     model: Entity<AppModel>,
     board: Entity<BoardView>,
     queue: Vec<Drill>,
+    every_reply: bool,
     /// Drills finished in this session, counted into the header.
     finished: usize,
     total: usize,
@@ -110,6 +111,7 @@ impl TrainScreen {
             model,
             board,
             queue: Vec::new(),
+            every_reply: false,
             finished: 0,
             total: 0,
             phase: Phase::Asking,
@@ -126,6 +128,11 @@ impl TrainScreen {
     fn reload_queue(&mut self, cx: &mut Context<Self>) {
         let model = self.model.read(cx);
         self.queue = model.repertoire.drills(today());
+        if !self.every_reply {
+            let mut seen = std::collections::HashSet::new();
+            self.queue
+                .retain(|drill| seen.insert(trainer::Repertoire::position_key(&drill.path)));
+        }
         // Demo mode opens mid-session, as in the design.
         self.finished = if model.demo { 6 } else { 0 };
         self.total = self
@@ -213,7 +220,17 @@ impl TrainScreen {
         };
         let mut after = pos.clone();
         let played = SanPlus::from_move_and_play_unchecked(&mut after, mv).to_string();
-        if played.trim_end_matches(['+', '#']) == drill.answer {
+        let clean = played.trim_end_matches(['+', '#']);
+        let prepared = self
+            .model
+            .read(cx)
+            .repertoire
+            .moves_after(&drill.path)
+            .is_some_and(|moves| moves.iter().any(|node| node.san == clean));
+        if clean == drill.answer || (prepared && !self.every_reply) {
+            if clean != drill.answer {
+                self.queue[0].answer = clean.to_owned();
+            }
             self.phase = Phase::Correct;
             self.message = Some(format!("Correct: {played}. How well did you know it?").into());
             let last = mv.from().map(|from| (from, mv.to()));
@@ -225,8 +242,11 @@ impl TrainScreen {
             });
         } else {
             self.phase = Phase::Wrong;
-            self.message =
-                Some(format!("{played} is not in your repertoire here. Try again.").into());
+            self.message = Some(if prepared {
+                format!("{played} is a valid repertoire move. This exercise asks for another prepared reply. Try again.").into()
+            } else {
+                format!("{played} is not in your repertoire here. Try again.").into()
+            });
         }
         cx.notify();
     }
@@ -904,7 +924,22 @@ impl Render for TrainScreen {
                 .max(px(320.)),
             window.scale_factor(),
         );
-        let tree = self.render_tree(cx);
+        let mode_this = cx.entity();
+        let mode = btn(
+            "reply-mode",
+            if self.every_reply {
+                "Mode: every prepared reply"
+            } else {
+                "Mode: any prepared reply"
+            },
+        )
+        .on_click(move |_, cx| {
+            mode_this.update(cx, |this, cx| {
+                this.every_reply = !this.every_reply;
+                this.reload_queue(cx);
+            })
+        });
+        let tree = v_flex().child(mode).child(self.render_tree(cx));
         let center = self.render_center(board_size, cx);
         let leaks = self.render_leaks(cx);
         h_flex()
