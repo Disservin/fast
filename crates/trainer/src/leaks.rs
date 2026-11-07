@@ -35,14 +35,18 @@ pub fn deviation(repertoire: &Repertoire, sans: &[String], user_white: bool) -> 
     }
     for (ply, san) in sans.iter().enumerate() {
         let path = &sans[..ply];
-        let moves = repertoire.moves_after(path)?;
+        let Some(moves) = repertoire.moves_after(path) else {
+            continue;
+        };
         if moves.is_empty() {
-            return None;
+            continue;
         }
         let clean = san.trim_end_matches(['+', '#']);
         if !moves.iter().any(|node| node.san == clean) {
             let user_move = (ply % 2 == 0) == user_white;
-            return user_move.then_some(ply);
+            if user_move {
+                return Some(ply);
+            }
         }
     }
     None
@@ -55,14 +59,17 @@ pub fn find_leaks(repertoire: &Repertoire, games: &[GameLine]) -> Vec<Leak> {
         games: u32,
         score: f32,
     }
-    let mut leaks: HashMap<(Vec<String>, String), Tally> = HashMap::new();
-    let mut followed: HashMap<(Vec<String>, String), Tally> = HashMap::new();
+    let mut leaks: HashMap<(String, String), Tally> = HashMap::new();
+    let mut followed: HashMap<(String, String), Tally> = HashMap::new();
+    let mut paths = HashMap::new();
     for game in games {
         let deviated = deviation(repertoire, &game.sans, game.user_white);
         if let Some(ply) = deviated {
-            let tally = leaks
-                .entry((game.sans[..ply].to_vec(), game.sans[ply].clone()))
-                .or_default();
+            let key = Repertoire::position_key(&game.sans[..ply]).unwrap_or_default();
+            paths
+                .entry(key.clone())
+                .or_insert_with(|| game.sans[..ply].to_vec());
+            let tally = leaks.entry((key, game.sans[ply].clone())).or_default();
             tally.games += 1;
             tally.score += game.score;
         }
@@ -70,7 +77,10 @@ pub fn find_leaks(repertoire: &Repertoire, games: &[GameLine]) -> Vec<Leak> {
         let end = deviated.unwrap_or(game.sans.len());
         for ply in 0..end {
             let tally = followed
-                .entry((game.sans[..ply].to_vec(), game.sans[ply].clone()))
+                .entry((
+                    Repertoire::position_key(&game.sans[..ply]).unwrap_or_default(),
+                    game.sans[ply].clone(),
+                ))
                 .or_default();
             tally.games += 1;
             tally.score += game.score;
@@ -78,14 +88,15 @@ pub fn find_leaks(repertoire: &Repertoire, games: &[GameLine]) -> Vec<Leak> {
     }
     let mut out: Vec<Leak> = leaks
         .into_iter()
-        .map(|((path, played), tally)| {
+        .map(|((key, played), tally)| {
+            let path = paths.get(&key).cloned().unwrap_or_default();
             let prepared = repertoire
                 .moves_after(&path)
-                .and_then(|moves| moves.first())
+                .and_then(|moves| moves.first().copied())
                 .map(|node| node.san.clone());
             let prepared_score = prepared.as_ref().and_then(|san| {
                 followed
-                    .get(&(path.clone(), san.clone()))
+                    .get(&(key.clone(), san.clone()))
                     .map(|tally| tally.score / tally.games as f32)
             });
             Leak {

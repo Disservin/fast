@@ -137,6 +137,7 @@ impl Repertoire {
             };
             level = &mut level[index].children;
         }
+        self.migrate_cards();
         Ok(())
     }
 
@@ -172,23 +173,124 @@ impl Repertoire {
     }
 
     /// Repertoire moves available after the given path: `None` once out of book.
-    pub fn moves_after(&self, path: &[impl AsRef<str>]) -> Option<&[RepNode]> {
-        if path.is_empty() {
-            return Some(&self.roots);
+    pub fn position_key(path: &[impl AsRef<str>]) -> Option<String> {
+        let mut pos = Chess::default();
+        for text in path {
+            let san: San = text.as_ref().parse().ok()?;
+            let mv = san.to_move(&pos).ok()?;
+            pos = pos.play(mv).ok()?;
         }
-        self.node(path).map(|node| node.children.as_slice())
+        Some(identity(&pos))
+    }
+
+    fn entries(&self) -> Vec<(String, Vec<String>, &RepNode)> {
+        fn walk<'a>(
+            nodes: &'a [RepNode],
+            pos: &Chess,
+            path: &mut Vec<String>,
+            out: &mut Vec<(String, Vec<String>, &'a RepNode)>,
+        ) {
+            for node in nodes {
+                let Ok(san) = node.san.parse::<San>() else {
+                    continue;
+                };
+                let Ok(mv) = san.to_move(pos) else { continue };
+                path.push(node.san.clone());
+                out.push((identity(pos), path.clone(), node));
+                if let Ok(next) = pos.clone().play(mv) {
+                    walk(&node.children, &next, path, out);
+                }
+                path.pop();
+            }
+        }
+        let mut out = Vec::new();
+        walk(&self.roots, &Chess::default(), &mut Vec::new(), &mut out);
+        out
+    }
+
+    /// Full position identity is compared; clocks do not split opening knowledge.
+    pub fn moves_after(&self, path: &[impl AsRef<str>]) -> Option<Vec<&RepNode>> {
+        let key = Self::position_key(path)?;
+        let mut moves = Vec::new();
+        for (position, _, node) in self.entries() {
+            if position == key && !moves.iter().any(|n: &&RepNode| n.san == node.san) {
+                moves.push(node);
+            }
+        }
+        if !moves.is_empty() || self.node(path).is_some() || path.is_empty() {
+            Some(moves)
+        } else {
+            None
+        }
+    }
+
+    /// Merge legacy path cards conservatively: keep the most reviewed card, then
+    /// propagate it to all occurrences without resetting its schedule or lapses.
+    pub fn migrate_cards(&mut self) {
+        let mut shared: HashMap<(String, String), Card> = HashMap::new();
+        for (key, _, node) in self.entries() {
+            if let Some(card) = node.card {
+                shared
+                    .entry((key, node.san.clone()))
+                    .and_modify(|old| {
+                        if (
+                            card.state != CardState::New,
+                            card.lapses,
+                            card.due_day,
+                            card.interval_days,
+                        ) > (
+                            old.state != CardState::New,
+                            old.lapses,
+                            old.due_day,
+                            old.interval_days,
+                        ) {
+                            *old = card;
+                        }
+                    })
+                    .or_insert(card);
+            }
+        }
+        let updates: Vec<_> = self
+            .entries()
+            .into_iter()
+            .filter_map(|(key, path, node)| {
+                shared
+                    .get(&(key, node.san.clone()))
+                    .copied()
+                    .map(|card| (path, card))
+            })
+            .collect();
+        for (path, card) in updates {
+            if let Some(node) = self.node_mut(&path) {
+                node.card = Some(card);
+            }
+        }
     }
 
     pub fn set_card(&mut self, path: &[impl AsRef<str>], card: Card) {
-        if let Some(node) = self.node_mut(path) {
-            node.card = Some(card);
+        let Some((answer, before)) = path.split_last() else {
+            return;
+        };
+        let Some(key) = Self::position_key(before) else {
+            return;
+        };
+        let paths: Vec<_> = self
+            .entries()
+            .into_iter()
+            .filter(|(position, _, node)| *position == key && node.san == clean(answer.as_ref()))
+            .map(|(_, path, _)| path)
+            .collect();
+        for path in paths {
+            if let Some(node) = self.node_mut(&path) {
+                node.card = Some(card);
+            }
         }
     }
 
     pub fn grade(&mut self, path: &[impl AsRef<str>], grade: Grade, today: i64) {
-        if let Some(node) = self.node_mut(path) {
-            let card = node.card.unwrap_or_default();
-            node.card = Some(card.answered(grade, today));
+        self.migrate_cards();
+        if let Some(card) = self.node(path).map(|node| node.card.unwrap_or_default()) {
+            self.set_card(path, card.answered(grade, today));
         }
     }
 
@@ -219,20 +321,19 @@ impl Repertoire {
     }
 
     pub fn coverage(&self, today: i64) -> Coverage {
-        fn walk(nodes: &[RepNode], today: i64, coverage: &mut Coverage) {
-            for node in nodes {
-                if let Some(card) = &node.card {
-                    match Repertoire::card_status(Some(card), today) {
-                        RepStatus::Known => coverage.known += 1,
-                        RepStatus::Learning | RepStatus::Due => coverage.learning += 1,
-                        RepStatus::New => coverage.new += 1,
-                    }
+        let mut coverage = Coverage::default();
+        let mut seen = std::collections::HashSet::new();
+        for (key, _, node) in self.entries() {
+            if let Some(card) = &node.card
+                && seen.insert((key, node.san.clone()))
+            {
+                match Self::card_status(Some(card), today) {
+                    RepStatus::Known => coverage.known += 1,
+                    RepStatus::Learning | RepStatus::Due => coverage.learning += 1,
+                    RepStatus::New => coverage.new += 1,
                 }
-                walk(&node.children, today, coverage);
             }
         }
-        let mut coverage = Coverage::default();
-        walk(&self.roots, today, &mut coverage);
         coverage
     }
 
@@ -372,7 +473,12 @@ impl Repertoire {
             &mut new,
         );
         due.sort_by_key(|(day, _)| *day);
-        due.into_iter().map(|(_, drill)| drill).chain(new).collect()
+        let mut seen = std::collections::HashSet::new();
+        due.into_iter()
+            .map(|(_, drill)| drill)
+            .chain(new)
+            .filter(|drill| seen.insert((Self::position_key(&drill.path), drill.answer.clone())))
+            .collect()
     }
 
     /// Positions where the user is to move and the repertoire has no answer.
@@ -385,7 +491,12 @@ impl Repertoire {
         ) {
             for node in nodes {
                 path.push(node.san.clone());
-                if node.children.is_empty() && repertoire.is_user_move(path.len()) {
+                if node.children.is_empty()
+                    && repertoire.is_user_move(path.len())
+                    && repertoire
+                        .moves_after(path)
+                        .is_none_or(|moves| moves.is_empty())
+                {
                     gaps.push(path.clone());
                 }
                 walk(repertoire, &node.children, path, gaps);
@@ -419,6 +530,15 @@ impl Repertoire {
         walk(&self.roots, &Chess::default(), &mut index);
         index
     }
+}
+
+fn identity(pos: &Chess) -> String {
+    chess_core::shakmaty::fen::Fen::from_position(pos, chess_core::shakmaty::EnPassantMode::Legal)
+        .to_string()
+        .split_whitespace()
+        .take(4)
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 const MAX_ROW_PLIES: usize = 6;
@@ -556,6 +676,27 @@ mod tests {
         let rows = rep.tree_rows(0);
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].label, "King's pawn");
+    }
+
+    #[test]
+    fn transpositions_share_replies_cards_coverage_and_drills() {
+        let mut rep = Repertoire::new("transpositions", true);
+        rep.add_line(&["Nf3", "Nf6", "g3", "g6", "Bg2"]).unwrap();
+        rep.add_line(&["g3", "g6", "Nf3", "Nf6", "Bg2"]).unwrap();
+        let a = ["Nf3", "Nf6", "g3", "g6", "Bg2"];
+        let b = ["g3", "g6", "Nf3", "Nf6", "Bg2"];
+        rep.grade(&a, Grade::Easy, 10);
+        assert_eq!(rep.node(&a).unwrap().card, rep.node(&b).unwrap().card);
+        assert_eq!(rep.coverage(10).total(), 5);
+        assert_eq!(
+            rep.drills(21).iter().filter(|d| d.answer == "Bg2").count(),
+            1
+        );
+        assert_eq!(rep.moves_after(&b[..4]).unwrap()[0].san, "Bg2");
+        // A move order absent from the visible tree can still reach prepared knowledge.
+        let mut other = Repertoire::new("other", true);
+        other.add_line(&a).unwrap();
+        assert_eq!(other.moves_after(&b[..4]).unwrap()[0].san, "Bg2");
     }
 
     #[test]

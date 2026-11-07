@@ -133,10 +133,11 @@ impl AppModel {
         if demo {
             crate::demo::prepare(&paths, &mut config);
         }
-        let repertoire: Repertoire = std::fs::read_to_string(paths.repertoire_file())
+        let mut repertoire: Repertoire = std::fs::read_to_string(paths.repertoire_file())
             .ok()
             .and_then(|text| serde_json::from_str(&text).ok())
             .unwrap_or_else(|| Repertoire::new("My repertoire", true));
+        repertoire.migrate_cards();
         let notes = match NoteStore::open(paths.notes_file()) {
             Ok(notes) => Some(notes),
             Err(err) => {
