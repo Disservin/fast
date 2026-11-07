@@ -1313,6 +1313,26 @@ impl DatabaseScreen {
                         )),
                 );
             }
+            let findings = review_findings(preview);
+            if !findings.is_empty() {
+                column = column.child(section_label("Review findings").mt(px(6.)));
+                for finding in findings.into_iter().take(6) {
+                    let this = this.clone();
+                    let ply = finding.ply;
+                    column = column.child(
+                        btn(("review-finding", ply), finding.text)
+                            .full()
+                            .text(11.)
+                            .tooltip("Open this move and its engine continuation in Analyse")
+                            .on_click(move |window, cx| {
+                                this.update(cx, |screen, cx| {
+                                    screen.preview_key = ply;
+                                    screen.open_in_analyse(window, cx);
+                                });
+                            }),
+                    );
+                }
+            }
         }
         column
             .child(
@@ -1481,14 +1501,14 @@ fn win_percent(cp: i32) -> f64 {
     50.0 + 50.0 * (2.0 / (1.0 + (-0.00368208 * f64::from(cp)).exp()) - 1.0)
 }
 
-fn review_accuracy(evals: &[Option<i32>], white: bool) -> Option<f64> {
+fn review_accuracy(evals: &[Option<i32>], white: bool, first_white: bool) -> Option<f64> {
     if evals.iter().any(Option::is_none) {
         return None;
     }
     let losses: Vec<_> = evals
         .windows(2)
         .enumerate()
-        .filter(|(ply, _)| (ply % 2 == 0) == white)
+        .filter(|(ply, _)| (first_white == (ply % 2 == 0)) == white)
         .map(|(_, pair)| {
             let before = win_percent(pair[0].expect("checked above"));
             let after = win_percent(pair[1].expect("checked above"));
@@ -1502,6 +1522,79 @@ fn review_accuracy(evals: &[Option<i32>], white: bool) -> Option<f64> {
         .collect();
     (!losses.is_empty())
         .then(|| accuracy_from_loss(losses.iter().sum::<f64>() / losses.len() as f64))
+}
+
+struct ReviewFinding {
+    ply: usize,
+    text: String,
+}
+
+fn review_findings(game: &GameDetails) -> Vec<ReviewFinding> {
+    let mut findings = Vec::new();
+    for ply in 0..game.sans.len() {
+        let Some(before) = game
+            .review_positions
+            .iter()
+            .find(|position| position.ply as usize == ply)
+        else {
+            continue;
+        };
+        let Some(after) = game
+            .review_positions
+            .iter()
+            .find(|position| position.ply as usize == ply + 1)
+        else {
+            continue;
+        };
+        let Ok(before_tree) = GameTree::from_fen(&before.fen) else {
+            continue;
+        };
+        let Ok(after_tree) = GameTree::from_fen(&after.fen) else {
+            continue;
+        };
+        let before_pos = &before_tree.node(GameTree::ROOT).pos;
+        let after_pos = &after_tree.node(GameTree::ROOT).pos;
+        let white_moved = before_pos.turn().is_white();
+        let loss = if white_moved {
+            before.eval_cp - after.eval_cp
+        } else {
+            after.eval_cp - before.eval_cp
+        };
+        if loss < 75 {
+            continue;
+        }
+        let mut text = format!(
+            "Move {} {}: engine score lost {:.2} pawns for {}.",
+            ply + 1,
+            game.sans[ply],
+            f64::from(loss) / 100.0,
+            if white_moved { "White" } else { "Black" },
+        );
+        let material_before = chess_core::material_balance(before_pos.board()).score;
+        let material_after = chess_core::material_balance(after_pos.board()).score;
+        let material_loss = if white_moved {
+            material_before - material_after
+        } else {
+            material_after - material_before
+        };
+        if material_loss >= 1 {
+            text.push_str(&format!(
+                " Board material immediately drops by {material_loss} points."
+            ));
+        }
+        let pv: Vec<String> = before
+            .pv
+            .split_ascii_whitespace()
+            .map(str::to_owned)
+            .collect();
+        let sans = chess_core::pv_to_san(before_pos, &pv);
+        if !sans.is_empty() {
+            text.push_str(&format!(" Engine line: {}.", sans.join(" ")));
+        }
+        text.push_str(" Engine estimates can change with deeper searches.");
+        findings.push(ReviewFinding { ply, text });
+    }
+    findings
 }
 
 /// Runs engine review for each game on a worker thread and stores the accuracy.
@@ -1560,6 +1653,7 @@ fn review_games(
         };
         let mut moves: Vec<String> = Vec::new();
         let mut pos = start_tree.node(chess_core::GameTree::ROOT).pos.clone();
+        let first_white = pos.turn().is_white();
         let mut history = vec![pos.clone()];
         let mut evals: Vec<Option<i32>> = Vec::with_capacity(game.sans.len() + 1);
         let mut positions: HashMap<usize, ReviewPosition> = database
@@ -1693,12 +1787,13 @@ fn review_games(
             _ => player.is_empty() || player_is_white,
         };
         if evals.len() == game.sans.len() + 1 && evals.iter().all(Option::is_some) {
-            let white_accuracy = review_accuracy(&evals, true);
-            let black_accuracy = review_accuracy(&evals, false);
+            let white_accuracy = review_accuracy(&evals, true, first_white);
+            let black_accuracy = review_accuracy(&evals, false, first_white);
             database.set_review_summary(
                 id,
                 &job_key,
                 &ReviewSummary {
+                    job_key: job_key.clone(),
                     engine: format!("{} {}", engine.name, engine.version),
                     search_limit: limit_label.clone(),
                     white_accuracy,

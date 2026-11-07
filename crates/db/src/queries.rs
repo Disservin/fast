@@ -188,10 +188,12 @@ pub struct GameDetails {
     pub start_fen: String,
     pub sans: Vec<String>,
     pub review_summary: Option<ReviewSummary>,
+    pub review_positions: Vec<ReviewPosition>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ReviewSummary {
+    pub job_key: String,
     pub engine: String,
     pub search_limit: String,
     pub white_accuracy: Option<f64>,
@@ -336,12 +338,16 @@ impl Database {
                         start_fen,
                         sans: moves.split_ascii_whitespace().map(str::to_owned).collect(),
                         review_summary: None,
+                        review_positions: Vec::new(),
                     })
                 },
             )
             .optional()?;
         if let Some(game) = &mut found {
             game.review_summary = self.review_summary(id)?;
+            if let Some(summary) = &game.review_summary {
+                game.review_positions = self.review_positions(id, &summary.job_key)?;
+            }
         }
         Ok(found)
     }
@@ -409,15 +415,16 @@ impl Database {
         Ok(self
             .conn
             .query_row(
-                "SELECT engine,search_limit,white_accuracy,black_accuracy FROM review_summaries
+                "SELECT job_key,engine,search_limit,white_accuracy,black_accuracy FROM review_summaries
              WHERE game_id=?1 ORDER BY updated_at DESC LIMIT 1",
                 [game_id],
                 |row| {
                     Ok(ReviewSummary {
-                        engine: row.get(0)?,
-                        search_limit: row.get(1)?,
-                        white_accuracy: row.get(2)?,
-                        black_accuracy: row.get(3)?,
+                        job_key: row.get(0)?,
+                        engine: row.get(1)?,
+                        search_limit: row.get(2)?,
+                        white_accuracy: row.get(3)?,
+                        black_accuracy: row.get(4)?,
                     })
                 },
             )
