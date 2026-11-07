@@ -13,8 +13,8 @@ use chess_core::{Position as _, format_pv, pv_to_san};
 use engine::EngineId;
 use gpui::{
     AnyElement, AppContext as _, ClipboardItem, Context, Div, Entity, FontWeight, IntoElement,
-    Pixels, Render, SharedString, Task, WeakEntity, Window, deferred, div, prelude::*, px,
-    relative, rgb,
+    Pixels, Render, SharedString, Subscription, Task, WeakEntity, Window, deferred, div,
+    prelude::*, px, relative, rgb,
 };
 use gpui_component::input::{InputState, Textarea, TextareaState};
 use ui::{
@@ -25,7 +25,7 @@ use ui::{
 use crate::{
     controls::{field, new_input, text_input},
     fastchess::{self, Limit, Line, Participant, Pasted, Setup, StopHandle},
-    model::{AppModel, pick_path},
+    model::{AppModel, ModelEvent, pick_path},
     shell::Workspace,
     tournament_live::{self, LiveGame, LiveGames, Score, Search},
     tournament_wall::{self, LiveWall},
@@ -270,6 +270,7 @@ pub struct TournamentScreen {
     setup_open: bool,
     /// Whether each fastchess executable offers the `-events` stream.
     events_support: HashMap<PathBuf, bool>,
+    _prefs: Subscription,
 }
 
 impl TournamentScreen {
@@ -300,6 +301,18 @@ impl TournamentScreen {
                      or the contents of a config.json fastchess saved, to continue that tournament.",
                 )
                 .rows(14)
+        });
+        // Boards only take new prefs as they move; a theme or board change must reach
+        // the ones standing still too, or a finished run's boards keep the old colours.
+        let prefs = cx.subscribe(&model, |screen, model, event, cx| {
+            if matches!(event, ModelEvent::BoardPrefs) {
+                let prefs = model.read(cx).config.board.prefs();
+                let boards = screen.live_boards.values().map(|(board, _, _)| board);
+                for board in boards.chain([&screen.focus_board]) {
+                    board.update(cx, |board, cx| board.set_prefs(prefs, cx));
+                }
+                cx.notify();
+            }
         });
         // Stop fastchess with the app, so no tournament keeps running unseen.
         cx.on_app_quit(|screen: &mut Self, _| {
@@ -366,6 +379,7 @@ impl TournamentScreen {
             menu_open: false,
             setup_open: false,
             events_support: HashMap::new(),
+            _prefs: prefs,
         }
     }
 

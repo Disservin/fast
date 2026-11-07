@@ -9,8 +9,8 @@ use std::{
 
 use gpui::{
     App, AppContext as _, Bounds, Context, Entity, FontWeight, IntoElement, Render, SharedString,
-    Task, TitlebarOptions, WeakEntity, Window, WindowBounds, WindowOptions, div, prelude::*, px,
-    rgb, size,
+    Subscription, Task, TitlebarOptions, WeakEntity, Window, WindowBounds, WindowOptions, div,
+    prelude::*, px, rgb, size,
 };
 use gpui_component::Root;
 use ui::{
@@ -20,7 +20,7 @@ use ui::{
 };
 
 use crate::{
-    model::AppModel,
+    model::{AppModel, ModelEvent},
     screens::tournament::game_card,
     tournament_live::{LiveGame, LiveGames},
 };
@@ -58,6 +58,7 @@ pub struct LiveWall {
     seen: Option<u64>,
     boards: HashMap<usize, (Entity<BoardView>, (u64, usize))>,
     _poll: Task<()>,
+    _prefs: Subscription,
 }
 
 impl LiveWall {
@@ -106,6 +107,16 @@ impl LiveWall {
                 }
             }
         });
+        // Recolour the boards on a theme or board change, not only when they next move.
+        let prefs = cx.subscribe(&model, |wall, model, event, cx| {
+            if matches!(event, ModelEvent::BoardPrefs) {
+                let prefs = model.read(cx).config.board.prefs();
+                for (board, _) in wall.boards.values() {
+                    board.update(cx, |board, cx| board.set_prefs(prefs, cx));
+                }
+                cx.notify();
+            }
+        });
         Self {
             model,
             live,
@@ -114,6 +125,7 @@ impl LiveWall {
             seen: None,
             boards: HashMap::new(),
             _poll: poll,
+            _prefs: prefs,
         }
     }
 
