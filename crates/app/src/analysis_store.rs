@@ -147,6 +147,7 @@ pub fn current_limit(limit: crate::config::AnalysisLimit) -> String {
         crate::config::AnalysisLimit::Infinite => "infinite".to_owned(),
         crate::config::AnalysisLimit::Depth(depth) => format!("depth:{depth}"),
         crate::config::AnalysisLimit::Seconds(seconds) => format!("seconds:{seconds}"),
+        crate::config::AnalysisLimit::Nodes(nodes) => format!("nodes:{nodes}"),
     }
 }
 

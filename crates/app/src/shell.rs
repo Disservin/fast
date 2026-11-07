@@ -350,6 +350,7 @@ impl Workspace {
             "play" => (Mode::Play, None),
             "settings" | "settings:general" => (Mode::Settings, Some(SettingsPage::General)),
             "settings:engines" => (Mode::Settings, Some(SettingsPage::Engines)),
+            "settings:analysis" => (Mode::Settings, Some(SettingsPage::Analysis)),
             "settings:board" => (Mode::Settings, Some(SettingsPage::Board)),
             "settings:databases" => (Mode::Settings, Some(SettingsPage::Databases)),
             "settings:shortcuts" => (Mode::Settings, Some(SettingsPage::Shortcuts)),

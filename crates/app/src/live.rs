@@ -180,8 +180,8 @@ pub struct LiveAnalysis {
     /// search.
     pub end: Option<chess_core::GameEnd>,
     pub cache: LineCache,
-    /// Replaces the configured search limit, e.g. a fixed time per move while a game
-    /// is analysed backwards.
+    /// Replaces the configured search limit, e.g. a fixed node count per position
+    /// while a game is analysed backwards.
     pub limit_override: Option<AnalysisLimit>,
     /// Bumped when Analyse loads a different game, so engines get `ucinewgame`.
     pub game: u64,
@@ -756,6 +756,10 @@ impl LiveAnalysis {
             }),
             AnalysisLimit::Seconds(seconds) => Some(Limits {
                 movetime_ms: Some(u64::from(seconds) * 1000),
+                ..Default::default()
+            }),
+            AnalysisLimit::Nodes(nodes) => Some(Limits {
+                nodes: Some(nodes),
                 ..Default::default()
             }),
         };

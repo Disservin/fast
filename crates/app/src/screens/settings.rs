@@ -36,6 +36,7 @@ pub enum SettingsPage {
     General,
     Board,
     Engines,
+    Analysis,
     Databases,
     Shortcuts,
     Accounts,
@@ -43,10 +44,11 @@ pub enum SettingsPage {
 }
 
 impl SettingsPage {
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 8] = [
         Self::General,
         Self::Board,
         Self::Engines,
+        Self::Analysis,
         Self::Databases,
         Self::Shortcuts,
         Self::Accounts,
@@ -58,6 +60,7 @@ impl SettingsPage {
             Self::General => "General",
             Self::Board => "Board & pieces",
             Self::Engines => "Engines",
+            Self::Analysis => "Analysis",
             Self::Databases => "Databases",
             Self::Shortcuts => "Keyboard shortcuts",
             Self::Accounts => "Accounts",
@@ -230,6 +233,10 @@ pub struct SettingsScreen {
     animation: Entity<SliderState>,
     volume: Entity<SliderState>,
     player_name: Entity<InputState>,
+    /// Nodes per position for backwards analysis; applied on Enter or leaving the field.
+    backward_nodes: Entity<InputState>,
+    /// The node count typed there could not be read.
+    backward_error: Option<SharedString>,
     capture_focus: FocusHandle,
     capturing: Option<&'static str>,
     benchmark: Option<SharedString>,
@@ -270,6 +277,8 @@ impl SettingsScreen {
         });
         let name = model.read(cx).config.player_name.clone();
         let player_name = new_input(name, "Your name in game headers", window, cx);
+        let nodes = model.read(cx).config.backward_nodes;
+        let backward_nodes = new_input(nodes.to_string(), "e.g. 500000 or 500k", window, cx);
         let path_input = cx.new(|cx| InputState::new(window, cx));
         let name_input = cx.new(|cx| InputState::new(window, cx));
         let profile_input =
@@ -327,6 +336,19 @@ impl SettingsScreen {
                     });
                 }
             }),
+            cx.subscribe_in(&backward_nodes, window, |this, state, event, window, cx| {
+                if matches!(event, InputEvent::Blur | InputEvent::PressEnter { .. }) {
+                    let text = state.read(cx).value().to_string();
+                    match parse_nodes(&text) {
+                        Some(nodes) => this.set_backward_nodes(nodes, window, cx),
+                        None => {
+                            this.backward_error =
+                                Some(format!("\"{}\" is not a node count", text.trim()).into());
+                            cx.notify();
+                        }
+                    }
+                }
+            }),
             cx.observe(&model, |_, _, cx| cx.notify()),
         ];
         let selected_engine = model
@@ -350,6 +372,8 @@ impl SettingsScreen {
             animation,
             volume,
             player_name,
+            backward_nodes,
+            backward_error: None,
             capture_focus: cx.focus_handle(),
             capturing: None,
             benchmark: None,
@@ -2742,6 +2766,109 @@ impl SettingsScreen {
     }
 }
 
+/// Node presets for backwards analysis.
+const BACKWARD_PRESETS: [(u64, &str); 5] = [
+    (100_000, "100k"),
+    (250_000, "250k"),
+    (500_000, "500k"),
+    (1_000_000, "1M"),
+    (5_000_000, "5M"),
+];
+
+/// A node count as typed: digits, optionally with separators and a k or M suffix.
+fn parse_nodes(text: &str) -> Option<u64> {
+    let text: String = text
+        .trim()
+        .chars()
+        .filter(|c| !matches!(c, ',' | '_' | ' ' | '\''))
+        .collect();
+    let (digits, scale) = match text.chars().last()? {
+        'k' | 'K' => (&text[..text.len() - 1], 1_000.),
+        'm' | 'M' => (&text[..text.len() - 1], 1_000_000.),
+        _ => (text.as_str(), 1.),
+    };
+    let value: f64 = digits.parse().ok()?;
+    let nodes = (value * scale).round();
+    (value.is_finite() && nodes >= 1. && nodes <= 1e12).then_some(nodes as u64)
+}
+
+impl SettingsScreen {
+    fn set_backward_nodes(&mut self, nodes: u64, window: &mut Window, cx: &mut Context<Self>) {
+        self.backward_error = None;
+        self.backward_nodes.update(cx, |state, cx| {
+            state.set_value(nodes.to_string(), window, cx)
+        });
+        self.model.update(cx, |model, cx| {
+            if model.config.backward_nodes != nodes {
+                model.config.backward_nodes = nodes;
+                model.save_config(cx);
+            }
+        });
+        cx.notify();
+    }
+
+    fn render_analysis(&mut self, cx: &mut Context<Self>) -> Div {
+        let current = self.model.read(cx).config.backward_nodes;
+        let mut presets = h_flex().gap(px(6.)).flex_wrap();
+        for (index, (nodes, label)) in BACKWARD_PRESETS.into_iter().enumerate() {
+            let this = cx.entity();
+            presets = presets.child(
+                btn(("backward-preset", index), label)
+                    .h(30.)
+                    .pad(10.)
+                    .selected(current == nodes)
+                    .on_click(move |window, cx| {
+                        this.update(cx, |screen, cx| {
+                            screen.set_backward_nodes(nodes, window, cx)
+                        })
+                    }),
+            );
+        }
+        let field = v_flex()
+            .gap(px(8.))
+            .child(
+                h_flex()
+                    .gap(px(10.))
+                    .child(div().w(px(180.)).child(text_input(&self.backward_nodes)))
+                    .child(
+                        div()
+                            .text_size(px(13.))
+                            .text_color(rgb(T.muted))
+                            .child(format!("{} per position", engine::format_nodes(current))),
+                    ),
+            )
+            .child(presets)
+            .children(self.backward_error.clone().map(|error| {
+                div()
+                    .text_size(px(12.))
+                    .text_color(rgb(T.warn))
+                    .child(error)
+            }));
+        v_flex().gap(px(16.)).child(page_title("Analysis")).child(
+            section("Backwards analysis")
+                .child(option_row(
+                    "Nodes per position",
+                    Some(
+                        "Each analysis engine searches this many nodes in every position, \
+                             from the last move back to the first. A fixed node count gives \
+                             every position the same effort on any machine.",
+                    ),
+                    field,
+                ))
+                .child(
+                    div()
+                        .pt(px(10.))
+                        .text_size(px(12.))
+                        .text_color(rgb(T.muted))
+                        .child(
+                            "Start it with Analyse backwards above the game graph, or its \
+                                 shortcut. The search limit for ordinary analysis is not used.",
+                        ),
+                ),
+        )
+    }
+}
+
 fn section(title: &'static str) -> Div {
     panel().flex().flex_col().p(px(16.)).child(
         div()
@@ -2961,6 +3088,7 @@ impl Render for SettingsScreen {
             SettingsPage::General => self.render_general(cx).into_any_element(),
             SettingsPage::Board => self.render_board_page(cx).into_any_element(),
             SettingsPage::Engines => self.render_engines(window, cx).into_any_element(),
+            SettingsPage::Analysis => self.render_analysis(cx).into_any_element(),
             SettingsPage::Databases => self.render_databases(cx).into_any_element(),
             SettingsPage::Shortcuts => self.render_shortcuts(cx).into_any_element(),
             SettingsPage::Accounts => self.render_accounts().into_any_element(),
@@ -2993,6 +3121,19 @@ mod tests {
             "stuff\nTotal time (ms) : 100\nNodes searched  : 1000\nNodes/second    : 123456\n";
         assert_eq!(parse_bench(text).as_deref(), Some("bench: 123,456 n/s"));
         assert_eq!(parse_bench("no numbers"), None);
+    }
+
+    #[test]
+    fn node_counts_are_read_with_suffixes_and_separators() {
+        assert_eq!(parse_nodes("500000"), Some(500_000));
+        assert_eq!(parse_nodes(" 500k "), Some(500_000));
+        assert_eq!(parse_nodes("1.5M"), Some(1_500_000));
+        assert_eq!(parse_nodes("2_000_000"), Some(2_000_000));
+        assert_eq!(parse_nodes("1,000,000"), Some(1_000_000));
+        assert_eq!(parse_nodes("0"), None);
+        assert_eq!(parse_nodes("-5k"), None);
+        assert_eq!(parse_nodes("lots"), None);
+        assert_eq!(parse_nodes(""), None);
     }
 
     #[test]

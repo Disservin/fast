@@ -28,8 +28,6 @@ use crate::{
     shell::Workspace,
 };
 
-/// Time per move for backwards analysis when the search limit is infinite.
-const BACKWARD_SECONDS: u32 = 3;
 /// Each position is shown at least this long, even when a search ends at once.
 const BACKWARD_DWELL: std::time::Duration = std::time::Duration::from_millis(250);
 
@@ -953,10 +951,11 @@ impl AnalyseScreen {
             );
             return;
         }
-        let limit = self.model.read(cx).config.analysis_limit;
+        // A fixed node count, set in Settings › Analysis, so every position gets the same
+        // search whatever the limit for ordinary analysis.
+        let nodes = self.model.read(cx).config.backward_nodes.max(1);
         self.live.update(cx, |live, cx| {
-            live.limit_override = (limit == crate::config::AnalysisLimit::Infinite)
-                .then_some(crate::config::AnalysisLimit::Seconds(BACKWARD_SECONDS));
+            live.limit_override = Some(crate::config::AnalysisLimit::Nodes(nodes));
             if !live.on {
                 live.toggle(cx);
             }
@@ -1973,6 +1972,7 @@ impl AnalyseScreen {
                             .child({
                                 let this = this.clone();
                                 let running = self.backward.is_some();
+                                let nodes = self.model.read(cx).config.backward_nodes;
                                 btn(
                                     "analyse-backward",
                                     if running { "Stop" } else { "Analyse backwards" },
@@ -1982,7 +1982,8 @@ impl AnalyseScreen {
                                 .text(11.)
                                 .selected(running)
                                 .tooltip(format!(
-                                    "Search every position from the last move to the first ({BACKWARD_SECONDS} s each unless a search limit is set)"
+                                    "Search every position from the last move to the first, {} each (Settings › Analysis)",
+                                    engine::format_nodes(nodes)
                                 ))
                                 .on_click(move |window, cx| {
                                     this.update(cx, |screen, cx| screen.toggle_backward(window, cx));

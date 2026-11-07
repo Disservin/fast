@@ -253,7 +253,12 @@ pub enum AnalysisLimit {
     Infinite,
     Depth(u32),
     Seconds(u32),
+    /// A fixed node count per search, as backwards analysis uses.
+    Nodes(u64),
 }
+
+/// Nodes searched per position when a game is analysed backwards.
+pub const DEFAULT_BACKWARD_NODES: u64 = 500_000;
 
 /// How the Moves table orders engine lines.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -341,6 +346,9 @@ pub struct Config {
     /// Off: leaving the tab stops them, and they resume on return.
     pub analyse_in_background: bool,
     pub analysis_limit: AnalysisLimit,
+    /// Nodes each engine searches per position when a game is analysed backwards,
+    /// whatever the search limit for ordinary analysis.
+    pub backward_nodes: u64,
     pub view: AnalysisView,
     /// A fastchess executable to use instead of the pinned download.
     pub fastchess_path: Option<PathBuf>,
@@ -360,6 +368,7 @@ impl Default for Config {
             engine_on: true,
             analyse_in_background: false,
             analysis_limit: AnalysisLimit::default(),
+            backward_nodes: DEFAULT_BACKWARD_NODES,
             view: AnalysisView::default(),
             fastchess_path: None,
         }
@@ -479,6 +488,31 @@ mod tests {
             )
             .unwrap(),
             original
+        );
+    }
+
+    #[test]
+    fn backwards_analysis_defaults_to_a_fixed_node_count() {
+        let config = toml::from_str::<Config>("").unwrap();
+        assert_eq!(config.backward_nodes, DEFAULT_BACKWARD_NODES);
+        let config = Config {
+            backward_nodes: 2_000_000,
+            ..Default::default()
+        };
+        let text = toml::to_string(&config).unwrap();
+        assert_eq!(
+            toml::from_str::<Config>(&text).unwrap().backward_nodes,
+            2_000_000
+        );
+        let limit = AnalysisLimit::Nodes(42);
+        let text = toml::to_string(&Config {
+            analysis_limit: limit,
+            ..Default::default()
+        })
+        .unwrap();
+        assert_eq!(
+            toml::from_str::<Config>(&text).unwrap().analysis_limit,
+            limit
         );
     }
 
