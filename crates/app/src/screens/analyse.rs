@@ -2625,11 +2625,7 @@ impl Render for AnalyseScreen {
         let scoresheet = v_flex()
             .h_full()
             .children(self.recovery_error.clone())
-            .child(if dirty {
-                "Unsaved game · Ctrl/Cmd+S to save"
-            } else {
-                "Game saved"
-            })
+            .children(dirty.then_some("Unsaved game · Ctrl/Cmd+S to save"))
             .child(self.render_scoresheet(cx));
         let board_column = self.render_board_column(board_size, cx);
         let table = self.render_moves_table(cx);
