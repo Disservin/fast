@@ -35,15 +35,26 @@ pub enum SoundProfile {
     Soft,
     Click,
     Bell,
+    DeepWood,
+    Thud,
 }
 impl SoundProfile {
-    pub const ALL: [Self; 4] = [Self::Wood, Self::Soft, Self::Click, Self::Bell];
+    pub const ALL: [Self; 6] = [
+        Self::Wood,
+        Self::Soft,
+        Self::Click,
+        Self::Bell,
+        Self::DeepWood,
+        Self::Thud,
+    ];
     pub fn name(self) -> &'static str {
         match self {
             Self::Wood => "Wood",
             Self::Soft => "Soft",
             Self::Click => "Click",
             Self::Bell => "Bell",
+            Self::DeepWood => "Deep wood",
+            Self::Thud => "Thud",
         }
     }
 }
@@ -229,26 +240,53 @@ pub fn synthesise_profile(profile: SoundProfile, sound: Sound) -> Vec<f32> {
     };
     let mut out = vec![0.0; ms(length)];
     let pitch = match sound {
-        Sound::Move => 660.0,
-        Sound::Capture => 440.0,
-        Sound::Castle => 550.0,
-        Sound::Check => 1100.0,
-        Sound::GameEnd => 880.0,
+        Sound::Move => 330.0,
+        Sound::Capture => 220.0,
+        Sound::Castle => 275.0,
+        Sound::Check => 440.0,
+        Sound::GameEnd => 330.0,
     };
     match profile {
         SoundProfile::Soft => {
             tone(&mut out, 0, pitch * 0.45, 0.38, 0.018);
             tone(&mut out, 0, pitch * 0.9, 0.10, 0.009);
         }
-        SoundProfile::Click => knock(&mut out, 0, 0.65, pitch * 2.0, 0.005, 0x9E37_79B9),
+        SoundProfile::Click => knock(&mut out, 0, 0.65, pitch, 0.008, 0x9E37_79B9),
         SoundProfile::Bell => {
             tone(&mut out, 0, pitch, 0.30, 0.045);
-            tone(&mut out, 0, pitch * 2.76, 0.12, 0.025);
+            tone(&mut out, 0, pitch * 1.5, 0.07, 0.025);
+        }
+        SoundProfile::DeepWood => {
+            knock(&mut out, 0, 1.0, pitch * 0.38, 0.035, 0x9E37_79B9);
+        }
+        SoundProfile::Thud => {
+            tone(&mut out, 0, pitch * 0.23, 0.65, 0.025);
+            tone(&mut out, 0, pitch * 0.36, 0.16, 0.012);
         }
         SoundProfile::Wood => unreachable!(),
     }
     if matches!(sound, Sound::Castle | Sound::GameEnd) {
-        tone(&mut out, ms(80), pitch * 1.5, 0.20, 0.04);
+        let multiplier = match profile {
+            SoundProfile::DeepWood => 0.45,
+            SoundProfile::Thud => 0.28,
+            _ => 1.5,
+        };
+        tone(&mut out, ms(80), pitch * multiplier, 0.20, 0.04);
+    }
+    // Two low-pass stages remove bright impact harmonics from the darker profiles.
+    if matches!(profile, SoundProfile::DeepWood | SoundProfile::Thud) {
+        let cutoff = if profile == SoundProfile::Thud {
+            300.0
+        } else {
+            500.0
+        };
+        let alpha = 1.0 - (-std::f32::consts::TAU * cutoff / RATE as f32).exp();
+        let (mut first, mut second) = (0.0, 0.0);
+        for sample in &mut out {
+            first += alpha * (*sample - first);
+            second += alpha * (first - second);
+            *sample = second;
+        }
     }
     let fade = ms(8).min(out.len());
     let start = out.len() - fade;
@@ -270,24 +308,24 @@ pub fn synthesise(sound: Sound) -> Vec<f32> {
     let mut out = vec![0.0f32; length];
     match sound {
         // A low wooden clank with a short, solid body.
-        Sound::Move => knock(&mut out, 0, 1.0, 460.0, 0.022, 0x9E37_79B9),
+        Sound::Move => knock(&mut out, 0, 1.0, 260.0, 0.028, 0x9E37_79B9),
         // A heavier, lower knock, then the taken piece's lighter click.
         Sound::Capture => {
-            knock(&mut out, 0, 1.15, 340.0, 0.026, 0x85EB_CA6B);
-            knock(&mut out, ms(30), 0.5, 620.0, 0.014, 0xC2B2_AE35);
+            knock(&mut out, 0, 1.15, 180.0, 0.032, 0x85EB_CA6B);
+            knock(&mut out, ms(30), 0.5, 320.0, 0.018, 0xC2B2_AE35);
         }
         // King, then rook.
         Sound::Castle => {
-            knock(&mut out, 0, 0.9, 440.0, 0.022, 0x27D4_EB2F);
-            knock(&mut out, ms(80), 0.85, 390.0, 0.024, 0x1656_67B1);
+            knock(&mut out, 0, 0.9, 240.0, 0.028, 0x27D4_EB2F);
+            knock(&mut out, ms(80), 0.85, 210.0, 0.030, 0x1656_67B1);
         }
         Sound::Check => {
-            tone(&mut out, 0, 1318.5, 0.22, 0.05);
-            tone(&mut out, 0, 1975.5, 0.08, 0.03);
+            tone(&mut out, 0, 440.0, 0.22, 0.05);
+            tone(&mut out, 0, 660.0, 0.08, 0.03);
         }
         Sound::GameEnd => {
-            tone(&mut out, 0, 783.99, 0.3, 0.25);
-            tone(&mut out, ms(160), 1046.5, 0.3, 0.35);
+            tone(&mut out, 0, 261.63, 0.3, 0.25);
+            tone(&mut out, ms(160), 349.23, 0.3, 0.35);
         }
     }
     out.iter_mut().for_each(|s| *s *= LEVEL);
@@ -376,7 +414,7 @@ mod tests {
         let samples = synthesise(Sound::Move);
         // Keep the body in the wooden clank range, below the old bright click.
         assert!(
-            (300.0..650.0).contains(&median_frequency(&samples)),
+            (180.0..360.0).contains(&median_frequency(&samples)),
             "{}",
             median_frequency(&samples)
         );
@@ -424,6 +462,25 @@ mod tests {
                 wav.extend_from_slice(&sample.to_le_bytes());
             }
             std::fs::write(dir.join(format!("{name}.wav")), wav).unwrap();
+        }
+    }
+
+    #[test]
+    fn darker_profiles_keep_all_event_cues_in_the_low_register() {
+        for profile in [SoundProfile::DeepWood, SoundProfile::Thud] {
+            for sound in [
+                Sound::Move,
+                Sound::Capture,
+                Sound::Castle,
+                Sound::Check,
+                Sound::GameEnd,
+            ] {
+                let frequency = median_frequency(&synthesise_profile(profile, sound));
+                assert!(
+                    (40.0..220.0).contains(&frequency),
+                    "{profile:?} {sound:?}: {frequency} Hz"
+                );
+            }
         }
     }
 
