@@ -51,6 +51,12 @@ The UI thread never blocks on engines or databases.
 - **Games table:** ids for the filter are loaded once and rows are paged on demand as
   `uniform_list` reveals them, so memory and render cost follow the viewport, not the row count.
 
+## Rendering cost
+
+Profiling a full redraw at 1440×900 under llvmpipe puts about 97% of frame time in rasterization
+and about 2% in Outpost's code, and every screen costs about the same. Views should still avoid
+needless frames: the board positions pieces proportionally so a resize needs only one draw.
+
 ## Files
 
 - Config: `<config dir>/outpost/config.toml`, including per-engine options re-applied at launch.
@@ -58,6 +64,9 @@ The UI thread never blocks on engines or databases.
 - Demo mode uses `outpost-demo` instead and is regenerated if its stamp file is missing.
 
 ## Known limits
+
+- **WSLg frame rate:** measured at 25–28 fps at 1440×900, including through an RTX 4090 via Mesa's
+  D3D12 driver, so a faster renderer does not lift it there.
 
 - **Set up** takes a FEN rather than offering a drag-and-drop board editor.
 - **Move sounds** is stored but no audio is played.

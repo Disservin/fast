@@ -805,7 +805,7 @@ impl AnalyseScreen {
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
         let this = cx.entity();
-        let compact = board_size < px(390.);
+        let compact = board_size < px(440.);
         let nav_width = if compact { 34. } else { 42. };
         let node = self.tree.node(self.current);
         let turn = if node.pos.turn().is_white() {

@@ -10,7 +10,7 @@ use gpui::{
     Animation, AnimationExt as _, App, Bounds, Context, ElementId, EventEmitter, FontWeight,
     IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, PathBuilder, Pixels,
     Point, Render, SharedString, Styled, Window, canvas, deferred, div, img, point, prelude::*, px,
-    rgb, svg,
+    relative, rgb, svg,
 };
 
 use crate::theme::{MONO, SANS, T};
@@ -97,6 +97,9 @@ pub struct Arrow {
 pub enum BoardEvent {
     Moved(Move),
 }
+
+/// One square as a fraction of the board.
+const CELL: f32 = 1.0 / 8.0;
 
 struct Drag {
     from: Square,
@@ -366,11 +369,6 @@ impl BoardView {
         }
     }
 
-    fn cell_origin(&self, square: Square, cell: Pixels) -> Point<Pixels> {
-        let (x, y) = self.grid(square);
-        point(cell * x as f32, cell * y as f32)
-    }
-
     /// Grid coordinates of a square given orientation, y from the top.
     fn grid(&self, square: Square) -> (u32, u32) {
         let file = u32::from(square.file());
@@ -392,13 +390,13 @@ impl BoardView {
         match self.prefs.pieces {
             PieceSet::Classic => img(SharedString::from(format!("pieces/merida/{name}.svg")))
                 .id(id)
-                .size(cell * 0.74)
-                .m(cell * 0.13)
+                .size(relative(0.74))
+                .m(relative(0.13))
                 .into_any_element(),
             PieceSet::Flat => svg()
                 .path(SharedString::from(format!("pieces/merida/{name}.svg")))
-                .size(cell * 0.86)
-                .m(cell * 0.07)
+                .size(relative(0.86))
+                .m(relative(0.07))
                 .text_color(rgb(if piece.color == Color::White {
                     0xFFFFFF
                 } else {
@@ -406,7 +404,7 @@ impl BoardView {
                 }))
                 .into_any_element(),
             PieceSet::Letters => div()
-                .size(cell)
+                .size_full()
                 .flex()
                 .items_center()
                 .justify_center()
@@ -578,23 +576,26 @@ impl Render for BoardView {
             if Some(square) == hidden {
                 continue;
             }
-            let origin = self.cell_origin(square, cell);
+            let (x, y) = self.grid(square);
             let wrapper = div()
                 .absolute()
-                .size(cell)
-                .left(origin.x)
-                .top(origin.y)
+                .size(relative(CELL))
+                .left(relative(x as f32 * CELL))
+                .top(relative(y as f32 * CELL))
                 .child(self.piece_element(piece, cell, ("piece", u32::from(square))));
             match self.animate.filter(|(_, to)| *to == square) {
                 Some((from, _)) => {
-                    let start = self.cell_origin(from, cell);
+                    let (from_x, from_y) = self.grid(from);
                     let duration = Duration::from_millis(u64::from(self.prefs.animation_ms));
                     pieces_el = pieces_el.child(wrapper.with_animation(
                         ElementId::Name(format!("move-{}", self.animate_serial).into()),
                         Animation::new(duration).with_easing(gpui::ease_out_quint()),
                         move |el, delta| {
-                            el.left(start.x + (origin.x - start.x) * delta)
-                                .top(start.y + (origin.y - start.y) * delta)
+                            let lerp = |start: u32, end: u32| {
+                                (start as f32 + (end as f32 - start as f32) * delta) * CELL
+                            };
+                            el.left(relative(lerp(from_x, x)))
+                                .top(relative(lerp(from_y, y)))
                         },
                     ));
                 }
@@ -605,25 +606,25 @@ impl Render for BoardView {
 
         // Legal move hints over pieces.
         for target in targets {
-            let origin = self.cell_origin(target, cell);
+            let (x, y) = self.grid(target);
             let occupied = self.pos.board().piece_at(target).is_some();
             let hint = div()
                 .absolute()
-                .left(origin.x)
-                .top(origin.y)
-                .size(cell)
+                .left(relative(x as f32 * CELL))
+                .top(relative(y as f32 * CELL))
+                .size(relative(CELL))
                 .flex()
                 .items_center()
                 .justify_center()
                 .child(if occupied {
                     div()
-                        .size(cell)
+                        .size_full()
                         .rounded_full()
                         .border(cell * 0.08)
                         .border_color(gpui::hsla(0., 0., 0.08, 0.42))
                 } else {
                     div()
-                        .size(cell * 0.28)
+                        .size(relative(0.28))
                         .rounded_full()
                         .bg(gpui::hsla(0., 0., 0.08, 0.42))
                 });
@@ -634,17 +635,12 @@ impl Render for BoardView {
         // tracking outside the board.
         let mut arrows: Vec<Arrow> = self.arrows.clone();
         arrows.extend(self.user_arrows.iter().copied());
-        let centers: Vec<(Point<Pixels>, Point<Pixels>)> = arrows
+        let arrow_cells: Vec<((u32, u32), (u32, u32))> = arrows
             .iter()
-            .map(|arrow| {
-                let half = point(cell / 2., cell / 2.);
-                (
-                    self.cell_origin(arrow.from, cell) + half,
-                    self.cell_origin(arrow.to, cell) + half,
-                )
-            })
+            .map(|arrow| (self.grid(arrow.from), self.grid(arrow.to)))
             .collect();
         let capture = entity.clone();
+        let letters = self.prefs.pieces == PieceSet::Letters;
         root = root.child(
             canvas(
                 move |bounds, window, cx| {
@@ -653,9 +649,10 @@ impl Render for BoardView {
                         board.bounds = bounds;
                         resized
                     });
-                    // Pieces are laid out from the size, known only now. A notify during
-                    // this frame would be lost, so it goes out after the frame.
-                    if resized {
+                    // Everything scales proportionally on its own. Only sizes that need
+                    // real pixels (letter glyphs) wait for the next frame; a notify during
+                    // this one would be lost.
+                    if resized && letters {
                         let capture = capture.clone();
                         window.on_next_frame(move |_, cx| capture.update(cx, |_, cx| cx.notify()));
                     }
@@ -670,10 +667,11 @@ impl Render for BoardView {
                             color
                         };
                         let cell = bounds.size.width / 8.;
-                        for (from, to) in &centers {
-                            if let Some(path) =
-                                arrow_path(bounds.origin + *from, bounds.origin + *to, cell)
-                            {
+                        let center = |(x, y): (u32, u32)| {
+                            bounds.origin + point(cell * (x as f32 + 0.5), cell * (y as f32 + 0.5))
+                        };
+                        for (from, to) in &arrow_cells {
+                            if let Some(path) = arrow_path(center(*from), center(*to), cell) {
                                 window.paint_path(path, color);
                             }
                         }
