@@ -881,6 +881,12 @@ impl PlayScreen {
                 .map(|rating| rating.to_string())
         };
         let status = (!opponent && active).then_some("your move");
+        // The pieces this side is up on, in the opponent's colour.
+        let material = game.zip(side).map(|(game, side)| {
+            let balance = chess_core::material_balance(game.tree.node(game.current).pos.board());
+            let set = self.model.read(cx).config.board.prefs().pieces;
+            ui::board::material_strip(balance.up(side), side.other(), balance.lead(side), set, 18.)
+        });
         h_flex()
             .h(px(52.))
             .flex_none()
@@ -917,7 +923,8 @@ impl PlayScreen {
                             .text_size(px(13.))
                             .text_color(rgb(T.muted))
                             .child(text)
-                    })),
+                    }))
+                    .children(material),
             )
             .child(
                 div()

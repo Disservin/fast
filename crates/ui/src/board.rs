@@ -724,6 +724,46 @@ impl BoardView {
     }
 }
 
+/// The pieces one side is up on, drawn small in the opponent's colour with `+N` for
+/// a lead in points, as beside a Lichess player. Identical pieces overlap a little.
+/// Letters and Flat have no small pictures of their own and use Classic's.
+pub fn material_strip(
+    roles: &[Role],
+    pieces_of: Color,
+    lead: Option<i32>,
+    set: PieceSet,
+    size: f32,
+) -> gpui::Div {
+    let set = if PieceSet::IMAGES.contains(&set) {
+        set
+    } else {
+        PieceSet::Classic
+    };
+    let mut strip = div().flex().flex_row().items_center().h(px(size));
+    let mut previous: Option<Role> = None;
+    for role in roles {
+        let overlap = previous == Some(*role);
+        previous = Some(*role);
+        strip = strip.child(
+            img(set.asset(Piece {
+                color: pieces_of,
+                role: *role,
+            }))
+            .size(px(size))
+            .flex_none()
+            .when(overlap, |el| el.ml(px(-size * 0.55))),
+        );
+    }
+    strip.children(lead.map(|lead| {
+        div()
+            .ml(px(4.))
+            .font_family(MONO)
+            .text_size(px(size * 0.75))
+            .text_color(rgb(T.muted))
+            .child(format!("+{lead}"))
+    }))
+}
+
 /// Lichess' premove highlight, rgba(20, 30, 85, 0.5).
 fn premove_tint() -> gpui::Rgba {
     gpui::Rgba {

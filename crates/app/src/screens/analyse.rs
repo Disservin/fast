@@ -1583,6 +1583,28 @@ impl AnalyseScreen {
             None => eval_text,
         };
         let graph = self.render_graph(cx);
+        // What each side is up on: Black's pieces taken by White, then White's by Black.
+        let material = {
+            let balance = chess_core::material_balance(shown.board());
+            let set = self.model.read(cx).config.board.prefs().pieces;
+            let strip = |side: chess_core::Color| {
+                (!balance.up(side).is_empty()).then(|| {
+                    ui::board::material_strip(
+                        balance.up(side),
+                        side.other(),
+                        balance.lead(side),
+                        set,
+                        17.,
+                    )
+                })
+            };
+            (self.editor.is_none()).then(|| {
+                h_flex()
+                    .gap(px(10.))
+                    .children(strip(chess_core::Color::White))
+                    .children(strip(chess_core::Color::Black))
+            })
+        };
         let nav = |id: &'static str,
                    icon: &'static str,
                    tip: &'static str,
@@ -1628,9 +1650,11 @@ impl AnalyseScreen {
                             })),
                     )
                     .child(
-                        mono(eval_text)
-                            .text_size(px(18.))
-                            .font_weight(FontWeight::SEMIBOLD),
+                        h_flex().gap(px(12.)).children(material).child(
+                            mono(eval_text)
+                                .text_size(px(18.))
+                                .font_weight(FontWeight::SEMIBOLD),
+                        ),
                     ),
             )
             .child(div().size(board_size).flex_none().child(self.board.clone()))
