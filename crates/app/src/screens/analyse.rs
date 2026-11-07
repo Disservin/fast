@@ -144,6 +144,8 @@ pub struct AnalyseScreen {
     fen_input: Entity<InputState>,
     setting_up: bool,
     context_menu: Option<(NodeId, Point<Pixels>)>,
+    /// The board toolbar's copy menu is open.
+    copy_menu: bool,
     scoresheet_scroll: ScrollHandle,
     db_task: Option<Task<()>>,
     visible: bool,
@@ -269,6 +271,7 @@ impl AnalyseScreen {
             fen_input,
             setting_up: false,
             context_menu: None,
+            copy_menu: false,
             scoresheet_scroll: ScrollHandle::new(),
             db_task: None,
             visible: true,
@@ -613,6 +616,89 @@ impl AnalyseScreen {
     fn toast(&self, text: impl Into<SharedString>, cx: &mut Context<Self>) {
         let text = text.into();
         self.model.update(cx, |model, cx| model.toast(text, cx));
+    }
+
+    /// Copies the position on the board as FEN, a previewed line's included.
+    fn copy_fen(&mut self, cx: &mut Context<Self>) {
+        let fen = GameTree::fen_of(&self.analysed_pos());
+        cx.write_to_clipboard(ClipboardItem::new_string(fen));
+        self.copy_menu = false;
+        self.toast("FEN copied.", cx);
+    }
+
+    /// Copies the whole game, headers and variations included.
+    fn copy_pgn(&mut self, cx: &mut Context<Self>) {
+        cx.write_to_clipboard(ClipboardItem::new_string(write_pgn(&self.tree)));
+        self.copy_menu = false;
+        self.toast("PGN copied.", cx);
+    }
+
+    /// The copy button and, when open, its menu above it.
+    fn render_copy_menu(&self, width: f32, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let this = cx.entity();
+        let toggle_this = this.clone();
+        let item = |id: &'static str, label: &'static str, hint: &'static str| {
+            h_flex()
+                .id(id)
+                .justify_between()
+                .gap(px(16.))
+                .px(px(12.))
+                .py(px(7.))
+                .text_size(px(14.))
+                .cursor_pointer()
+                .hover(|style| style.bg(rgb(T.hover)))
+                .child(label)
+                .child(
+                    div()
+                        .text_size(px(12.))
+                        .text_color(rgb(T.muted))
+                        .child(hint),
+                )
+        };
+        let fen_this = this.clone();
+        let pgn_this = this;
+        let menu =
+            self.copy_menu.then(|| {
+                deferred(
+                    v_flex()
+                        .id("copy-menu")
+                        .absolute()
+                        .right_0()
+                        .bottom(px(44.))
+                        .w(px(220.))
+                        .py(px(4.))
+                        .bg(rgb(T.surface))
+                        .border_1()
+                        .border_color(rgb(T.border_strong))
+                        .rounded(px(6.))
+                        .shadow_lg()
+                        // Keeps the screen's click-away handler from closing it first.
+                        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                        .child(item("copy-fen", "Copy FEN", "this position").on_click(
+                            move |_, _, cx| fen_this.update(cx, |screen, cx| screen.copy_fen(cx)),
+                        ))
+                        .child(item("copy-pgn", "Copy PGN", "whole game").on_click(
+                            move |_, _, cx| pgn_this.update(cx, |screen, cx| screen.copy_pgn(cx)),
+                        )),
+                )
+                .with_priority(1)
+            });
+        div()
+            .relative()
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .child(
+                icon_btn("copy", "icons/copy.svg")
+                    .w(width)
+                    .selected(self.copy_menu)
+                    .tooltip("Copy FEN or PGN")
+                    .on_click(move |_, cx| {
+                        toggle_this.update(cx, |screen, cx| {
+                            screen.copy_menu = !screen.copy_menu;
+                            cx.notify();
+                        });
+                    }),
+            )
+            .children(menu)
     }
 
     /// Saves the game to "My games".
@@ -975,7 +1061,7 @@ impl AnalyseScreen {
                     this.update(cx, |screen, cx| action(screen, window, cx));
                 })
         };
-        let fen = self.tree.fen(self.current);
+        let copy_menu = self.render_copy_menu(nav_width, cx);
         let flipped = self.board.read(cx).is_flipped();
         let flip_tip = match self.model.read(cx).config.shortcuts.get("flip_board") {
             Some(key) => format!("Flip board ({})", key.to_uppercase()),
@@ -1094,13 +1180,7 @@ impl AnalyseScreen {
                                     });
                                 }
                             }))
-                            .child(btn("copy-fen", "Copy FEN").pad(tool_pad).on_click({
-                                let this = this.clone();
-                                move |_, cx| {
-                                    cx.write_to_clipboard(ClipboardItem::new_string(fen.clone()));
-                                    this.update(cx, |screen, cx| screen.toast("FEN copied.", cx));
-                                }
-                            })),
+                            .child(copy_menu),
                     ),
             )
             .when(self.setting_up, |column| {
@@ -1596,7 +1676,9 @@ impl Render for AnalyseScreen {
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(|screen, _, _, cx| {
-                    if screen.context_menu.take().is_some() {
+                    let menus = screen.context_menu.take().is_some()
+                        || std::mem::take(&mut screen.copy_menu);
+                    if menus {
                         cx.notify();
                     }
                 }),
