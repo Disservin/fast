@@ -362,16 +362,16 @@ impl AnalyseScreen {
             .child(view_tools)
             .when(on, |row| {
                 row.child(
-                    btn("engine-pause", if paused { "Resume" } else { "Pause" })
-                        .w(64.)
+                    icon_btn("engine-pause", if paused { "icons/play.svg" } else { "icons/pause.svg" })
+                        .w(28.)
                         .h(26.)
                         .pad(8.)
                         .text(12.)
                         .selected(paused)
                         .tooltip(if paused {
-                            "Search this position again"
+                            "Resume search (P)"
                         } else {
-                            "Hold the search and keep the current lines"
+                            "Pause search and keep the current lines (P)"
                         })
                         .on_click(move |_, cx| {
                             pause_this.update(cx, |screen, cx| screen.toggle_pause(cx));
