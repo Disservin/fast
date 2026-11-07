@@ -1288,6 +1288,17 @@ impl SettingsScreen {
             .gap(px(16.))
             .child(page_title("General"))
             .child(self.render_appearance())
+            .child(
+                btn("retry-saves", "Retry saving settings and repertoire").on_click({
+                    let model = self.model.clone();
+                    move |_, cx| {
+                        model.update(cx, |model, cx| {
+                            model.save_config(cx);
+                            model.save_repertoire(cx);
+                        })
+                    }
+                }),
+            )
             .child(self.render_board_section(cx))
             .child(self.render_shortcut_summary(cx))
     }

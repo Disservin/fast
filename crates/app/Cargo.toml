@@ -32,8 +32,9 @@ rust-embed = "8"
 resvg = { version = "0.46", default-features = false, features = ["text"] }
 rodio = { version = "0.23", default-features = false, features = ["playback"] }
 
-[dev-dependencies]
 tempfile.workspace = true
+
+[dev-dependencies]
 
 [package.metadata.bundle]
 name = "Fast"

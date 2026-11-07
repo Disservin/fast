@@ -845,7 +845,7 @@ impl AnalyseScreen {
             Some("game.pgn"),
             cx,
             move |path, cx| {
-                let result = std::fs::write(&path, pgn);
+                let result = crate::persistence::atomic_write(&path, pgn.as_bytes());
                 model.update(cx, |model, cx| match result {
                     Ok(()) => model.toast(format!("Saved {}", path.display()), cx),
                     Err(err) => model.toast(format!("Could not save: {err}"), cx),

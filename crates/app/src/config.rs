@@ -368,7 +368,7 @@ impl Config {
             std::fs::create_dir_all(parent).context("creating config directory")?;
         }
         let text = toml::to_string_pretty(self).context("serialising config")?;
-        std::fs::write(path, text).context("writing config")
+        crate::persistence::atomic_write(path, text.as_bytes()).context("writing config")
     }
 }
 

@@ -8,6 +8,7 @@ mod demo;
 mod licenses;
 mod live;
 mod model;
+mod persistence;
 mod screens;
 mod shell;
 mod snapshot;

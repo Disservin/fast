@@ -244,14 +244,14 @@ impl AppModel {
         .detach();
     }
 
-    pub fn save_config(&self, cx: &mut Context<Self>) {
+    pub fn save_config(&mut self, cx: &mut Context<Self>) {
         // Demo mode never overwrites its generated profile on disk.
         if self.demo {
             cx.notify();
             return;
         }
         if let Err(err) = self.config.save(&self.paths.config_file) {
-            log::error!("could not save config: {err:#}");
+            self.toast(format!("Settings remain unsaved: {err:#}. Check storage permissions and retry by changing the setting."), cx);
         }
         cx.notify();
     }
@@ -263,8 +263,8 @@ impl AppModel {
                 if let Some(parent) = path.parent() {
                     let _ = std::fs::create_dir_all(parent);
                 }
-                if let Err(err) = std::fs::write(&path, text) {
-                    log::error!("could not save repertoire: {err}");
+                if let Err(err) = crate::persistence::atomic_write(&path, text.as_bytes()) {
+                    self.toast(format!("Repertoire remains unsaved: {err}. Check storage space and permissions, then retry Save."), cx);
                 }
             }
             Err(err) => log::error!("could not serialise repertoire: {err}"),
