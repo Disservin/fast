@@ -794,11 +794,14 @@ impl PlayScreen {
         let start_this = this.clone();
         let can_start = !self.opponents.is_empty();
         v_flex()
+            .id("play-setup")
             .w(px(300.))
             .h_full()
             .flex_none()
+            .overflow_y_scroll()
             .px(px(18.))
             .pt(px(20.))
+            .pb(px(16.))
             .bg(rgb(T.surface))
             .border_r_1()
             .border_color(rgb(T.border))
@@ -1215,7 +1218,15 @@ impl Render for PlayScreen {
             .items_start()
             .size_full()
             .child(setup)
-            .child(div().px(px(28.)).h_full().flex_none().child(center))
+            .child(
+                div()
+                    .id("play-center")
+                    .px(px(28.))
+                    .h_full()
+                    .flex_none()
+                    .overflow_y_scroll()
+                    .child(center),
+            )
             .child(
                 div()
                     .id("play-side")

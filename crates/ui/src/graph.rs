@@ -174,6 +174,10 @@ pub fn graph(props: GraphProps) -> impl IntoElement {
             canvas(
                 |_, _, _| {},
                 move |bounds, _, window, _| {
+                    // An empty graph shows only its message.
+                    if !has_data {
+                        return;
+                    }
                     let top = f32::from(bounds.origin.y);
                     let h = f32::from(bounds.size.height);
                     let y_of = |value: f32| top + h * (1.0 - scale.fraction(value));
@@ -326,7 +330,7 @@ pub fn graph(props: GraphProps) -> impl IntoElement {
                 .top(px(6.))
                 .bottom(px(6.))
                 .left_0()
-                .children(labels),
+                .when(has_data, |el| el.children(labels)),
         )
         .when(!has_data, |el| {
             el.child(
@@ -336,9 +340,16 @@ pub fn graph(props: GraphProps) -> impl IntoElement {
                     .flex()
                     .items_center()
                     .justify_center()
-                    .text_size(px(12.))
-                    .text_color(rgb(T.muted))
-                    .child(empty),
+                    .px(px(12.))
+                    .child(
+                        div()
+                            .w_full()
+                            .text_center()
+                            .text_size(px(12.))
+                            .line_height(px(16.))
+                            .text_color(rgb(T.muted))
+                            .child(empty),
+                    ),
             )
         })
 }

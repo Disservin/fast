@@ -306,6 +306,7 @@ impl AnalyseScreen {
                 )
         });
         let view_tools = h_flex()
+            .flex_wrap()
             .gap(px(4.))
             .mr(px(6.))
             .children(lines_stepper)
@@ -355,6 +356,8 @@ impl AnalyseScreen {
         let log_this = this.clone();
         let online_this = this;
         h_flex()
+            .flex_wrap()
+            .justify_end()
             .gap(px(6.))
             .child(view_tools)
             .when(on, |row| {

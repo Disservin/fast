@@ -1948,6 +1948,8 @@ impl AnalyseScreen {
         v_flex()
             .child(
                 h_flex()
+                    .flex_wrap()
+                    .gap(px(6.))
                     .mt(px(12.))
                     .mb(px(6.))
                     .justify_between()
@@ -2222,8 +2224,11 @@ impl AnalyseScreen {
             .overflow_hidden()
             .child(
                 h_flex()
-                    .h(px(50.))
+                    .flex_wrap()
+                    .min_h(px(50.))
                     .px(px(16.))
+                    .py(px(8.))
+                    .gap(px(8.))
                     .justify_between()
                     .child(
                         div()
@@ -2610,7 +2615,15 @@ impl Render for AnalyseScreen {
             .items_start()
             .size_full()
             .child(scoresheet)
-            .child(div().px(px(28.)).h_full().flex_none().child(board_column))
+            .child(
+                div()
+                    .id("board-column")
+                    .px(px(28.))
+                    .h_full()
+                    .flex_none()
+                    .overflow_y_scroll()
+                    .child(board_column),
+            )
             .child(
                 div()
                     .id("moves-column")

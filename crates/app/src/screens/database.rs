@@ -886,11 +886,14 @@ impl DatabaseScreen {
         let only_this = this.clone();
         let show_this = this.clone();
         v_flex()
+            .id("database-left")
             .w(px(281.))
             .h_full()
             .flex_none()
+            .overflow_y_scroll()
             .px(px(18.))
             .pt(px(16.))
+            .pb(px(16.))
             .bg(rgb(T.surface))
             .border_r_1()
             .border_color(rgb(T.border))
@@ -969,10 +972,13 @@ impl DatabaseScreen {
         };
         let analyse_this = this.clone();
         h_flex()
+            .flex_wrap()
             .justify_between()
-            .h(px(36.))
+            .gap(px(8.))
+            .min_h(px(36.))
             .child(
                 h_flex()
+                    .min_w_0()
                     .gap(px(12.))
                     .items_baseline()
                     .child(
@@ -1022,6 +1028,7 @@ impl DatabaseScreen {
         let limit_this = this.clone();
         let side_this = this.clone();
         h_flex()
+            .flex_wrap()
             .gap(px(8.))
             .child(section_label("Batch review"))
             .child(

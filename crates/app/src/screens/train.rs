@@ -179,13 +179,6 @@ impl TrainScreen {
                 self.board
                     .update(cx, |board, cx| board.set_interactive(false, cx));
             }
-            self.message = Some(
-                format!(
-                    "Resumed study saved at Unix time {}. Earlier hints and mistakes are retained.",
-                    saved.saved_at
-                )
-                .into(),
-            );
             self.persist_session(cx);
         } else {
             self.attempts.clear();
@@ -593,7 +586,11 @@ impl TrainScreen {
         self.toast(message, cx);
     }
 
-    fn render_tree(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+    fn render_tree(
+        &mut self,
+        session: gpui::Div,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement + use<> {
         let this = cx.entity();
         let today = today();
         let model = self.model.read(cx);
@@ -705,7 +702,8 @@ impl TrainScreen {
                             .child(format!("{known}% known"))
                             .child(format!("{learning}% learning"))
                             .child(format!("{new}% new")),
-                    ),
+                    )
+                    .child(session),
             )
             .child(
                 div()
@@ -1106,25 +1104,46 @@ impl Render for TrainScreen {
         });
         let reset = cx.entity();
         let history = self.model.read(cx).repertoire.history.len();
-        let tree = v_flex()
-            .child(mode)
-            .child(format!("{history} completed reviews"))
-            .child(
-                btn("restart-study", "Discard session and start fresh").on_click(move |_, cx| {
-                    reset.update(cx, |this, cx| {
-                        this.attempts.clear();
-                        this.reload_queue(cx);
-                    })
-                }),
-            )
-            .child(self.render_tree(cx));
+        let session = v_flex().gap(px(6.)).mt(px(14.)).child(mode.full()).child(
+            h_flex()
+                .justify_between()
+                .gap(px(8.))
+                .child(
+                    div()
+                        .text_size(px(12.))
+                        .text_color(rgb(T.muted))
+                        .child(format!("{history} completed reviews")),
+                )
+                .child(
+                    btn("restart-study", "Start fresh")
+                        .h(26.)
+                        .pad(8.)
+                        .text(12.)
+                        .tooltip("Discard this session and start the queue again")
+                        .on_click(move |_, cx| {
+                            reset.update(cx, |this, cx| {
+                                this.attempts.clear();
+                                this.reload_queue(cx);
+                            })
+                        }),
+                ),
+        );
+        let tree = self.render_tree(session, cx);
         let center = self.render_center(board_size, cx);
         let leaks = self.render_leaks(cx);
         h_flex()
             .items_start()
             .size_full()
             .child(tree)
-            .child(div().px(px(28.)).h_full().flex_none().child(center))
+            .child(
+                div()
+                    .id("train-center")
+                    .px(px(28.))
+                    .h_full()
+                    .flex_none()
+                    .overflow_y_scroll()
+                    .child(center),
+            )
             .child(
                 div()
                     .id("leaks-column")

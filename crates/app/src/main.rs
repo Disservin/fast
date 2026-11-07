@@ -36,6 +36,8 @@ pub struct Cli {
     pub screen: Option<String>,
     /// Draw the window controls even under server decorations (to test them on X11).
     pub client_decorations: bool,
+    /// Initial window size, `WIDTHxHEIGHT`, for checking layouts at small sizes.
+    pub size: Option<(u32, u32)>,
 }
 
 impl Cli {
@@ -47,6 +49,12 @@ impl Cli {
                 "--demo" => cli.demo = true,
                 "--screen" => cli.screen = args.next(),
                 "--client-decorations" => cli.client_decorations = true,
+                "--size" => {
+                    cli.size = args.next().and_then(|value| {
+                        let (w, h) = value.split_once('x')?;
+                        Some((w.parse().ok()?, h.parse().ok()?))
+                    })
+                }
                 other => log::warn!("ignoring unknown argument {other}"),
             }
         }
@@ -55,7 +63,8 @@ impl Cli {
 }
 
 fn open_main_window(cli: Cli, cx: &mut App) -> anyhow::Result<()> {
-    let bounds = Bounds::centered(None, size(px(1440.), px(900.)), cx);
+    let (width, height) = cli.size.unwrap_or((1440, 900));
+    let bounds = Bounds::centered(None, size(px(width as f32), px(height as f32)), cx);
     let options = WindowOptions {
         app_id: Some("dev.fast.app".into()),
         window_bounds: Some(WindowBounds::Windowed(bounds)),
@@ -125,7 +134,13 @@ mod tests {
                 demo: true,
                 screen: Some("train".to_owned()),
                 client_decorations: false,
+                size: None,
             }
         );
+        assert_eq!(
+            parse(&["fast", "--size", "1100x720"]).size,
+            Some((1100, 720))
+        );
+        assert_eq!(parse(&["fast", "--size", "wide"]).size, None);
     }
 }
