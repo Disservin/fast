@@ -896,9 +896,12 @@ impl TrainScreen {
 impl Render for TrainScreen {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let viewport = window.viewport_size();
-        let board_size = (viewport.height - px(324.))
-            .min(viewport.width - px(720.))
-            .max(px(320.));
+        let board_size = ui::board::snap_board_size(
+            (viewport.height - px(324.))
+                .min(viewport.width - px(720.))
+                .max(px(320.)),
+            window.scale_factor(),
+        );
         let tree = self.render_tree(cx);
         let center = self.render_center(board_size, cx);
         let leaks = self.render_leaks(cx);

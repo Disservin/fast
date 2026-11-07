@@ -139,6 +139,16 @@ pub fn arrow_hit(point: (f32, f32), from: (f32, f32), to: (f32, f32), cell: f32)
     across <= reach
 }
 
+/// The largest board size up to `available` whose squares are whole device pixels,
+/// with the board's one-device-pixel border on each side. Unsnapped, eight squares
+/// share a fractional width and their edges blur or come out a pixel uneven.
+pub fn snap_board_size(available: Pixels, scale: f32) -> Pixels {
+    let scale = if scale > 0.0 { scale } else { 1.0 };
+    let device = (f32::from(available) * scale).floor();
+    let cell = ((device - 2.0) / 8.0).floor().max(1.0);
+    px((cell * 8.0 + 2.0) / scale)
+}
+
 /// An arrow in grid coordinates: from, to and colour.
 type ArrowCells = ((u32, u32), (u32, u32), u32);
 
@@ -659,7 +669,8 @@ impl Render for BoardView {
             .id(self.id.clone())
             .relative()
             .size_full()
-            .border_1()
+            // One device pixel, so the squares inside start on a pixel boundary.
+            .border(px(1.0 / window.scale_factor()))
             .border_color(rgb(T.border_strong));
         let last = self
             .last_move
@@ -1045,6 +1056,24 @@ mod tests {
         );
         assert!(!arrow_hit((450.0, 300.0), from, to, cell), "past the head");
         assert!(!arrow_hit((0.0, 0.0), from, from, cell), "no length");
+    }
+
+    #[test]
+    fn snapped_boards_have_whole_pixel_squares() {
+        for scale in [1.0f32, 1.25, 1.5, 2.0] {
+            for available in [249.0f32, 320.0, 561.0, 562.0, 577.3, 1003.0] {
+                let size = f32::from(snap_board_size(px(available), scale));
+                assert!(size <= available + 1e-3, "{available} at {scale}");
+                let squares = (size * scale - 2.0) / 8.0;
+                assert!(
+                    (squares - squares.round()).abs() < 1e-3,
+                    "{available} at {scale}"
+                );
+                assert!(available - size < (8.0 + 2.0) / scale + 1e-3);
+            }
+        }
+        assert_eq!(snap_board_size(px(562.), 1.0), px(562.));
+        assert_eq!(snap_board_size(px(249.), 1.0), px(242.));
     }
 
     #[test]

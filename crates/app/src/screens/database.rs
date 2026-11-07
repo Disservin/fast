@@ -1012,7 +1012,7 @@ impl DatabaseScreen {
             )
     }
 
-    fn render_preview(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+    fn render_preview(&mut self, scale: f32, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let this = cx.entity();
         let mut column = v_flex().p(px(16.));
         column = column.child(section_label("Preview").mb(px(9.)));
@@ -1048,7 +1048,7 @@ impl DatabaseScreen {
         column
             .child(
                 div()
-                    .size(px(249.))
+                    .size(ui::board::snap_board_size(px(249.), scale))
                     .flex_none()
                     .child(self.preview_board.clone()),
             )
@@ -1329,7 +1329,7 @@ impl Render for DatabaseScreen {
         let header = self.render_main_header(cx);
         let stats = self.render_stats();
         let table = self.render_table(cx);
-        let preview = self.render_preview(cx);
+        let preview = self.render_preview(window.scale_factor(), cx);
         let import_bar = self.render_import_bar(cx);
         h_flex().items_start().size_full().child(left).child(
             v_flex()

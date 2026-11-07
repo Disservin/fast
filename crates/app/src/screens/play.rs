@@ -1071,9 +1071,12 @@ fn opponent_names(engines: &[EngineConfig]) -> Vec<SharedString> {
 impl Render for PlayScreen {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let viewport = window.viewport_size();
-        let board_size = (viewport.height - px(324.))
-            .min(viewport.width - px(720.))
-            .max(px(320.));
+        let board_size = ui::board::snap_board_size(
+            (viewport.height - px(324.))
+                .min(viewport.width - px(720.))
+                .max(px(320.)),
+            window.scale_factor(),
+        );
         let setup = self.render_setup(cx);
         let center = self.render_center(board_size, cx);
         let side = self.render_side(cx);

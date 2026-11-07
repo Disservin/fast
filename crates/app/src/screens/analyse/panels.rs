@@ -1085,7 +1085,7 @@ impl AnalyseScreen {
                         .snap_to_window_with_margin(px(8.))
                         .child(
                             div()
-                                .size(px(PEEK_SIZE))
+                                .size(ui::board::snap_board_size(px(PEEK_SIZE), self.scale))
                                 .shadow_lg()
                                 .child(self.pv_peek.clone()),
                         ),

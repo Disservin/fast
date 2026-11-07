@@ -237,6 +237,8 @@ pub struct AnalyseScreen {
     pv_peek: Entity<BoardView>,
     pv_peek_at: Option<Point<Pixels>>,
     pv_focus: FocusHandle,
+    /// The window's scale factor at the last render, for snapping fixed-size boards.
+    scale: f32,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -380,6 +382,7 @@ impl AnalyseScreen {
             pv_peek: cx.new(|_| BoardView::new("pv-peek-board").read_only()),
             pv_peek_at: None,
             pv_focus: cx.focus_handle(),
+            scale: window.scale_factor(),
             _subscriptions: subscriptions,
         };
         this.position_changed(false, window, cx);
@@ -2136,9 +2139,13 @@ impl Render for AnalyseScreen {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let viewport = window.viewport_size();
         // The side column keeps room for its table, so the board gives way first.
-        let board_size = (viewport.height - px(338.))
-            .min(viewport.width - px(820.))
-            .max(px(320.));
+        self.scale = window.scale_factor();
+        let board_size = ui::board::snap_board_size(
+            (viewport.height - px(338.))
+                .min(viewport.width - px(820.))
+                .max(px(320.)),
+            self.scale,
+        );
         let side_width = viewport.width - board_size - px(300. + 56. + 24.);
         // Each engine past the first adds an eval column.
         let extra_engines = self.live.read(cx).engines.len().saturating_sub(1) as f32;
