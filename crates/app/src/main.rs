@@ -10,6 +10,7 @@ mod model;
 mod screens;
 mod shell;
 mod snapshot;
+mod sound;
 
 use gpui::{
     App, AppContext as _, Bounds, TitlebarOptions, WindowBounds, WindowDecorations, WindowOptions,

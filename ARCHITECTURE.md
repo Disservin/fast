@@ -49,6 +49,13 @@ double-click to maximize, snapping and Snap Layouts. Everything clickable in the
 only set while idle always holds. Each handle also keeps a bounded `EngineLog` of stdin, stdout
 and stderr, which outlives the process so a crash can still be read.
 
+## Sound
+
+Move sounds are synthesised in `sound.rs` (taps, a check ping, an end chime), so no audio
+files are bundled. Playback goes through rodio without decoders. The output device is opened
+on first use on a thread of its own, because its stream cannot move between threads on every
+platform; without a device the sounds are skipped.
+
 ## UCI protocol
 
 - `uci`, then the saved options once `uciok` arrives.
@@ -101,7 +108,6 @@ needless frames: the board positions pieces proportionally so a resize needs onl
 - **WSLg frame rate:** measured at 25–28 fps at 1440×900, including through an RTX 4090 via Mesa's
   D3D12 driver, so a faster renderer does not lift it there.
 
-- **Move sounds** is stored but no audio is played.
 - **Language** only offers English; Light and Match system themes are disabled, as planned.
 - **Tablebases:** `SyzygyPath` is passed to engines, but there is no built-in WDL/DTZ badge, so
   `shakmaty-syzygy` is not a dependency yet.

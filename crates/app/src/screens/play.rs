@@ -476,6 +476,9 @@ impl PlayScreen {
         game.current = game.tree.add_move(game.current, mv);
         // Repetition and the move-count rules end the game too, as on Lichess.
         let end = game.tree.game_end(game.current);
+        let after = game.tree.node(game.current).pos.clone();
+        let enabled = self.model.read(cx).config.board.move_sounds;
+        crate::sound::play_move(enabled, &mv, &after, end);
         self.sync_board(true, cx);
         if let Some(end) = end {
             self.finish(end.describe().to_owned(), cx);

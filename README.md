@@ -27,7 +27,7 @@ On a shell without a Wayland session variable set correctly (some WSLg terminals
 
 ```sh
 sudo apt install libfontconfig-dev libfreetype-dev libxkbcommon-dev \
-  libxkbcommon-x11-dev libwayland-dev libxcb1-dev
+  libxkbcommon-x11-dev libwayland-dev libxcb1-dev libasound2-dev
 ```
 
 ## Engine controls in Analyse
