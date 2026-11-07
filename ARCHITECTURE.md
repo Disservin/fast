@@ -52,7 +52,9 @@ and stderr, which outlives the process so a crash can still be read.
 ## Sound
 
 Move sounds are synthesised in `sound.rs` (taps, a check ping, an end chime), so no audio
-files are bundled. Playback goes through rodio without decoders. The output device is opened
+files are bundled. Settings offers Wood (the original default), Soft, Click and Bell
+profiles with previews and saved volume. Synthesis and playback run on the sound thread,
+with a bounded request queue that drops excess previews. Playback goes through rodio without decoders. The output device is opened
 on first use on a thread of its own, because its stream cannot move between threads on every
 platform; without a device the sounds are skipped.
 

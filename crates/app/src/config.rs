@@ -111,6 +111,7 @@ pub struct BoardConfig {
     pub click_arrows: bool,
     /// Move sound loudness, 0–100.
     pub sound_volume: u32,
+    pub sound_profile: crate::sound::SoundProfile,
 }
 
 impl Default for BoardConfig {
@@ -128,6 +129,7 @@ impl Default for BoardConfig {
             flipped: false,
             click_arrows: true,
             sound_volume: 80,
+            sound_profile: crate::sound::SoundProfile::default(),
         }
     }
 }
@@ -409,6 +411,7 @@ mod tests {
         };
         config.ui_theme = ui::UiTheme::Sand;
         config.board.theme = SavedTheme::Moss;
+        config.board.sound_profile = crate::sound::SoundProfile::Bell;
         config.board.notation = Notation::Figurine;
         config.analysis_limit = AnalysisLimit::Depth(30);
         config.view.sort = LineSort::Depth;

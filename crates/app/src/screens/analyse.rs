@@ -478,7 +478,13 @@ impl AnalyseScreen {
         // A move made, or one step forward: the same moments the board animates.
         if animate && let Some(mv) = node.mv {
             let volume = self.model.read(cx).config.board.sound_level();
-            crate::sound::play_move(volume, &mv, &pos, self.tree.game_end(self.current));
+            crate::sound::play_move(
+                self.model.read(cx).config.board.sound_profile,
+                volume,
+                &mv,
+                &pos,
+                self.tree.game_end(self.current),
+            );
         }
         self.board
             .update(cx, |board, cx| board.set_position(pos, last, animate, cx));

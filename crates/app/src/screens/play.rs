@@ -525,7 +525,13 @@ impl PlayScreen {
             None
         };
         let volume = self.model.read(cx).config.board.sound_level();
-        crate::sound::play_move(volume, &mv, &after, end);
+        crate::sound::play_move(
+            self.model.read(cx).config.board.sound_profile,
+            volume,
+            &mv,
+            &after,
+            end,
+        );
         self.sync_board(true, cx);
         if let Some(end) = end {
             self.finish(end.describe().to_owned(), cx);

@@ -1,4 +1,4 @@
-//! Move sounds, synthesised so no audio files need bundling: a wooden tap for a move,
+//! Selectable move sounds, synthesised so no audio files need bundling: a wooden tap for a move,
 //! a sharper double knock for a capture, two taps for castling, a small ping for
 //! check and a soft chime when the game ends.
 //!
@@ -26,6 +26,28 @@ pub enum Sound {
     GameEnd,
 }
 
+/// Persisted sound character, shared by all move events and previews.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SoundProfile {
+    #[default]
+    Wood,
+    Soft,
+    Click,
+    Bell,
+}
+impl SoundProfile {
+    pub const ALL: [Self; 4] = [Self::Wood, Self::Soft, Self::Click, Self::Bell];
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Wood => "Wood",
+            Self::Soft => "Soft",
+            Self::Click => "Click",
+            Self::Bell => "Bell",
+        }
+    }
+}
+
 /// The sounds for a move, in order: the move itself, then check or the game's end.
 pub fn sounds_for(mv: &Move, after: &Chess, end: Option<GameEnd>) -> Vec<Sound> {
     let mut sounds = vec![if mv.is_castle() {
@@ -44,21 +66,37 @@ pub fn sounds_for(mv: &Move, after: &Chess, end: Option<GameEnd>) -> Vec<Sound> 
 }
 
 /// Plays a move's sounds at `volume` (0–1; nothing at 0).
-pub fn play_move(volume: f32, mv: &Move, after: &Chess, end: Option<GameEnd>) {
-    play(&sounds_for(mv, after, end), volume);
+pub fn play_move(
+    profile: SoundProfile,
+    volume: f32,
+    mv: &Move,
+    after: &Chess,
+    end: Option<GameEnd>,
+) {
+    play(profile, &sounds_for(mv, after, end), volume);
 }
 
 /// Mixes the sounds into one clip at `volume` (0–1), each starting a little after
 /// the previous one.
-pub fn play(sounds: &[Sound], volume: f32) {
+pub fn play(profile: SoundProfile, sounds: &[Sound], volume: f32) {
     if sounds.is_empty() || volume <= 0.0 {
         return;
+    }
+    if let Some(sender) = player() {
+        // Drop excess previews rather than blocking navigation or building a backlog.
+        let _ = sender.try_send((profile, sounds.to_vec(), volume));
+    }
+}
+
+fn mix(profile: SoundProfile, sounds: &[Sound], volume: f32) -> Vec<f32> {
+    if sounds.is_empty() || volume <= 0.0 {
+        return Vec::new();
     }
     let volume = volume.min(1.0);
     let mut clip: Vec<f32> = Vec::new();
     let mut offset = 0usize;
     for sound in sounds {
-        let samples = synthesise(*sound);
+        let samples = synthesise_profile(profile, *sound);
         let end = offset + samples.len();
         if clip.len() < end {
             clip.resize(end, 0.0);
@@ -75,17 +113,16 @@ pub fn play(sounds: &[Sound], volume: f32) {
     // Perceived loudness is roughly logarithmic: squaring makes the slider feel even.
     let gain = volume * volume;
     clip.iter_mut().for_each(|s| *s *= gain);
-    if let Some(sender) = player() {
-        let _ = sender.send(clip);
-    }
+    clip
 }
 
 /// The playback thread's queue, started the first time a sound plays.
-fn player() -> Option<&'static mpsc::Sender<Vec<f32>>> {
-    static PLAYER: OnceLock<Option<mpsc::Sender<Vec<f32>>>> = OnceLock::new();
+type Playback = (SoundProfile, Vec<Sound>, f32);
+fn player() -> Option<&'static mpsc::SyncSender<Playback>> {
+    static PLAYER: OnceLock<Option<mpsc::SyncSender<Playback>>> = OnceLock::new();
     PLAYER
         .get_or_init(|| {
-            let (sender, receiver) = mpsc::channel::<Vec<f32>>();
+            let (sender, receiver) = mpsc::sync_channel::<Playback>(4);
             let spawned = thread::Builder::new()
                 .name("sound".to_owned())
                 .spawn(move || {
@@ -101,7 +138,8 @@ fn player() -> Option<&'static mpsc::Sender<Vec<f32>>> {
                     else {
                         return;
                     };
-                    while let Ok(clip) = receiver.recv() {
+                    while let Ok((profile, sounds, volume)) = receiver.recv() {
+                        let clip = mix(profile, &sounds, volume);
                         sink.mixer()
                             .add(rodio::buffer::SamplesBuffer::new(channels, rate, clip));
                     }
@@ -175,6 +213,49 @@ fn tone(out: &mut [f32], at: usize, freq: f32, loudness: f32, decay: f32) {
         *sample +=
             loudness * attack * (std::f32::consts::TAU * freq * t).sin() * (-t / decay).exp();
     }
+}
+
+/// Alternate profiles use distinct envelopes and timbres, including event cues.
+pub fn synthesise_profile(profile: SoundProfile, sound: Sound) -> Vec<f32> {
+    if profile == SoundProfile::Wood {
+        return synthesise(sound);
+    }
+    let length = match sound {
+        Sound::Move => 100,
+        Sound::Capture => 150,
+        Sound::Castle => 200,
+        Sound::Check => 200,
+        Sound::GameEnd => 650,
+    };
+    let mut out = vec![0.0; ms(length)];
+    let pitch = match sound {
+        Sound::Move => 660.0,
+        Sound::Capture => 440.0,
+        Sound::Castle => 550.0,
+        Sound::Check => 1100.0,
+        Sound::GameEnd => 880.0,
+    };
+    match profile {
+        SoundProfile::Soft => {
+            tone(&mut out, 0, pitch * 0.45, 0.38, 0.018);
+            tone(&mut out, 0, pitch * 0.9, 0.10, 0.009);
+        }
+        SoundProfile::Click => knock(&mut out, 0, 0.65, pitch * 2.0, 0.005, 0x9E37_79B9),
+        SoundProfile::Bell => {
+            tone(&mut out, 0, pitch, 0.30, 0.045);
+            tone(&mut out, 0, pitch * 2.76, 0.12, 0.025);
+        }
+        SoundProfile::Wood => unreachable!(),
+    }
+    if matches!(sound, Sound::Castle | Sound::GameEnd) {
+        tone(&mut out, ms(80), pitch * 1.5, 0.20, 0.04);
+    }
+    let fade = ms(8).min(out.len());
+    let start = out.len() - fade;
+    for (index, sample) in out[start..].iter_mut().enumerate() {
+        *sample *= 1.0 - index as f32 / fade as f32;
+    }
+    out
 }
 
 /// The samples of one sound, mono at [`RATE`].
@@ -343,6 +424,34 @@ mod tests {
                 wav.extend_from_slice(&sample.to_le_bytes());
             }
             std::fs::write(dir.join(format!("{name}.wav")), wav).unwrap();
+        }
+    }
+
+    #[test]
+    fn profiles_are_distinct_and_mixed_audio_is_bounded() {
+        let profiles = SoundProfile::ALL.map(|profile| synthesise_profile(profile, Sound::Move));
+        for (index, samples) in profiles.iter().enumerate() {
+            assert!(samples.iter().any(|sample| sample.abs() > 0.05));
+            for other in &profiles[index + 1..] {
+                assert_ne!(samples, other);
+            }
+        }
+        for profile in SoundProfile::ALL {
+            for sound in [
+                Sound::Move,
+                Sound::Capture,
+                Sound::Castle,
+                Sound::Check,
+                Sound::GameEnd,
+            ] {
+                let clip = mix(profile, &[sound], 1.0);
+                assert!(
+                    clip.iter()
+                        .all(|sample| sample.is_finite() && sample.abs() <= 0.951)
+                );
+                assert!(clip.last().unwrap().abs() < 0.001);
+            }
+            assert!(mix(profile, &[Sound::Move], 0.0).is_empty());
         }
     }
 

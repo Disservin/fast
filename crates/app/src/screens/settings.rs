@@ -282,7 +282,12 @@ impl SettingsScreen {
                     if this.model.read(cx).config.board.sound_volume != volume {
                         this.update_board(cx, |board| board.sound_volume = volume);
                         // A sample at the new loudness.
-                        crate::sound::play(&[crate::sound::Sound::Move], volume as f32 / 100.0);
+                        let board = &this.model.read(cx).config.board;
+                        crate::sound::play(
+                            board.sound_profile,
+                            &[crate::sound::Sound::Move],
+                            board.sound_level(),
+                        );
                     }
                 }
             }),
@@ -1147,6 +1152,23 @@ impl SettingsScreen {
                 this.clone(),
                 |b, v| b.move_sounds = v,
             ));
+        let sound_this = this.clone();
+        let preview_this = this.clone();
+        let sound_choices = segmented(
+            "sound-profile",
+            crate::sound::SoundProfile::ALL
+                .into_iter()
+                .map(|profile| (profile, profile.name().into(), false))
+                .collect(),
+            config.sound_profile,
+            move |profile, _, cx| {
+                sound_this.update(cx, |screen, cx| {
+                    screen.update_board(cx, |board| board.sound_profile = profile);
+                    let board = &screen.model.read(cx).config.board;
+                    crate::sound::play(profile, &[crate::sound::Sound::Move], board.sound_level());
+                })
+            },
+        );
         section("Board & pieces")
             .child(option_row("Board", None, boards))
             .child(option_row("Pieces", None, pieces))
@@ -1167,6 +1189,26 @@ impl SettingsScreen {
                         });
                     },
                 ),
+            ))
+            .child(option_row(
+                "Move sound",
+                Some("Choose a sound and preview it at your current volume"),
+                h_flex()
+                    .flex_wrap()
+                    .gap(px(10.))
+                    .child(sound_choices)
+                    .child(
+                        btn("preview-move-sound", "Preview")
+                            .disabled(!config.move_sounds || config.sound_volume == 0)
+                            .on_click(move |_, cx| {
+                                let board = &preview_this.read(cx).model.read(cx).config.board;
+                                crate::sound::play(
+                                    board.sound_profile,
+                                    &[crate::sound::Sound::Move],
+                                    board.sound_level(),
+                                );
+                            }),
+                    ),
             ))
             .child(option_row(
                 "Sound volume",
