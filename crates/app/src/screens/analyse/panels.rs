@@ -13,7 +13,7 @@ use gpui::{
 use gpui_component::scroll::ScrollableElement;
 use ui::{
     Arrow, CoordinateStyle, MONO, T,
-    widgets::{btn, check, h_flex, mono, panel, section_label, v_flex},
+    widgets::{btn, check, h_flex, icon_btn, mono, panel, section_label, v_flex},
 };
 
 use super::{AnalyseScreen, MoveRow};
@@ -362,20 +362,27 @@ impl AnalyseScreen {
             .child(view_tools)
             .when(on, |row| {
                 row.child(
-                    icon_btn("engine-pause", if paused { "icons/play.svg" } else { "icons/pause.svg" })
-                        .w(28.)
-                        .h(26.)
-                        .pad(8.)
-                        .text(12.)
-                        .selected(paused)
-                        .tooltip(if paused {
-                            "Resume search (P)"
+                    icon_btn(
+                        "engine-pause",
+                        if paused {
+                            "icons/play.svg"
                         } else {
-                            "Pause search and keep the current lines (P)"
-                        })
-                        .on_click(move |_, cx| {
-                            pause_this.update(cx, |screen, cx| screen.toggle_pause(cx));
-                        }),
+                            "icons/pause.svg"
+                        },
+                    )
+                    .w(28.)
+                    .h(26.)
+                    .pad(8.)
+                    .text(12.)
+                    .selected(paused)
+                    .tooltip(if paused {
+                        "Resume search (P)"
+                    } else {
+                        "Pause search and keep the current lines (P)"
+                    })
+                    .on_click(move |_, cx| {
+                        pause_this.update(cx, |screen, cx| screen.toggle_pause(cx));
+                    }),
                 )
             })
             .child(
