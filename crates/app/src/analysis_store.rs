@@ -56,6 +56,24 @@ impl AnalysisStore {
             .transpose()
     }
 
+    pub fn latest_for_position(
+        &self,
+        engine_id: EngineId,
+        position: &str,
+    ) -> Result<Option<AnalysisRecord>> {
+        let value: Option<String> = self
+            .0
+            .query_row(
+                "SELECT record FROM analyses WHERE engine_id=?1 AND position=?2 ORDER BY saved_at DESC LIMIT 1",
+                params![engine_id as i64, position],
+                |row| row.get(0),
+            )
+            .optional()?;
+        value
+            .map(|value| Ok(serde_json::from_str(&value)?))
+            .transpose()
+    }
+
     pub fn put(&self, key: &str, engine_id: EngineId, record: &AnalysisRecord) -> Result<()> {
         let json = serde_json::to_string(record)?;
         self.0.execute(
@@ -70,15 +88,7 @@ impl AnalysisStore {
 
 pub fn identity(position: &str, engine: &engine::EngineConfig, limit: &str) -> String {
     use sha2::{Digest, Sha256};
-    let engine_fingerprint = serde_json::to_string(&(
-        engine.id,
-        &engine.name,
-        &engine.version,
-        engine.path.to_string_lossy(),
-        &engine.options,
-        &engine.info.name,
-    ))
-    .unwrap_or_default();
+    let engine_fingerprint = engine_signature(engine);
     let bytes = serde_json::to_vec(&(position, &engine_fingerprint, limit)).unwrap_or_default();
     let digest = Sha256::digest(bytes);
     let mut key = String::with_capacity(digest.len() * 2);
@@ -87,6 +97,29 @@ pub fn identity(position: &str, engine: &engine::EngineConfig, limit: &str) -> S
         let _ = write!(key, "{byte:02x}");
     }
     key
+}
+
+pub fn engine_signature(engine: &engine::EngineConfig) -> String {
+    let executable = std::fs::metadata(&engine.path).ok().map(|metadata| {
+        (
+            metadata.len(),
+            metadata
+                .modified()
+                .ok()
+                .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|time| time.as_secs()),
+        )
+    });
+    serde_json::to_string(&(
+        engine.id,
+        &engine.name,
+        &engine.version,
+        engine.path.to_string_lossy(),
+        &engine.options,
+        &engine.info.name,
+        executable,
+    ))
+    .unwrap_or_default()
 }
 
 pub fn position_key(root_fen: &str, moves: &[String]) -> String {
@@ -99,4 +132,11 @@ pub fn current_limit(limit: crate::config::AnalysisLimit) -> String {
         crate::config::AnalysisLimit::Depth(depth) => format!("depth:{depth}"),
         crate::config::AnalysisLimit::Seconds(seconds) => format!("seconds:{seconds}"),
     }
+}
+
+pub fn timestamp() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs() as i64)
+        .unwrap_or_default()
 }

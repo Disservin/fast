@@ -545,6 +545,9 @@ impl AnalyseScreen {
         let cached = running
             .and_then(|engine| engine.lines.get(&1))
             .is_some_and(|line| line.cached);
+        let stale = running
+            .and_then(|engine| engine.lines.get(&1))
+            .is_some_and(|line| line.stale);
         let cell = |text: String, width: f32, title: &'static str| {
             v_flex()
                 .w(px(width))
@@ -563,7 +566,9 @@ impl AnalyseScreen {
                 Some(sel) => format!("{}/{sel}", stats.depth),
                 None => stats.depth.to_string(),
             };
-            if cached {
+            if stale {
+                format!("stale {depth}")
+            } else if cached {
                 format!("cached {depth}")
             } else {
                 depth

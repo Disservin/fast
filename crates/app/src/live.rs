@@ -54,14 +54,18 @@ impl LineCache {
         {
             return;
         }
-        let stored = lines
+        let stored: BTreeMap<_, _> = lines
             .iter()
+            .filter(|(_, line)| !line.stale)
             .map(|(multipv, line)| {
                 let mut line = line.clone();
                 line.cached = true;
                 (*multipv, line)
             })
             .collect();
+        if stored.is_empty() {
+            return;
+        }
         self.entries.insert(key, stored);
     }
 
@@ -117,6 +121,9 @@ pub struct LiveLine {
     /// Remembered from an earlier visit to this position; replaced once the running
     /// search reaches the same depth.
     pub cached: bool,
+    /// Cached from a different engine signature or search limit.
+    #[serde(default)]
+    pub stale: bool,
 }
 
 pub struct LiveEngine {
@@ -345,11 +352,9 @@ impl LiveAnalysis {
                 } if from == search_id => {
                     let Some(pos) = &pos else { continue };
                     // Remembered lines stay until the new search is as deep.
-                    if live
-                        .lines
-                        .get(&update.multipv)
-                        .is_some_and(|line| line.cached && line.update.depth > update.depth)
-                    {
+                    if live.lines.get(&update.multipv).is_some_and(|line| {
+                        line.cached && !line.stale && line.update.depth > update.depth
+                    }) {
                         continue;
                     }
                     analysed = true;
@@ -390,6 +395,7 @@ impl LiveAnalysis {
                             wdl,
                             sans,
                             cached: false,
+                            stale: false,
                         },
                     );
                 }
@@ -414,16 +420,10 @@ impl LiveAnalysis {
             let key = crate::analysis_store::identity(&position, &live.config, &limit);
             let record = crate::analysis_store::AnalysisRecord {
                 position,
-                engine: serde_json::to_string(&(
-                    live.config.name.as_str(),
-                    live.config.version.as_str(),
-                    live.config.path.to_string_lossy(),
-                    &live.config.options,
-                ))
-                .unwrap_or_default(),
+                engine: crate::analysis_store::engine_signature(&live.config),
                 limit,
                 lines: live.lines.clone(),
-                saved_at: crate::model::today(),
+                saved_at: crate::analysis_store::timestamp(),
             };
             if let Some(store) = self.model.read(cx).analyses.as_ref()
                 && let Err(err) = store.put(&key, id, &record)
@@ -596,10 +596,19 @@ impl LiveAnalysis {
                             &search_limit,
                         );
                         self.model.read(cx).analyses.as_ref().and_then(|store| {
-                            match store.get(&key) {
+                            let loaded = store.get(&key).and_then(|record| match record {
+                                Some(record) => Ok(Some(record)),
+                                None => store.latest_for_position(engine.config.id, &position_key),
+                            });
+                            match loaded {
                                 Ok(Some(mut record)) => {
+                                    let current_engine =
+                                        crate::analysis_store::engine_signature(&engine.config);
+                                    let stale = record.limit != search_limit
+                                        || record.engine != current_engine;
                                     for line in record.lines.values_mut() {
                                         line.cached = true;
+                                        line.stale = stale;
                                     }
                                     Some(record.lines)
                                 }
@@ -697,6 +706,7 @@ impl LiveAnalysis {
                                 wdl,
                                 sans,
                                 cached: false,
+                                stale: false,
                             },
                         );
                     }
