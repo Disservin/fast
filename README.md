@@ -80,6 +80,13 @@ when the engine is added. The engine's `UCI_EngineAbout` text is shown as its de
 File, Edit, View, Go and Engine menus are native on macOS and drawn in the top bar elsewhere.
 **File** opens and saves PGN files (FEN too), and **Edit** copies or pastes FEN and PGN.
 
+## Play
+
+Against an engine you can **premove**, as on Lichess: while the engine thinks, drag or click a
+piece to queue a move (its squares turn blue). It is played the moment the engine replies, if
+it is still legal, and dropped otherwise; a right click or a click on an empty square cancels
+it, and promotions become queens. Turn it off with **Allow premoves** before starting a game.
+
 ## Keyboard shortcuts
 
 Every shortcut can be changed, cleared or reset under **Settings › Keyboard shortcuts**. A key

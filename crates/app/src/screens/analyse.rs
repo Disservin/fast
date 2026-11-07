@@ -274,6 +274,7 @@ impl AnalyseScreen {
         let subscriptions = vec![
             cx.subscribe_in(&board, window, |this, _, event, window, cx| match event {
                 BoardEvent::Moved(mv) => this.play_move(*mv, window, cx),
+                BoardEvent::Premove(_) => {}
                 BoardEvent::Square { square, erase } => {
                     let (square, erase) = (*square, *erase);
                     this.edit_position(cx, |editor| editor.paint(square, erase));

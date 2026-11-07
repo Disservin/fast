@@ -228,6 +228,8 @@ fn dest_green() -> gpui::Rgba {
 
 pub enum BoardEvent {
     Moved(Move),
+    /// A move queued for when it is the player's turn again (`None`: cancelled).
+    Premove(Option<(Square, Square)>),
     /// A square was clicked while editing: `erase` for the right button.
     Square {
         square: Square,
@@ -277,6 +279,10 @@ pub struct BoardView {
     animate: Option<(Square, Square)>,
     /// A board being edited, shown instead of the position. It need not be legal.
     edit: Option<Board>,
+    /// The player may queue a move while the opponent is to move.
+    premoves: bool,
+    /// The queued move, highlighted until the owner plays or drops it.
+    premove: Option<(Square, Square)>,
 }
 
 impl EventEmitter<BoardEvent> for BoardView {}
@@ -302,7 +308,49 @@ impl BoardView {
             animate_serial: 0,
             animate: None,
             edit: None,
+            premoves: false,
+            premove: None,
         }
+    }
+
+    /// Allows queueing a move during the opponent's turn (with a player set).
+    pub fn set_premoves(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        self.premoves = enabled;
+        if !enabled {
+            self.premove = None;
+        }
+        cx.notify();
+    }
+
+    /// Replaces the highlighted premove, e.g. clearing it once played.
+    pub fn set_premove(&mut self, premove: Option<(Square, Square)>, cx: &mut Context<Self>) {
+        if self.premove != premove {
+            self.premove = premove;
+            cx.notify();
+        }
+    }
+
+    /// The opponent is to move and the player may queue a move meanwhile.
+    fn premove_mode(&self) -> bool {
+        self.premoves
+            && self.interactive
+            && self.edit.is_none()
+            && self.player.is_some_and(|player| player != self.pos.turn())
+    }
+
+    /// A piece that can be picked up: to move now, or to premove.
+    fn can_pick(&self, square: Square) -> bool {
+        self.can_move_piece(square)
+            || (self.premove_mode()
+                && self.pos.board().color_at(square).is_some()
+                && self.pos.board().color_at(square) == self.player)
+    }
+
+    fn queue_premove(&mut self, premove: Option<(Square, Square)>, cx: &mut Context<Self>) {
+        self.premove = premove;
+        self.selected = None;
+        cx.emit(BoardEvent::Premove(premove));
+        cx.notify();
     }
 
     pub fn read_only(mut self) -> Self {
@@ -474,6 +522,38 @@ impl BoardView {
             return;
         }
         match event.button {
+            MouseButton::Left if self.premove_mode() => {
+                self.user_arrows.clear();
+                self.circles.clear();
+                if let Some(from) = self.selected
+                    && from != square
+                    && premove_targets(&self.pos, from).contains(&square)
+                {
+                    self.queue_premove(Some((from, square)), cx);
+                    return;
+                }
+                if self.can_pick(square) {
+                    if let Some(piece) = self.pos.board().piece_at(square) {
+                        self.drag = Some(Drag {
+                            from: square,
+                            piece,
+                            position: event.position,
+                            moved: false,
+                        });
+                    }
+                    self.selected = Some(square);
+                } else {
+                    self.selected = None;
+                    if self.premove.is_some() {
+                        self.queue_premove(None, cx);
+                    }
+                }
+                cx.notify();
+            }
+            // A right click drops a queued premove, as on Lichess.
+            MouseButton::Right if self.premove.is_some() => {
+                self.queue_premove(None, cx);
+            }
             MouseButton::Left => {
                 self.user_arrows.clear();
                 self.circles.clear();
@@ -553,7 +633,13 @@ impl BoardView {
                     && let Some(target) = self.square_at(event.position)
                     && target != drag.from
                 {
-                    self.attempt_move(drag.from, target, cx);
+                    if self.premove_mode() {
+                        if premove_targets(&self.pos, drag.from).contains(&target) {
+                            self.queue_premove(Some((drag.from, target)), cx);
+                        }
+                    } else {
+                        self.attempt_move(drag.from, target, cx);
+                    }
                 }
                 cx.notify();
             }
@@ -636,6 +722,84 @@ impl BoardView {
                 .into_any_element(),
         }
     }
+}
+
+/// Lichess' premove highlight, rgba(20, 30, 85, 0.5).
+fn premove_tint() -> gpui::Rgba {
+    gpui::Rgba {
+        r: 20. / 255.,
+        g: 30. / 255.,
+        b: 85. / 255.,
+        a: 0.5,
+    }
+}
+
+/// Where a piece could be premoved: anywhere it could reach on an empty board, as on
+/// Lichess, since the position will have changed by the time the move is played.
+/// Squares of the player's own pieces count, as those may be captured first.
+pub fn premove_targets(pos: &Chess, from: Square) -> Vec<Square> {
+    use chess_core::shakmaty::{Bitboard, CastlingSide, attacks};
+    let Some(piece) = pos.board().piece_at(from) else {
+        return Vec::new();
+    };
+    let empty = Bitboard::EMPTY;
+    let mut targets = match piece.role {
+        Role::Pawn => {
+            let mut squares = attacks::pawn_attacks(piece.color, from);
+            let forward = if piece.color.is_white() { 1 } else { -1 };
+            let start = if piece.color.is_white() {
+                Rank::Second
+            } else {
+                Rank::Seventh
+            };
+            if let Some(one) = from.offset(8 * forward) {
+                squares.add(one);
+                if from.rank() == start
+                    && let Some(two) = from.offset(16 * forward)
+                {
+                    squares.add(two);
+                }
+            }
+            squares
+        }
+        Role::Knight => attacks::knight_attacks(from),
+        Role::Bishop => attacks::bishop_attacks(from, empty),
+        Role::Rook => attacks::rook_attacks(from, empty),
+        Role::Queen => attacks::queen_attacks(from, empty),
+        Role::King => {
+            let mut squares = attacks::king_attacks(from);
+            let castles = pos.castles();
+            for (side, file) in [
+                (CastlingSide::KingSide, File::G),
+                (CastlingSide::QueenSide, File::C),
+            ] {
+                if castles.has(piece.color, side)
+                    && let Some(rook) = castles.rook(piece.color, side)
+                {
+                    squares.add(Square::from_coords(file, from.rank()));
+                    squares.add(rook);
+                }
+            }
+            squares
+        }
+    };
+    targets.discard(from);
+    targets.into_iter().collect()
+}
+
+/// The legal move a queued premove stands for in `pos`, if any. Castling may be
+/// queued on the king's square or the rook's; a promotion becomes a queen.
+pub fn premove_move(pos: &Chess, from: Square, to: Square) -> Option<Move> {
+    let candidates: Vec<Move> = pos
+        .legal_moves()
+        .into_iter()
+        .filter(|mv| mv.from() == Some(from) && makes_move(mv, to))
+        .collect();
+    candidates
+        .iter()
+        .find(|mv| mv.promotion() == Some(Role::Queen))
+        .or_else(|| candidates.first())
+        .copied()
 }
 
 /// Whether dropping a piece on `to` makes this move. Castling is entered either by
@@ -721,7 +885,13 @@ impl Render for BoardView {
         let editing = self.edit.is_some();
         let targets: Vec<Square> = if self.prefs.show_legal && self.interactive && !editing {
             self.selected
-                .map(|from| self.legal_targets(from))
+                .map(|from| {
+                    if self.premove_mode() {
+                        premove_targets(&self.pos, from)
+                    } else {
+                        self.legal_targets(from)
+                    }
+                })
                 .unwrap_or_default()
         } else {
             Vec::new()
@@ -757,6 +927,12 @@ impl Render for BoardView {
                 let mut sq = div().relative().flex_1().bg(rgb(color));
                 if self.selected == Some(square) && self.interactive && !editing {
                     sq = sq.child(div().absolute().inset_0().bg(dest_green()));
+                }
+                if self
+                    .premove
+                    .is_some_and(|(from, to)| from == square || to == square)
+                {
+                    sq = sq.child(div().absolute().inset_0().bg(premove_tint()));
                 }
                 if on_squares && x == 0 {
                     sq = sq.child(
@@ -1136,6 +1312,44 @@ mod tests {
         }
         assert_eq!(snap_board_size(px(562.), 1.0), px(562.));
         assert_eq!(snap_board_size(px(249.), 1.0), px(242.));
+    }
+
+    fn fen(text: &str) -> Chess {
+        text.parse::<chess_core::shakmaty::fen::Fen>()
+            .unwrap()
+            .into_position(chess_core::shakmaty::CastlingMode::Standard)
+            .unwrap()
+    }
+
+    #[test]
+    fn premoves_reach_like_on_an_empty_board() {
+        // Black to move; White queues moves meanwhile.
+        let pos = fen("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1");
+        let bishop = premove_targets(&pos, Square::F1);
+        // Its own pawn on e2 does not block the premove: it may have moved by then.
+        assert!(bishop.contains(&Square::E2) && bishop.contains(&Square::A6));
+        let pawn = premove_targets(&pos, Square::D2);
+        assert!(pawn.contains(&Square::D3) && pawn.contains(&Square::D4));
+        assert!(pawn.contains(&Square::C3) && pawn.contains(&Square::E3));
+        assert!(!pawn.contains(&Square::D5));
+        let king = premove_targets(&pos, Square::E1);
+        assert!(king.contains(&Square::G1) && king.contains(&Square::H1));
+        assert!(king.contains(&Square::C1) && king.contains(&Square::A1));
+        assert!(!king.contains(&Square::E1));
+        assert!(premove_targets(&pos, Square::E5).is_empty());
+    }
+
+    #[test]
+    fn a_queued_premove_plays_only_if_legal_then() {
+        let pos = fen("rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2");
+        assert!(premove_move(&pos, Square::G1, Square::F3).is_some());
+        // Blocked by its own pawn now: dropped.
+        assert!(premove_move(&pos, Square::E4, Square::E5).is_none());
+        let promote = fen("8/4P3/8/8/8/8/k7/4K3 w - - 0 1");
+        assert_eq!(
+            premove_move(&promote, Square::E7, Square::E8).and_then(|mv| mv.promotion()),
+            Some(Role::Queen)
+        );
     }
 
     #[test]

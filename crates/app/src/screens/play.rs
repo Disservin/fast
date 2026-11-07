@@ -63,6 +63,10 @@ struct Game {
     opponent_rating: Option<u32>,
     label: String,
     takebacks: bool,
+    /// The player may queue a move during the engine's turn.
+    premoves: bool,
+    /// The queued move, played as soon as it is the player's turn if still legal.
+    premove: Option<(chess_core::Square, chess_core::Square)>,
     last_tick: Instant,
     search_id: u64,
     engine: Option<EngineHandle>,
@@ -84,6 +88,7 @@ pub struct PlayScreen {
     start_from: TextSelect,
     hide_eval: bool,
     allow_takebacks: bool,
+    allow_premoves: bool,
     game: Option<Game>,
     /// Replies scheduled from the demo opponent.
     demo_task: Option<Task<()>>,
@@ -126,6 +131,14 @@ impl PlayScreen {
         let subscriptions = vec![
             cx.subscribe_in(&board, window, |this, _, event, _, cx| match event {
                 BoardEvent::Moved(mv) => this.user_move(*mv, cx),
+                BoardEvent::Premove(premove) => {
+                    if let Some(game) = &mut this.game
+                        && game.premoves
+                        && game.result.is_none()
+                    {
+                        game.premove = *premove;
+                    }
+                }
                 BoardEvent::Square { .. } => {}
             }),
             cx.subscribe(&strength, |this, _, event: &SliderEvent, cx| {
@@ -169,6 +182,7 @@ impl PlayScreen {
             start_from,
             hide_eval: true,
             allow_takebacks: false,
+            allow_premoves: true,
             game: None,
             demo_task: None,
             _subscriptions: subscriptions,
@@ -217,6 +231,8 @@ impl PlayScreen {
             opponent_rating: Some(self.strength_value),
             label: "10+5".to_owned(),
             takebacks: false,
+            premoves: true,
+            premove: None,
             last_tick: Instant::now(),
             search_id: 0,
             engine: None,
@@ -320,6 +336,8 @@ impl PlayScreen {
             opponent_rating: limited.then_some(self.strength_value),
             label: format!("{minutes}+{increment}"),
             takebacks: self.allow_takebacks,
+            premoves: self.allow_premoves,
+            premove: None,
             last_tick: Instant::now(),
             search_id: 0,
             engine: None,
@@ -456,10 +474,14 @@ impl PlayScreen {
         let last = node.mv.as_ref().and_then(|mv| Some((mv.from()?, mv.to())));
         let user = game.user;
         let active = game.result.is_none();
+        let premoves = game.premoves && active;
+        let premove = game.premove.filter(|_| premoves);
         self.board.update(cx, |board, cx| {
             board.set_position(pos, last, animate, cx);
             board.set_player(Some(user), cx);
             board.set_interactive(active, cx);
+            board.set_premoves(premoves, cx);
+            board.set_premove(premove, cx);
         });
     }
 
@@ -477,11 +499,24 @@ impl PlayScreen {
         // Repetition and the move-count rules end the game too, as on Lichess.
         let end = game.tree.game_end(game.current);
         let after = game.tree.node(game.current).pos.clone();
+        // The engine just moved: a queued premove is played now if still legal, and
+        // dropped otherwise.
+        let premove = if after.turn() == game.user {
+            game.premove.take()
+        } else {
+            None
+        };
         let volume = self.model.read(cx).config.board.sound_level();
         crate::sound::play_move(volume, &mv, &after, end);
         self.sync_board(true, cx);
         if let Some(end) = end {
             self.finish(end.describe().to_owned(), cx);
+            return;
+        }
+        if let Some((from, to)) = premove
+            && let Some(mv) = ui::board::premove_move(&after, from, to)
+        {
+            self.user_move(mv, cx);
         }
     }
 
@@ -594,6 +629,8 @@ impl PlayScreen {
             self.toast("Takebacks are off for this game.", cx);
             return;
         }
+        // A premove was meant for the position being taken back.
+        game.premove = None;
         // Back to the user's previous turn: undo the reply and the user's move.
         let mut node = game.current;
         for _ in 0..2 {
@@ -767,6 +804,17 @@ impl PlayScreen {
                     }),
                 ),
             )
+            .child(div().mb(px(12.)).child({
+                let premove_this = cx.entity();
+                check("premoves", self.allow_premoves, "Allow premoves").on_change(
+                    move |value, _, cx| {
+                        premove_this.update(cx, |screen, cx| {
+                            screen.allow_premoves = value;
+                            cx.notify();
+                        });
+                    },
+                )
+            }))
             .child(div().mb(px(20.)).child(
                 check("takebacks", self.allow_takebacks, "Allow takebacks").on_change(
                     move |value, _, cx| {
