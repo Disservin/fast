@@ -345,6 +345,17 @@ impl Default for Config {
 }
 
 impl Config {
+    /// Apply the interface palette together with its matching board default.
+    pub fn set_ui_theme(&mut self, theme: ui::UiTheme) {
+        self.ui_theme = theme;
+        self.board.theme = match theme {
+            ui::UiTheme::Slate => SavedTheme::Blue,
+            ui::UiTheme::Paper | ui::UiTheme::Plum => SavedTheme::Graphite,
+            ui::UiTheme::Sand => SavedTheme::Walnut,
+            ui::UiTheme::Forest => SavedTheme::Moss,
+        };
+    }
+
     /// Loads the config, keeping defaults if the file is missing or damaged.
     pub fn load(path: &Path) -> Self {
         let text = [path.to_path_buf(), path.with_extension("previous")]

@@ -69,7 +69,7 @@ const SLATE: Theme = Theme {
     q_blunder: 0xE5534B,
 };
 
-/// Persisted application appearance, independent of the chessboard palette.
+/// Persisted application appearance. Selecting it also sets a matching board default.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[repr(usize)]

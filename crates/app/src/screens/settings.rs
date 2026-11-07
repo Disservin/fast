@@ -983,8 +983,9 @@ impl SettingsScreen {
                     .on_click(cx.listener(move |screen, _, _, cx| {
                         ui::set_theme(choice, cx);
                         screen.model.update(cx, |model, cx| {
-                            model.config.ui_theme = choice;
+                            model.config.set_ui_theme(choice);
                             model.save_config(cx);
+                            cx.emit(ModelEvent::BoardPrefs);
                         });
                         cx.notify();
                     })),
