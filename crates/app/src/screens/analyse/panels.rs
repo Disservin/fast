@@ -263,6 +263,7 @@ impl AnalyseScreen {
                         .w(24.)
                         .pad(0.)
                         .disabled(value <= 1)
+                        .tooltip("Search one fewer engine line")
                         .on_click(move |_, cx| {
                             down_this.update(cx, |screen, cx| screen.step_lines(false, cx));
                         }),
@@ -309,7 +310,6 @@ impl AnalyseScreen {
             .flex_wrap()
             .gap(px(4.))
             .mr(px(6.))
-            .children(lines_stepper)
             .child(
                 small(
                     "sort-lines",
@@ -355,11 +355,13 @@ impl AnalyseScreen {
         let engine_this = this.clone();
         let log_this = this.clone();
         let online_this = this;
-        h_flex()
-            .flex_wrap()
-            .justify_end()
-            .gap(px(6.))
+        v_flex()
+            .gap(px(8.))
+            .children(lines_stepper)
             .child(view_tools)
+            .child(h_flex()
+            .flex_wrap()
+            .gap(px(6.))
             .when(on, |row| {
                 row.child(
                     icon_btn(
@@ -391,6 +393,7 @@ impl AnalyseScreen {
                     .pad(8.)
                     .text(12.)
                     .selected(self.engine_panel_open)
+                    .tooltip("Choose an engine and adjust its search settings")
                     .on_click(move |_, cx| {
                         engine_this.update(cx, |screen, cx| {
                             screen.engine_panel_open = !screen.engine_panel_open;
@@ -404,6 +407,7 @@ impl AnalyseScreen {
                     .pad(8.)
                     .text(12.)
                     .selected(self.log_panel_open)
+                    .tooltip("Show or hide engine output")
                     .on_click(move |_, cx| {
                         log_this.update(cx, |screen, cx| {
                             screen.log_panel_open = !screen.log_panel_open;
@@ -424,7 +428,7 @@ impl AnalyseScreen {
                     .on_click(move |_, cx| {
                         online_this.update(cx, |screen, cx| screen.toggle_online(cx));
                     }),
-            )
+            ))
     }
 
     /// Lines shown by the analysis engines: the first one's MultiPV.
