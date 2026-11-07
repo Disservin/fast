@@ -24,6 +24,7 @@ fn next(events: &Receiver<EngineEvent>) -> EngineEvent {
 
 fn request(search_id: u64, limits: Option<Limits>) -> SearchRequest {
     SearchRequest {
+        search_moves: Vec::new(),
         fen: START.to_owned(),
         moves: Vec::new(),
         limits,
@@ -57,6 +58,34 @@ fn wait_for_sent(engine: &EngineHandle, text: &str) -> Vec<String> {
         );
         std::thread::sleep(Duration::from_millis(20));
     }
+}
+
+#[test]
+fn root_move_restrictions_reach_the_engine_for_finite_and_infinite_searches() {
+    let engine = EngineHandle::spawn(fixture(), Vec::new(), Vec::new());
+    let mut restricted = request(
+        1,
+        Some(Limits {
+            depth: Some(8),
+            ..Default::default()
+        }),
+    );
+    restricted.search_moves = vec!["d2d4".into(), "e2e4".into()];
+    engine.search(restricted);
+    wait_for_sent(&engine, "go depth 8 searchmoves d2d4 e2e4");
+    let mut infinite = request(2, None);
+    infinite.search_moves = vec!["d2d4".into()];
+    engine.search(infinite);
+    wait_for_sent(&engine, "go infinite searchmoves d2d4");
+    engine.search(request(
+        3,
+        Some(Limits {
+            depth: Some(4),
+            ..Default::default()
+        }),
+    ));
+    wait_for_sent(&engine, "go depth 4");
+    engine.quit();
 }
 
 #[test]

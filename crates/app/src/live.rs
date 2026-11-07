@@ -187,6 +187,8 @@ pub struct LiveAnalysis {
     pub game: u64,
     fen: String,
     moves: Vec<String>,
+    /// Root-move restrictions for this position only; never used as a full eval.
+    pub search_moves: Vec<String>,
     _model_sub: gpui::Subscription,
 }
 
@@ -216,6 +218,7 @@ impl LiveAnalysis {
             game: 0,
             fen: String::new(),
             moves: Vec::new(),
+            search_moves: Vec::new(),
             _model_sub: sub,
         };
         this.restart(cx);
@@ -269,11 +272,14 @@ impl LiveAnalysis {
             let mut live = LiveEngine {
                 config: config.clone(),
                 handle: None,
-                lines: self
-                    .cache
-                    .get(config.id, self.hash)
-                    .cloned()
-                    .unwrap_or_default(),
+                lines: if !self.search_moves.is_empty() {
+                    BTreeMap::new()
+                } else {
+                    self.cache
+                        .get(config.id, self.hash)
+                        .cloned()
+                        .unwrap_or_default()
+                },
                 running: false,
                 log: EngineLog::default(),
                 _reader: None,
@@ -445,7 +451,7 @@ impl LiveAnalysis {
                 EngineEvent::Crashed(reason) => crash = Some(reason),
             }
         }
-        if analysed {
+        if analysed && self.search_moves.is_empty() {
             self.cache.store(id, hash, &live.lines);
             let position = crate::analysis_store::position_key(&self.fen, &self.moves);
             let limit = crate::analysis_store::current_limit(
@@ -478,7 +484,9 @@ impl LiveAnalysis {
                 model.toast(format!("{name} stopped: {reason}"), cx);
             });
         }
-        if let (Some(node), Some((cp, depth))) = (node, newest_eval) {
+        if self.search_moves.is_empty()
+            && let (Some(node), Some((cp, depth))) = (node, newest_eval)
+        {
             cx.emit(LiveEvent::Eval(node, cp, depth));
         }
         cx.emit(LiveEvent::Updated);
@@ -626,6 +634,7 @@ impl LiveAnalysis {
         cx: &mut Context<Self>,
     ) {
         let root_fen = tree.fen(GameTree::ROOT);
+        self.search_moves.clear();
         let moves: Vec<String> = tree
             .path_to(node)
             .iter()
@@ -732,6 +741,36 @@ impl LiveAnalysis {
     }
 
     /// Starts `go infinite` on every engine for the current position.
+    pub fn toggle_search_move(&mut self, mv: Move, cx: &mut Context<Self>) {
+        if !self.pos.as_ref().is_some_and(|pos| pos.is_legal(mv)) {
+            return;
+        }
+        let uci = UciMove::from_standard(mv).to_string();
+        if let Some(index) = self.search_moves.iter().position(|known| known == &uci) {
+            self.search_moves.remove(index);
+        } else {
+            self.search_moves.push(uci);
+        }
+        self.refresh_restricted_search(cx);
+    }
+
+    pub fn clear_search_moves(&mut self, cx: &mut Context<Self>) {
+        self.search_moves.clear();
+        self.refresh_restricted_search(cx);
+    }
+
+    fn refresh_restricted_search(&mut self, cx: &mut Context<Self>) {
+        self.search_id += 1;
+        // Restricted scores must not overwrite unrestricted cache entries or be
+        // reused to skip the new search at a fixed depth.
+        for engine in &mut self.engines {
+            engine.lines.clear();
+        }
+        self.search(cx);
+        cx.emit(LiveEvent::Updated);
+        cx.notify();
+    }
+
     pub fn search(&mut self, cx: &mut App) {
         if !self.on || self.paused || !self.active {
             return;
@@ -788,6 +827,14 @@ impl LiveAnalysis {
                         .push(LogKind::Sent, format!("position fen {}", self.fen));
                     engine.log.push(LogKind::Sent, "go infinite");
                     for update in lines.into_iter().take(shown) {
+                        if !self.search_moves.is_empty()
+                            && !update
+                                .pv
+                                .first()
+                                .is_some_and(|mv| self.search_moves.contains(mv))
+                        {
+                            continue;
+                        }
                         engine
                             .log
                             .push(LogKind::Received, crate::demo::info_line(&update));
@@ -862,6 +909,7 @@ impl LiveAnalysis {
                 cx.notify();
             });
             handle.search(SearchRequest {
+                search_moves: self.search_moves.clone(),
                 fen: self.fen.clone(),
                 moves: self.moves.clone(),
                 limits,

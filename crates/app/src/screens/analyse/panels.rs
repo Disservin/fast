@@ -701,6 +701,70 @@ impl AnalyseScreen {
             let is_chosen = chosen.as_ref().is_some_and(|chosen| chosen.id == config.id);
             body = body.child(self.engine_row(config, is_chosen, cx));
         }
+        let pos = self.analysed_pos();
+        let restricted = self.live.read(cx).search_moves.clone();
+        let reset = this.clone();
+        body = body.child(
+            v_flex()
+                .p(px(16.))
+                .gap(px(8.))
+                .child(
+                    h_flex()
+                        .justify_between()
+                        .child(section_label(if restricted.is_empty() {
+                            "Search moves · all"
+                        } else {
+                            "Search moves · selected only"
+                        }))
+                        .child(
+                            btn("search-all-moves", "All moves")
+                                .h(26.)
+                                .disabled(restricted.is_empty())
+                                .on_click(move |_, cx| {
+                                    reset.update(cx, |screen, cx| {
+                                        screen
+                                            .live
+                                            .update(cx, |live, cx| live.clear_search_moves(cx));
+                                    })
+                                }),
+                        ),
+                )
+                .child(
+                    div()
+                        .id("search-move-choices")
+                        .max_h(px(110.))
+                        .overflow_y_scroll()
+                        .child(
+                            h_flex().flex_wrap().gap(px(4.)).children(
+                                pos.legal_moves()
+                                    .into_iter()
+                                    .enumerate()
+                                    .map(|(index, mv)| {
+                                        let san =
+                                            chess_core::shakmaty::san::San::from_move(&pos, mv)
+                                                .to_string();
+                                        let uci =
+                                            chess_core::shakmaty::uci::UciMove::from_standard(mv)
+                                                .to_string();
+                                        let this = this.clone();
+                                        btn(("search-move", index), san)
+                                            .h(26.)
+                                            .pad(7.)
+                                            .mono()
+                                            .selected(restricted.contains(&uci))
+                                            .tooltip("Toggle this move in the engine's root search")
+                                            .on_click(move |_, cx| {
+                                                this.update(cx, |screen, cx| {
+                                                    screen.live.update(cx, |live, cx| {
+                                                        live.toggle_search_move(mv, cx)
+                                                    });
+                                                })
+                                            })
+                                    }),
+                            ),
+                        ),
+                ),
+        );
         let mut limits = h_flex().gap(px(4.));
         for (index, (value, label)) in LIMITS.into_iter().enumerate() {
             let this = this.clone();

@@ -1049,12 +1049,38 @@ impl TournamentScreen {
                 Some(index) if self.gauntlet && index == 0 => format!("{} · seed", engine.name),
                 _ => engine.name.clone(),
             };
+            let selfplay = cx.entity();
+            let copy = Participant {
+                name: engine.name.clone(),
+                cmd: engine.path.clone(),
+                options: engine.options.clone(),
+            };
             list = list.child(
-                check(("tournament-engine", id as usize), order.is_some(), label)
-                    .text(13.)
-                    .on_change(move |on, _, cx| {
-                        this.update(cx, |screen, cx| screen.toggle_engine(id, on, cx))
-                    }),
+                h_flex()
+                    .justify_between()
+                    .gap(px(8.))
+                    .child(
+                        check(("tournament-engine", id as usize), order.is_some(), label)
+                            .text(13.)
+                            .on_change(move |on, _, cx| {
+                                this.update(cx, |screen, cx| screen.toggle_engine(id, on, cx))
+                            }),
+                    )
+                    .child(
+                        btn(("selfplay-copy", id as usize), "Add selfplay copy")
+                            .h(26.)
+                            .text(12.)
+                            .tooltip("Run another process of this engine as an opponent")
+                            .on_click(move |_, cx| {
+                                selfplay.update(cx, |screen, cx| {
+                                    if !screen.selected.contains(&id) {
+                                        screen.selected.push(id);
+                                    }
+                                    screen.extra_engines.push(copy.clone());
+                                    cx.notify();
+                                })
+                            }),
+                    ),
             );
         }
         for (index, engine) in self.extra_engines.iter().enumerate() {

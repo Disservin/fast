@@ -1730,6 +1730,7 @@ fn review_games(
                     }
                     search_id += 1;
                     handle.search(SearchRequest {
+                        search_moves: Vec::new(),
                         fen: start_fen.to_owned(),
                         moves: moves.clone(),
                         limits: Some(settings.limit.limits()),

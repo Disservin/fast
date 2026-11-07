@@ -629,6 +629,7 @@ impl PlayScreen {
             .map(|mv| UciMove::from_standard(mv).to_string())
             .collect();
         engine.search(SearchRequest {
+            search_moves: Vec::new(),
             fen: game.tree.fen(GameTree::ROOT),
             moves,
             limits: Some(Limits {

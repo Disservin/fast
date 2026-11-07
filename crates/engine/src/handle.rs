@@ -61,6 +61,8 @@ pub struct SearchRequest {
     /// `fen` is the starting FEN; `moves` are UCI moves from there.
     pub fen: String,
     pub moves: Vec<String>,
+    /// Legal root moves to search, in UCI notation. Empty searches all moves.
+    pub search_moves: Vec<String>,
     /// `None` means `go infinite`.
     pub limits: Option<Limits>,
     /// Caller-chosen token echoed in every event from this search.
@@ -68,6 +70,19 @@ pub struct SearchRequest {
     /// Which game the position belongs to. A change sends `ucinewgame` first, so the
     /// engine does not carry assumptions from one game into another.
     pub game: u64,
+}
+
+impl SearchRequest {
+    fn go_command(&self) -> String {
+        let mut command = self
+            .limits
+            .map_or_else(|| "go infinite".to_owned(), Limits::go_command);
+        if !self.search_moves.is_empty() {
+            command.push_str(" searchmoves ");
+            command.push_str(&self.search_moves.join(" "));
+        }
+        command
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -335,10 +350,7 @@ impl Session {
             return Ok(());
         }
         process.send(&position_command(&request.fen, &request.moves))?;
-        match request.limits {
-            Some(limits) => process.send(&limits.go_command())?,
-            None => process.send("go infinite")?,
-        }
+        process.send(&request.go_command())?;
         self.running = Some(request.search_id);
         self.current = Some(request);
         Ok(())
