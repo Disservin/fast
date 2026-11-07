@@ -1630,6 +1630,9 @@ impl AnalyseScreen {
                     .border_color(rgb(T.border))
                     .child(nag_button("nag-good", "!", 1, this.clone()))
                     .child(nag_button("nag-bad", "?", 2, this.clone()))
+                    .child(nag_button("nag-brilliant", "!!", 3, this.clone()))
+                    .child(nag_button("nag-blunder", "??", 4, this.clone()))
+                    .child(nag_button("nag-inaccuracy", "?!", 6, this.clone()))
                     .child(nag_button("nag-interesting", "!?", 5, this.clone()))
                     .child(btn("comment", "Comment").h(30.).pad(13.).on_click({
                         let this = this.clone();
@@ -2715,6 +2718,28 @@ impl Render for AnalyseScreen {
             self.load_text(&recovery.pgn, window, cx);
         }
         self.autosave(cx);
+        let node = self.tree.node(self.current);
+        let explicit = node
+            .nags
+            .iter()
+            .find_map(|nag| ui::board::MoveTag::from_nag(*nag));
+        let inferred = node.parent.and_then(|parent| {
+            let (evals, _) = self.line_evals(&[parent, self.current], cx);
+            let sign = if node.pos.turn().is_black() { 1 } else { -1 };
+            match engine::classify_move(Score::Cp(evals[0]? * sign), Score::Cp(evals[1]? * sign)) {
+                Quality::Inaccuracy => Some(ui::board::MoveTag::Inaccuracy),
+                Quality::Mistake => Some(ui::board::MoveTag::Mistake),
+                Quality::Blunder => Some(ui::board::MoveTag::Blunder),
+                _ => None,
+            }
+        });
+        let tag = if self.editor.is_none() && self.pv_view.is_none() && self.pv_hover.is_none() {
+            explicit.or(inferred)
+        } else {
+            None
+        };
+        self.board
+            .update(cx, |board, cx| board.set_move_tag(tag, cx));
         let viewport = window.viewport_size();
         // The side column keeps room for its table, so the board gives way first.
         self.scale = window.scale_factor();

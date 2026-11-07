@@ -291,6 +291,35 @@ struct Promotion {
     to: Square,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MoveTag {
+    Brilliant,
+    Inaccuracy,
+    Mistake,
+    Blunder,
+}
+
+impl MoveTag {
+    pub fn from_nag(nag: u8) -> Option<Self> {
+        match nag {
+            3 => Some(Self::Brilliant),
+            6 => Some(Self::Inaccuracy),
+            2 => Some(Self::Mistake),
+            4 => Some(Self::Blunder),
+            _ => None,
+        }
+    }
+
+    fn appearance(self) -> (&'static str, &'static str, u32) {
+        match self {
+            Self::Brilliant => ("!!", "Brilliant", 0x219c9e),
+            Self::Inaccuracy => ("?!", "Inaccuracy", 0xd6a431),
+            Self::Mistake => ("?", "Mistake", 0xe58a35),
+            Self::Blunder => ("??", "Blunder", 0xd94d59),
+        }
+    }
+}
+
 pub struct BoardView {
     id: ElementId,
     pos: Chess,
@@ -300,6 +329,7 @@ pub struct BoardView {
     /// Restricts which side may move (`None` = whoever's turn it is).
     player: Option<Color>,
     last_move: Option<(Square, Square)>,
+    move_tag: Option<MoveTag>,
     /// Arrows set by the owning screen (engine or table selection).
     arrows: Vec<Arrow>,
     user_arrows: Vec<Arrow>,
@@ -331,6 +361,7 @@ impl BoardView {
             interactive: true,
             player: None,
             last_move: None,
+            move_tag: None,
             arrows: Vec::new(),
             user_arrows: Vec::new(),
             circles: HashSet::new(),
@@ -418,6 +449,13 @@ impl BoardView {
         self.last_move.filter(|_| self.prefs.highlight_last)
     }
 
+    pub fn set_move_tag(&mut self, tag: Option<MoveTag>, cx: &mut Context<Self>) {
+        if self.move_tag != tag {
+            self.move_tag = tag;
+            cx.notify();
+        }
+    }
+
     pub fn prefs(&self) -> BoardPrefs {
         self.prefs
     }
@@ -461,6 +499,7 @@ impl BoardView {
     ) {
         self.pos = pos;
         self.last_move = last_move;
+        self.move_tag = None;
         self.selected = None;
         self.drag = None;
         self.promotion = None;
@@ -1224,6 +1263,28 @@ impl Render for BoardView {
             .absolute()
             .inset_0(),
         );
+
+        if !editing && let (Some(tag), Some((_, to))) = (self.move_tag, self.last_move) {
+            let (x, y) = self.grid(to);
+            let (glyph, label, color) = tag.appearance();
+            root = root.child(
+                div()
+                    .id("move-quality-tag")
+                    .absolute()
+                    .left(cell * (x as f32 + 0.65))
+                    .top(cell * y as f32)
+                    .px(px(4.))
+                    .rounded_full()
+                    .bg(rgb(color))
+                    .font_weight(FontWeight::BOLD)
+                    .text_size(cell * 0.25)
+                    .text_color(rgb(0xffffff))
+                    .child(glyph)
+                    .tooltip(move |window, cx| {
+                        gpui_component::tooltip::Tooltip::new(label).build(window, cx)
+                    }),
+            );
+        }
 
         if self.prefs.coordinates == CoordinateStyle::Outside {
             root = root.child(outside_coordinates(self.flipped, cell));
