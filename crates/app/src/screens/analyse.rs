@@ -59,6 +59,10 @@ pub struct MoveRow {
     pub engine_id: Option<EngineId>,
     pub reference: Option<MoveStat>,
     pub mine: Option<MoveStat>,
+    /// The tablebase's verdict on this move, while Online is on.
+    pub tb: Option<crate::online::TbRow>,
+    /// chessdb.cn's score for this move, while Online is on.
+    pub cloud: Option<crate::online::CloudMove>,
     pub rep: RepTag,
     /// How this line compares with the best one, for its arrow and label colour.
     pub quality: Option<Quality>,
@@ -140,6 +144,10 @@ pub fn merge_rows(
         row.reference.as_ref().map_or(0, |stat| stat.games)
             + row.mine.as_ref().map_or(0, |stat| stat.games)
     };
+    // Without an engine eval, online verdicts order what popularity leaves tied: the
+    // tablebase's result first, then the cloud's score, both for the side to move.
+    let tb_rank = |row: &MoveRow| row.tb.as_ref().map(|tb| online::outcome_rank(tb.outcome));
+    let cloud_score = |row: &MoveRow| row.cloud.as_ref().map(|cloud| cloud.score);
     let key = |row: &MoveRow| {
         row.score
             .map(|score| score.sort_key() * if white_to_move { 1 } else { -1 })
@@ -149,7 +157,10 @@ pub fn merge_rows(
             (Some(x), Some(y)) => y.cmp(&x),
             (Some(_), None) => std::cmp::Ordering::Less,
             (None, Some(_)) => std::cmp::Ordering::Greater,
-            (None, None) => popularity(b).cmp(&popularity(a)),
+            (None, None) => popularity(b)
+                .cmp(&popularity(a))
+                .then(tb_rank(b).cmp(&tb_rank(a)))
+                .then(cloud_score(b).cmp(&cloud_score(a))),
         };
         match sort {
             LineSort::Eval => by_eval,
@@ -650,6 +661,8 @@ impl AnalyseScreen {
                     .collect()
             })
             .unwrap_or_default();
+        // Online moves join the rows of the same move rather than listing them twice.
+        self.merge_online(&mut lines);
         let view = &model.config.view;
         let legal: Vec<String> = if view.all_moves {
             let pos = self.analysed_pos();
@@ -2021,6 +2034,9 @@ impl AnalyseScreen {
         const COL_WDL: f32 = 112.;
         const COL_REF: f32 = 84.;
         const COL_MY: f32 = 80.;
+        const COL_TB: f32 = 96.;
+        const COL_CLOUD: f32 = 70.;
+        let online = self.online.open;
         let header = h_flex()
             .h(px(32.))
             .px(px(16.))
@@ -2048,6 +2064,21 @@ impl AnalyseScreen {
                         .flex_none()
                         .child(section_label(&wdl_title)),
                 )
+            })
+            .when(online, |header| {
+                header
+                    .child(
+                        div()
+                            .w(px(COL_TB))
+                            .flex_none()
+                            .child(section_label("Tablebase")),
+                    )
+                    .child(
+                        div()
+                            .w(px(COL_CLOUD))
+                            .flex_none()
+                            .child(section_label("Cloud")),
+                    )
             })
             .child(
                 div()
@@ -2113,6 +2144,10 @@ impl AnalyseScreen {
                 RepTag::Deviate => ("You deviate", T.warn),
                 RepTag::None => ("—", T.muted),
             };
+            let dash = || ("—".to_owned(), T.muted);
+            let (tb_text, tb_color) = row.tb.as_ref().map_or_else(dash, online::tb_cell);
+            let (cloud_text, cloud_color) =
+                row.cloud.as_ref().map_or_else(dash, online::cloud_cell);
             rows = rows.child(
                 h_flex()
                     .id(("move-row", index))
@@ -2176,6 +2211,30 @@ impl AnalyseScreen {
                             ),
                         )
                     })
+                    .when(online, |row_el| {
+                        row_el
+                            .child(
+                                div()
+                                    .w(px(COL_TB))
+                                    .flex_none()
+                                    .pr(px(8.))
+                                    .overflow_hidden()
+                                    .text_ellipsis()
+                                    .font_family(ui::SANS)
+                                    .text_size(px(12.))
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .text_color(rgb(tb_color))
+                                    .child(tb_text),
+                            )
+                            .child(
+                                div()
+                                    .w(px(COL_CLOUD))
+                                    .flex_none()
+                                    .text_size(px(13.))
+                                    .text_color(rgb(cloud_color))
+                                    .child(cloud_text),
+                            )
+                    })
                     .child(
                         div()
                             .w(px(COL_REF))
@@ -2238,6 +2297,7 @@ impl AnalyseScreen {
                     )
                     .child(self.render_table_tools(cx)),
             )
+            .children(self.render_online_status())
             .child(
                 div()
                     .id("candidate-table-scroll")
@@ -2247,6 +2307,7 @@ impl AnalyseScreen {
                             .min_w(px(COL_MOVE
                                 + COL_SF * eval_columns as f32
                                 + if show_wdl { COL_WDL } else { 0. }
+                                + if online { COL_TB + COL_CLOUD } else { 0. }
                                 + COL_REF
                                 + COL_MY
                                 + 120.))
@@ -2608,7 +2669,6 @@ impl Render for AnalyseScreen {
         let engine_panel = self.engine_panel_open.then(|| self.render_engine_panel(cx));
         let log_panel = self.log_panel_open.then(|| self.render_log_panel(cx));
         self.sync_online(cx);
-        let online_panel = self.online.open.then(|| self.render_online_panel(cx));
         let note = self.note.clone();
         let menu = self.render_context_menu(cx);
         h_flex()
@@ -2643,7 +2703,6 @@ impl Render for AnalyseScreen {
                             .children(engine_panel)
                             .child(table)
                             .child(preview)
-                            .children(online_panel)
                             .children(log_panel)
                             .child(
                                 panel()
@@ -2734,6 +2793,50 @@ mod tests {
             })),
             Some([25.0, 25.0, 50.0])
         );
+    }
+
+    #[test]
+    fn rows_without_an_eval_follow_the_tablebase_then_the_cloud() {
+        use crate::online::{CloudMove, Outcome, TbRow};
+        let tb = |san: &str, outcome| MoveRow {
+            san: san.to_owned(),
+            tb: Some(TbRow {
+                san: san.to_owned(),
+                outcome,
+                dtz: None,
+                dtm: None,
+                is_mate: false,
+                draw_reason: None,
+            }),
+            ..Default::default()
+        };
+        let cloud = |san: &str, score| MoveRow {
+            san: san.to_owned(),
+            cloud: Some(CloudMove {
+                san: san.to_owned(),
+                score,
+                rank: 0,
+                note: String::new(),
+                winrate: None,
+            }),
+            ..Default::default()
+        };
+        let rows = merge_rows(
+            vec![
+                cloud("a3", -40),
+                tb("Kd2", Outcome::Draw),
+                cloud("e4", 35),
+                tb("Rd8", Outcome::Win),
+                line("Nf3", 20),
+            ],
+            vec![],
+            vec![],
+            &[],
+            &[],
+            opts(true, false),
+        );
+        let order: Vec<&str> = rows.iter().map(|row| row.san.as_str()).collect();
+        assert_eq!(order, vec!["Nf3", "Rd8", "Kd2", "e4", "a3"]);
     }
 
     #[test]

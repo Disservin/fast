@@ -411,8 +411,8 @@ impl AnalyseScreen {
                     .text(12.)
                     .selected(self.online.open)
                     .tooltip(
-                        "Look the position up in the ChessTB Explorer tablebase and chessdb.cn. \
-                         Sends each position you visit while open.",
+                        "Add the ChessTB Explorer tablebase and chessdb.cn to Moves from here. \
+                         Sends each position you visit while on.",
                     )
                     .on_click(move |_, cx| {
                         online_this.update(cx, |screen, cx| screen.toggle_online(cx));

@@ -1,26 +1,24 @@
-//! Analyse's Online panel: the ChessTB Explorer tablebase and chessdb.cn for the
-//! position on the board. It sends nothing while closed.
+//! Analyse's Online lookups: the ChessTB Explorer tablebase and chessdb.cn for the
+//! position on the board, merged into Moves from here. It sends nothing while off.
 
 use std::{collections::HashMap, time::Duration};
 
-use chess_core::{GameTree, Position, shakmaty::san::San};
-use gpui::{
-    AnyElement, Context, Div, FontWeight, IntoElement, Task, Window, div, prelude::*, px, rgb,
-};
+use chess_core::{GameTree, Position};
+use gpui::{Context, Div, FontWeight, Task, div, prelude::*, px, rgb};
 use ui::{
     T,
-    widgets::{h_flex, mono, panel, section_label, stat, v_flex},
+    widgets::{h_flex, stat},
 };
 
-use super::AnalyseScreen;
+use super::{AnalyseScreen, MoveRow};
 use crate::online::{
-    CloudReply, Outcome, TABLEBASE_PIECES, TbProbe, cloud_score, probe_tablebase, query_chessdb,
+    CloudReply, Outcome, TABLEBASE_PIECES, TbProbe, TbRow, cloud_score, probe_tablebase,
+    query_chessdb,
 };
 
 /// Quick navigation only queries where it stops.
 const DEBOUNCE: Duration = Duration::from_millis(300);
 const CACHE_LIMIT: usize = 1000;
-const MAX_ROWS: usize = 16;
 const TABLEBASE_SOURCE: &str = "chesstb-explorer.hf.space";
 
 #[derive(Clone, Default)]
@@ -60,7 +58,9 @@ impl AnalyseScreen {
             self.online._tb_task = None;
             self.online._cloud_task = None;
         }
-        cx.notify();
+        // Closing drops the online columns' data at once; opening fills them in when
+        // the next render looks the position up.
+        self.rebuild_rows(cx);
     }
 
     /// Starts lookups when the panel is open and the board shows a new position.
@@ -102,7 +102,7 @@ impl AnalyseScreen {
                         }
                         Err(err) => Lookup::Failed(format!("{err:#}")),
                     };
-                    cx.notify();
+                    this.rebuild_rows(cx);
                 });
             }));
         }
@@ -133,213 +133,186 @@ impl AnalyseScreen {
                         }
                         Err(err) => Lookup::Failed(format!("{err:#}")),
                     };
-                    cx.notify();
+                    this.rebuild_rows(cx);
                 });
             }));
         }
+        // Cached results, and the cleared columns of the last position, show at once.
+        self.rebuild_rows(cx);
     }
 
-    /// Plays a move picked in the panel, unless a PV preview is showing another position.
-    fn play_online_move(&mut self, san: &str, window: &mut Window, cx: &mut Context<Self>) {
-        if self.pv_view.is_some() {
+    /// Adds the online moves for the position on the board to `rows`, onto the row of
+    /// the same move where there is one. Results for another position are left out, so
+    /// a lookup still running for the last position never shows here.
+    pub(super) fn merge_online(&self, rows: &mut Vec<MoveRow>) {
+        if !self.online.open {
             return;
         }
-        let pos = self.tree.node(self.current).pos.clone();
-        let Some(mv) = San::from_ascii(san.as_bytes())
-            .ok()
-            .and_then(|san| san.to_move(&pos).ok())
-        else {
+        let fen = GameTree::fen_of(&self.analysed_pos());
+        if self.online.fen.as_ref() != Some(&fen) {
             return;
+        }
+        fn clean(san: &str) -> &str {
+            san.trim_end_matches(['+', '#'])
+        }
+        let row_for = |rows: &mut Vec<MoveRow>, san: &str| -> usize {
+            match rows.iter().position(|row| clean(&row.san) == clean(san)) {
+                Some(index) => index,
+                None => {
+                    rows.push(MoveRow {
+                        san: san.to_owned(),
+                        ..Default::default()
+                    });
+                    rows.len() - 1
+                }
+            }
         };
-        self.play_move(mv, window, cx);
+        if let Lookup::Ready(Some(probe)) = &self.online.tablebase {
+            for tb in probe.rows() {
+                let index = row_for(rows, &tb.san);
+                rows[index].tb = Some(tb);
+            }
+        }
+        if let Lookup::Ready(CloudReply::Moves(moves)) = &self.online.cloud {
+            for cloud in moves {
+                let index = row_for(rows, &cloud.san);
+                rows[index].cloud = Some(cloud.clone());
+            }
+        }
     }
 
-    pub(super) fn render_online_panel(&mut self, cx: &mut Context<Self>) -> AnyElement {
+    /// The tablebase verdict and the state of both lookups, shown above the moves.
+    pub(super) fn render_online_status(&self) -> Option<Div> {
+        if !self.online.open {
+            return None;
+        }
         let white = self.analysed_pos().turn().is_white();
-        panel()
-            .flex_none()
-            .overflow_hidden()
-            .child(
+        let tablebase = match &self.online.tablebase {
+            Lookup::Ready(Some(probe)) => {
+                let side = |win: bool| if win == white { "White" } else { "Black" };
+                let verdict = match probe.outcome() {
+                    Outcome::Win => format!("{} wins", side(true)),
+                    Outcome::CursedWin => {
+                        format!("Draw by the 50-move rule ({} would win)", side(true))
+                    }
+                    Outcome::BlessedLoss => {
+                        format!("Draw by the 50-move rule ({} would win)", side(false))
+                    }
+                    Outcome::Loss => format!("{} wins", side(false)),
+                    _ => match &probe.draw_reason {
+                        Some(reason) => format!("Draw ({})", reason.replace('_', " ")),
+                        None => "Draw".into(),
+                    },
+                };
+                let decided = probe.wdl != 0;
                 h_flex()
-                    .h(px(40.))
-                    .px(px(16.))
-                    .justify_between()
-                    .border_b_1()
-                    .border_color(rgb(T.border))
-                    .child(section_label("Online")),
-            )
-            .child(self.render_tablebase(white, cx))
-            .child(div().h(px(1.)).bg(rgb(T.border)))
-            .child(self.render_cloud(cx))
-            .into_any_element()
-    }
-
-    fn render_tablebase(&self, white: bool, cx: &mut Context<Self>) -> Div {
-        let section = v_flex().p(px(16.)).gap(px(8.));
-        let probe = match &self.online.tablebase {
-            Lookup::Ready(Some(probe)) => probe,
-            Lookup::Ready(None) => {
-                return section
-                    .child(title("Tablebase", TABLEBASE_SOURCE))
-                    .child(note("Not in the tablebase"));
-            }
-            other => {
-                return section
-                    .child(title("Tablebase", TABLEBASE_SOURCE))
-                    .child(status(other));
-            }
-        };
-        let side = |win: bool| if win == white { "White" } else { "Black" };
-        let verdict = match probe.outcome() {
-            Outcome::Win => format!("{} wins", side(true)),
-            Outcome::CursedWin => format!("Draw by the 50-move rule ({} would win)", side(true)),
-            Outcome::BlessedLoss => {
-                format!("Draw by the 50-move rule ({} would win)", side(false))
-            }
-            Outcome::Loss => format!("{} wins", side(false)),
-            _ => match &probe.draw_reason {
-                Some(reason) => format!("Draw ({})", reason.replace('_', " ")),
-                None => "Draw".into(),
-            },
-        };
-        let decided = probe.wdl != 0;
-        let summary = h_flex()
-            .flex_wrap()
-            .gap(px(6.))
-            .child(
-                div()
-                    .mr(px(4.))
-                    .text_size(px(13.))
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .text_color(rgb(outcome_color(probe.outcome())))
-                    .child(verdict),
-            )
-            .children(
-                probe
-                    .dtz
-                    .filter(|_| decided)
-                    .map(|dtz| stat("DTZ", dtz.abs().to_string())),
-            )
-            .children(
-                probe
-                    .dtm
-                    .filter(|_| decided)
-                    .map(|dtm| stat("DTM", dtm.abs().to_string())),
-            );
-        let rows = probe.rows();
-        let more = rows.len().saturating_sub(MAX_ROWS);
-        let mut table = v_flex().child(row_layout(
-            header("Move"),
-            header("Result"),
-            header("DTZ"),
-            header("DTM"),
-        ));
-        for (index, row) in rows.into_iter().take(MAX_ROWS).enumerate() {
-            let color = outcome_color(row.outcome);
-            let result = if row.is_mate {
-                "Mate".to_owned()
-            } else if let Some(reason) = &row.draw_reason {
-                reason.replace('_', " ")
-            } else {
-                row.outcome.label().to_owned()
-            };
-            let distance = |d: Option<i32>| d.map_or("–".to_owned(), |d| d.abs().to_string());
-            let san = row.san.clone();
-            table = table.child(
-                div()
-                    .id(("tb-move", index))
-                    .rounded(px(4.))
-                    .cursor_pointer()
-                    .hover(|style| style.bg(rgb(T.hover)))
-                    .on_click(cx.listener(move |screen, _, window, cx| {
-                        screen.play_online_move(&san, window, cx)
-                    }))
-                    .child(row_layout(
-                        mono(row.san).font_weight(FontWeight::SEMIBOLD),
-                        div().text_color(rgb(color)).child(result),
-                        mono(distance(row.dtz)).text_color(rgb(T.fg_2)),
-                        mono(distance(row.dtm)).text_color(rgb(T.fg_2)),
-                    )),
-            );
-        }
-        section
-            .child(title("Tablebase", TABLEBASE_SOURCE))
-            .child(summary)
-            .child(table)
-            .children((more > 0).then(|| note(format!("{more} more moves"))))
-    }
-
-    fn render_cloud(&self, cx: &mut Context<Self>) -> Div {
-        let section = v_flex()
-            .p(px(16.))
-            .gap(px(8.))
-            .child(title("Cloud database", "chessdb.cn"));
-        let moves = match &self.online.cloud {
-            Lookup::Ready(CloudReply::Moves(moves)) => moves,
-            Lookup::Ready(CloudReply::Unknown) => {
-                return section.child(note("Not analysed in the cloud database yet"));
-            }
-            Lookup::Ready(CloudReply::Over(reason)) => return section.child(note(reason.clone())),
-            other => return section.child(status(other)),
-        };
-        if moves.is_empty() {
-            return section.child(note("No moves"));
-        }
-        let more = moves.len().saturating_sub(MAX_ROWS);
-        let mut table = v_flex().child(row_layout(
-            header("Move"),
-            header("Score"),
-            header("Win %"),
-            header("Note"),
-        ));
-        for (index, mv) in moves.iter().take(MAX_ROWS).enumerate() {
-            let color = match mv.rank {
-                2 => T.good,
-                1 => T.fg,
-                _ => T.fg_2,
-            };
-            let san = mv.san.clone();
-            table = table.child(
-                div()
-                    .id(("cloud-move", index))
-                    .rounded(px(4.))
-                    .cursor_pointer()
-                    .hover(|style| style.bg(rgb(T.hover)))
-                    .on_click(cx.listener(move |screen, _, window, cx| {
-                        screen.play_online_move(&san, window, cx)
-                    }))
-                    .child(row_layout(
-                        mono(mv.san.clone())
+                    .gap(px(6.))
+                    .child(
+                        div()
                             .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(rgb(color)),
-                        mono(cloud_score(mv.score)),
-                        mono(mv.winrate.clone().unwrap_or_else(|| "–".into()))
-                            .text_color(rgb(T.fg_2)),
-                        mono(mv.note.clone()).text_color(rgb(T.muted)),
-                    )),
-            );
-        }
-        section
-            .child(table)
-            .children((more > 0).then(|| note(format!("{more} more moves"))))
+                            .text_color(rgb(outcome_color(probe.outcome())))
+                            .child(verdict),
+                    )
+                    .children(
+                        probe
+                            .dtz
+                            .filter(|_| decided)
+                            .map(|dtz| stat("DTZ", dtz.abs().to_string())),
+                    )
+                    .children(
+                        probe
+                            .dtm
+                            .filter(|_| decided)
+                            .map(|dtm| stat("DTM", dtm.abs().to_string())),
+                    )
+            }
+            Lookup::Ready(None) => h_flex().child(note("Not in the tablebase")),
+            other => h_flex().child(status(other)),
+        };
+        let cloud = match &self.online.cloud {
+            Lookup::Ready(CloudReply::Moves(moves)) if moves.is_empty() => note("No moves"),
+            Lookup::Ready(CloudReply::Moves(moves)) => note(format!(
+                "{} move{}",
+                moves.len(),
+                if moves.len() == 1 { "" } else { "s" }
+            )),
+            Lookup::Ready(CloudReply::Unknown) => note("Not analysed yet"),
+            Lookup::Ready(CloudReply::Over(reason)) => note(reason.clone()),
+            other => status(other),
+        };
+        Some(
+            h_flex()
+                .flex_wrap()
+                .gap_x(px(20.))
+                .gap_y(px(4.))
+                .px(px(16.))
+                .py(px(8.))
+                .border_t_1()
+                .border_color(rgb(T.border))
+                .text_size(px(12.))
+                .child(source("Tablebase", TABLEBASE_SOURCE).child(tablebase))
+                .child(source("Cloud", "chessdb.cn").child(cloud)),
+        )
     }
 }
 
-/// A section's name, with the service it comes from on the right.
-fn title(name: &'static str, source: &'static str) -> Div {
+/// The Tablebase column: the result the move leads to, with its distance.
+pub(super) fn tb_cell(tb: &TbRow) -> (String, u32) {
+    let result = if tb.is_mate {
+        "Mate".to_owned()
+    } else if let Some(reason) = &tb.draw_reason {
+        reason.replace('_', " ")
+    } else {
+        tb.outcome.label().to_owned()
+    };
+    let distance = tb
+        .dtm
+        .or(tb.dtz)
+        .filter(|_| !tb.is_mate && tb.outcome != Outcome::Draw);
+    let text = match distance {
+        Some(plies) => format!("{result} {}", plies.abs()),
+        None => result,
+    };
+    (text, outcome_color(tb.outcome))
+}
+
+/// The Cloud column: chessdb.cn's score, brightest for its best moves.
+pub(super) fn cloud_cell(cloud: &crate::online::CloudMove) -> (String, u32) {
+    let color = match cloud.rank {
+        2 => T.good,
+        1 => T.fg_2,
+        _ => T.muted,
+    };
+    (cloud_score(cloud.score), color)
+}
+
+/// Better results for the side to move rank higher.
+pub(super) fn outcome_rank(outcome: Outcome) -> i32 {
+    match outcome {
+        Outcome::Win => 4,
+        Outcome::CursedWin => 3,
+        Outcome::Draw => 2,
+        Outcome::BlessedLoss => 1,
+        Outcome::Loss => 0,
+        _ => -1,
+    }
+}
+
+/// A lookup's name and service, then what it found.
+fn source(name: &'static str, service: &'static str) -> Div {
     h_flex()
-        .justify_between()
+        .gap(px(8.))
         .child(
             div()
-                .text_size(px(13.))
                 .font_weight(FontWeight::SEMIBOLD)
+                .text_color(rgb(T.fg_2))
                 .child(name),
         )
         .child(
             div()
                 .text_size(px(11.))
                 .text_color(rgb(T.faint))
-                .child(source),
+                .child(service),
         )
 }
 
@@ -357,25 +330,6 @@ fn status<T>(lookup: &Lookup<T>) -> Div {
         Lookup::Failed(err) => note(err.clone()).text_color(rgb(T.warn)),
         Lookup::Ready(_) => note(""),
     }
-}
-
-fn header(text: &'static str) -> Div {
-    div()
-        .text_size(px(11.))
-        .text_color(rgb(T.muted))
-        .child(text)
-}
-
-fn row_layout(a: Div, b: Div, c: Div, d: Div) -> Div {
-    h_flex()
-        .h(px(24.))
-        .px(px(4.))
-        .gap(px(8.))
-        .text_size(px(13.))
-        .child(a.w(px(64.)).flex_none())
-        .child(b.w(px(120.)).flex_none())
-        .child(c.w(px(56.)).flex_none())
-        .child(d.flex_1().min_w_0())
 }
 
 fn outcome_color(outcome: Outcome) -> u32 {
