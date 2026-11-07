@@ -47,6 +47,47 @@ pub fn section_label(text: impl AsRef<str>) -> Div {
     row
 }
 
+/// A small bordered tag, such as a license or a count.
+pub fn badge(text: impl Into<SharedString>) -> Div {
+    h_flex()
+        .flex_none()
+        .h(px(22.))
+        .px(px(7.))
+        .gap(px(5.))
+        .rounded(px(4.))
+        .bg(rgb(T.selected))
+        .border_1()
+        .border_color(rgb(T.border_strong))
+        .text_size(px(11.))
+        .text_color(rgb(T.fg_2))
+        .child(text.into())
+}
+
+/// A badge holding a muted label and its value, such as `DTZ 21`.
+pub fn stat(label: impl Into<SharedString>, value: impl Into<SharedString>) -> Div {
+    h_flex()
+        .flex_none()
+        .h(px(22.))
+        .px(px(7.))
+        .gap(px(5.))
+        .rounded(px(4.))
+        .bg(rgb(T.selected))
+        .border_1()
+        .border_color(rgb(T.border_strong))
+        .child(
+            div()
+                .text_size(px(11.))
+                .text_color(rgb(T.muted))
+                .child(label.into()),
+        )
+        .child(
+            mono(value)
+                .text_size(px(12.))
+                .font_weight(FontWeight::SEMIBOLD)
+                .text_color(rgb(T.fg)),
+        )
+}
+
 /// Bordered surface panel with the standard 6px radius.
 pub fn panel() -> Div {
     div()

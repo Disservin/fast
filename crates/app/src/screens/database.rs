@@ -18,7 +18,7 @@ use gpui_component::{
 };
 use ui::{
     BoardView, MONO, T,
-    widgets::{btn, check, h_flex, mono, panel, section_label, v_flex},
+    widgets::{badge, btn, check, h_flex, mono, panel, section_label, stat, v_flex},
 };
 
 use crate::{
@@ -1296,21 +1296,27 @@ impl DatabaseScreen {
                 );
             if let Some(review) = &preview.review_summary {
                 column = column.child(
-                    div()
-                        .text_size(px(12.))
-                        .text_color(rgb(T.fg_2))
+                    h_flex()
+                        .flex_wrap()
+                        .gap(px(6.))
                         .mb(px(8.))
-                        .child(format!(
-                            "Review · White {} / Black {} · {} ({})",
+                        .child(section_label("Review").mr(px(4.)))
+                        .child(stat(
+                            "White",
                             review
                                 .white_accuracy
                                 .map_or_else(|| "—".to_owned(), |value| format!("{value:.1}%")),
+                        ))
+                        .child(stat(
+                            "Black",
                             review
                                 .black_accuracy
                                 .map_or_else(|| "—".to_owned(), |value| format!("{value:.1}%")),
-                            review.engine,
-                            review.search_limit
-                        )),
+                        ))
+                        .child(badge(format!(
+                            "{} ({})",
+                            review.engine, review.search_limit
+                        ))),
                 );
             }
             let findings = review_findings(preview);

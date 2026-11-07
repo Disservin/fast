@@ -9,7 +9,7 @@ use gpui_component::input::{InputEvent, InputState};
 use trainer::{Card, Drill, Grade, RepStatus};
 use ui::{
     Arrow, BoardEvent, BoardView, MONO, T,
-    widgets::{BtnKind, btn, h_flex, mono, panel, section_label, v_flex},
+    widgets::{BtnKind, badge, btn, h_flex, mono, panel, section_label, v_flex},
 };
 
 use crate::{
@@ -804,11 +804,12 @@ impl TrainScreen {
             .w(board_size)
             .child(
                 h_flex()
-                    .h(px(14.))
-                    .mt(px(24.))
-                    .gap(px(14.))
-                    .child(section_label(format!(
-                        "Drill: {position} of {total} · {} due · {} new",
+                    .h(px(22.))
+                    .mt(px(20.))
+                    .gap(px(8.))
+                    .child(section_label(format!("Drill {position} of {total}")))
+                    .child(badge(format!(
+                        "{} due",
                         self.queue
                             .iter()
                             .filter(|d| {
@@ -820,7 +821,10 @@ impl TrainScreen {
                                     .card_for(&path)
                                     .is_some_and(|c| c.is_due(today()))
                             })
-                            .count(),
+                            .count()
+                    )))
+                    .child(badge(format!(
+                        "{} new",
                         self.queue
                             .iter()
                             .filter(|d| {

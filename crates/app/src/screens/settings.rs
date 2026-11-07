@@ -20,7 +20,7 @@ use gpui_component::{
 use ui::{
     MONO, T,
     board::theme_swatch,
-    widgets::{btn, check, h_flex, key_cap, mono, panel, section_label, segmented, v_flex},
+    widgets::{badge, btn, check, h_flex, key_cap, mono, panel, section_label, segmented, v_flex},
 };
 
 use crate::{
@@ -1726,7 +1726,7 @@ impl SettingsScreen {
                     let source = entry.source_url.clone();
                     body = body.child(h_flex().gap(px(16.)).items_start()
                     .child(v_flex().flex_1().min_w_0().gap(px(4.))
-                        .child(format!("{} {} · {}", entry.name, entry.version, entry.license))
+                        .child(h_flex().gap(px(8.)).child(format!("{} {}", entry.name, entry.version)).child(badge(entry.license)))
                         .child(div().text_size(px(12.)).text_color(rgb(T.muted)).child(entry.description))
                         .when(!supported, |column| column.child(format!("No catalog build for {} / {}. You can still add a local executable.", std::env::consts::OS, std::env::consts::ARCH))))
                     .child(btn(("engine-site", index), "Website").h(30.).on_click(move |_, cx| cx.open_url(&homepage)))

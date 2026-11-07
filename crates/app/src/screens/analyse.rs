@@ -18,7 +18,7 @@ use ui::{
     Arrow, BoardEvent, BoardView, MONO, T,
     scoresheet::{ScoresheetProps, scoresheet_body, scoresheet_inline},
     timeline::{TimelineProps, timeline},
-    widgets::{btn, divider, h_flex, icon_btn, mono, panel, section_label, v_flex},
+    widgets::{btn, divider, h_flex, icon_btn, key_cap, mono, panel, section_label, stat, v_flex},
 };
 
 use crate::{
@@ -2340,18 +2340,28 @@ impl AnalyseScreen {
             .map(|row| self.render_search_stats(row, cx));
         let wdl = self.live.read(cx).wdl_engine().map(|engine| {
             let values = wdl_percentages(selected.as_ref().and_then(|row| row.wdl));
-            let text = values
-                .map(|[w, d, l]| format!("White win {w:.1}% · Draw {d:.1}% · Black win {l:.1}%"))
-                .unwrap_or_else(|| "WDL: waiting for engine data".to_owned());
+            let header = h_flex()
+                .flex_wrap()
+                .gap(px(6.))
+                .text_size(px(12.))
+                .text_color(rgb(T.fg_2))
+                .child(
+                    div()
+                        .mr(px(4.))
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .child(engine.config.name.clone()),
+                );
+            let header = match values {
+                Some([w, d, l]) => header
+                    .child(stat("White win", format!("{w:.1}%")))
+                    .child(stat("Draw", format!("{d:.1}%")))
+                    .child(stat("Black win", format!("{l:.1}%"))),
+                None => header.child("Waiting for WDL data"),
+            };
             v_flex()
                 .gap(px(6.))
                 .mt(px(10.))
-                .child(
-                    div()
-                        .text_size(px(12.))
-                        .text_color(rgb(T.fg_2))
-                        .child(format!("{} · {text}", engine.config.name)),
-                )
+                .child(header)
                 .child(wdl_bar(selected.as_ref().and_then(|row| row.wdl)))
         });
         // Hook for future move explanations; only demo mode has text today.
@@ -2634,7 +2644,12 @@ impl Render for AnalyseScreen {
         let scoresheet = v_flex()
             .h_full()
             .children(self.recovery_error.clone())
-            .children(dirty.then_some("Unsaved game · Ctrl/Cmd+S to save"))
+            .children(dirty.then(|| {
+                h_flex()
+                    .gap(px(6.))
+                    .child("Unsaved game")
+                    .child(key_cap("Ctrl/Cmd+S"))
+            }))
             .child(self.render_scoresheet(cx));
         let board_column = self.render_board_column(board_size, cx);
         let table = self.render_moves_table(cx);

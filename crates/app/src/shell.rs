@@ -244,13 +244,14 @@ impl TabContent {
             Self::Settings(_) => Mode::Settings,
         }
     }
-    fn title(&self, cx: &App) -> String {
+    /// The tab's screen and, where it has one, what that screen is showing.
+    fn title(&self, cx: &App) -> (&'static str, Option<SharedString>) {
         match self {
-            Self::Analyse(screen) => format!("Analyse · {}", screen.read(cx).breadcrumb()),
-            Self::Database(screen) => format!("Database · {}", screen.read(cx).breadcrumb()),
-            Self::Train(_) => "Train".into(),
-            Self::Settings(_) => "Settings".into(),
-            Self::Play(screen) => format!("Play · {}", screen.read(cx).breadcrumb()),
+            Self::Analyse(screen) => ("Analyse", Some(screen.read(cx).breadcrumb())),
+            Self::Database(screen) => ("Database", Some(screen.read(cx).breadcrumb())),
+            Self::Train(_) => ("Train", None),
+            Self::Settings(_) => ("Settings", None),
+            Self::Play(screen) => ("Play", Some(screen.read(cx).breadcrumb())),
         }
     }
 }
@@ -675,7 +676,20 @@ impl Workspace {
                             .on_click(move |_, _, cx| {
                                 select.update(cx, |this, cx| this.activate_tab(id, cx))
                             })
-                            .child(format!("{} · {}", id, tab.content.title(cx))),
+                            .child({
+                                let (screen, detail) = tab.content.title(cx);
+                                h_flex()
+                                    .gap(px(6.))
+                                    .child(
+                                        ui::widgets::mono(id.to_string()).text_color(rgb(T.faint)),
+                                    )
+                                    .child(div().font_weight(FontWeight::SEMIBOLD).child(screen))
+                                    .children(
+                                        detail.map(|detail| {
+                                            div().text_color(rgb(T.muted)).child(detail)
+                                        }),
+                                    )
+                            }),
                     )
                     .child(
                         btn(("close-tab", id as usize), "×")

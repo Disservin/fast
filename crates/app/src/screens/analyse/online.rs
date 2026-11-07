@@ -9,7 +9,7 @@ use gpui::{
 };
 use ui::{
     T,
-    widgets::{h_flex, mono, panel, section_label, v_flex},
+    widgets::{h_flex, mono, panel, section_label, stat, v_flex},
 };
 
 use super::AnalyseScreen;
@@ -21,6 +21,7 @@ use crate::online::{
 const DEBOUNCE: Duration = Duration::from_millis(300);
 const CACHE_LIMIT: usize = 1000;
 const MAX_ROWS: usize = 16;
+const TABLEBASE_SOURCE: &str = "chesstb-explorer.hf.space";
 
 #[derive(Clone, Default)]
 pub(super) enum Lookup<T> {
@@ -165,13 +166,7 @@ impl AnalyseScreen {
                     .justify_between()
                     .border_b_1()
                     .border_color(rgb(T.border))
-                    .child(section_label("Online"))
-                    .child(
-                        div()
-                            .text_size(px(11.))
-                            .text_color(rgb(T.faint))
-                            .child("chesstb-explorer.hf.space · chessdb.cn"),
-                    ),
+                    .child(section_label("Online")),
             )
             .child(self.render_tablebase(white, cx))
             .child(div().h(px(1.)).bg(rgb(T.border)))
@@ -185,10 +180,14 @@ impl AnalyseScreen {
             Lookup::Ready(Some(probe)) => probe,
             Lookup::Ready(None) => {
                 return section
-                    .child(title("Tablebase", None))
+                    .child(title("Tablebase", TABLEBASE_SOURCE))
                     .child(note("Not in the tablebase"));
             }
-            other => return section.child(title("Tablebase", None)).child(status(other)),
+            other => {
+                return section
+                    .child(title("Tablebase", TABLEBASE_SOURCE))
+                    .child(status(other));
+            }
         };
         let side = |win: bool| if win == white { "White" } else { "Black" };
         let verdict = match probe.outcome() {
@@ -203,17 +202,30 @@ impl AnalyseScreen {
                 None => "Draw".into(),
             },
         };
-        let mut distances = Vec::new();
-        if let Some(dtz) = probe.dtz {
-            distances.push(format!("DTZ {}", dtz.abs()));
-        }
-        if let Some(dtm) = probe.dtm {
-            distances.push(format!("DTM {}", dtm.abs()));
-        }
-        let mut detail = verdict;
-        if !distances.is_empty() && probe.wdl != 0 {
-            detail = format!("{detail} · {}", distances.join(" · "));
-        }
+        let decided = probe.wdl != 0;
+        let summary = h_flex()
+            .flex_wrap()
+            .gap(px(6.))
+            .child(
+                div()
+                    .mr(px(4.))
+                    .text_size(px(13.))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(rgb(outcome_color(probe.outcome())))
+                    .child(verdict),
+            )
+            .children(
+                probe
+                    .dtz
+                    .filter(|_| decided)
+                    .map(|dtz| stat("DTZ", dtz.abs().to_string())),
+            )
+            .children(
+                probe
+                    .dtm
+                    .filter(|_| decided)
+                    .map(|dtm| stat("DTM", dtm.abs().to_string())),
+            );
         let rows = probe.rows();
         let more = rows.len().saturating_sub(MAX_ROWS);
         let mut table = v_flex().child(row_layout(
@@ -251,7 +263,8 @@ impl AnalyseScreen {
             );
         }
         section
-            .child(title("Tablebase", Some(detail)))
+            .child(title("Tablebase", TABLEBASE_SOURCE))
+            .child(summary)
             .child(table)
             .children((more > 0).then(|| note(format!("{more} more moves"))))
     }
@@ -260,7 +273,7 @@ impl AnalyseScreen {
         let section = v_flex()
             .p(px(16.))
             .gap(px(8.))
-            .child(title("chessdb.cn", None));
+            .child(title("Cloud database", "chessdb.cn"));
         let moves = match &self.online.cloud {
             Lookup::Ready(CloudReply::Moves(moves)) => moves,
             Lookup::Ready(CloudReply::Unknown) => {
@@ -312,21 +325,22 @@ impl AnalyseScreen {
     }
 }
 
-fn title(name: &'static str, detail: Option<String>) -> Div {
+/// A section's name, with the service it comes from on the right.
+fn title(name: &'static str, source: &'static str) -> Div {
     h_flex()
-        .gap(px(10.))
+        .justify_between()
         .child(
             div()
                 .text_size(px(13.))
                 .font_weight(FontWeight::SEMIBOLD)
                 .child(name),
         )
-        .children(detail.map(|detail| {
+        .child(
             div()
-                .text_size(px(13.))
-                .text_color(rgb(T.fg_2))
-                .child(detail)
-        }))
+                .text_size(px(11.))
+                .text_color(rgb(T.faint))
+                .child(source),
+        )
 }
 
 fn note(text: impl Into<gpui::SharedString>) -> Div {
