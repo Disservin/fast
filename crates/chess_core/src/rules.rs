@@ -211,6 +211,45 @@ mod tests {
     }
 
     #[test]
+    fn insufficient_material_and_material_that_can_still_mate() {
+        for pieces in [
+            "4k3/8/8/8/8/8/8/4K3",    // Bare kings.
+            "4k3/8/8/8/8/8/8/2B1K3",  // King and bishop.
+            "4k3/8/8/8/8/8/8/4K1N1",  // King and knight.
+            "4kb2/8/8/8/8/8/8/2B1K3", // Bishops on the same colour.
+        ] {
+            let tree = GameTree::from_fen(&format!("{pieces} w - - 0 1")).unwrap();
+            assert_eq!(
+                tree.game_end(GameTree::ROOT),
+                Some(GameEnd::InsufficientMaterial),
+                "{pieces}"
+            );
+        }
+        for pieces in [
+            "4k3/8/8/8/8/8/8/2B1K1N1", // Bishop and knight can mate.
+            "4k3/8/8/8/8/8/8/4K1NN",   // Two knights can mate with cooperation.
+            "2b1k3/8/8/8/8/8/8/2B1K3", // Opposite-coloured bishops.
+            "4k3/8/8/8/8/8/P7/4K3",    // A pawn can promote.
+        ] {
+            let tree = GameTree::from_fen(&format!("{pieces} w - - 0 1")).unwrap();
+            assert_eq!(tree.game_end(GameTree::ROOT), None, "{pieces}");
+        }
+    }
+
+    #[test]
+    fn stalemate_and_checkmate_take_precedence_over_move_counters() {
+        let stalemate = GameTree::from_fen("7k/5K2/6Q1/8/8/8/8/8 b - - 150 80").unwrap();
+        assert_eq!(stalemate.game_end(GameTree::ROOT), Some(GameEnd::Stalemate));
+        let mate = GameTree::from_fen("7k/6Q1/5K2/8/8/8/8/8 b - - 150 80").unwrap();
+        assert_eq!(
+            mate.game_end(GameTree::ROOT),
+            Some(GameEnd::Checkmate {
+                winner: Color::White
+            })
+        );
+    }
+
+    #[test]
     fn mate_and_move_counters() {
         let (tree, node) = play(&["f3", "e5", "g4", "Qh4#"]);
         assert_eq!(
