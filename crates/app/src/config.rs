@@ -109,6 +109,8 @@ pub struct BoardConfig {
     pub flipped: bool,
     /// Clicking an engine arrow plays that move.
     pub click_arrows: bool,
+    /// Move sound loudness, 0–100.
+    pub sound_volume: u32,
 }
 
 impl Default for BoardConfig {
@@ -125,6 +127,18 @@ impl Default for BoardConfig {
             move_sounds: true,
             flipped: false,
             click_arrows: true,
+            sound_volume: 80,
+        }
+    }
+}
+
+impl BoardConfig {
+    /// Loudness for move sounds, `0.0` when they are off.
+    pub fn sound_level(&self) -> f32 {
+        if self.move_sounds {
+            self.sound_volume.min(100) as f32 / 100.0
+        } else {
+            0.0
         }
     }
 }

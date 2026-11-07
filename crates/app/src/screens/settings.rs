@@ -216,6 +216,7 @@ pub struct SettingsScreen {
     option_selects: HashMap<String, TextSelect>,
     language: TextSelect,
     animation: Entity<SliderState>,
+    volume: Entity<SliderState>,
     player_name: Entity<InputState>,
     capture_focus: FocusHandle,
     capturing: Option<&'static str>,
@@ -228,6 +229,14 @@ impl SettingsScreen {
     pub fn new(model: Entity<AppModel>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let language = new_select(vec!["English".into()], 0, window, cx);
         let current_ms = model.read(cx).config.board.animation_ms;
+        let current_volume = model.read(cx).config.board.sound_volume;
+        let volume = cx.new(|_| {
+            SliderState::new()
+                .min(0.)
+                .max(100.)
+                .step(5.)
+                .default_value(current_volume as f32)
+        });
         let animation = cx.new(|_| {
             SliderState::new()
                 .min(0.)
@@ -251,6 +260,16 @@ impl SettingsScreen {
             cx.subscribe_in(&profile_input, window, |this, _, event, window, cx| {
                 if matches!(event, InputEvent::PressEnter { .. }) {
                     this.save_profile(window, cx);
+                }
+            }),
+            cx.subscribe(&volume, |this, _, event: &SliderEvent, cx| {
+                if let SliderEvent::Change(value) = event {
+                    let volume = value.start().round() as u32;
+                    if this.model.read(cx).config.board.sound_volume != volume {
+                        this.update_board(cx, |board| board.sound_volume = volume);
+                        // A sample at the new loudness.
+                        crate::sound::play(&[crate::sound::Sound::Move], volume as f32 / 100.0);
+                    }
                 }
             }),
             cx.subscribe(&animation, |this, _, event: &SliderEvent, cx| {
@@ -291,6 +310,7 @@ impl SettingsScreen {
             option_selects: HashMap::new(),
             language,
             animation,
+            volume,
             player_name,
             capture_focus: cx.focus_handle(),
             capturing: None,
@@ -1122,6 +1142,26 @@ impl SettingsScreen {
                         });
                     },
                 ),
+            ))
+            .child(option_row(
+                "Sound volume",
+                Some("For move sounds"),
+                h_flex()
+                    .gap(px(10.))
+                    .child(
+                        div()
+                            .w(px(160.))
+                            .child(Slider::new(&self.volume).bg(rgb(T.accent))),
+                    )
+                    .child(
+                        mono(if config.move_sounds {
+                            format!("{}%", config.sound_volume)
+                        } else {
+                            "Off".to_owned()
+                        })
+                        .text_size(px(13.))
+                        .text_color(rgb(T.muted)),
+                    ),
             ))
             .child(option_row(
                 "Move animation",

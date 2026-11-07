@@ -14,8 +14,8 @@ use std::{
 use chess_core::{Chess, GameEnd, Move, Position};
 
 const RATE: u32 = 44_100;
-/// Overall loudness; the sounds are short, so they stay well clear of clipping.
-const LEVEL: f32 = 0.55;
+/// Loudness at full volume; the sounds are short, so they stay clear of clipping.
+const LEVEL: f32 = 0.8;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Sound {
@@ -43,18 +43,18 @@ pub fn sounds_for(mv: &Move, after: &Chess, end: Option<GameEnd>) -> Vec<Sound> 
     sounds
 }
 
-/// Plays a move's sounds, if sounds are on.
-pub fn play_move(enabled: bool, mv: &Move, after: &Chess, end: Option<GameEnd>) {
-    if enabled {
-        play(&sounds_for(mv, after, end));
-    }
+/// Plays a move's sounds at `volume` (0–1; nothing at 0).
+pub fn play_move(volume: f32, mv: &Move, after: &Chess, end: Option<GameEnd>) {
+    play(&sounds_for(mv, after, end), volume);
 }
 
-/// Mixes the sounds into one clip, each starting a little after the previous one.
-pub fn play(sounds: &[Sound]) {
-    if sounds.is_empty() {
+/// Mixes the sounds into one clip at `volume` (0–1), each starting a little after
+/// the previous one.
+pub fn play(sounds: &[Sound], volume: f32) {
+    if sounds.is_empty() || volume <= 0.0 {
         return;
     }
+    let volume = volume.min(1.0);
     let mut clip: Vec<f32> = Vec::new();
     let mut offset = 0usize;
     for sound in sounds {
@@ -72,6 +72,9 @@ pub fn play(sounds: &[Sound]) {
     if peak > 0.95 {
         clip.iter_mut().for_each(|s| *s *= 0.95 / peak);
     }
+    // Perceived loudness is roughly logarithmic: squaring makes the slider feel even.
+    let gain = volume * volume;
+    clip.iter_mut().for_each(|s| *s *= gain);
     if let Some(sender) = player() {
         let _ = sender.send(clip);
     }
@@ -262,6 +265,14 @@ mod tests {
                 "{sound:?} ends abruptly"
             );
         }
+        // Volume scales loudness; zero and sounds off play nothing.
+        let mut board = crate::config::BoardConfig::default();
+        assert!(board.sound_level() > 0.0);
+        board.move_sounds = false;
+        assert_eq!(board.sound_level(), 0.0);
+        board.move_sounds = true;
+        board.sound_volume = 250;
+        assert_eq!(board.sound_level(), 1.0);
         // The same sound is the same every time.
         assert_eq!(synthesise(Sound::Move), synthesise(Sound::Move));
     }

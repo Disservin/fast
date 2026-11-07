@@ -217,8 +217,8 @@ impl TrainScreen {
             self.phase = Phase::Correct;
             self.message = Some(format!("Correct: {played}. How well did you know it?").into());
             let last = mv.from().map(|from| (from, mv.to()));
-            let enabled = self.model.read(cx).config.board.move_sounds;
-            crate::sound::play_move(enabled, &mv, &after, None);
+            let volume = self.model.read(cx).config.board.sound_level();
+            crate::sound::play_move(volume, &mv, &after, None);
             self.board.update(cx, |board, cx| {
                 board.set_position(after, last, true, cx);
                 board.set_interactive(false, cx);
