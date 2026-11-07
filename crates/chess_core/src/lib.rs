@@ -10,7 +10,9 @@ pub mod rules;
 pub mod sample;
 pub mod tree;
 
-pub use annotation::{MoveAnnotation, move_times, parse_annotation, strip_commands};
+pub use annotation::{
+    MoveAnnotation, move_times, parse_annotation, parse_move_annotation, strip_commands,
+};
 pub use eco::{Opening, classify};
 pub use material::{MaterialBalance, material_balance};
 pub use notation::{Notation, display_san, format_pv, nag_symbol, pv_to_san};

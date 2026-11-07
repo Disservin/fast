@@ -47,7 +47,47 @@ fn parse_eval_text(text: &str) -> Option<i32> {
         return Some(if moves >= 0 { MATE_CP } else { -MATE_CP });
     }
     let pawns: f64 = text.parse().ok()?;
-    Some((pawns * 100.0).round() as i32)
+    pawns.is_finite().then(|| (pawns * 100.0).round() as i32)
+}
+
+/// Cute Chess writes `score/depth seconds`, with score relative to the mover.
+fn cutechess(comment: &str) -> Option<MoveAnnotation> {
+    let mut words = comment.split_whitespace();
+    let (score, depth) = words.next()?.split_once('/')?;
+    let depth = depth.parse().ok()?;
+    let score = if let Some(mate) = score.strip_prefix("-M") {
+        mate.parse::<u32>().ok()?;
+        -MATE_CP
+    } else if let Some(mate) = score.strip_prefix("+M").or_else(|| score.strip_prefix('M')) {
+        mate.parse::<u32>().ok()?;
+        MATE_CP
+    } else {
+        parse_eval_text(score)?
+    };
+    let elapsed = words.next().and_then(|time| {
+        let seconds = time.trim_end_matches('s').parse::<f64>().ok()?;
+        (seconds.is_finite() && seconds >= 0.).then_some(seconds)
+    });
+    Some(MoveAnnotation {
+        eval_cp: Some(score),
+        depth: Some(depth),
+        elapsed,
+        ..Default::default()
+    })
+}
+
+/// Parse a move comment, normalizing Cute Chess's mover-relative score to White.
+/// `white_moved` describes the move carrying the comment, not the next turn.
+pub fn parse_move_annotation(comment: &str, white_moved: bool) -> MoveAnnotation {
+    let mut note = parse_annotation(comment);
+    if !white_moved
+        && command(comment, "eval").is_none()
+        && field(comment, "wv").is_none()
+        && cutechess(comment).is_some()
+    {
+        note.eval_cp = note.eval_cp.map(|cp| -cp);
+    }
+    note
 }
 
 /// TCEC style `key=value,` fields.
@@ -83,6 +123,11 @@ pub fn parse_annotation(comment: &str) -> MoveAnnotation {
     out.nps = field(comment, "s")
         .and_then(|value| value.parse::<f64>().ok())
         .map(|knps| (knps * 1000.0) as u64);
+    if let Some(cute) = cutechess(comment) {
+        out.eval_cp = out.eval_cp.or(cute.eval_cp);
+        out.depth = out.depth.or(cute.depth);
+        out.elapsed = out.elapsed.or(cute.elapsed);
+    }
     out
 }
 
@@ -162,6 +207,32 @@ mod tests {
         assert_eq!(note.clock, Some(5400.0));
         assert_eq!(note.eval_cp, Some(31));
         assert_eq!(note.nps, Some(78_123_000));
+    }
+
+    #[test]
+    fn cutechess_scores_depth_times_and_perspective() {
+        let note = parse_move_annotation("+0.35/24 1.25s", false);
+        assert_eq!(note.eval_cp, Some(-35));
+        assert_eq!(note.depth, Some(24));
+        assert_eq!(note.elapsed, Some(1.25));
+        assert_eq!(
+            parse_move_annotation("-M3/18 0.012s", false).eval_cp,
+            Some(MATE_CP)
+        );
+        assert_eq!(
+            parse_move_annotation("+M2/20 0s", true).eval_cp,
+            Some(MATE_CP)
+        );
+        assert_eq!(parse_annotation("-0.42/12 2.4").elapsed, Some(2.4));
+        assert_eq!(parse_annotation("book"), MoveAnnotation::default());
+        assert_eq!(
+            parse_annotation("ordinary/words comment"),
+            MoveAnnotation::default()
+        );
+        assert_eq!(
+            parse_move_annotation("+0.35/24 1s [%eval 0.80]", false).eval_cp,
+            Some(80)
+        );
     }
 
     #[test]

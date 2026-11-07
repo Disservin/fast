@@ -834,7 +834,8 @@ impl AnalyseScreen {
         while let Some(id) = stack.pop() {
             let node = self.tree.node(id);
             stack.extend(node.children.iter().copied());
-            let note = chess_core::parse_annotation(&node.comment);
+            let note =
+                chess_core::parse_move_annotation(&node.comment, !node.ply.is_multiple_of(2));
             if let Some(cp) = note.eval_cp {
                 self.evals.insert(id, cp);
                 self.depths.insert(id, note.depth.unwrap_or(0));
@@ -849,52 +850,49 @@ impl AnalyseScreen {
     pub fn open_file(&mut self, cx: &mut Context<Self>) {
         let this = cx.entity().downgrade();
         let workspace = self.workspace.clone();
-        crate::model::pick_paths(
-            self.model.clone(),
-            "Open games",
-            cx,
-            move |paths, cx| {
-                let mut games = Vec::new();
-                let mut errors = Vec::new();
-                for path in paths {
-                    let result = std::fs::read_to_string(&path)
-                        .map_err(|err| err.to_string())
-                        .and_then(|text| {
-                            if let Ok(tree) = GameTree::from_fen(text.trim()) {
-                                Ok(vec![tree])
-                            } else {
-                                parse_pgn(&text).map_err(|err| err.to_string())
-                            }
-                        });
-                    match result {
-                        Ok(mut loaded) if !loaded.is_empty() => games.append(&mut loaded),
-                        Ok(_) => errors.push(format!("{}: no games", path.display())),
-                        Err(err) => errors.push(format!("{}: {err}", path.display())),
-                    }
+        crate::model::pick_paths(self.model.clone(), "Open games", cx, move |paths, cx| {
+            let mut games = Vec::new();
+            let mut errors = Vec::new();
+            for path in paths {
+                let result = std::fs::read_to_string(&path)
+                    .map_err(|err| err.to_string())
+                    .and_then(|text| {
+                        if let Ok(tree) = GameTree::from_fen(text.trim()) {
+                            Ok(vec![tree])
+                        } else {
+                            parse_pgn(&text).map_err(|err| err.to_string())
+                        }
+                    });
+                match result {
+                    Ok(mut loaded) if !loaded.is_empty() => games.append(&mut loaded),
+                    Ok(_) => errors.push(format!("{}: no games", path.display())),
+                    Err(err) => errors.push(format!("{}: {err}", path.display())),
                 }
-                let Some(window) = cx.active_window() else { return };
-                let _ = window.update(cx, |_, window, cx| {
-                    let mut games = games.into_iter();
-                    if let Some(first) = games.next()
-                        && let Some(this) = this.upgrade()
-                    {
-                        this.update(cx, |screen, cx| screen.load_tree(first, window, cx));
-                    }
-                    if let Some(workspace) = workspace.upgrade() {
-                        workspace.update(cx, |workspace, cx| {
-                            for tree in games {
-                                workspace.open_analysis(tree, window, cx);
-                            }
-                        });
-                    }
-                    if !errors.is_empty()
-                        && let Some(this) = this.upgrade()
-                    {
-                        this.update(cx, |screen, cx| screen.toast(errors.join("; "), cx));
-                    }
-                });
-            },
-        );
+            }
+            let Some(window) = cx.active_window() else {
+                return;
+            };
+            let _ = window.update(cx, |_, window, cx| {
+                let mut games = games.into_iter();
+                if let Some(first) = games.next()
+                    && let Some(this) = this.upgrade()
+                {
+                    this.update(cx, |screen, cx| screen.load_tree(first, window, cx));
+                }
+                if let Some(workspace) = workspace.upgrade() {
+                    workspace.update(cx, |workspace, cx| {
+                        for tree in games {
+                            workspace.open_analysis(tree, window, cx);
+                        }
+                    });
+                }
+                if !errors.is_empty()
+                    && let Some(this) = this.upgrade()
+                {
+                    this.update(cx, |screen, cx| screen.toast(errors.join("; "), cx));
+                }
+            });
+        });
     }
 
     /// Loads text that is either a FEN or PGN, e.g. from a file or the clipboard.
