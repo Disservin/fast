@@ -12,7 +12,8 @@ mod shell;
 mod snapshot;
 
 use gpui::{
-    App, AppContext as _, Bounds, WindowBounds, WindowDecorations, WindowOptions, px, size,
+    App, AppContext as _, Bounds, TitlebarOptions, WindowBounds, WindowDecorations, WindowOptions,
+    px, size,
 };
 use gpui_component::Root;
 
@@ -52,6 +53,13 @@ fn open_main_window(cli: Cli, cx: &mut App) -> anyhow::Result<()> {
         window_min_size: Some(size(px(1100.), px(720.))),
         // Native decorations where the system offers them; otherwise `Workspace` draws its own.
         window_decorations: Some(WindowDecorations::Server),
+        // On Windows the top bar is the title bar, so the menus share a line with the
+        // window controls; Windows keeps the frame, resizing and snapping.
+        titlebar: Some(TitlebarOptions {
+            title: Some("Fast".into()),
+            appears_transparent: shell::DRAWS_TITLE_BAR,
+            traffic_light_position: None,
+        }),
         ..Default::default()
     };
     cx.open_window(options, move |window, cx| {

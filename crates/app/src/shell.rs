@@ -6,7 +6,7 @@ use engine::EngineStatus;
 use gpui::{
     Action, App, Context, CursorStyle, Decorations, Entity, FocusHandle, FontWeight, IntoElement,
     KeyBinding, MouseButton, Pixels, Render, ResizeEdge, SharedString, Subscription, Window,
-    actions, deferred, div, prelude::*, px, rgb,
+    WindowControlArea, actions, deferred, div, prelude::*, px, rgb,
 };
 use gpui_component::input::{InputEvent, InputState};
 use ui::{
@@ -95,6 +95,10 @@ fn app_menus() -> Vec<gpui::Menu> {
         ]),
     ]
 }
+
+/// Windows hides its title bar and the top bar takes its place, window controls
+/// included. Elsewhere the system draws one when it can.
+pub const DRAWS_TITLE_BAR: bool = cfg!(target_os = "windows");
 
 /// Whether the menus are drawn by the app rather than the system.
 fn draws_own_menus() -> bool {
@@ -546,6 +550,8 @@ impl Workspace {
         )
         .when(controls, |row| row.child(window_controls(window)))
         // Clicks here must not start a window drag.
+        .id("top-bar-controls")
+        .occlude()
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
     }
 
@@ -559,8 +565,12 @@ impl Workspace {
         let crumb = self.breadcrumb(cx);
         // The drawn menu bar takes the breadcrumb's room on narrow windows.
         let show_crumb = self.menu_bar.is_none() || viewport_w >= 1360.;
+        // Interactive parts block the drag strip below them; on Windows that strip is
+        // the system caption, which would otherwise swallow their clicks.
         let menu_bar = self.menu_bar.clone().map(|bar| {
             div()
+                .id("menu-bar")
+                .occlude()
                 .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                 .child(bar)
         });
@@ -613,6 +623,8 @@ impl Workspace {
                     .justify_center()
                     .child(
                         h_flex()
+                            .id("mode-switch")
+                            .occlude()
                             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                             .h(px(36.))
                             .px(px(2.))
@@ -670,7 +682,7 @@ impl Render for Workspace {
         let path_bar = self.path_bar(cx);
         let viewport_w = f32::from(window.viewport_size().width);
         let client_drawn = matches!(window.window_decorations(), Decorations::Client { .. });
-        let controls = client_drawn || self.force_window_controls;
+        let controls = client_drawn || self.force_window_controls || DRAWS_TITLE_BAR;
         let on_button = stack.iter().any(|context| context.contains("FastButton"));
         let body = match self.mode {
             Mode::Analyse => self.analyse.clone().into_any_element(),
@@ -815,10 +827,13 @@ impl Render for Workspace {
 
 /// Lets the top bar move the window when the app draws its own decorations.
 fn drag_region() -> impl IntoElement {
-    div()
-        .id("window-drag")
-        .absolute()
-        .inset_0()
+    let region = div().id("window-drag").absolute().inset_0();
+    if DRAWS_TITLE_BAR {
+        // Windows treats this as its caption: dragging, double-click to maximize,
+        // snapping and the system menu all work natively.
+        return region.window_control_area(WindowControlArea::Drag);
+    }
+    region
         .on_mouse_down(MouseButton::Left, |event, window, _| {
             if event.click_count == 2 {
                 window.zoom_window();
@@ -829,6 +844,14 @@ fn drag_region() -> impl IntoElement {
         .on_mouse_down(MouseButton::Right, |event, window, _| {
             window.show_window_menu(event.position);
         })
+}
+
+/// On Windows, marks a control so the system handles it, as with its own caption
+/// buttons (hover state, Snap Layouts on maximize).
+fn system_control(area: WindowControlArea, control: Btn) -> impl IntoElement {
+    div()
+        .when(DRAWS_TITLE_BAR, |el| el.window_control_area(area))
+        .child(control)
 }
 
 /// Minimize, maximize and close, for systems that leave decorations to the app.
@@ -844,26 +867,29 @@ fn window_controls(window: &Window) -> impl IntoElement {
     };
     h_flex()
         .gap(px(2.))
-        .when(available.minimize, |row| {
-            row.child(
+        .when(available.minimize || DRAWS_TITLE_BAR, |row| {
+            row.child(system_control(
+                WindowControlArea::Min,
                 control("window-minimize", "icons/minus.svg", "Minimize")
                     .on_click(|window, _| window.minimize_window()),
-            )
+            ))
         })
-        .when(available.maximize, |row| {
-            row.child(
+        .when(available.maximize || DRAWS_TITLE_BAR, |row| {
+            row.child(system_control(
+                WindowControlArea::Max,
                 control(
                     "window-maximize",
                     "icons/square.svg",
                     if maximized { "Restore" } else { "Maximize" },
                 )
                 .on_click(|window, _| window.zoom_window()),
-            )
+            ))
         })
-        .child(
+        .child(system_control(
+            WindowControlArea::Close,
             control("window-close", "icons/x.svg", "Close")
                 .on_click(|window, _| window.remove_window()),
-        )
+        ))
 }
 
 /// Invisible strips along the window edges for resizing.

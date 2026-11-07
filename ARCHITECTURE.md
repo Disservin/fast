@@ -36,6 +36,12 @@ GPUI then reports `Decorations::Client`. `Workspace` responds by adding minimize
 close to the top bar, making its empty area drag the window, and placing resize strips on
 the edges. `--client-decorations` forces the controls on, to test them elsewhere.
 
+On Windows the system title bar is hidden (`appears_transparent`) and the top bar takes its
+place, so the drawn menus share a line with minimize, maximize and close. Those controls and the
+empty bar are marked with `window_control_area`, so Windows itself handles them: dragging,
+double-click to maximize, snapping and Snap Layouts. Everything clickable in the bar uses
+`occlude()`, because a click on the drag area would otherwise go to the system caption.
+
 ## Live engine options
 
 `EngineHandle::set_option` is safe during a search. The supervisor sends `stop`, waits for
