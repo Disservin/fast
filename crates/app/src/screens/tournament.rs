@@ -274,6 +274,8 @@ pub struct TournamentScreen {
     menu_open: bool,
     /// The New tournament dialog.
     setup_open: bool,
+    /// Whether the setup form shows its advanced settings.
+    advanced_open: bool,
     /// Whether each fastchess executable offers the `-events` stream.
     events_support: HashMap<PathBuf, bool>,
     _prefs: Subscription,
@@ -390,6 +392,7 @@ impl TournamentScreen {
             games_filter: GameFilter::All,
             menu_open: false,
             setup_open: false,
+            advanced_open: false,
             events_support: HashMap::new(),
             _prefs: prefs,
         }
@@ -1134,8 +1137,11 @@ impl TournamentScreen {
         let type_this = cx.entity();
         let order_this = cx.entity();
         let browse = cx.entity();
+        let expand = cx.entity();
         let _ = window;
-        v_flex()
+
+        // What most tournaments need: who plays, how fast, how many games, which book.
+        let basic = v_flex()
             .gap(px(14.))
             .child(self.render_engines(cx))
             .child(section_label("Time"))
@@ -1154,47 +1160,11 @@ impl TournamentScreen {
                 },
             ))
             .child(field(self.limit.hint(), text_input(&self.limit_value)))
-            .child(pair(
-                field("Hash (MB)", text_input(&self.hash)),
-                field("Threads", text_input(&self.threads)),
-            ))
-            .child(section_label("Schedule"))
-            .child(segmented(
-                "tournament-type",
-                vec![
-                    (false, "Round robin".into(), false),
-                    (true, "Gauntlet".into(), false),
-                ],
-                self.gauntlet,
-                move |gauntlet, _, cx| {
-                    type_this.update(cx, |screen, cx| {
-                        screen.gauntlet = gauntlet;
-                        cx.notify();
-                    })
-                },
-            ))
+            .child(section_label("Games"))
             .child(pair(
                 field("Rounds", text_input(&self.rounds)),
                 field("Concurrency", text_input(&self.concurrency)),
             ))
-            .child(field(
-                "Games per round",
-                segmented(
-                    "tournament-games",
-                    vec![
-                        (1, "1".into(), false),
-                        (2, "2, colours swapped".into(), false),
-                    ],
-                    self.games_per_round,
-                    move |games, _, cx| {
-                        games_this.update(cx, |screen, cx| {
-                            screen.games_per_round = games;
-                            cx.notify();
-                        })
-                    },
-                ),
-            ))
-            .child(section_label("Openings"))
             .child(field(
                 "Book (.epd or .pgn)",
                 h_flex()
@@ -1206,32 +1176,13 @@ impl TournamentScreen {
                         }),
                     ),
             ))
-            .child(pair(
-                field(
-                    "Order",
-                    segmented(
-                        "tournament-order",
-                        vec![
-                            (true, "Random".into(), false),
-                            (false, "Sequential".into(), false),
-                        ],
-                        self.random_order,
-                        move |random, _, cx| {
-                            order_this.update(cx, |screen, cx| {
-                                screen.random_order = random;
-                                cx.notify();
-                            })
-                        },
-                    ),
-                ),
-                field("Plies from book", text_input(&self.plies)),
+            .child(self.toggle(
+                "tournament-sprt",
+                self.sprt,
+                "Stop by SPRT",
+                cx,
+                |screen, on| screen.sprt = on,
             ))
-            .child(section_label("Stopping and adjudication"))
-            .child(
-                self.toggle("tournament-sprt", self.sprt, "SPRT", cx, |screen, on| {
-                    screen.sprt = on
-                }),
-            )
             .when(self.sprt, |column| {
                 column
                     .child(pair(
@@ -1242,51 +1193,165 @@ impl TournamentScreen {
                         field("alpha", text_input(&self.alpha)),
                         field("beta", text_input(&self.beta)),
                     ))
-            })
-            .child(self.toggle(
-                "tournament-draw",
-                self.draw_adjudication,
-                "Draw adjudication",
-                cx,
-                |screen, on| screen.draw_adjudication = on,
-            ))
-            .when(self.draw_adjudication, |column| {
-                column.child(triple(
-                    field("From move", text_input(&self.draw_movenumber)),
-                    field("For moves in a row", text_input(&self.draw_movecount)),
-                    field("Within ± cp", text_input(&self.draw_score)),
+            });
+
+        let open = self.advanced_open;
+        let disclosure = h_flex()
+            .id("tournament-advanced")
+            .gap(px(8.))
+            .items_center()
+            .py(px(10.))
+            .px(px(12.))
+            .rounded(px(8.))
+            .border_1()
+            .border_color(rgb(T.border))
+            .cursor_pointer()
+            .hover(|row| row.bg(rgb(T.hover)))
+            .child(div().w(px(12.)).text_color(rgb(T.muted)).child(if open {
+                "▾"
+            } else {
+                "▸"
+            }))
+            .child(
+                div()
+                    .text_size(px(13.))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .child("Advanced settings"),
+            )
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .overflow_hidden()
+                    .whitespace_nowrap()
+                    .text_ellipsis()
+                    .text_size(px(12.))
+                    .text_color(rgb(T.muted))
+                    .child("Hash and threads, pairing, adjudication, recovery, extra options"),
+            )
+            .on_click(move |_, _, cx| {
+                expand.update(cx, |screen, cx| {
+                    screen.advanced_open = !screen.advanced_open;
+                    cx.notify();
+                })
+            });
+
+        let advanced = open.then(|| {
+            v_flex()
+                .gap(px(14.))
+                .pl(px(12.))
+                .border_l_2()
+                .border_color(rgb(T.border))
+                .child(section_label("Engines"))
+                .child(pair(
+                    field("Hash (MB)", text_input(&self.hash)),
+                    field("Threads", text_input(&self.threads)),
                 ))
-            })
-            .child(self.toggle(
-                "tournament-resign",
-                self.resign_adjudication,
-                "Resign adjudication",
-                cx,
-                |screen, on| screen.resign_adjudication = on,
-            ))
-            .when(self.resign_adjudication, |column| {
-                column
-                    .child(pair(
-                        field("For moves in a row", text_input(&self.resign_movecount)),
-                        field("Beyond cp", text_input(&self.resign_score)),
+                .child(section_label("Pairing"))
+                .child(segmented(
+                    "tournament-type",
+                    vec![
+                        (false, "Round robin".into(), false),
+                        (true, "Gauntlet".into(), false),
+                    ],
+                    self.gauntlet,
+                    move |gauntlet, _, cx| {
+                        type_this.update(cx, |screen, cx| {
+                            screen.gauntlet = gauntlet;
+                            cx.notify();
+                        })
+                    },
+                ))
+                .child(field(
+                    "Games per round",
+                    segmented(
+                        "tournament-games",
+                        vec![
+                            (1, "1".into(), false),
+                            (2, "2, colours swapped".into(), false),
+                        ],
+                        self.games_per_round,
+                        move |games, _, cx| {
+                            games_this.update(cx, |screen, cx| {
+                                screen.games_per_round = games;
+                                cx.notify();
+                            })
+                        },
+                    ),
+                ))
+                .child(pair(
+                    field(
+                        "Book order",
+                        segmented(
+                            "tournament-order",
+                            vec![
+                                (true, "Random".into(), false),
+                                (false, "Sequential".into(), false),
+                            ],
+                            self.random_order,
+                            move |random, _, cx| {
+                                order_this.update(cx, |screen, cx| {
+                                    screen.random_order = random;
+                                    cx.notify();
+                                })
+                            },
+                        ),
+                    ),
+                    field("Plies from book", text_input(&self.plies)),
+                ))
+                .child(section_label("Adjudication"))
+                .child(self.toggle(
+                    "tournament-draw",
+                    self.draw_adjudication,
+                    "Draw adjudication",
+                    cx,
+                    |screen, on| screen.draw_adjudication = on,
+                ))
+                .when(self.draw_adjudication, |column| {
+                    column.child(triple(
+                        field("From move", text_input(&self.draw_movenumber)),
+                        field("For moves in a row", text_input(&self.draw_movecount)),
+                        field("Within ± cp", text_input(&self.draw_score)),
                     ))
-                    .child(self.toggle(
-                        "tournament-resign-twosided",
-                        self.resign_twosided,
-                        "Both engines must agree on the score",
-                        cx,
-                        |screen, on| screen.resign_twosided = on,
-                    ))
-            })
-            .child(field("Maximum moves", text_input(&self.maxmoves)))
-            .child(self.toggle(
-                "tournament-recover",
-                self.recover,
-                "Recover crashed engines",
-                cx,
-                |screen, on| screen.recover = on,
-            ))
-            .child(field("Extra fastchess options", text_input(&self.extra)))
+                })
+                .child(self.toggle(
+                    "tournament-resign",
+                    self.resign_adjudication,
+                    "Resign adjudication",
+                    cx,
+                    |screen, on| screen.resign_adjudication = on,
+                ))
+                .when(self.resign_adjudication, |column| {
+                    column
+                        .child(pair(
+                            field("For moves in a row", text_input(&self.resign_movecount)),
+                            field("Beyond cp", text_input(&self.resign_score)),
+                        ))
+                        .child(self.toggle(
+                            "tournament-resign-twosided",
+                            self.resign_twosided,
+                            "Both engines must agree on the score",
+                            cx,
+                            |screen, on| screen.resign_twosided = on,
+                        ))
+                })
+                .child(field("Maximum moves", text_input(&self.maxmoves)))
+                .child(section_label("Other"))
+                .child(self.toggle(
+                    "tournament-recover",
+                    self.recover,
+                    "Recover crashed engines",
+                    cx,
+                    |screen, on| screen.recover = on,
+                ))
+                .child(field("Extra fastchess options", text_input(&self.extra)))
+        });
+
+        v_flex()
+            .gap(px(16.))
+            .child(basic)
+            .child(disclosure)
+            .children(advanced)
     }
 
     fn render_paste(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
