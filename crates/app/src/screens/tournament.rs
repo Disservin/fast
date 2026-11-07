@@ -265,6 +265,8 @@ pub struct TournamentScreen {
     games_filter: GameFilter,
     /// The ⋯ menu above the run's header.
     menu_open: bool,
+    /// The New tournament dialog.
+    setup_open: bool,
     /// Whether each fastchess executable offers the `-events` stream.
     events_support: HashMap<PathBuf, bool>,
 }
@@ -361,6 +363,7 @@ impl TournamentScreen {
             live_all: false,
             games_filter: GameFilter::All,
             menu_open: false,
+            setup_open: false,
             events_support: HashMap::new(),
         }
     }
@@ -630,6 +633,7 @@ impl TournamentScreen {
         self.live_games.clear();
         self.live_boards.clear();
         self.live_focus = None;
+        self.setup_open = false;
         cx.notify();
     }
 
@@ -1315,64 +1319,77 @@ impl TournamentScreen {
         Some(list)
     }
 
-    fn render_left(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        if let Some(run) = self.run.as_ref().filter(|run| run.active()) {
-            return v_flex()
-                .id("tournament-setup")
-                .w(px(280.))
-                .h_full()
-                .flex_none()
-                .overflow_y_scroll()
-                .bg(rgb(T.surface))
-                .border_r_1()
-                .border_color(rgb(T.border))
-                .child(
-                    v_flex()
-                        .flex_none()
-                        .gap(px(16.))
-                        .px(px(18.))
-                        .pt(px(20.))
-                        .pb(px(24.))
-                        .child(
-                            div()
-                                .text_size(px(18.))
-                                .font_weight(FontWeight::SEMIBOLD)
-                                .child("Engine tournament"),
-                        )
-                        .child(locked_summary(run))
-                        .children(self.render_saved(cx)),
-                )
-                .into_any_element();
+    fn open_setup(&mut self, cx: &mut Context<Self>) {
+        self.setup_open = true;
+        self.form_error = None;
+        cx.notify();
+    }
+
+    fn close_setup(&mut self, cx: &mut Context<Self>) {
+        self.setup_open = false;
+        cx.notify();
+    }
+
+    /// Escape closes the setup dialog. Returns whether it was open.
+    pub fn escape(&mut self, cx: &mut Context<Self>) -> bool {
+        let open = self.setup_open;
+        if open {
+            self.close_setup(cx);
         }
+        open
+    }
+
+    /// The tournament setup, over the tab. Closes once fastchess starts.
+    fn render_setup(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let source_this = cx.entity();
         let start = cx.entity();
+        let (close, backdrop) = (cx.entity(), cx.entity());
         let busy = self.run.as_ref().is_some_and(Run::active) || self.pending.is_some();
         let source = self.source;
         let body = match source {
             Source::Form => self.render_form(window, cx).into_any_element(),
             Source::Paste => self.render_paste(cx).into_any_element(),
         };
-        v_flex()
+        let dialog = v_flex()
             .id("tournament-setup")
-            .w(px(380.))
-            .h_full()
-            .flex_none()
+            .w(px(560.))
+            .max_w_full()
+            .max_h_full()
             .overflow_y_scroll()
+            .rounded(px(12.))
             .bg(rgb(T.surface))
-            .border_r_1()
-            .border_color(rgb(T.border))
+            .border_1()
+            .border_color(rgb(T.border_strong))
+            .shadow_lg()
+            // Clicks inside the dialog stay out of the backdrop.
+            .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .child(
                 v_flex()
                     .flex_none()
                     .gap(px(16.))
-                    .px(px(18.))
-                    .pt(px(20.))
+                    .px(px(22.))
+                    .pt(px(18.))
                     .pb(px(24.))
                     .child(
-                        div()
-                            .text_size(px(18.))
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .child("Engine tournament"),
+                        h_flex()
+                            .justify_between()
+                            .items_center()
+                            .child(
+                                div()
+                                    .text_size(px(18.))
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .child("New tournament"),
+                            )
+                            .child(
+                                btn("tournament-setup-close", "×")
+                                    .h(28.)
+                                    .w(28.)
+                                    .pad(4.)
+                                    .tooltip("Close")
+                                    .on_click(move |_, cx| {
+                                        close.update(cx, |screen, cx| screen.close_setup(cx))
+                                    }),
+                            ),
                     )
                     .child(self.render_fastchess(cx))
                     .child(segmented(
@@ -1409,9 +1426,22 @@ impl TournamentScreen {
                                     Source::Paste => screen.start_paste(cx),
                                 })
                             }),
-                    )
-                    .children(self.render_saved(cx)),
-            )
+                    ),
+            );
+        div()
+            .id("tournament-setup-backdrop")
+            .absolute()
+            .inset_0()
+            .occlude()
+            .flex()
+            .items_center()
+            .justify_center()
+            .p(px(24.))
+            .bg(gpui::rgba(0x0000_0099))
+            .on_mouse_down(gpui::MouseButton::Left, move |_, _, cx| {
+                backdrop.update(cx, |screen, cx| screen.close_setup(cx))
+            })
+            .child(dialog)
             .into_any_element()
     }
 
@@ -1562,6 +1592,13 @@ impl TournamentScreen {
                         .on_click(move |_, cx| watch.update(cx, |screen, cx| screen.watch_all(cx))),
                 )
             })
+            .when(!run.active(), |row| {
+                let new = this.clone();
+                row.child(
+                    btn("tournament-new", "New tournament")
+                        .on_click(move |_, cx| new.update(cx, |screen, cx| screen.open_setup(cx))),
+                )
+            })
             .when(can_resume, |row| {
                 let resume = this.clone();
                 row.child(
@@ -1691,6 +1728,10 @@ impl TournamentScreen {
                     ),
             )
             .child(self.render_games(run, cx))
+            .child(locked_summary(run))
+            .when(!run.active(), |column| {
+                column.children(self.render_saved(cx).map(|saved| card().child(saved)))
+            })
             .child(card().child(heading("fastchess output")).child(log))
             .into_any_element()
     }
@@ -2049,8 +2090,10 @@ impl TournamentScreen {
         )
     }
 
-    fn render_empty(&self, cx: &Context<Self>) -> impl IntoElement + use<> {
+    fn render_empty(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let folder = fastchess::tournaments_dir(&self.data_dir(cx));
+        let new = cx.entity();
+        let saved = self.render_saved(cx).map(|saved| card().mt(px(14.)).child(saved));
         v_flex()
             .gap(px(10.))
             .max_w(px(620.))
@@ -2073,31 +2116,42 @@ impl TournamentScreen {
                     .text_size(px(12.))
                     .text_color(rgb(T.muted)),
             )
+            .child(
+                div().mt(px(6.)).child(
+                    btn("tournament-new-empty", "New tournament")
+                        .primary()
+                        .h(38.)
+                        .on_click(move |_, cx| new.update(cx, |screen, cx| screen.open_setup(cx))),
+                ),
+            )
+            .children(saved)
     }
 }
 
 impl Render for TournamentScreen {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let left = self.render_left(window, cx);
-        let right = match &self.run {
+        let main = match &self.run {
             Some(run) => self.render_run(run, cx),
             None => self.render_empty(cx).into_any_element(),
         };
-        h_flex().items_start().size_full().child(left).child(
-            div()
-                .id("tournament-run")
-                .flex_1()
-                .min_w_0()
-                .h_full()
-                .overflow_y_scroll()
-                .bg(rgb(T.tour_bg))
-                .p(px(24.))
-                .child(
-                    h_flex()
-                        .justify_center()
-                        .child(div().w_full().max_w(px(1440.)).child(right)),
-                ),
-        )
+        let setup = self.setup_open.then(|| self.render_setup(window, cx));
+        div()
+            .relative()
+            .size_full()
+            .child(
+                div()
+                    .id("tournament-run")
+                    .size_full()
+                    .overflow_y_scroll()
+                    .bg(rgb(T.tour_bg))
+                    .p(px(24.))
+                    .child(
+                        h_flex()
+                            .justify_center()
+                            .child(div().w_full().max_w(px(1440.)).child(main)),
+                    ),
+            )
+            .children(setup)
     }
 }
 
@@ -2598,7 +2652,7 @@ fn results_body(n: &fastchess::Results, a: &str, b: &str) -> Div {
     )
 }
 
-/// The sidebar while a tournament runs: what it was started with, read from its command.
+/// What a tournament was started with, read back from its command.
 fn locked_summary(run: &Run) -> Div {
     let args = &run.args;
     let engines = engines(args);
@@ -2714,22 +2768,27 @@ fn locked_summary(run: &Run) -> Div {
         rules = rules.child(def_row(label, value));
     }
 
-    v_flex()
-        .gap(px(16.))
-        .child(card().gap(px(12.)).child(heading("Engines")).child(list))
+    h_flex()
+        .items_start()
+        .flex_wrap()
+        .gap(px(20.))
         .child(
             card()
+                .flex_1()
+                .min_w(px(320.))
+                .gap(px(12.))
+                .child(heading("Engines"))
+                .child(list),
+        )
+        .child(
+            card()
+                .flex_1()
+                .min_w(px(320.))
                 .gap(px(12.))
                 .child(heading("Settings"))
                 .child(defs)
                 .child(divider())
                 .child(rules),
-        )
-        .child(
-            btn("tournament-start", "Stop tournament to edit")
-                .disabled(true)
-                .full()
-                .h(38.),
         )
 }
 

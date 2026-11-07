@@ -324,6 +324,7 @@ impl Workspace {
             }
         });
         let mut path_prompt_open = false;
+        let mut in_background = model.read(cx).config.analyse_in_background;
         let model_sub = cx.observe_in(&model, window, move |this, model, window, cx| {
             // The typed-path bar takes focus as soon as it opens.
             let open = model.read(cx).pending_path.is_some();
@@ -332,6 +333,13 @@ impl Workspace {
                     .update(cx, |input, cx| input.focus(window, cx));
             }
             path_prompt_open = open;
+            // Turning background analysis off stops a hidden Analyse tab's engines now.
+            let background = model.read(cx).config.analyse_in_background;
+            if in_background && !background && this.mode != Mode::Analyse {
+                this.analyse
+                    .update(cx, |screen, cx| screen.set_visible(false, cx));
+            }
+            in_background = background;
             cx.notify();
         });
         let focus = cx.focus_handle();
@@ -460,8 +468,13 @@ impl Workspace {
             });
         }
         if self.active_tab != id {
-            self.analyse
-                .update(cx, |screen, cx| screen.set_visible(false, cx));
+            // Analyse tabs share the engines, so another Analyse tab always takes them over.
+            let keep_analysing = self.model.read(cx).config.analyse_in_background
+                && !matches!(tab.content, TabContent::Analyse(_));
+            if !keep_analysing {
+                self.analyse
+                    .update(cx, |screen, cx| screen.set_visible(false, cx));
+            }
             self.train
                 .update(cx, |screen, cx| screen.set_visible(false, cx));
         }
@@ -1349,7 +1362,15 @@ impl Render for Workspace {
                     }
                 }),
             )
-            .on_key_down(cx.listener(move |this, event, _, cx| {
+            .on_key_down(cx.listener(move |this, event: &gpui::KeyDownEvent, _, cx| {
+                if event.keystroke.key == "escape"
+                    && this.mode == Mode::Tournament
+                    && let Some(screen) = this.tournament.clone()
+                    && screen.update(cx, |screen, cx| screen.escape(cx))
+                {
+                    cx.stop_propagation();
+                    return;
+                }
                 if !typing
                     && this.mode == Mode::Analyse
                     && this

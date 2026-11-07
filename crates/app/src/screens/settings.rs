@@ -1899,6 +1899,28 @@ impl SettingsScreen {
             .selected_engine
             .and_then(|id| model.engine(id).cloned())
             .map(|config| self.render_engine_detail(&config, window, cx));
+        let background = self.model.read(cx).config.analyse_in_background;
+        let background_model = self.model.clone();
+        let background_row = v_flex()
+            .gap(px(4.))
+            .child(
+                check(
+                    "analyse-in-background",
+                    background,
+                    "Keep analysing in other tabs",
+                )
+                .on_change(move |value, _, cx| {
+                    background_model.update(cx, |model, cx| {
+                        model.config.analyse_in_background = value;
+                        model.save_config(cx);
+                    })
+                }),
+            )
+            .child(div().text_size(px(12.)).text_color(rgb(T.muted)).child(
+                "When off, an Analyse tab's engines stop while another tab is shown and \
+                 resume when you come back. Switching to another Analyse tab always hands \
+                 the engines over.",
+            ));
         v_flex()
             .gap(px(21.))
             .child(header)
@@ -1906,6 +1928,7 @@ impl SettingsScreen {
                 column.child(self.render_catalog(cx))
             })
             .child(table)
+            .child(background_row)
             .children(detail)
     }
 

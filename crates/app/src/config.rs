@@ -337,6 +337,9 @@ pub struct Config {
     pub engines: Vec<EngineConfig>,
     pub next_engine_id: u64,
     pub engine_on: bool,
+    /// Keep an Analyse tab's engines searching while a tab other than Analyse is shown.
+    /// Off: leaving the tab stops them, and they resume on return.
+    pub analyse_in_background: bool,
     pub analysis_limit: AnalysisLimit,
     pub view: AnalysisView,
     /// A fastchess executable to use instead of the pinned download.
@@ -355,6 +358,7 @@ impl Default for Config {
             engines: Vec::new(),
             next_engine_id: 1,
             engine_on: true,
+            analyse_in_background: false,
             analysis_limit: AnalysisLimit::default(),
             view: AnalysisView::default(),
             fastchess_path: None,
