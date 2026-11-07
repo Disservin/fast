@@ -240,7 +240,6 @@ impl AnalyseScreen {
         let live = self.live.read(cx);
         let (on, paused) = (live.on, live.paused);
         let view = self.model.read(cx).config.view.clone();
-        let sort_this = this.clone();
         let all_this = this.clone();
         let arrows_this = this.clone();
         let small = |id: &'static str, label: &'static str| btn(id, label).h(26.).pad(8.).text(12.);
@@ -310,29 +309,6 @@ impl AnalyseScreen {
             .flex_wrap()
             .gap(px(4.))
             .mr(px(6.))
-            .child(
-                small(
-                    "sort-lines",
-                    match view.sort {
-                        crate::config::LineSort::Eval => "By eval",
-                        crate::config::LineSort::Depth => "By depth",
-                    },
-                )
-                .w(72.)
-                .tooltip(ui::i18n::t(
-                    "Order engine lines by evaluation or by search depth",
-                ))
-                .on_click(move |_, cx| {
-                    sort_this.update(cx, |screen, cx| {
-                        screen.set_view(cx, |view| {
-                            view.sort = match view.sort {
-                                crate::config::LineSort::Eval => crate::config::LineSort::Depth,
-                                crate::config::LineSort::Depth => crate::config::LineSort::Eval,
-                            };
-                        });
-                    });
-                }),
-            )
             .child(
                 small("all-moves", ui::i18n::t("All moves"))
                     .selected(view.all_moves)

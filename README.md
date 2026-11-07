@@ -71,8 +71,7 @@ returns to the game.
 
 ## Analysis display
 
-- **Moves from here** lists engine lines (MultiPV), database and repertoire moves. **By eval /
-  By depth** changes the order, **All moves** adds every legal move like Nibbler, and **Arrows**
+- **Moves from here** lists engine lines (MultiPV), database and repertoire moves. **All moves** adds every legal move like Nibbler, and **Arrows**
   draws one arrow per engine line, coloured from best (blue) through good (green), inaccuracy
   (yellow) and mistake (orange) to blunder (red).
 - Click an engine arrow on the board to play its move, as in Nibbler (turn it off under
