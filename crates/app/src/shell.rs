@@ -903,6 +903,7 @@ impl Workspace {
                     )
                     .child(
                         btn(("close-tab", id as usize), "×")
+                            .kind(ui::widgets::BtnKind::Ghost)
                             .h(24.)
                             .w(24.)
                             .pad(3.)
