@@ -97,6 +97,66 @@ fn options_are_applied_after_handshake() {
 }
 
 #[test]
+fn option_change_during_a_search_applies_and_resumes_it() {
+    let engine = EngineHandle::spawn(fixture(), Vec::new(), Vec::new());
+    let events = engine.events();
+    assert!(matches!(next(&events), EngineEvent::Ready(_)));
+    engine.search(request(4, None));
+    let EngineEvent::Analysis { update, .. } = next(&events) else {
+        panic!("expected analysis");
+    };
+    assert_eq!(update.score, Some(Score::Cp(30)));
+    engine.set_option("Marker", Some("55".to_owned()));
+    // Output from before the stop is dropped; the search resumes with the new value.
+    let EngineEvent::Analysis { search_id, update } = next(&events) else {
+        panic!("expected resumed analysis");
+    };
+    assert_eq!(search_id, 4);
+    assert_eq!(update.score, Some(Score::Cp(55)));
+    let sent: Vec<String> = engine
+        .log()
+        .snapshot(true)
+        .into_iter()
+        .filter(|line| line.kind == engine::LogKind::Sent)
+        .map(|line| line.text)
+        .collect();
+    let stop = sent.iter().position(|line| line == "stop").unwrap();
+    let option = sent
+        .iter()
+        .position(|line| line.contains("Marker"))
+        .unwrap();
+    assert!(stop < option, "{sent:?}");
+    engine.quit();
+}
+
+#[test]
+fn log_records_traffic_and_stderr() {
+    let engine = EngineHandle::spawn(fixture(), Vec::new(), Vec::new());
+    let events = engine.events();
+    assert!(matches!(next(&events), EngineEvent::Ready(_)));
+    engine.search(request(1, None));
+    assert!(matches!(next(&events), EngineEvent::Analysis { .. }));
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    loop {
+        let lines = engine.log().snapshot(true);
+        let has = |kind, text: &str| {
+            lines
+                .iter()
+                .any(|line| line.kind == kind && line.text.contains(text))
+        };
+        if has(engine::LogKind::Sent, "uci")
+            && has(engine::LogKind::Received, "uciok")
+            && has(engine::LogKind::Stderr, "fake engine warning")
+        {
+            break;
+        }
+        assert!(std::time::Instant::now() < deadline, "{lines:?}");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    engine.quit();
+}
+
+#[test]
 fn crash_is_reported_not_fatal() {
     let engine = EngineHandle::spawn(fixture(), vec!["crash".to_owned()], Vec::new());
     let events = engine.events();

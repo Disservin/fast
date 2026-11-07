@@ -36,6 +36,13 @@ GPUI then reports `Decorations::Client`. `Workspace` responds by adding minimize
 close to the top bar, making its empty area drag the window, and placing resize strips on
 the edges. `--client-decorations` forces the controls on, to test them elsewhere.
 
+## Live engine options
+
+`EngineHandle::set_option` is safe during a search. The supervisor sends `stop`, waits for
+`bestmove`, applies the option, then resumes the same search, so UCI's rule that options are
+only set while idle always holds. Each handle also keeps a bounded `EngineLog` of stdin, stdout
+and stderr, which outlives the process so a crash can still be read.
+
 ## Threads
 
 The UI thread never blocks on engines or databases.

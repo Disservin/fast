@@ -30,6 +30,15 @@ sudo apt install libfontconfig-dev libfreetype-dev libxkbcommon-dev \
   libxkbcommon-x11-dev libwayland-dev libxcb1-dev
 ```
 
+## Engine controls in Analyse
+
+**Engine** (top of the Moves table) switches engines on or off and changes Lines, Threads, Hash and
+the search limit while the search runs, without restarting the engine. **Log** shows the raw UCI
+traffic and stderr; tick **Info** to include search output.
+
+In **Line preview**, click a move to see that position on the board, or drag across moves to
+highlight them as arrows. `Ctrl/Cmd+C` copies the highlight and `Esc` returns to the game.
+
 ## Keyboard shortcuts
 
 Rebindable under **Settings › Keyboard shortcuts**.

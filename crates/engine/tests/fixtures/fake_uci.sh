@@ -19,7 +19,8 @@ while IFS= read -r line; do
     "go infinite")
       [ "$crash_on_go" = crash ] && exit 3
       echo "info depth 10 multipv 1 score cp 25 wdl 400 400 200 nodes 100 nps 1000 string ignored"
-      echo "info depth 12 multipv 1 score cp 30 wdl 410 400 190 nodes 200 nps 2000 pv e2e4 e7e5"
+      echo "info depth 12 multipv 1 score cp ${marker:-30} wdl 410 400 190 nodes 200 nps 2000 pv e2e4 e7e5"
+      echo "fake engine warning" >&2
       searching=1
       ;;
     "go "*)

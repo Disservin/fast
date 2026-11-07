@@ -174,6 +174,16 @@ pub fn default_shortcuts() -> BTreeMap<String, String> {
     .collect()
 }
 
+/// When live analysis stops on its own.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AnalysisLimit {
+    #[default]
+    Infinite,
+    Depth(u32),
+    Seconds(u32),
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
@@ -186,6 +196,7 @@ pub struct Config {
     pub engines: Vec<EngineConfig>,
     pub next_engine_id: u64,
     pub engine_on: bool,
+    pub analysis_limit: AnalysisLimit,
 }
 
 impl Default for Config {
@@ -199,6 +210,7 @@ impl Default for Config {
             engines: Vec::new(),
             next_engine_id: 1,
             engine_on: true,
+            analysis_limit: AnalysisLimit::default(),
         }
     }
 }
@@ -248,6 +260,7 @@ mod tests {
         };
         config.board.theme = SavedTheme::Moss;
         config.board.notation = Notation::Figurine;
+        config.analysis_limit = AnalysisLimit::Depth(30);
         config.engines.push(EngineConfig {
             id: 3,
             name: "Stockfish".to_owned(),

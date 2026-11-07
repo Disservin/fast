@@ -16,7 +16,10 @@ use std::{
 
 use smol::channel::{self, Receiver, Sender};
 
-use crate::uci::{AnalysisUpdate, EngineInfo, UciLine, parse_line};
+use crate::{
+    log::{EngineLog, LogKind},
+    uci::{AnalysisUpdate, EngineInfo, UciLine, parse_line},
+};
 
 pub type EngineId = u64;
 
@@ -90,6 +93,7 @@ enum Request {
 pub struct EngineHandle {
     commands: mpsc::Sender<Request>,
     events: Receiver<EngineEvent>,
+    log: EngineLog,
 }
 
 impl EngineHandle {
@@ -99,16 +103,34 @@ impl EngineHandle {
         let (event_tx, event_rx) = channel::unbounded();
         let (command_tx, command_rx) = mpsc::channel();
         let supervisor_tx = command_tx.clone();
+        let log = EngineLog::default();
+        let supervisor_log = log.clone();
         let spawned = thread::Builder::new()
             .name("uci-supervisor".to_owned())
-            .spawn(move || supervise(path, args, options, command_rx, supervisor_tx, event_tx));
+            .spawn(move || {
+                supervise(
+                    path,
+                    args,
+                    options,
+                    command_rx,
+                    supervisor_tx,
+                    event_tx,
+                    supervisor_log,
+                )
+            });
         if let Err(err) = spawned {
             log::error!("could not start engine thread: {err}");
         }
         Self {
             commands: command_tx,
             events: event_rx,
+            log,
         }
+    }
+
+    /// Everything sent to and received from this process.
+    pub fn log(&self) -> EngineLog {
+        self.log.clone()
     }
 
     /// Stream of engine events. Clones share one queue.
@@ -144,11 +166,13 @@ impl EngineHandle {
 struct Process {
     child: Child,
     stdin: ChildStdin,
+    log: EngineLog,
 }
 
 impl Process {
     fn send(&mut self, line: &str) -> std::io::Result<()> {
         log::trace!("uci> {line}");
+        self.log.push(LogKind::Sent, line);
         writeln!(self.stdin, "{line}")?;
         self.stdin.flush()
     }
@@ -174,13 +198,14 @@ fn start_process(
     path: &PathBuf,
     args: &[String],
     supervisor: mpsc::Sender<Request>,
+    engine_log: EngineLog,
 ) -> std::io::Result<Process> {
     let mut command = Command::new(path);
     command
         .args(args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null());
+        .stderr(Stdio::piped());
     if let Some(parent) = path
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
@@ -202,6 +227,18 @@ fn start_process(
         .stdout
         .take()
         .ok_or_else(|| std::io::Error::other("no stdout"))?;
+    if let Some(stderr) = child.stderr.take() {
+        let stderr_log = engine_log.clone();
+        thread::Builder::new()
+            .name("uci-stderr".to_owned())
+            .spawn(move || {
+                for line in BufReader::new(stderr).lines() {
+                    let Ok(line) = line else { break };
+                    stderr_log.push(LogKind::Stderr, line);
+                }
+            })?;
+    }
+    let reader_log = engine_log.clone();
     thread::Builder::new()
         .name("uci-reader".to_owned())
         .spawn(move || {
@@ -209,13 +246,18 @@ fn start_process(
             for line in reader.lines() {
                 let Ok(line) = line else { break };
                 log::trace!("uci< {line}");
+                reader_log.push(LogKind::Received, line.as_str());
                 if supervisor.send(Request::Line(parse_line(&line))).is_err() {
                     return;
                 }
             }
             let _ = supervisor.send(Request::Eof("engine process exited".to_owned()));
         })?;
-    Ok(Process { child, stdin })
+    Ok(Process {
+        child,
+        stdin,
+        log: engine_log,
+    })
 }
 
 fn supervise(
@@ -225,11 +267,16 @@ fn supervise(
     commands: mpsc::Receiver<Request>,
     self_tx: mpsc::Sender<Request>,
     events: Sender<EngineEvent>,
+    engine_log: EngineLog,
 ) {
-    let emit = |event| {
+    let emit = |event: EngineEvent| {
+        if let EngineEvent::Crashed(reason) = &event {
+            engine_log.push(LogKind::System, reason.as_str());
+        }
         let _ = events.send_blocking(event);
     };
-    let mut process = match start_process(&path, &args, self_tx) {
+    engine_log.push(LogKind::System, format!("starting {}", path.display()));
+    let mut process = match start_process(&path, &args, self_tx, engine_log.clone()) {
         Ok(process) => process,
         Err(err) => {
             emit(EngineEvent::Crashed(format!(
@@ -253,6 +300,10 @@ fn supervise(
     let mut stop_sent = false;
     // Latest search awaiting the current one to finish; older ones are dropped.
     let mut pending: Option<SearchRequest> = None;
+    // The search in flight, so it can resume after an option change.
+    let mut current: Option<SearchRequest> = None;
+    // Options wait for the engine to go idle, as UCI requires.
+    let mut pending_options: Vec<(String, Option<String>)> = Vec::new();
     // Writes arriving before the handshake finishes, replayed in order.
     let mut deferred: VecDeque<Request> = VecDeque::new();
 
@@ -308,13 +359,19 @@ fn supervise(
                         emit(EngineEvent::BestMove { search_id, best });
                     }
                     stop_sent = false;
-                    if let Some(next) = pending.take() {
-                        let result = begin(&mut process, &next);
-                        running = Some(next.search_id);
-                        result
-                    } else {
-                        Ok(())
+                    let mut result = Ok(());
+                    for (name, value) in pending_options.drain(..) {
+                        result =
+                            result.and(process.send(&set_option_line(&name, value.as_deref())));
                     }
+                    if let Some(next) = pending.take() {
+                        result = result.and(begin(&mut process, &next));
+                        running = Some(next.search_id);
+                        current = Some(next);
+                    } else {
+                        current = None;
+                    }
+                    result
                 }
                 UciLine::ReadyOk | UciLine::Other => Ok(()),
             },
@@ -338,6 +395,7 @@ fn supervise(
                 } else {
                     let result = begin(&mut process, &request);
                     running = Some(request.search_id);
+                    current = Some(request);
                     result
                 }
             }
@@ -348,6 +406,19 @@ fn supervise(
                     process.send("stop")
                 } else {
                     Ok(())
+                }
+            }
+            Request::SetOption { name, value } if running.is_some() => {
+                // Stop, apply when idle, then carry on with the same search.
+                pending_options.push((name, value));
+                if pending.is_none() {
+                    pending = current.clone();
+                }
+                if stop_sent {
+                    Ok(())
+                } else {
+                    stop_sent = true;
+                    process.send("stop")
                 }
             }
             Request::SetOption { name, value } => {
@@ -381,6 +452,7 @@ fn supervise(
                         } else {
                             let _ = begin(&mut process, &request);
                             running = Some(request.search_id);
+                            current = Some(request);
                         }
                     }
                     Request::SetOption { name, value } => {

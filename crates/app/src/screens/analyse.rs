@@ -3,15 +3,15 @@
 use std::{collections::HashMap, rc::Rc};
 
 use chess_core::{
-    GameTree, Move, NodeId, Position, classify, display_san, format_pv, parse_pgn, position_hash,
-    write_pgn, write_pgn_from,
+    GameTree, Move, NodeId, Position, classify, display_san, parse_pgn, position_hash, write_pgn,
+    write_pgn_from,
 };
 use db::{Database, ImportControl, MoveStat, import_games};
-use engine::{Score, Wdl};
+use engine::{EngineId, LogLine, Score, Wdl};
 use gpui::{
-    AppContext as _, ClipboardItem, Context, Entity, FontWeight, IntoElement, MouseButton, Pixels,
-    Point, Render, ScrollHandle, SharedString, Subscription, Task, Window, anchored, deferred, div,
-    prelude::*, px, rgb,
+    AppContext as _, ClipboardItem, Context, Entity, FocusHandle, FontWeight, IntoElement,
+    MouseButton, Pixels, Point, Render, ScrollHandle, SharedString, Subscription, Task,
+    UniformListScrollHandle, WeakEntity, Window, anchored, deferred, div, prelude::*, px, rgb,
 };
 use gpui_component::input::{InputEvent, InputState, TextareaState};
 use ui::{
@@ -25,6 +25,7 @@ use crate::{
     controls::text_input,
     live::{LiveAnalysis, LiveEvent},
     model::{AppModel, ModelEvent},
+    shell::Workspace,
 };
 
 /// One candidate move merged from engines, databases and the repertoire.
@@ -35,6 +36,7 @@ pub struct MoveRow {
     pub wdl: Option<Wdl>,
     pub pv: Vec<String>,
     pub depth: u32,
+    pub nodes: Option<u64>,
     pub nps: Option<u64>,
     pub engine_name: String,
     pub reference: Option<MoveStat>,
@@ -116,16 +118,22 @@ pub fn merge_rows(
     rows
 }
 
+mod panels;
+
+use panels::PvView;
+
 type MenuHandler = Box<dyn Fn(&mut Window, &mut gpui::App)>;
 
 pub struct AnalyseScreen {
     model: Entity<AppModel>,
+    workspace: WeakEntity<Workspace>,
     pub tree: GameTree,
     pub current: NodeId,
     board: Entity<BoardView>,
     live: Entity<LiveAnalysis>,
     rows: Vec<MoveRow>,
     selected_san: Option<String>,
+    row_chosen: bool,
     reference: Vec<MoveStat>,
     mine: Vec<MoveStat>,
     evals: HashMap<NodeId, i32>,
@@ -141,11 +149,29 @@ pub struct AnalyseScreen {
     visible: bool,
     /// The W/D/L column is dropped when the window is too narrow for it.
     show_wdl: bool,
+    engine_panel_open: bool,
+    log_panel_open: bool,
+    /// The engine the Engine and Log panels are showing.
+    panel_engine: Option<EngineId>,
+    log_show_info: bool,
+    log_follow: bool,
+    log_lines: Vec<LogLine>,
+    log_scroll: UniformListScrollHandle,
+    /// The highlighted part of the selected row's line, with the line held still.
+    pv_view: Option<PvView>,
+    pv_dragging: bool,
+    pv_toggle_off: bool,
+    pv_focus: FocusHandle,
     _subscriptions: Vec<Subscription>,
 }
 
 impl AnalyseScreen {
-    pub fn new(model: Entity<AppModel>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        model: Entity<AppModel>,
+        workspace: WeakEntity<Workspace>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let board = cx.new(|_| BoardView::new("analyse-board"));
         let live = cx.new(|cx| LiveAnalysis::new(model.clone(), cx));
         let note = cx.new(|cx| TextareaState::new(window, cx));
@@ -212,12 +238,14 @@ impl AnalyseScreen {
         board.update(cx, |board, cx| board.set_prefs(prefs, cx));
         let mut this = Self {
             model,
+            workspace,
             tree,
             current,
             board,
             live,
             rows: Vec::new(),
             selected_san: None,
+            row_chosen: false,
             reference: Vec::new(),
             mine: Vec::new(),
             evals,
@@ -232,6 +260,17 @@ impl AnalyseScreen {
             db_task: None,
             visible: true,
             show_wdl: true,
+            engine_panel_open: false,
+            log_panel_open: false,
+            panel_engine: None,
+            log_show_info: false,
+            log_follow: true,
+            log_lines: Vec::new(),
+            log_scroll: UniformListScrollHandle::new(),
+            pv_view: None,
+            pv_dragging: false,
+            pv_toggle_off: false,
+            pv_focus: cx.focus_handle(),
             _subscriptions: subscriptions,
         };
         this.position_changed(false, window, cx);
@@ -285,12 +324,17 @@ impl AnalyseScreen {
     }
 
     fn position_changed(&mut self, animate: bool, window: &mut Window, cx: &mut Context<Self>) {
+        self.pv_view = None;
+        self.pv_dragging = false;
+        self.board
+            .update(cx, |board, cx| board.set_interactive(true, cx));
         let node = self.tree.node(self.current);
         let pos = node.pos.clone();
         let last = node.mv.as_ref().and_then(|mv| Some((mv.from()?, mv.to())));
         self.board
             .update(cx, |board, cx| board.set_position(pos, last, animate, cx));
         self.selected_san = None;
+        self.row_chosen = false;
         self.board
             .update(cx, |board, cx| board.set_arrows(Vec::new(), cx));
         let tree = self.tree.clone();
@@ -359,6 +403,7 @@ impl AnalyseScreen {
                     wdl: line.wdl,
                     pv: line.sans.clone(),
                     depth: line.update.depth,
+                    nodes: line.update.nodes,
                     nps: line.update.nps,
                     engine_name: primary.config.name.clone(),
                     ..Default::default()
@@ -398,8 +443,9 @@ impl AnalyseScreen {
             white_to_move,
             white_to_move == model.repertoire.white,
         );
-        if self.selected_san.is_none()
-            && let Some(first) = self.rows.first().filter(|row| !row.pv.is_empty())
+        // The selection follows the best line until the user picks a row.
+        if !self.row_chosen
+            && let Some(first) = self.rows.iter().find(|row| !row.pv.is_empty())
         {
             self.selected_san = Some(first.san.clone());
         }
@@ -408,6 +454,10 @@ impl AnalyseScreen {
     }
 
     fn update_arrows(&mut self, cx: &mut Context<Self>) {
+        // A highlighted line owns the board until the user goes back to the game.
+        if self.pv_view.is_some() {
+            return;
+        }
         let pos = self.tree.node(self.current).pos.clone();
         let arrows: Vec<Arrow> = self
             .selected_san
@@ -583,6 +633,8 @@ impl AnalyseScreen {
     }
 
     fn select_row(&mut self, san: String, cx: &mut Context<Self>) {
+        self.exit_pv_preview(cx);
+        self.row_chosen = true;
         self.selected_san = Some(san);
         self.update_arrows(cx);
         cx.notify();
@@ -822,6 +874,9 @@ impl AnalyseScreen {
         };
         let after = (self.current != GameTree::ROOT)
             .then(|| format!("after {}", self.tree.move_label(self.current)));
+        let after = self
+            .pv_preview_label(self.tree.node(self.current).ply)
+            .or(after);
         let live = self.live.read(cx);
         let eval_text = live
             .primary()
@@ -1186,9 +1241,14 @@ impl AnalyseScreen {
                 h_flex()
                     .h(px(50.))
                     .px(px(16.))
-                    .text_size(px(16.))
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .child("Moves from here"),
+                    .justify_between()
+                    .child(
+                        div()
+                            .text_size(px(16.))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .child("Moves from here"),
+                    )
+                    .child(self.render_table_tools(cx)),
             )
             .child(header)
             .child(rows)
@@ -1204,22 +1264,16 @@ impl AnalyseScreen {
             .map(|row| chess_core::notation::numbered(ply + 1, &row.san))
             .unwrap_or_default();
         let meta = selected.as_ref().filter(|row| row.depth > 0).map(|row| {
+            let nodes = row
+                .nodes
+                .map(|nodes| format!(" · {}", engine::format_nodes(nodes)))
+                .unwrap_or_default();
             let speed = row
                 .nps
-                .map(|nps| format!(" · {:.0} Mn/s", nps as f64 / 1_000_000.0))
+                .map(|nps| format!(" · {}", engine::format_speed(nps)))
                 .unwrap_or_default();
-            format!("{} · depth {}{speed}", row.engine_name, row.depth)
+            format!("{} · depth {}{nodes}{speed}", row.engine_name, row.depth)
         });
-        let pv = selected
-            .as_ref()
-            .map(|row| {
-                if row.pv.is_empty() {
-                    chess_core::notation::numbered(ply + 1, &row.san)
-                } else {
-                    format_pv(ply, &row.pv)
-                }
-            })
-            .unwrap_or_default();
         // Hook for future move explanations; only demo mode has text today.
         let explanation = selected
             .as_ref()
@@ -1245,17 +1299,7 @@ impl AnalyseScreen {
                             .child(text)
                     })),
             )
-            .child(
-                div()
-                    .mt(px(10.))
-                    .mb(px(12.))
-                    .min_h(px(26.))
-                    .font_family(MONO)
-                    .text_size(px(14.))
-                    .line_height(px(26.))
-                    .text_color(rgb(T.fg))
-                    .child(pv),
-            )
+            .child(self.render_pv(selected.as_ref(), ply, cx))
             .child(divider().bg(rgb(T.border)))
             .child(
                 div()
@@ -1272,6 +1316,7 @@ impl AnalyseScreen {
                     .gap(px(6.))
                     .child(
                         btn("play-line", "Play line on board")
+                            .pad(9.)
                             .disabled(!has_row)
                             .on_click({
                                 let this = this.clone();
@@ -1282,6 +1327,7 @@ impl AnalyseScreen {
                     )
                     .child(
                         btn("add-variation", "Add as variation")
+                            .pad(9.)
                             .disabled(!has_row)
                             .on_click({
                                 let this = this.clone();
@@ -1290,12 +1336,22 @@ impl AnalyseScreen {
                     )
                     .child(
                         btn("add-rep", "Add to repertoire")
+                            .pad(9.)
                             .disabled(!has_row)
                             .on_click({
                                 let this = this.clone();
                                 move |_, cx| {
                                     this.update(cx, |screen, cx| screen.add_to_repertoire(cx))
                                 }
+                            }),
+                    )
+                    .child(
+                        btn("copy-line", "Copy")
+                            .pad(9.)
+                            .disabled(!has_row)
+                            .on_click({
+                                let this = this.clone();
+                                move |_, cx| this.update(cx, |screen, cx| screen.copy_pv(cx))
                             }),
                     ),
             )
@@ -1415,6 +1471,8 @@ impl Render for AnalyseScreen {
         let board_column = self.render_board_column(board_size, cx);
         let table = self.render_moves_table(cx);
         let preview = self.render_line_preview(cx);
+        let engine_panel = self.engine_panel_open.then(|| self.render_engine_panel(cx));
+        let log_panel = self.log_panel_open.then(|| self.render_log_panel(cx));
         let note = self.note.clone();
         let menu = self.render_context_menu(cx);
         h_flex()
@@ -1433,19 +1491,27 @@ impl Render for AnalyseScreen {
                     .pt(px(24.))
                     .pb(px(16.))
                     .child(
-                        v_flex().gap(px(18.)).child(table).child(preview).child(
-                            panel()
-                                .flex_none()
-                                .p(px(16.))
-                                .child(section_label("Position note").mb(px(10.)))
-                                .child(
-                                    div().bg(rgb(T.bg)).rounded(px(4.)).child(
-                                        gpui_component::input::Textarea::new(&note)
-                                            .h(px(64.))
-                                            .text_size(px(13.)),
+                        v_flex()
+                            .gap(px(18.))
+                            // The search changes the height of everything below the table, so the
+                            // Engine panel goes above it to keep its buttons still.
+                            .children(engine_panel)
+                            .child(table)
+                            .child(preview)
+                            .children(log_panel)
+                            .child(
+                                panel()
+                                    .flex_none()
+                                    .p(px(16.))
+                                    .child(section_label("Position note").mb(px(10.)))
+                                    .child(
+                                        div().bg(rgb(T.bg)).rounded(px(4.)).child(
+                                            gpui_component::input::Textarea::new(&note)
+                                                .h(px(64.))
+                                                .text_size(px(13.)),
+                                        ),
                                     ),
-                                ),
-                        ),
+                            ),
                     ),
             )
             .children(menu)

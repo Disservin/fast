@@ -4,12 +4,15 @@ use std::{collections::BTreeMap, time::Duration};
 
 use chess_core::{GameTree, NodeId, Position, position_hash, shakmaty::uci::UciMove};
 use engine::{
-    AnalysisUpdate, EngineConfig, EngineEvent, EngineHandle, EngineId, EngineStatus, Score,
-    SearchRequest, Wdl,
+    AnalysisUpdate, EngineConfig, EngineEvent, EngineHandle, EngineId, EngineLog, EngineStatus,
+    Limits, LogKind, Score, SearchRequest, Wdl,
 };
 use gpui::{App, AsyncApp, Context, Entity, EventEmitter, Task, WeakEntity};
 
-use crate::model::{AppModel, ModelEvent, split_engine_name};
+use crate::{
+    config::AnalysisLimit,
+    model::{AppModel, ModelEvent, split_engine_name},
+};
 
 /// UI updates per engine are bounded to one per this interval (≤ 10 Hz).
 const THROTTLE: Duration = Duration::from_millis(100);
@@ -30,7 +33,16 @@ pub struct LiveEngine {
     pub handle: Option<EngineHandle>,
     pub lines: BTreeMap<u32, LiveLine>,
     pub running: bool,
+    /// Kept after a crash so the failure can be read.
+    pub log: EngineLog,
     _reader: Option<Task<()>>,
+}
+
+impl LiveEngine {
+    /// Latest numbers for the whole search, from the best line.
+    pub fn stats(&self) -> Option<&AnalysisUpdate> {
+        self.lines.get(&1).map(|line| &line.update)
+    }
 }
 
 pub enum LiveEvent {
@@ -93,6 +105,7 @@ impl LiveAnalysis {
                 handle: None,
                 lines: BTreeMap::new(),
                 running: false,
+                log: EngineLog::default(),
                 _reader: None,
             };
             if !demo && self.on {
@@ -103,11 +116,23 @@ impl LiveAnalysis {
                     model.manager.ensure_running(&config)
                 });
                 live._reader = Some(self.spawn_reader(config.id, &handle, cx));
+                live.log = handle.log();
                 live.handle = Some(handle);
             }
             self.engines.push(live);
         }
+        // Engines taken out of analysis stop running, unless they crashed and already did.
+        for removed in previous.iter().filter(|old| {
+            !self
+                .engines
+                .iter()
+                .any(|live| live.config.id == old.config.id)
+        }) {
+            let id = removed.config.id;
+            self.model.update(cx, |model, _| model.manager.shutdown(id));
+        }
         self.search(cx);
+        cx.emit(LiveEvent::Updated);
         cx.notify();
     }
 
@@ -201,7 +226,13 @@ impl LiveAnalysis {
                     );
                 }
                 EngineEvent::Analysis { .. } => {}
-                EngineEvent::BestMove { .. } => {}
+                EngineEvent::BestMove {
+                    search_id: from, ..
+                } => {
+                    if from == search_id {
+                        live.running = false;
+                    }
+                }
                 EngineEvent::Crashed(reason) => crash = Some(reason),
             }
         }
@@ -247,6 +278,40 @@ impl LiveAnalysis {
         cx.notify();
     }
 
+    /// Applies an option to a running engine without restarting it, and saves it.
+    pub fn set_option(&mut self, id: EngineId, name: &str, value: String, cx: &mut Context<Self>) {
+        self.model.update(cx, |model, cx| {
+            if let Some(config) = model.engine_mut(id) {
+                config.options.insert(name.to_owned(), value.clone());
+            }
+            model.save_config(cx);
+        });
+        if let Some(live) = self.engines.iter_mut().find(|live| live.config.id == id) {
+            live.config.options.insert(name.to_owned(), value.clone());
+            live.lines.clear();
+            if let Some(handle) = &live.handle {
+                handle.set_option(name, Some(value));
+                live.running = true;
+            }
+        }
+        if self.model.read(cx).demo {
+            self.search(cx);
+        }
+        cx.emit(LiveEvent::Updated);
+        cx.notify();
+    }
+
+    /// Changes when analysis stops, and restarts the search under the new limit.
+    pub fn set_limit(&mut self, limit: AnalysisLimit, cx: &mut Context<Self>) {
+        self.model.update(cx, |model, cx| {
+            model.config.analysis_limit = limit;
+            model.save_config(cx);
+        });
+        self.search(cx);
+        cx.emit(LiveEvent::Updated);
+        cx.notify();
+    }
+
     /// Stop analysing without changing the on/off preference (Analyse not visible).
     pub fn pause(&mut self) {
         for engine in &self.engines {
@@ -287,13 +352,43 @@ impl LiveAnalysis {
         self.search_id += 1;
         let hash = position_hash(pos);
         let demo = self.model.read(cx).demo;
+        let limits = match self.model.read(cx).config.analysis_limit {
+            AnalysisLimit::Infinite => None,
+            AnalysisLimit::Depth(depth) => Some(Limits {
+                depth: Some(depth),
+                ..Default::default()
+            }),
+            AnalysisLimit::Seconds(seconds) => Some(Limits {
+                movetime_ms: Some(u64::from(seconds) * 1000),
+                ..Default::default()
+            }),
+        };
         if demo {
             let mut scripted = crate::demo::scripted_lines(hash);
             let white_to_move = pos.turn().is_white();
             for engine in &mut self.engines {
                 engine.lines.clear();
                 if let Some(lines) = scripted.remove(engine.config.name.as_str()) {
-                    for update in lines {
+                    let requested = engine
+                        .config
+                        .options
+                        .get("MultiPV")
+                        .and_then(|value| value.parse::<usize>().ok())
+                        .unwrap_or(3);
+                    // The design's table shows a fourth scripted line at its "3".
+                    let shown = if requested >= 3 {
+                        lines.len()
+                    } else {
+                        requested
+                    };
+                    engine
+                        .log
+                        .push(LogKind::Sent, format!("position fen {}", self.fen));
+                    engine.log.push(LogKind::Sent, "go infinite");
+                    for update in lines.into_iter().take(shown) {
+                        engine
+                            .log
+                            .push(LogKind::Received, crate::demo::info_line(&update));
                         let score = update
                             .score
                             .map(|score| if white_to_move { score } else { score.negate() });
@@ -327,7 +422,7 @@ impl LiveAnalysis {
             handle.search(SearchRequest {
                 fen: self.fen.clone(),
                 moves: self.moves.clone(),
-                limits: None,
+                limits,
                 search_id: self.search_id,
             });
         }

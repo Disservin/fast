@@ -888,6 +888,8 @@ pub fn scripted_lines(hash: u64) -> HashMap<&'static str, Vec<AnalysisUpdate>> {
         nodes: Some(1_200_000_000),
         nps: Some(58_000_000),
         tbhits: None,
+        hashfull: Some(214),
+        time_ms: Some(21_000),
         pv: pv.split(' ').map(str::to_owned).collect(),
     };
     let f4 = "f3f4 a6a5 f4f5 e6c4 c1b1 a5a4 b3c1 c4e2 f1e2 a4a3 b2b3";
@@ -903,6 +905,24 @@ pub fn scripted_lines(hash: u64) -> HashMap<&'static str, Vec<AnalysisUpdate>> {
     out.insert("Lc0", lines.clone());
     out.insert("Stockfish", lines);
     out
+}
+
+/// A scripted line written the way an engine would, for the Log panel.
+pub fn info_line(update: &AnalysisUpdate) -> String {
+    let score = match update.score {
+        Some(Score::Cp(cp)) => format!("cp {cp}"),
+        Some(Score::Mate(mate)) => format!("mate {mate}"),
+        None => "cp 0".to_owned(),
+    };
+    format!(
+        "info depth {} seldepth {} multipv {} score {score} nodes {} nps {} pv {}",
+        update.depth,
+        update.seldepth.unwrap_or(0),
+        update.multipv,
+        update.nodes.unwrap_or(0),
+        update.nps.unwrap_or(0),
+        update.pv.join(" "),
+    )
 }
 
 /// One-line explanation shown in Line preview (the hook is empty outside demo mode).

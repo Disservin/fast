@@ -65,6 +65,9 @@ pub struct AnalysisUpdate {
     pub nodes: Option<u64>,
     pub nps: Option<u64>,
     pub tbhits: Option<u64>,
+    /// Transposition table use, in permille.
+    pub hashfull: Option<u32>,
+    pub time_ms: Option<u64>,
     pub pv: Vec<String>,
 }
 
@@ -169,6 +172,8 @@ fn parse_info(line: &str) -> Option<AnalysisUpdate> {
             "nodes" => update.nodes = value.and_then(|v| v.parse().ok()),
             "nps" => update.nps = value.and_then(|v| v.parse().ok()),
             "tbhits" => update.tbhits = value.and_then(|v| v.parse().ok()),
+            "hashfull" => update.hashfull = value.and_then(|v| v.parse().ok()),
+            "time" => update.time_ms = value.and_then(|v| v.parse().ok()),
             "score" => {
                 let number = tokens.get(index + 1)?.parse().ok()?;
                 update.score = match value? {
@@ -195,14 +200,34 @@ fn parse_info(line: &str) -> Option<AnalysisUpdate> {
             }
             // Free text runs to the end of the line.
             "string" => return None,
-            "time" | "hashfull" | "currmove" | "currmovenumber" | "cpuload" | "sbhits"
-            | "refutation" | "currline" => {}
+            "currmove" | "currmovenumber" | "cpuload" | "sbhits" | "refutation" | "currline" => {}
             _ => continue,
         }
         index += 1;
     }
     update.pv.first()?;
     Some(update)
+}
+
+/// Node count with a metric suffix: "950 n", "12.4 kn", "1.20 Gn".
+pub fn format_nodes(nodes: u64) -> String {
+    let value = nodes as f64;
+    match nodes {
+        0..1_000 => format!("{nodes} n"),
+        1_000..1_000_000 => format!("{:.1} kn", value / 1e3),
+        1_000_000..1_000_000_000 => format!("{:.1} Mn", value / 1e6),
+        _ => format!("{:.2} Gn", value / 1e9),
+    }
+}
+
+/// Search speed: "850 n/s", "412 kn/s", "58.0 Mn/s".
+pub fn format_speed(nps: u64) -> String {
+    let value = nps as f64;
+    match nps {
+        0..1_000 => format!("{nps} n/s"),
+        1_000..1_000_000 => format!("{:.0} kn/s", value / 1e3),
+        _ => format!("{:.1} Mn/s", value / 1e6),
+    }
 }
 
 const OPTION_KEYWORDS: [&str; 7] = ["name", "type", "default", "min", "max", "var", "option"];
@@ -287,6 +312,8 @@ mod tests {
         );
         assert_eq!(info.nps, Some(58_000_000));
         assert_eq!(info.tbhits, Some(7));
+        assert_eq!(info.hashfull, Some(12));
+        assert_eq!(info.time_ms, Some(100));
         assert_eq!(info.pv, vec!["f3f4", "a7a5", "f4f5"]);
     }
 
@@ -381,6 +408,17 @@ mod tests {
                 ponder: None
             }
         );
+    }
+
+    #[test]
+    fn node_and_speed_formatting() {
+        assert_eq!(format_nodes(950), "950 n");
+        assert_eq!(format_nodes(12_400), "12.4 kn");
+        assert_eq!(format_nodes(3_500_000), "3.5 Mn");
+        assert_eq!(format_nodes(1_200_000_000), "1.20 Gn");
+        assert_eq!(format_speed(850), "850 n/s");
+        assert_eq!(format_speed(412_000), "412 kn/s");
+        assert_eq!(format_speed(58_000_000), "58.0 Mn/s");
     }
 
     #[test]

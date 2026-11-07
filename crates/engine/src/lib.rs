@@ -5,9 +5,13 @@
 //! and can await them from any executor.
 
 pub mod handle;
+pub mod log;
 pub mod manager;
 pub mod uci;
 
 pub use handle::{EngineEvent, EngineHandle, EngineId, Limits, SearchRequest};
+pub use log::{EngineLog, LogKind, LogLine};
 pub use manager::{EngineConfig, EngineManager, EngineStatus};
-pub use uci::{AnalysisUpdate, EngineInfo, OptionKind, Score, UciOption, Wdl};
+pub use uci::{
+    AnalysisUpdate, EngineInfo, OptionKind, Score, UciOption, Wdl, format_nodes, format_speed,
+};

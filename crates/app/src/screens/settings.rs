@@ -220,7 +220,12 @@ impl SettingsScreen {
     }
 
     /// Builds the input states for an engine's options from its stored schema.
-    fn select_engine(&mut self, id: Option<EngineId>, window: &mut Window, cx: &mut Context<Self>) {
+    pub fn select_engine(
+        &mut self,
+        id: Option<EngineId>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.selected_engine = id;
         self.benchmark = None;
         self.option_inputs.clear();

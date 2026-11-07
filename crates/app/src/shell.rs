@@ -129,7 +129,7 @@ impl Workspace {
         bind_shortcuts(&shortcuts, cx);
         model.update(cx, |model, cx| model.refresh_leaks(cx));
         let this = cx.entity().downgrade();
-        let analyse = cx.new(|cx| AnalyseScreen::new(model.clone(), window, cx));
+        let analyse = cx.new(|cx| AnalyseScreen::new(model.clone(), this.clone(), window, cx));
         let database = cx.new(|cx| DatabaseScreen::new(model.clone(), this.clone(), window, cx));
         let train = cx.new(|cx| TrainScreen::new(model.clone(), this.clone(), window, cx));
         let play = cx.new(|cx| PlayScreen::new(model.clone(), this.clone(), window, cx));
@@ -220,6 +220,20 @@ impl Workspace {
                 .update(cx, |database, cx| database.search_player(&text, window, cx));
             self.set_mode(Mode::Database, cx);
         }
+    }
+
+    /// Opens Settings on one engine's full option list.
+    pub fn open_engine_settings(
+        &mut self,
+        id: engine::EngineId,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.settings.update(cx, |settings, cx| {
+            settings.select_engine(Some(id), window, cx);
+            settings.set_page(SettingsPage::Engines, window, cx);
+        });
+        self.set_mode(Mode::Settings, cx);
     }
 
     fn submit_path(&mut self, window: &mut Window, cx: &mut Context<Self>) {
