@@ -52,7 +52,18 @@ struct Importing {
 struct Reviewing {
     done: usize,
     total: usize,
+    ply: usize,
+    plies: usize,
     cancelled: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    paused: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+
+#[derive(Clone, Copy)]
+struct ReviewProgress {
+    games: usize,
+    game: usize,
+    plies: usize,
+    ply: usize,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -66,6 +77,11 @@ pub enum ReviewLimit {
 struct ReviewSettings {
     limit: ReviewLimit,
     side: usize,
+}
+
+struct ReviewControlRef<'a> {
+    cancelled: &'a std::sync::atomic::AtomicBool,
+    paused: &'a std::sync::atomic::AtomicBool,
 }
 
 impl ReviewLimit {
@@ -703,6 +719,16 @@ impl DatabaseScreen {
         cx.notify();
     }
 
+    fn toggle_review_pause(&mut self, cx: &mut Context<Self>) {
+        if let Some(reviewing) = &self.reviewing {
+            let paused = !reviewing.paused.load(std::sync::atomic::Ordering::Relaxed);
+            reviewing
+                .paused
+                .store(paused, std::sync::atomic::Ordering::Relaxed);
+        }
+        cx.notify();
+    }
+
     fn analyse_all(&mut self, cx: &mut Context<Self>) {
         if let Some(reviewing) = &self.reviewing {
             reviewing
@@ -757,10 +783,14 @@ impl DatabaseScreen {
             side: self.review_side,
         };
         let cancelled = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let paused = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         self.reviewing = Some(Reviewing {
             done: 0,
             total: ids.len(),
+            ply: 0,
+            plies: 0,
             cancelled: cancelled.clone(),
+            paused: paused.clone(),
         });
         let (tx, rx) = smol::channel::bounded(1);
         let worker = cx.background_spawn(async move {
@@ -770,17 +800,23 @@ impl DatabaseScreen {
                 &ids,
                 &player,
                 settings,
-                &cancelled,
-                |done| {
-                    let _ = tx.try_send(done);
+                ReviewControlRef {
+                    cancelled: &cancelled,
+                    paused: &paused,
+                },
+                |progress| {
+                    let _ = tx.try_send(progress);
                 },
             )
         });
         cx.spawn(async move |this, cx| {
-            while let Ok(done) = rx.recv().await {
+            while let Ok(progress) = rx.recv().await {
                 let _ = this.update(cx, |this, cx| {
                     if let Some(reviewing) = &mut this.reviewing {
-                        reviewing.done = done;
+                        reviewing.done = progress.game.saturating_sub(1);
+                        reviewing.total = progress.games;
+                        reviewing.ply = progress.ply;
+                        reviewing.plies = progress.plies;
                     }
                     cx.notify();
                 });
@@ -1032,6 +1068,26 @@ impl DatabaseScreen {
                     this.update(cx, |screen, cx| screen.toggle_review_scope(cx))
                 }),
             )
+            .when_some(self.reviewing.as_ref(), |row, reviewing| {
+                let pause_this = cx.entity();
+                row.child(
+                    btn(
+                        "review-pause",
+                        if reviewing.paused.load(std::sync::atomic::Ordering::Relaxed) {
+                            "Resume"
+                        } else {
+                            "Pause"
+                        },
+                    )
+                    .on_click(move |_, cx| {
+                        pause_this.update(cx, |screen, cx| screen.toggle_review_pause(cx))
+                    }),
+                )
+                .child(
+                    mono(format!("Position {}/{}", reviewing.ply, reviewing.plies))
+                        .text_size(px(12.)),
+                )
+            })
     }
 
     fn render_stats(&self) -> impl IntoElement + use<> {
@@ -1413,11 +1469,12 @@ fn review_games(
     ids: &[i64],
     player: &str,
     settings: ReviewSettings,
-    cancelled: &std::sync::atomic::AtomicBool,
-    mut on_progress: impl FnMut(usize),
+    control: ReviewControlRef<'_>,
+    mut on_progress: impl FnMut(ReviewProgress),
 ) -> anyhow::Result<()> {
     use engine::{EngineEvent, EngineHandle, Score, SearchRequest};
     use std::sync::atomic::Ordering;
+    let ReviewControlRef { cancelled, paused } = control;
     const START: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
     let database = Database::open(path)?;
@@ -1427,9 +1484,16 @@ fn review_games(
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
     let handle = EngineHandle::spawn(engine.path.clone(), Vec::new(), options);
+    struct QuitGuard(EngineHandle);
+    impl Drop for QuitGuard {
+        fn drop(&mut self) {
+            self.0.quit();
+        }
+    }
+    let _quit = QuitGuard(handle.clone());
     let events = handle.events();
     let mut search_id = 0;
-    for (done, &id) in ids.iter().enumerate() {
+    'games: for (done, &id) in ids.iter().enumerate() {
         if cancelled.load(Ordering::Relaxed) {
             break;
         }
@@ -1442,7 +1506,12 @@ fn review_games(
             &game.start_fen
         };
         let Ok(start_tree) = chess_core::GameTree::from_fen(start_fen) else {
-            on_progress(done + 1);
+            on_progress(ReviewProgress {
+                games: ids.len(),
+                game: done + 1,
+                plies: 0,
+                ply: 0,
+            });
             continue;
         };
         let mut moves: Vec<String> = Vec::new();
@@ -1451,7 +1520,8 @@ fn review_games(
         let mut evals: Vec<Option<i32>> = Vec::with_capacity(game.sans.len() + 1);
         for san_index in 0..=game.sans.len() {
             if cancelled.load(Ordering::Relaxed) {
-                break;
+                handle.stop();
+                break 'games;
             }
             let eval = if let Some(end) = chess_core::game_end(&pos, &history) {
                 Some(match end {
@@ -1460,45 +1530,82 @@ fn review_games(
                     _ => 0,
                 })
             } else {
-                search_id += 1;
-                handle.search(SearchRequest {
-                    fen: start_fen.to_owned(),
-                    moves: moves.clone(),
-                    limits: Some(settings.limit.limits()),
-                    search_id,
-                    game: id as u64,
-                });
                 let mut eval = None;
-                loop {
-                    match smol::block_on(events.recv()) {
-                        Ok(EngineEvent::Analysis {
-                            search_id: from,
-                            update,
-                        }) if from == search_id => {
-                            if let Some(score) = update.score {
-                                let white = if pos.turn().is_white() {
-                                    score
-                                } else {
-                                    score.negate()
-                                };
-                                eval = Some(match white {
-                                    Score::Cp(cp) => cp,
-                                    Score::Mate(mate) if mate > 0 => 3000,
-                                    Score::Mate(_) => -3000,
-                                });
-                            }
+                'position_search: loop {
+                    if paused.load(Ordering::Relaxed) {
+                        handle.stop();
+                        while paused.load(Ordering::Relaxed) && !cancelled.load(Ordering::Relaxed) {
+                            smol::block_on(smol::Timer::after(std::time::Duration::from_millis(
+                                50,
+                            )));
                         }
-                        Ok(EngineEvent::BestMove {
-                            search_id: from, ..
-                        }) if from == search_id => break,
-                        Ok(EngineEvent::Crashed(reason)) => anyhow::bail!(reason),
-                        Ok(_) => {}
-                        Err(_) => anyhow::bail!("engine channel closed"),
+                        if cancelled.load(Ordering::Relaxed) {
+                            break 'games;
+                        }
+                    }
+                    search_id += 1;
+                    handle.search(SearchRequest {
+                        fen: start_fen.to_owned(),
+                        moves: moves.clone(),
+                        limits: Some(settings.limit.limits()),
+                        search_id,
+                        game: id as u64,
+                    });
+                    loop {
+                        if cancelled.load(Ordering::Relaxed) {
+                            handle.stop();
+                            break 'games;
+                        }
+                        if paused.load(Ordering::Relaxed) {
+                            handle.stop();
+                            while paused.load(Ordering::Relaxed)
+                                && !cancelled.load(Ordering::Relaxed)
+                            {
+                                smol::block_on(smol::Timer::after(
+                                    std::time::Duration::from_millis(50),
+                                ));
+                            }
+                            if cancelled.load(Ordering::Relaxed) {
+                                break 'games;
+                            }
+                            continue 'position_search;
+                        }
+                        match smol::block_on(events.recv()) {
+                            Ok(EngineEvent::Analysis {
+                                search_id: from,
+                                update,
+                            }) if from == search_id => {
+                                if let Some(score) = update.score {
+                                    let white = if pos.turn().is_white() {
+                                        score
+                                    } else {
+                                        score.negate()
+                                    };
+                                    eval = Some(match white {
+                                        Score::Cp(cp) => cp,
+                                        Score::Mate(mate) if mate > 0 => 3000,
+                                        Score::Mate(_) => -3000,
+                                    });
+                                }
+                            }
+                            Ok(EngineEvent::BestMove {
+                                search_id: from, ..
+                            }) if from == search_id => break 'position_search,
+                            Ok(EngineEvent::Crashed(reason)) => anyhow::bail!(reason),
+                            Ok(_) => {}
+                            Err(_) => anyhow::bail!("engine channel closed"),
+                        }
                     }
                 }
                 eval
             };
             evals.push(eval);
+            on_progress(ReviewProgress {
+                games: ids.len(),
+                game: done + 1,
+                plies: game.sans.len() + 1,
+                ply: san_index + 1,
+            });
             let Some(san) = game.sans.get(san_index) else {
                 break;
             };
@@ -1539,9 +1646,7 @@ fn review_games(
             let average = losses.iter().sum::<f64>() / losses.len() as f64;
             database.set_accuracy(id, accuracy_from_loss(average))?;
         }
-        on_progress(done + 1);
     }
-    handle.quit();
     Ok(())
 }
 
