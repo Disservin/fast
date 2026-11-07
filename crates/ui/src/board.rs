@@ -763,6 +763,14 @@ impl BoardView {
         cell: Pixels,
         id: impl Into<ElementId>,
     ) -> gpui::AnyElement {
+        let soften_white = self.prefs.theme == BoardTheme::Graphite && piece.color == Color::White;
+        let piece_color = if soften_white {
+            0xD0D2D5
+        } else if piece.color == Color::White {
+            0xFFFFFF
+        } else {
+            0x14161A
+        };
         match self.prefs.pieces {
             PieceSet::Classic
             | PieceSet::Cburnett
@@ -772,16 +780,13 @@ impl BoardView {
                 .id(id)
                 .size(relative(0.74))
                 .m(relative(0.13))
+                .opacity(if soften_white { 0.82 } else { 1.0 })
                 .into_any_element(),
             PieceSet::Flat => svg()
                 .path(PieceSet::Flat.asset(piece))
                 .size(relative(0.86))
                 .m(relative(0.07))
-                .text_color(rgb(if piece.color == Color::White {
-                    0xFFFFFF
-                } else {
-                    0x14161A
-                }))
+                .text_color(rgb(piece_color))
                 .into_any_element(),
             PieceSet::Letters => div()
                 .size_full()
@@ -791,11 +796,7 @@ impl BoardView {
                 .font_family(SANS)
                 .font_weight(FontWeight::BOLD)
                 .text_size(cell * 0.62)
-                .text_color(rgb(if piece.color == Color::White {
-                    0xFFFFFF
-                } else {
-                    0x14161A
-                }))
+                .text_color(rgb(piece_color))
                 .child(piece.role.upper_char().to_string())
                 .into_any_element(),
         }
