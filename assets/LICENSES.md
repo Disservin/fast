@@ -2,7 +2,7 @@
 
 | Assets | Source | License |
 | --- | --- | --- |
-| `fonts/IBMPlex*` | [IBM Plex](https://github.com/IBM/plex) by IBM Corp. | SIL Open Font License 1.1, see `fonts/OFL.txt` |
+| `fonts/Geist*` | [Geist and Geist Mono](https://github.com/vercel/geist-font) v1.9.2 by The Geist Project Authors | SIL Open Font License 1.1, see `fonts/OFL.txt` |
 | `pieces/merida/*` | Merida set by Armando Hernandez Marroquin | GPL-2.0-or-later |
 | `icons/*` | [Lucide](https://lucide.dev) | ISC, see `icons/LICENSE` |
 

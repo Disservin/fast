@@ -38,14 +38,14 @@ macro_rules! font {
 
 pub fn load_fonts(cx: &App) -> Result<()> {
     cx.text_system().add_fonts(vec![
-        font!("IBMPlexSans-Regular.ttf"),
-        font!("IBMPlexSans-Italic.ttf"),
-        font!("IBMPlexSans-Medium.ttf"),
-        font!("IBMPlexSans-SemiBold.ttf"),
-        font!("IBMPlexSans-Bold.ttf"),
-        font!("IBMPlexMono-Regular.ttf"),
-        font!("IBMPlexMono-Medium.ttf"),
-        font!("IBMPlexMono-SemiBold.ttf"),
-        font!("IBMPlexMono-Bold.ttf"),
+        font!("Geist-Regular.ttf"),
+        font!("Geist-Italic.ttf"),
+        font!("Geist-Medium.ttf"),
+        font!("Geist-SemiBold.ttf"),
+        font!("Geist-Bold.ttf"),
+        font!("GeistMono-Regular.ttf"),
+        font!("GeistMono-Medium.ttf"),
+        font!("GeistMono-SemiBold.ttf"),
+        font!("GeistMono-Bold.ttf"),
     ])
 }

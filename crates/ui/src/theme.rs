@@ -3,8 +3,8 @@
 use gpui::{App, Hsla, rgb};
 use gpui_component::{Theme as ComponentTheme, ThemeTokens};
 
-pub const SANS: &str = "IBM Plex Sans";
-pub const MONO: &str = "IBM Plex Mono";
+pub const SANS: &str = "Geist";
+pub const MONO: &str = "Geist Mono";
 
 /// Colour tokens as `0xRRGGBB`, used through [`gpui::rgb`].
 #[derive(Clone, Copy, Debug)]
