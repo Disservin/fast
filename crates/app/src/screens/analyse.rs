@@ -2527,6 +2527,7 @@ impl AnalyseScreen {
                 .child(label)
         };
         let delete_this = this.clone();
+        let delete_sidelines_this = this.clone();
         let promote_this = this.clone();
         let copy_this = this.clone();
         Some(deferred(
@@ -2548,6 +2549,21 @@ impl AnalyseScreen {
                         "Delete from here",
                         Box::new(move |window, cx| {
                             delete_this.update(cx, |screen, cx| screen.delete_from(id, window, cx));
+                        }),
+                    ))
+                    .child(item(
+                        3,
+                        "Delete all sidelines",
+                        Box::new(move |window, cx| {
+                            delete_sidelines_this.update(cx, |screen, cx| {
+                                let selected = screen.tree.delete_all_sidelines(screen.current);
+                                screen.context_menu = None;
+                                if selected != screen.current {
+                                    screen.current = selected;
+                                    screen.position_changed(false, window, cx);
+                                }
+                                cx.notify();
+                            });
                         }),
                     ))
                     .child(item(

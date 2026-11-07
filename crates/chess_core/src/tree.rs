@@ -152,6 +152,27 @@ impl GameTree {
         parent
     }
 
+    /// Removes every sideline, preserving node ids and mainline annotations.
+    /// Returns the closest surviving ancestor of the selected position.
+    pub fn delete_all_sidelines(&mut self, selected: NodeId) -> NodeId {
+        let mut surviving = Self::ROOT;
+        for id in self.path_to(selected) {
+            if self.nodes[surviving].children.first() != Some(&id) {
+                break;
+            }
+            surviving = id;
+        }
+        let mut current = Self::ROOT;
+        loop {
+            self.nodes[current].children.truncate(1);
+            let Some(&next) = self.nodes[current].children.first() else {
+                break;
+            };
+            current = next;
+        }
+        surviving
+    }
+
     /// Moves the variation containing `id` one rank closer to the main line.
     pub fn promote(&mut self, id: NodeId) -> bool {
         let mut current = id;
@@ -282,6 +303,22 @@ mod tests {
         assert!(game.promote(deep));
         assert!(game.is_on_mainline(deep));
         assert!(!game.promote(deep));
+    }
+
+    #[test]
+    fn delete_all_sidelines_preserves_mainline_and_selects_surviving_ancestor() {
+        let (mut game, ids) = tree(&["e4", "e5", "Nf3"]);
+        let alternative = game.add_san(GameTree::ROOT, "d4").unwrap();
+        let variation = game.add_san(ids[0], "c5").unwrap();
+        let nested = game.add_san(variation, "Nf3").unwrap();
+        game.node_mut(ids[2]).comment = "keep".into();
+        assert_eq!(game.delete_all_sidelines(nested), ids[0]);
+        assert_eq!(game.mainline(), ids);
+        assert_eq!(game.node(GameTree::ROOT).children, vec![ids[0]]);
+        assert_eq!(game.node(ids[0]).children, vec![ids[1]]);
+        assert_eq!(game.node(ids[2]).comment, "keep");
+        assert!(!game.node(GameTree::ROOT).children.contains(&alternative));
+        assert_eq!(game.delete_all_sidelines(ids[2]), ids[2]);
     }
 
     #[test]
