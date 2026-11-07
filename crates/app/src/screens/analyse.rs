@@ -228,7 +228,7 @@ pub struct AnalyseScreen {
     scoresheet_scroll: ScrollHandle,
     db_task: Option<Task<()>>,
     visible: bool,
-    /// The W/D/L column is dropped when the window is too narrow for it.
+    /// Show WDL when an engine requests or supplies it, regardless of window width.
     show_wdl: bool,
     engine_panel_open: bool,
     log_panel_open: bool,
@@ -564,7 +564,7 @@ impl AnalyseScreen {
                         lines.push(MoveRow {
                             san: san.clone(),
                             scores: vec![None; count],
-                            wdl: line.wdl,
+                            wdl: None,
                             pv: line.sans.clone(),
                             depth: line.update.depth,
                             nodes: line.update.nodes,
@@ -577,7 +577,6 @@ impl AnalyseScreen {
                 };
                 row.scores[index] = line.score;
                 row.score = row.score.or(line.score);
-                row.wdl = row.wdl.or(line.wdl);
             }
         }
         if let Some(wdl_engine) = live.wdl_engine() {
@@ -586,7 +585,7 @@ impl AnalyseScreen {
                     continue;
                 };
                 if let Some(row) = lines.iter_mut().find(|row| &row.san == san) {
-                    row.wdl = line.wdl.or(row.wdl);
+                    row.wdl = line.wdl;
                 }
             }
         }
@@ -2003,7 +2002,7 @@ impl AnalyseScreen {
         let quality_arrows = model.config.view.quality_arrows;
         const COL_MOVE: f32 = 64.;
         const COL_SF: f32 = 66.;
-        const COL_WDL: f32 = 88.;
+        const COL_WDL: f32 = 112.;
         const COL_REF: f32 = 84.;
         const COL_MY: f32 = 80.;
         let header = h_flex()
@@ -2148,11 +2147,17 @@ impl AnalyseScreen {
                     }))
                     .when(show_wdl, |row_el| {
                         row_el.child(
-                            div()
-                                .w(px(COL_WDL))
-                                .flex_none()
-                                .pr(px(12.))
-                                .child(wdl_bar(row.wdl)),
+                            div().w(px(COL_WDL)).flex_none().pr(px(12.)).child(
+                                v_flex().gap(px(2.)).child(wdl_bar(row.wdl)).child(
+                                    mono(
+                                        wdl_percentages(row.wdl)
+                                            .map(|[w, d, l]| format!("{w:.0} / {d:.0} / {l:.0}%"))
+                                            .unwrap_or_else(|| "—".into()),
+                                    )
+                                    .text_size(px(10.))
+                                    .text_color(rgb(T.fg_2)),
+                                ),
+                            ),
                         )
                     })
                     .child(
@@ -2214,8 +2219,22 @@ impl AnalyseScreen {
                     )
                     .child(self.render_table_tools(cx)),
             )
-            .child(header)
-            .child(rows)
+            .child(
+                div()
+                    .id("candidate-table-scroll")
+                    .overflow_x_scroll()
+                    .child(
+                        v_flex()
+                            .min_w(px(COL_MOVE
+                                + COL_SF * eval_columns as f32
+                                + if show_wdl { COL_WDL } else { 0. }
+                                + COL_REF
+                                + COL_MY
+                                + 120.))
+                            .child(header)
+                            .child(rows),
+                    ),
+            )
     }
 
     /// Who found the selected line and how hard it searched: the engine, then small
@@ -2305,6 +2324,22 @@ impl AnalyseScreen {
             .as_ref()
             .filter(|row| row.depth > 0)
             .map(|row| self.render_search_stats(row, cx));
+        let wdl = self.live.read(cx).wdl_engine().map(|engine| {
+            let values = wdl_percentages(selected.as_ref().and_then(|row| row.wdl));
+            let text = values
+                .map(|[w, d, l]| format!("White win {w:.1}% · Draw {d:.1}% · Black win {l:.1}%"))
+                .unwrap_or_else(|| "WDL: waiting for engine data".to_owned());
+            v_flex()
+                .gap(px(6.))
+                .mt(px(10.))
+                .child(
+                    div()
+                        .text_size(px(12.))
+                        .text_color(rgb(T.fg_2))
+                        .child(format!("{} · {text}", engine.config.name)),
+                )
+                .child(wdl_bar(selected.as_ref().and_then(|row| row.wdl)))
+        });
         // Hook for future move explanations; only demo mode has text today.
         let explanation = selected
             .as_ref()
@@ -2327,6 +2362,7 @@ impl AnalyseScreen {
                     )
                     .children(meta),
             )
+            .children(wdl)
             .child(self.render_pv(selected.as_ref(), cx))
             .child(divider().bg(rgb(T.border)))
             .child(
@@ -2475,27 +2511,47 @@ fn reference_column_title(name: &str) -> String {
         .to_owned()
 }
 
-/// The three-part win/draw/loss bar.
-fn wdl_bar(wdl: Option<Wdl>) -> impl IntoElement {
-    let bar = h_flex()
-        .h(px(13.))
+/// Engine WDL is stored White-relative. Normalize by its reported total rather
+/// than assuming every engine uses the UCI convention of 1000.
+fn wdl_percentages(wdl: Option<Wdl>) -> Option<[f64; 3]> {
+    let wdl = wdl?;
+    let total = u64::from(wdl.win) + u64::from(wdl.draw) + u64::from(wdl.loss);
+    (total > 0)
+        .then(|| [wdl.win, wdl.draw, wdl.loss].map(|value| f64::from(value) * 100.0 / total as f64))
+}
+
+/// White win / draw / Black win. Missing data is shown explicitly.
+fn wdl_bar(wdl: Option<Wdl>) -> gpui::AnyElement {
+    let Some(wdl) = wdl.filter(|wdl| wdl_percentages(Some(*wdl)).is_some()) else {
+        return div()
+            .text_size(px(11.))
+            .text_color(rgb(T.muted))
+            .child("—")
+            .into_any_element();
+    };
+    h_flex()
+        .h(px(10.))
         .w_full()
         .overflow_hidden()
-        .rounded(px(1.));
-    let Some(wdl) = wdl else {
-        return bar.bg(rgb(T.selected));
-    };
-    let segment = |value: u32, color: u32| {
-        div()
-            .h_full()
-            .flex_grow(value.max(1) as f32)
-            .flex_basis(px(0.))
-            .min_w(px(0.))
-            .bg(rgb(color))
-    };
-    bar.child(segment(wdl.win, T.fg))
-        .child(segment(wdl.draw, T.bar))
-        .child(segment(wdl.loss, 0x0B0D10))
+        .rounded(px(1.))
+        .children(
+            [
+                (wdl.win, 0xE8EAED),
+                (wdl.draw, 0x7F8893),
+                (wdl.loss, 0x262B33),
+            ]
+            .into_iter()
+            .filter(|(value, _)| *value > 0)
+            .map(|(value, color)| {
+                div()
+                    .h_full()
+                    .flex_grow(value as f32)
+                    .flex_basis(px(0.))
+                    .min_w(px(0.))
+                    .bg(rgb(color))
+            }),
+        )
+        .into_any_element()
 }
 
 impl Render for AnalyseScreen {
@@ -2564,10 +2620,7 @@ impl Render for AnalyseScreen {
                 .max(px(320.)),
             self.scale,
         );
-        let side_width = viewport.width - board_size - px(300. + 56. + 24.);
-        // Each engine past the first adds an eval column.
-        let extra_engines = self.live.read(cx).engines.len().saturating_sub(1) as f32;
-        self.show_wdl = side_width >= px(460. + 66. * extra_engines);
+        self.show_wdl = self.live.read(cx).wdl_engine().is_some();
         let dirty = write_pgn(&self.tree) != self.saved_pgn;
         let scoresheet = v_flex()
             .h_full()
@@ -2669,6 +2722,37 @@ mod tests {
             score: Some(Score::Cp(cp)),
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn wdl_values_have_clear_white_relative_percentages() {
+        let value = Wdl {
+            win: 600,
+            draw: 300,
+            loss: 100,
+        };
+        assert_eq!(wdl_percentages(Some(value)), Some([60.0, 30.0, 10.0]));
+        assert_eq!(
+            wdl_percentages(Some(value.flip())),
+            Some([10.0, 30.0, 60.0])
+        );
+        assert_eq!(
+            wdl_percentages(Some(Wdl {
+                win: 0,
+                draw: 0,
+                loss: 0
+            })),
+            None
+        );
+        assert_eq!(wdl_percentages(None), None);
+        assert_eq!(
+            wdl_percentages(Some(Wdl {
+                win: 1,
+                draw: 1,
+                loss: 2
+            })),
+            Some([25.0, 25.0, 50.0])
+        );
     }
 
     #[test]

@@ -509,7 +509,7 @@ impl LiveAnalysis {
         let mut history = tree.history(node);
         for mv in extra {
             pos.play_unchecked(*mv);
-            history.push(position_hash(&pos));
+            history.push(pos.clone());
         }
         self.end = chess_core::game_end(&pos, &history);
         self.node = extra.is_empty().then_some(node);
@@ -691,18 +691,26 @@ impl LiveAnalysis {
             .or_else(|| self.engines.first())
     }
 
-    /// The engine providing W/D/L: a GPU/WDL engine if running, otherwise the primary.
+    /// Prefer an engine with actual WDL data; retain an enabled source while waiting.
     pub fn wdl_engine(&self) -> Option<&LiveEngine> {
+        let has_data = |engine: &&LiveEngine| engine.lines.values().any(|line| line.wdl.is_some());
+        let visible = |engine: &&LiveEngine| wdl_visible(&engine.config, has_data(engine));
         self.engines
             .iter()
-            .find(|engine| {
-                engine.config.runs_on_gpu && engine.lines.values().any(|line| line.wdl.is_some())
-            })
-            .or_else(|| {
-                self.engines
-                    .iter()
-                    .find(|engine| engine.lines.values().any(|line| line.wdl.is_some()))
-            })
+            .filter(visible)
+            .find(|engine| engine.config.runs_on_gpu && has_data(engine))
+            .or_else(|| self.engines.iter().filter(visible).find(has_data))
+            .or_else(|| self.engines.iter().find(visible))
+    }
+}
+
+/// Explicitly disabling the UCI option also hides cached WDL. Engines which
+/// report WDL natively need no UCI_ShowWDL option.
+pub fn wdl_visible(config: &EngineConfig, has_data: bool) -> bool {
+    match config.options.get("UCI_ShowWDL").map(String::as_str) {
+        Some("false") => false,
+        Some("true") => true,
+        _ => has_data,
     }
 }
 
@@ -721,6 +729,17 @@ mod tests {
             ..Default::default()
         };
         [(1, line)].into_iter().collect()
+    }
+
+    #[test]
+    fn wdl_visibility_respects_option_and_native_output() {
+        let mut config = EngineConfig::default();
+        assert!(!wdl_visible(&config, false));
+        assert!(wdl_visible(&config, true));
+        config.options.insert("UCI_ShowWDL".into(), "true".into());
+        assert!(wdl_visible(&config, false));
+        config.options.insert("UCI_ShowWDL".into(), "false".into());
+        assert!(!wdl_visible(&config, true));
     }
 
     #[test]
