@@ -133,20 +133,37 @@ impl Noise {
     }
 }
 
-/// One knock of wood on wood: a filtered click over a short, low body resonance.
-/// `brightness` (0–1) opens the filter; `body` is the resonance in Hz.
-fn tap(out: &mut [f32], at: usize, loudness: f32, brightness: f32, body: f32, seed: u32) {
+/// Resonances of a struck wooden piece on a board, as (frequency ratio, loudness,
+/// decay relative to the fundamental's). Wood rings at inharmonic ratios and its
+/// higher modes die fastest, which is what makes a knock sound like a crisp "tok"
+/// rather than a note.
+const WOOD_MODES: [(f32, f32, f32); 4] = [
+    (1.0, 1.0, 1.0),
+    (2.57, 0.5, 0.55),
+    (4.68, 0.28, 0.35),
+    (7.2, 0.12, 0.22),
+];
+
+/// One knock: a very short, bright strike that sets the wood's modes ringing.
+/// `pitch` is the fundamental in Hz and `ring` its decay time in seconds.
+fn knock(out: &mut [f32], at: usize, loudness: f32, pitch: f32, ring: f32, seed: u32) {
     let mut noise = Noise(seed);
-    let mut low = 0.0f32;
-    let alpha = 0.08 + 0.5 * brightness;
+    let mut previous = 0.0f32;
     let start = at.min(out.len());
     for (index, sample) in out[start..].iter_mut().enumerate() {
         let t = index as f32 / RATE as f32;
-        low += alpha * (noise.next() - low);
-        let click = low * (-t / 0.004).exp();
-        let resonance = (std::f32::consts::TAU * body * t).sin() * (-t / 0.022).exp();
-        let overtone = (std::f32::consts::TAU * body * 2.7 * t).sin() * (-t / 0.009).exp();
-        *sample += loudness * (0.9 * click + 0.45 * resonance + 0.18 * overtone);
+        // The strike: high-passed noise lasting about a millisecond.
+        let raw = noise.next();
+        let strike = (raw - previous) * 0.5 * (-t / 0.0007).exp();
+        previous = raw;
+        // A 0.3 ms rise keeps the start from popping.
+        let attack = (t / 0.0003).min(1.0);
+        let mut body = 0.0;
+        for (ratio, level, decay) in WOOD_MODES {
+            let freq = pitch * ratio;
+            body += level * (std::f32::consts::TAU * freq * t).sin() * (-t / (ring * decay)).exp();
+        }
+        *sample += loudness * attack * (0.55 * strike + 0.6 * body);
     }
 }
 
@@ -164,22 +181,25 @@ fn tone(out: &mut [f32], at: usize, freq: f32, loudness: f32, decay: f32) {
 /// The samples of one sound, mono at [`RATE`].
 pub fn synthesise(sound: Sound) -> Vec<f32> {
     let length = match sound {
-        Sound::Move => ms(110),
-        Sound::Capture => ms(170),
-        Sound::Castle => ms(200),
+        Sound::Move => ms(80),
+        Sound::Capture => ms(120),
+        Sound::Castle => ms(170),
         Sound::Check => ms(160),
         Sound::GameEnd => ms(900),
     };
     let mut out = vec![0.0f32; length];
     match sound {
-        Sound::Move => tap(&mut out, 0, 1.0, 0.25, 210.0, 0x9E37_79B9),
+        // A light, crisp tok.
+        Sound::Move => knock(&mut out, 0, 1.0, 1150.0, 0.016, 0x9E37_79B9),
+        // A heavier, lower knock, then the taken piece's lighter click.
         Sound::Capture => {
-            tap(&mut out, 0, 1.25, 0.6, 170.0, 0x85EB_CA6B);
-            tap(&mut out, ms(38), 0.55, 0.35, 240.0, 0xC2B2_AE35);
+            knock(&mut out, 0, 1.15, 780.0, 0.022, 0x85EB_CA6B);
+            knock(&mut out, ms(30), 0.5, 1500.0, 0.010, 0xC2B2_AE35);
         }
+        // King, then rook.
         Sound::Castle => {
-            tap(&mut out, 0, 0.9, 0.25, 220.0, 0x27D4_EB2F);
-            tap(&mut out, ms(85), 0.8, 0.3, 190.0, 0x1656_67B1);
+            knock(&mut out, 0, 0.9, 1100.0, 0.015, 0x27D4_EB2F);
+            knock(&mut out, ms(80), 0.85, 960.0, 0.016, 0x1656_67B1);
         }
         Sound::Check => {
             tone(&mut out, 0, 1318.5, 0.22, 0.05);
@@ -244,6 +264,87 @@ mod tests {
             sounds_for(&castle, &Chess::default(), None)[0],
             Sound::Castle
         );
+    }
+
+    /// The frequency below which half the sound's energy lies, from a plain DFT.
+    fn median_frequency(samples: &[f32]) -> f32 {
+        let n = samples.len().min(2048);
+        let bins: Vec<f32> = (1..n / 2)
+            .map(|k| {
+                let (mut re, mut im) = (0.0f32, 0.0f32);
+                for (i, s) in samples[..n].iter().enumerate() {
+                    let angle = std::f32::consts::TAU * (k * i) as f32 / n as f32;
+                    re += s * angle.cos();
+                    im -= s * angle.sin();
+                }
+                re * re + im * im
+            })
+            .collect();
+        let total: f32 = bins.iter().sum();
+        let mut running = 0.0;
+        for (k, energy) in bins.iter().enumerate() {
+            running += energy;
+            if running >= total / 2.0 {
+                return (k + 1) as f32 * RATE as f32 / n as f32;
+            }
+        }
+        0.0
+    }
+
+    #[test]
+    fn a_move_is_a_crisp_click_not_a_thud() {
+        let samples = synthesise(Sound::Move);
+        // Bright: most energy well above a low thump.
+        assert!(
+            median_frequency(&samples) > 900.0,
+            "{}",
+            median_frequency(&samples)
+        );
+        // Short: nearly all its energy within the first 30 ms.
+        let energy = |part: &[f32]| part.iter().map(|s| s * s).sum::<f32>();
+        assert!(energy(&samples[..ms(30)]) > 0.95 * energy(&samples));
+        // A capture sits lower than a move.
+        assert!(median_frequency(&synthesise(Sound::Capture)) < median_frequency(&samples));
+    }
+
+    /// Writes every sound to WAV files, to listen to without starting the app:
+    /// `FAST_SOUNDS=/some/dir cargo test -p fast write_sounds -- --ignored`
+    #[test]
+    #[ignore]
+    fn write_sounds() {
+        let dir =
+            std::path::PathBuf::from(std::env::var("FAST_SOUNDS").unwrap_or_else(|_| ".".into()));
+        std::fs::create_dir_all(&dir).unwrap();
+        for (sound, name) in [
+            (Sound::Move, "move"),
+            (Sound::Capture, "capture"),
+            (Sound::Castle, "castle"),
+            (Sound::Check, "check"),
+            (Sound::GameEnd, "game-end"),
+        ] {
+            let samples: Vec<i16> = synthesise(sound)
+                .iter()
+                .map(|s| (s.clamp(-1.0, 1.0) * i16::MAX as f32) as i16)
+                .collect();
+            let data_len = (samples.len() * 2) as u32;
+            let mut wav = Vec::with_capacity(44 + data_len as usize);
+            wav.extend_from_slice(b"RIFF");
+            wav.extend_from_slice(&(36 + data_len).to_le_bytes());
+            wav.extend_from_slice(b"WAVEfmt ");
+            wav.extend_from_slice(&16u32.to_le_bytes());
+            wav.extend_from_slice(&1u16.to_le_bytes()); // PCM
+            wav.extend_from_slice(&1u16.to_le_bytes()); // mono
+            wav.extend_from_slice(&RATE.to_le_bytes());
+            wav.extend_from_slice(&(RATE * 2).to_le_bytes());
+            wav.extend_from_slice(&2u16.to_le_bytes());
+            wav.extend_from_slice(&16u16.to_le_bytes());
+            wav.extend_from_slice(b"data");
+            wav.extend_from_slice(&data_len.to_le_bytes());
+            for sample in samples {
+                wav.extend_from_slice(&sample.to_le_bytes());
+            }
+            std::fs::write(dir.join(format!("{name}.wav")), wav).unwrap();
+        }
     }
 
     #[test]
