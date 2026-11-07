@@ -2468,7 +2468,9 @@ impl AnalyseScreen {
                 )
                 .child(mono(value).text_size(px(12.)).text_color(rgb(T.fg_2)))
         };
-        h_flex().gap(px(8.)).items_center()
+        h_flex()
+            .gap(px(8.))
+            .items_center()
             .children(figures.into_iter().map(figure))
             .into_any_element()
     }
@@ -2788,7 +2790,10 @@ impl Render for AnalyseScreen {
             }
         });
         let tag = if self.model.read(cx).config.board.show_move_badges
-            && self.editor.is_none() && self.pv_view.is_none() && self.pv_hover.is_none() {
+            && self.editor.is_none()
+            && self.pv_view.is_none()
+            && self.pv_hover.is_none()
+        {
             explicit.or(inferred)
         } else {
             None

@@ -987,7 +987,6 @@ impl Workspace {
                         }),
                 ),
             )
-
     }
 
     /// Runs an Analyse-only shortcut, ignored on other screens where its effect

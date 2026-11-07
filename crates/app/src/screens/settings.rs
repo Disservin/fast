@@ -1521,11 +1521,45 @@ impl SettingsScreen {
         let mut body = v_flex()
             .gap(px(12.))
             .child(section_label("Storage and backup"))
-            .child(format!("Settings: {}", paths.config_file.display()))
-            .child(format!(
-                "Games, notes, repertoire and history: {}",
-                paths.data_dir.display()
-            ))
+            .children(
+                [
+                    (
+                        "open-settings-path",
+                        "Settings",
+                        paths
+                            .config_file
+                            .parent()
+                            .unwrap_or(&paths.data_dir)
+                            .to_path_buf(),
+                        paths.config_file.display().to_string(),
+                    ),
+                    (
+                        "open-data-path",
+                        "Games, notes, repertoire and history",
+                        paths.data_dir.clone(),
+                        paths.data_dir.display().to_string(),
+                    ),
+                ]
+                .into_iter()
+                .map(|(id, label, folder, display)| {
+                    h_flex()
+                        .gap(px(12.))
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w_0()
+                                .child(format!("{label}: {display}")),
+                        )
+                        .child(
+                            btn(id, "Open")
+                                .h(28.)
+                                .tooltip("Open the containing folder")
+                                .on_click(move |_, cx| {
+                                    cx.reveal_path(&folder);
+                                }),
+                        )
+                }),
+            )
             .child(
                 btn("export-backup", "Export complete backup").on_click(move |_, cx| {
                     let target = export.clone();
