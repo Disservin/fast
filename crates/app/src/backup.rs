@@ -40,6 +40,19 @@ impl Archive {
                 files.insert(name.into(), std::fs::read(path)?);
             }
         }
+        if let Ok(entries) = std::fs::read_dir(paths.data_dir.join("recovery")) {
+            for entry in entries {
+                let path = entry?.path();
+                if path.extension().is_some_and(|ext| ext == "json") {
+                    let name = path
+                        .file_name()
+                        .context("recovery filename")?
+                        .to_str()
+                        .context("recovery filename encoding")?;
+                    files.insert(format!("recovery/{name}"), std::fs::read(&path)?);
+                }
+            }
+        }
         if paths.notes_file().exists() {
             files.insert("notes.sqlite".into(), sqlite_snapshot(&paths.notes_file())?);
         }
@@ -95,7 +108,10 @@ impl Archive {
                     | "study.json"
             ) || (name.starts_with("databases/")
                 && name.ends_with(".sqlite")
-                && Path::new(name).components().count() == 2);
+                && Path::new(name).components().count() == 2)
+                || (name.starts_with("recovery/")
+                    && name.ends_with(".json")
+                    && Path::new(name).components().count() == 2);
             if !allowed || name.contains("..") || name.contains('\\') {
                 bail!("Invalid archive path: {name}");
             }
@@ -211,6 +227,41 @@ mod tests {
             toml::from_str(std::str::from_utf8(&migrated.files["config.toml"]).unwrap()).unwrap();
         assert_eq!(config.player_name, "legacy");
         assert_eq!(config.board, Config::default().board);
+    }
+
+    #[test]
+    fn backups_preserve_independent_tab_recovery_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths {
+            config_file: dir.path().join("config.toml"),
+            data_dir: dir.path().join("data"),
+        };
+        let first = paths.data_dir.join("recovery/analysis-2.json");
+        let second = paths.data_dir.join("recovery/analysis-3.json");
+        crate::recovery::Recovery::save(&first, "1. e4 *".into()).unwrap();
+        crate::recovery::Recovery::save(&second, "1. d4 *".into()).unwrap();
+        let archive = Archive::capture(
+            &paths,
+            &Config::default(),
+            &trainer::Repertoire::new("r", true),
+        )
+        .unwrap();
+        assert!(archive.files.contains_key("recovery/analysis-2.json"));
+        assert!(archive.files.contains_key("recovery/analysis-3.json"));
+        crate::recovery::Recovery::discard(&first).unwrap();
+        assert_eq!(
+            crate::recovery::Recovery::load(&second).unwrap().pgn,
+            "1. d4 *"
+        );
+        archive.restore(&paths, true).unwrap();
+        assert_eq!(
+            crate::recovery::Recovery::load(&first).unwrap().pgn,
+            "1. e4 *"
+        );
+        assert_eq!(
+            crate::recovery::Recovery::load(&second).unwrap().pgn,
+            "1. d4 *"
+        );
     }
 
     #[test]

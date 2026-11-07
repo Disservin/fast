@@ -1080,7 +1080,7 @@ impl Render for TrainScreen {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let viewport = window.viewport_size();
         let board_size = ui::board::snap_board_size(
-            (viewport.height - px(324.))
+            (viewport.height - px(362.))
                 .min(viewport.width - px(720.))
                 .max(px(320.)),
             window.scale_factor(),

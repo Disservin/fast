@@ -20,7 +20,7 @@ use ui::{
 use crate::{
     controls::{TextSelect, field, new_input, new_select, select_el, text_input},
     model::{AppModel, ModelEvent},
-    shell::{Mode, Workspace},
+    shell::Workspace,
 };
 
 const TIME_CONTROLS: [(u32, u32); 5] = [(3, 2), (5, 0), (10, 5), (15, 10), (30, 0)];
@@ -74,8 +74,18 @@ struct Game {
     _clock: Option<Task<()>>,
 }
 
+impl Drop for Game {
+    fn drop(&mut self) {
+        if let Some(engine) = &self.engine {
+            engine.quit();
+        }
+    }
+}
+
 pub struct PlayScreen {
     recovery: Option<crate::recovery::Recovery>,
+    recovery_path: std::path::PathBuf,
+    suspended: bool,
     model: Entity<AppModel>,
     workspace: WeakEntity<Workspace>,
     board: Entity<BoardView>,
@@ -102,6 +112,17 @@ impl PlayScreen {
         workspace: WeakEntity<Workspace>,
         window: &mut Window,
         cx: &mut Context<Self>,
+    ) -> Self {
+        let path = model.read(cx).paths.data_dir.join("play-recovery.json");
+        Self::new_with_recovery(model, workspace, window, cx, path)
+    }
+
+    pub fn new_with_recovery(
+        model: Entity<AppModel>,
+        workspace: WeakEntity<Workspace>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        recovery_path: std::path::PathBuf,
     ) -> Self {
         let board = cx.new(|_| BoardView::new("play-board"));
         let prefs = model.read(cx).config.board.prefs();
@@ -170,9 +191,9 @@ impl PlayScreen {
         ];
         let demo = model.read(cx).demo;
         let mut this = Self {
-            recovery: crate::recovery::Recovery::load(
-                &model.read(cx).paths.data_dir.join("play-recovery.json"),
-            ),
+            recovery: crate::recovery::Recovery::load(&recovery_path),
+            recovery_path,
+            suspended: false,
             model,
             workspace,
             board,
@@ -195,6 +216,28 @@ impl PlayScreen {
             this.start_demo_game(cx);
         }
         this
+    }
+
+    pub fn suspend(&mut self, cx: &mut Context<Self>) {
+        self.tick(cx);
+        self.suspended = true;
+        if let Some(game) = &mut self.game {
+            game._clock = None;
+            if let Some(engine) = &game.engine {
+                engine.stop();
+            }
+        }
+    }
+
+    pub fn resume(&mut self, cx: &mut Context<Self>) {
+        if !self.suspended {
+            return;
+        }
+        self.suspended = false;
+        if self.game.as_ref().is_some_and(|game| game.result.is_none()) {
+            self.start_clock(cx);
+            self.maybe_request_engine_move(cx);
+        }
     }
 
     pub fn breadcrumb(&self) -> SharedString {
@@ -365,9 +408,7 @@ impl PlayScreen {
             game._engine_reader = Some(self.spawn_reader(&handle, cx));
             game.engine = Some(handle);
         }
-        if let Some(old) = self.game.replace(game).and_then(|game| game.engine) {
-            old.quit();
-        }
+        self.game = Some(game);
         self.board
             .update(cx, |board, cx| board.set_flipped(user == Color::Black, cx));
         self.sync_board(false, cx);
@@ -414,6 +455,9 @@ impl PlayScreen {
     }
 
     fn tick(&mut self, cx: &mut Context<Self>) -> bool {
+        if self.suspended {
+            return false;
+        }
         let Some(game) = &mut self.game else {
             return false;
         };
@@ -503,12 +547,7 @@ impl PlayScreen {
         let mut recovery_tree = game.tree.clone();
         recovery_tree.set_header("FastWhiteMs", &game.white_ms.to_string());
         recovery_tree.set_header("FastBlackMs", &game.black_ms.to_string());
-        let path = self
-            .model
-            .read(cx)
-            .paths
-            .data_dir
-            .join("play-recovery.json");
+        let path = self.recovery_path.clone();
         if let Err(err) =
             crate::recovery::Recovery::save(&path, chess_core::write_pgn(&recovery_tree))
         {
@@ -605,6 +644,9 @@ impl PlayScreen {
     }
 
     fn engine_move(&mut self, search_id: u64, best: Option<String>, cx: &mut Context<Self>) {
+        if self.suspended {
+            return;
+        }
         let Some(game) = &self.game else { return };
         if search_id != game.search_id || game.result.is_some() {
             return;
@@ -691,10 +733,7 @@ impl PlayScreen {
         tree.set_header("Black", &black);
         if let Some(workspace) = self.workspace.upgrade() {
             workspace.update(cx, |workspace, cx| {
-                workspace.analyse.update(cx, |analyse, cx| {
-                    analyse.load_tree(tree, window, cx);
-                });
-                workspace.set_mode(Mode::Analyse, cx);
+                workspace.open_analysis(tree, window, cx);
             });
         }
     }
@@ -1161,10 +1200,7 @@ impl Render for PlayScreen {
                                 && let Some(workspace) = this.workspace.upgrade()
                             {
                                 workspace.update(cx, |workspace, cx| {
-                                    workspace.analyse.update(cx, |screen, cx| {
-                                        screen.load_text(&recovery.pgn, window, cx)
-                                    });
-                                    workspace.set_mode(Mode::Analyse, cx);
+                                    workspace.open_pgn(&recovery.pgn, 0, window, cx);
                                 });
                             }
                         });
@@ -1173,12 +1209,7 @@ impl Render for PlayScreen {
                 .child(
                     btn("discard-play-recovery", "Discard recovery").on_click(move |_, cx| {
                         discard.update(cx, |this, cx| {
-                            let path = this
-                                .model
-                                .read(cx)
-                                .paths
-                                .data_dir
-                                .join("play-recovery.json");
+                            let path = this.recovery_path.clone();
                             match crate::recovery::Recovery::discard(&path) {
                                 Ok(()) => {
                                     this.recovery = None;
@@ -1195,7 +1226,7 @@ impl Render for PlayScreen {
         }
         let viewport = window.viewport_size();
         let board_size = ui::board::snap_board_size(
-            (viewport.height - px(324.))
+            (viewport.height - px(362.))
                 .min(viewport.width - px(720.))
                 .max(px(320.)),
             window.scale_factor(),

@@ -146,6 +146,7 @@ pub struct LiveAnalysis {
     model: Entity<AppModel>,
     pub engines: Vec<LiveEngine>,
     pub on: bool,
+    active: bool,
     /// Searching is held: engines stay loaded and keep their last lines, but no
     /// search runs, even when the position changes, until resumed.
     pub paused: bool,
@@ -181,6 +182,7 @@ impl LiveAnalysis {
             model,
             engines: Vec::new(),
             on,
+            active: false,
             paused: false,
             search_id: 0,
             node: None,
@@ -196,6 +198,30 @@ impl LiveAnalysis {
         };
         this.restart(cx);
         this
+    }
+
+    /// Only the visible analysis tab owns the shared engine registry and event readers.
+    pub fn set_active(&mut self, active: bool, cx: &mut Context<Self>) {
+        if self.active == active {
+            return;
+        }
+        self.active = active;
+        if active {
+            // Never attach a new tab's reader to another tab's event queue.
+            self.model
+                .update(cx, |model, _| model.manager.shutdown_all());
+            self.restart(cx);
+        } else {
+            for engine in &mut self.engines {
+                // Keep idle registry handles available to Settings and log windows.
+                if let Some(handle) = engine.handle.take() {
+                    handle.stop();
+                }
+                engine._reader = None;
+                engine.running = false;
+            }
+        }
+        cx.notify();
     }
 
     /// Reconciles running engines with the configuration, restarting everything.
@@ -225,7 +251,7 @@ impl LiveAnalysis {
                 log: EngineLog::default(),
                 _reader: None,
             };
-            if !demo && self.on {
+            if !demo && self.on && self.active {
                 let handle = self.model.update(cx, |model, _| {
                     if existing.is_none() {
                         model.manager.shutdown(config.id);
@@ -246,7 +272,9 @@ impl LiveAnalysis {
                 .any(|live| live.config.id == old.config.id)
         }) {
             let id = removed.config.id;
-            self.model.update(cx, |model, _| model.manager.shutdown(id));
+            if self.active {
+                self.model.update(cx, |model, _| model.manager.shutdown(id));
+            }
         }
         self.search(cx);
         cx.emit(LiveEvent::Updated);
@@ -279,6 +307,9 @@ impl LiveAnalysis {
     }
 
     fn apply_events(&mut self, id: EngineId, batch: Vec<EngineEvent>, cx: &mut Context<Self>) {
+        if !self.active {
+            return;
+        }
         let mut crash = None;
         let mut newest_eval = None;
         let mut analysed = false;
@@ -474,15 +505,6 @@ impl LiveAnalysis {
         cx.notify();
     }
 
-    /// Stop analysing without changing the on/off preference (Analyse not visible).
-    pub fn pause(&mut self) {
-        for engine in &self.engines {
-            if let Some(handle) = &engine.handle {
-                handle.stop();
-            }
-        }
-    }
-
     /// Points analysis at a node. Cancels the running search immediately.
     pub fn set_position(&mut self, tree: &GameTree, node: NodeId, cx: &mut Context<Self>) {
         self.set_line(tree, node, &[], cx);
@@ -556,7 +578,7 @@ impl LiveAnalysis {
 
     /// Starts `go infinite` on every engine for the current position.
     pub fn search(&mut self, cx: &mut App) {
-        if !self.on || self.paused {
+        if !self.on || self.paused || !self.active {
             return;
         }
         let Some(pos) = &self.pos else { return };

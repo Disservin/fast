@@ -195,6 +195,7 @@ type MenuHandler = Box<dyn Fn(&mut Window, &mut gpui::App)>;
 
 pub struct AnalyseScreen {
     recovery: Option<crate::recovery::Recovery>,
+    recovery_path: std::path::PathBuf,
     recovery_pgn: String,
     saved_pgn: String,
     recovery_error: Option<String>,
@@ -268,6 +269,17 @@ impl AnalyseScreen {
         workspace: WeakEntity<Workspace>,
         window: &mut Window,
         cx: &mut Context<Self>,
+    ) -> Self {
+        let path = model.read(cx).paths.data_dir.join("game-recovery.json");
+        Self::new_with_recovery(model, workspace, window, cx, path)
+    }
+
+    pub fn new_with_recovery(
+        model: Entity<AppModel>,
+        workspace: WeakEntity<Workspace>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        recovery_path: std::path::PathBuf,
     ) -> Self {
         let board = cx.new(|_| BoardView::new("analyse-board"));
         let live = cx.new(|cx| LiveAnalysis::new(model.clone(), cx));
@@ -345,9 +357,8 @@ impl AnalyseScreen {
             board.set_flipped(flipped, cx);
         });
         let mut this = Self {
-            recovery: crate::recovery::Recovery::load(
-                &model.read(cx).paths.data_dir.join("game-recovery.json"),
-            ),
+            recovery: crate::recovery::Recovery::load(&recovery_path),
+            recovery_path,
             recovery_pgn: String::new(),
             saved_pgn: write_pgn(&GameTree::new()),
             recovery_error: None,
@@ -375,7 +386,7 @@ impl AnalyseScreen {
             copy_menu: false,
             scoresheet_scroll: ScrollHandle::new(),
             db_task: None,
-            visible: true,
+            visible: false,
             show_wdl: true,
             engine_panel_open: false,
             log_panel_open: false,
@@ -435,13 +446,19 @@ impl AnalyseScreen {
 
     pub fn set_visible(&mut self, visible: bool, cx: &mut Context<Self>) {
         self.visible = visible;
-        self.live.update(cx, |live, cx| {
-            if visible {
-                live.search(cx);
-            } else {
-                live.pause();
-            }
-        });
+        self.live
+            .update(cx, |live, cx| live.set_active(visible, cx));
+        if !visible {
+            self.stop_backward(None, cx);
+        }
+    }
+
+    pub fn checkpoint(&self) -> anyhow::Result<()> {
+        let pgn = write_pgn(&self.tree);
+        if pgn != self.saved_pgn && pgn != write_pgn(&GameTree::new()) {
+            crate::recovery::Recovery::save(&self.recovery_path, pgn)?;
+        }
+        Ok(())
     }
 
     fn opening(&self) -> Option<chess_core::Opening> {
@@ -868,12 +885,7 @@ impl AnalyseScreen {
                     this.update(cx, |screen, cx| {
                         screen.saved_pgn = pgn;
                         if write_pgn(&screen.tree) == screen.saved_pgn {
-                            let path = screen
-                                .model
-                                .read(cx)
-                                .paths
-                                .data_dir
-                                .join("game-recovery.json");
+                            let path = screen.recovery_path.clone();
                             let _ = crate::recovery::Recovery::discard(&path);
                         }
                         cx.notify();
@@ -1259,12 +1271,7 @@ impl AnalyseScreen {
                 let _ = this.update(cx, |screen, cx| {
                     screen.saved_pgn = original_pgn;
                     if write_pgn(&screen.tree) == screen.saved_pgn {
-                        let path = screen
-                            .model
-                            .read(cx)
-                            .paths
-                            .data_dir
-                            .join("game-recovery.json");
+                        let path = screen.recovery_path.clone();
                         let _ = crate::recovery::Recovery::discard(&path);
                     }
                     cx.notify();
@@ -2556,12 +2563,7 @@ fn wdl_bar(wdl: Option<Wdl>) -> gpui::AnyElement {
 
 impl Render for AnalyseScreen {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let recovery_path = self
-            .model
-            .read(cx)
-            .paths
-            .data_dir
-            .join("game-recovery.json");
+        let recovery_path = self.recovery_path.clone();
         if let Some(recovery) = self.recovery.clone() {
             return v_flex()
                 .p(px(24.))
@@ -2615,7 +2617,7 @@ impl Render for AnalyseScreen {
         // The side column keeps room for its table, so the board gives way first.
         self.scale = window.scale_factor();
         let board_size = ui::board::snap_board_size(
-            (viewport.height - px(338.))
+            (viewport.height - px(376.))
                 .min(viewport.width - px(820.))
                 .max(px(320.)),
             self.scale,

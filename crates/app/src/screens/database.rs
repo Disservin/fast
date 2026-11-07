@@ -24,7 +24,7 @@ use ui::{
 use crate::{
     controls::{TextSelect, field, new_input, new_select, select_el, text_input},
     model::{AppModel, DbEntry, ModelEvent, pick_path},
-    shell::{Mode, Workspace},
+    shell::Workspace,
 };
 
 const COLOURS: [&str; 3] = ["Any", "White", "Black"];
@@ -466,10 +466,7 @@ impl DatabaseScreen {
         let key = self.preview_key;
         if let Some(workspace) = self.workspace.upgrade() {
             workspace.update(cx, |workspace, cx| {
-                workspace.analyse.update(cx, |analyse, cx| {
-                    analyse.load_pgn_at(&pgn, key, window, cx);
-                });
-                workspace.set_mode(Mode::Analyse, cx);
+                workspace.open_pgn(&pgn, key, window, cx);
             });
         }
     }

@@ -130,8 +130,10 @@ repertoire saves preserve only valid previous data and startup falls back to tha
 Settings exposes storage paths, persistent unsaved status and retry controls. A cancelled
 PGN dialog does not mutate the game or its saved baseline.
 
-Analyse recovery uses `game-recovery.json`; engine games use `play-recovery.json` (PGN,
-including clock metadata). Startup offers a preview and explicit restore/discard. Engine-game
+The original Analyse/Play views use `game-recovery.json` and `play-recovery.json`;
+additional document tabs use `recovery/analysis-<id>.json` and `recovery/play-<id>.json`.
+These files are scanned at startup and included in backups. Recovery stores PGN
+including clock metadata. Startup offers a preview and explicit restore/discard. Engine-game
 recovery opens the preserved game in Analyse rather than automatically restarting an engine.
 Study recovery lives inside `repertoire.json`, alongside cards and append-only review events,
 so queue advancement and scheduling commit together. Evidence records hints, reveals,
@@ -162,3 +164,23 @@ and corresponding-source references remain with every installation. Cancellation
 and failures preserve existing engines; UCI handshake success is required before
 registration. Installed engines need no network connection. Catalog entries carry
 options as data and never run shell install commands.
+
+## Document tabs
+
+`Workspace` owns a typed list of tab entities and tracks the active tab and last
+selected tab per mode. Its public screen fields point at the current entity for
+each mode, so existing cross-screen actions target that mode's selected document.
+Analyse, Play and Database can have multiple independent entities; Train and
+Settings remain singletons. Database/game-to-analysis actions create a new tab.
+The tab strip scrolls horizontally; tab keyboard actions remain available during
+text entry without enabling move-navigation keys inside inputs.
+
+Only the visible `LiveAnalysis` searches through the shared engine registry.
+Deactivation stops searches and cancels readers while retaining its position cache;
+idle registry handles remain available to Settings and log windows. Activation
+replaces those handles and restarts from the selected tab's position. Inactive views ignore
+late engine events and configuration notifications cannot start background analysis.
+Each Play game already owns its own engine and clock. Open games continue when
+switching tabs; closing suspends them and reopening resets the clock tick origin
+and resumes the search. Dropping a game quits its process. The last ten closed
+entities can be reopened; recovery files retain unsaved documents independently.

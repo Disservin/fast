@@ -223,6 +223,11 @@ pub fn default_shortcuts() -> BTreeMap<String, String> {
         ("next_graph", "g".to_owned()),
         ("scoresheet_style", "i".to_owned()),
         // Window
+        ("new_tab", primary("t")),
+        ("close_tab", primary("w")),
+        ("reopen_tab", primary("shift-t")),
+        ("next_tab", primary("tab")),
+        ("prev_tab", primary("shift-tab")),
         ("search", primary("k")),
         ("show_analyse", primary("1")),
         ("show_database", primary("2")),

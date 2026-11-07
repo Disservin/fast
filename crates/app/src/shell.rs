@@ -37,6 +37,11 @@ actions!(
         FocusSearch,
         SaveGame,
         NewGame,
+        NewTab,
+        CloseTab,
+        ReopenTab,
+        NextTab,
+        PrevTab,
         OpenGame,
         SavePgnAs,
         PasteGame,
@@ -67,6 +72,9 @@ fn app_menus() -> Vec<gpui::Menu> {
     vec![
         Menu::new("File").items([
             MenuItem::action("New game", NewGame),
+            MenuItem::action("New tab", NewTab),
+            MenuItem::action("Close tab", CloseTab),
+            MenuItem::action("Reopen closed tab", ReopenTab),
             MenuItem::action("Open PGN or FEN…", OpenGame),
             MenuItem::separator(),
             MenuItem::action("Save to My games", SaveGame),
@@ -86,6 +94,8 @@ fn app_menus() -> Vec<gpui::Menu> {
             MenuItem::action("Database", ShowDatabase),
             MenuItem::action("Train", ShowTrain),
             MenuItem::action("Play", ShowPlay),
+            MenuItem::action("Next tab", NextTab),
+            MenuItem::action("Previous tab", PrevTab),
             MenuItem::separator(),
             MenuItem::action("Flip board", FlipBoard),
         ]),
@@ -123,6 +133,7 @@ const MODE_SWITCH_HALF_W: f32 = 165.;
 pub const SHORTCUT_CONTEXT: &str = "FastShortcuts";
 /// Additionally present unless a button has focus, where Space means "activate".
 const SPACE_CONTEXT: &str = "FastIdle";
+const TAB_CONTEXT: &str = "FastTabs";
 
 pub fn action_for(name: &str) -> Option<(Box<dyn Action>, &'static str)> {
     Some(match name {
@@ -135,6 +146,11 @@ pub fn action_for(name: &str) -> Option<(Box<dyn Action>, &'static str)> {
         "search" => (Box::new(FocusSearch), SHORTCUT_CONTEXT),
         "save_game" => (Box::new(SaveGame), SHORTCUT_CONTEXT),
         "new_game" => (Box::new(NewGame), SHORTCUT_CONTEXT),
+        "new_tab" => (Box::new(NewTab), TAB_CONTEXT),
+        "close_tab" => (Box::new(CloseTab), TAB_CONTEXT),
+        "reopen_tab" => (Box::new(ReopenTab), TAB_CONTEXT),
+        "next_tab" => (Box::new(NextTab), TAB_CONTEXT),
+        "prev_tab" => (Box::new(PrevTab), TAB_CONTEXT),
         "open_game" => (Box::new(OpenGame), SHORTCUT_CONTEXT),
         "save_pgn_as" => (Box::new(SavePgnAs), SHORTCUT_CONTEXT),
         "paste_game" => (Box::new(PasteGame), SHORTCUT_CONTEXT),
@@ -201,13 +217,47 @@ pub fn init(cx: &mut App) {
         .set_app_menus(app_menus().into_iter().map(gpui::Menu::owned).collect());
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Mode {
     Analyse,
     Database,
     Train,
     Play,
     Settings,
+}
+
+#[derive(Clone)]
+enum TabContent {
+    Analyse(Entity<AnalyseScreen>),
+    Database(Entity<DatabaseScreen>),
+    Train(Entity<TrainScreen>),
+    Play(Entity<PlayScreen>),
+    Settings(Entity<SettingsScreen>),
+}
+impl TabContent {
+    fn mode(&self) -> Mode {
+        match self {
+            Self::Analyse(_) => Mode::Analyse,
+            Self::Database(_) => Mode::Database,
+            Self::Train(_) => Mode::Train,
+            Self::Play(_) => Mode::Play,
+            Self::Settings(_) => Mode::Settings,
+        }
+    }
+    fn title(&self, cx: &App) -> String {
+        match self {
+            Self::Analyse(screen) => format!("Analyse · {}", screen.read(cx).breadcrumb()),
+            Self::Database(screen) => format!("Database · {}", screen.read(cx).breadcrumb()),
+            Self::Train(_) => "Train".into(),
+            Self::Settings(_) => "Settings".into(),
+            Self::Play(screen) => format!("Play · {}", screen.read(cx).breadcrumb()),
+        }
+    }
+}
+#[derive(Clone)]
+struct WorkspaceTab {
+    id: u64,
+    content: TabContent,
 }
 
 pub struct Workspace {
@@ -218,6 +268,11 @@ pub struct Workspace {
     pub train: Entity<TrainScreen>,
     pub play: Entity<PlayScreen>,
     pub settings: Entity<SettingsScreen>,
+    tabs: Vec<WorkspaceTab>,
+    closed_tabs: Vec<WorkspaceTab>,
+    active_tab: u64,
+    next_tab_id: u64,
+    last_tab: BTreeMap<Mode, u64>,
     search: Entity<InputState>,
     path_input: Entity<InputState>,
     menu_bar: Option<Entity<gpui_component::menu::AppMenuBar>>,
@@ -284,10 +339,28 @@ impl Workspace {
             _ => (Mode::Analyse, None),
         };
         train.update(cx, |train, cx| train.set_visible(mode == Mode::Train, cx));
+        analyse.update(cx, |analyse, cx| {
+            analyse.set_visible(mode == Mode::Analyse, cx)
+        });
         if let Some(page) = settings_page {
             settings.update(cx, |settings, cx| settings.set_page(page, window, cx));
         }
-        Self {
+        let initial_content = match mode {
+            Mode::Analyse => TabContent::Analyse(analyse.clone()),
+            Mode::Database => TabContent::Database(database.clone()),
+            Mode::Train => TabContent::Train(train.clone()),
+            Mode::Play => TabContent::Play(play.clone()),
+            Mode::Settings => TabContent::Settings(settings.clone()),
+        };
+        let mut workspace = Self {
+            tabs: vec![WorkspaceTab {
+                id: 1,
+                content: initial_content,
+            }],
+            closed_tabs: Vec::new(),
+            active_tab: 1,
+            next_tab_id: 2,
+            last_tab: [(mode, 1)].into(),
             model,
             mode,
             analyse,
@@ -302,21 +375,359 @@ impl Workspace {
             first_frame: true,
             force_window_controls: false,
             _subscriptions: vec![search_sub, path_sub, model_sub],
+        };
+        workspace.restore_recovery_tabs(window, cx);
+        workspace
+    }
+
+    fn existing_content(&self, mode: Mode) -> TabContent {
+        match mode {
+            Mode::Analyse => TabContent::Analyse(self.analyse.clone()),
+            Mode::Database => TabContent::Database(self.database.clone()),
+            Mode::Train => TabContent::Train(self.train.clone()),
+            Mode::Play => TabContent::Play(self.play.clone()),
+            Mode::Settings => TabContent::Settings(self.settings.clone()),
         }
     }
 
     pub fn set_mode(&mut self, mode: Mode, cx: &mut Context<Self>) {
-        if self.mode == mode {
+        let existing = self
+            .last_tab
+            .get(&mode)
+            .copied()
+            .filter(|id| self.tabs.iter().any(|tab| tab.id == *id))
+            .or_else(|| {
+                self.tabs
+                    .iter()
+                    .rev()
+                    .find(|tab| tab.content.mode() == mode)
+                    .map(|tab| tab.id)
+            });
+        if let Some(id) = existing {
+            self.activate_tab(id, cx);
+        } else if let Some(index) = self
+            .closed_tabs
+            .iter()
+            .rposition(|tab| tab.content.mode() == mode)
+        {
+            let tab = self.closed_tabs.remove(index);
+            let id = tab.id;
+            self.tabs.push(tab);
+            self.activate_tab(id, cx);
+        } else {
+            let id = self.next_tab_id;
+            self.next_tab_id += 1;
+            self.tabs.push(WorkspaceTab {
+                id,
+                content: self.existing_content(mode),
+            });
+            self.activate_tab(id, cx);
+        }
+    }
+
+    fn activate_tab(&mut self, id: u64, cx: &mut Context<Self>) {
+        let Some(tab) = self.tabs.iter().find(|tab| tab.id == id).cloned() else {
+            return;
+        };
+        if self.active_tab == id {
+            cx.notify();
             return;
         }
-        self.mode = mode;
-        self.train
-            .update(cx, |train, cx| train.set_visible(mode == Mode::Train, cx));
-        // The engine only runs while Analyse is open.
-        let visible = mode == Mode::Analyse;
-        self.analyse
-            .update(cx, |analyse, cx| analyse.set_visible(visible, cx));
+        if self.mode == Mode::Analyse
+            && let Err(err) = self.analyse.read(cx).checkpoint()
+        {
+            self.model.update(cx, |model, cx| {
+                model.toast(
+                    format!(
+                        "Recovery snapshot failed: {err}. This game is still available in its tab."
+                    ),
+                    cx,
+                )
+            });
+        }
+        if self.active_tab != id {
+            self.analyse
+                .update(cx, |screen, cx| screen.set_visible(false, cx));
+            self.train
+                .update(cx, |screen, cx| screen.set_visible(false, cx));
+        }
+        self.active_tab = id;
+        self.mode = tab.content.mode();
+        self.last_tab.insert(self.mode, id);
+        match tab.content {
+            TabContent::Analyse(screen) => {
+                self.analyse = screen;
+                self.analyse
+                    .update(cx, |screen, cx| screen.set_visible(true, cx));
+            }
+            TabContent::Database(screen) => self.database = screen,
+            TabContent::Train(screen) => {
+                self.train = screen;
+                self.train
+                    .update(cx, |screen, cx| screen.set_visible(true, cx));
+            }
+            TabContent::Play(screen) => {
+                self.play = screen;
+                self.play.update(cx, |screen, cx| screen.resume(cx));
+            }
+            TabContent::Settings(screen) => self.settings = screen,
+        }
         cx.notify();
+    }
+
+    fn make_tab(
+        &self,
+        mode: Mode,
+        id: u64,
+        path: Option<std::path::PathBuf>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> WorkspaceTab {
+        let model = self.model.clone();
+        let workspace = cx.entity().downgrade();
+        let directory = model.read(cx).paths.data_dir.join("recovery");
+        let content = match mode {
+            Mode::Analyse => TabContent::Analyse(cx.new(|cx| {
+                AnalyseScreen::new_with_recovery(
+                    model,
+                    workspace,
+                    window,
+                    cx,
+                    path.unwrap_or_else(|| directory.join(format!("analysis-{id}.json"))),
+                )
+            })),
+            Mode::Play => TabContent::Play(cx.new(|cx| {
+                PlayScreen::new_with_recovery(
+                    model,
+                    workspace,
+                    window,
+                    cx,
+                    path.unwrap_or_else(|| directory.join(format!("play-{id}.json"))),
+                )
+            })),
+            Mode::Database => {
+                TabContent::Database(cx.new(|cx| DatabaseScreen::new(model, workspace, window, cx)))
+            }
+            _ => self.existing_content(mode),
+        };
+        WorkspaceTab { id, content }
+    }
+
+    fn new_tab(&mut self, mode: Mode, window: &mut Window, cx: &mut Context<Self>) {
+        if matches!(mode, Mode::Train | Mode::Settings) {
+            self.set_mode(mode, cx);
+            return;
+        }
+        let id = self.next_tab_id;
+        self.next_tab_id += 1;
+        let tab = self.make_tab(mode, id, None, window, cx);
+        self.tabs.push(tab);
+        self.activate_tab(id, cx);
+    }
+
+    pub fn open_analysis(
+        &mut self,
+        tree: chess_core::GameTree,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.new_tab(Mode::Analyse, window, cx);
+        self.analyse
+            .update(cx, |screen, cx| screen.load_tree(tree, window, cx));
+    }
+
+    pub fn open_pgn(&mut self, pgn: &str, ply: usize, window: &mut Window, cx: &mut Context<Self>) {
+        self.new_tab(Mode::Analyse, window, cx);
+        self.analyse
+            .update(cx, |screen, cx| screen.load_pgn_at(pgn, ply, window, cx));
+    }
+
+    fn close_tab(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(index) = self.tabs.iter().position(|tab| tab.id == id) else {
+            return;
+        };
+        if let TabContent::Analyse(screen) = &self.tabs[index].content {
+            if let Err(err) = screen.read(cx).checkpoint() {
+                self.model.update(cx, |model, cx| {
+                    model.toast(
+                        format!("Could not preserve this tab: {err}. Save it before closing."),
+                        cx,
+                    )
+                });
+                return;
+            }
+            screen.update(cx, |screen, cx| screen.set_visible(false, cx));
+        }
+        if let TabContent::Play(screen) = &self.tabs[index].content {
+            screen.update(cx, |screen, cx| screen.suspend(cx));
+        }
+        let tab = self.tabs.remove(index);
+        self.last_tab.retain(|_, value| *value != id);
+        self.closed_tabs.push(tab);
+        if self.closed_tabs.len() > 10 {
+            self.closed_tabs.remove(0);
+        }
+        if self.active_tab == id {
+            if self.tabs.is_empty() {
+                self.new_tab(Mode::Analyse, window, cx);
+            } else {
+                self.activate_tab(self.tabs[index.min(self.tabs.len() - 1)].id, cx);
+            }
+        }
+        cx.notify();
+    }
+
+    fn reopen_tab(&mut self, cx: &mut Context<Self>) {
+        if let Some(tab) = self.closed_tabs.pop() {
+            let id = tab.id;
+            self.tabs.push(tab);
+            self.activate_tab(id, cx);
+        }
+    }
+
+    fn cycle_tab(&mut self, delta: isize, cx: &mut Context<Self>) {
+        if self.tabs.is_empty() {
+            return;
+        }
+        let current = self
+            .tabs
+            .iter()
+            .position(|tab| tab.id == self.active_tab)
+            .unwrap_or(0);
+        let index = (current as isize + delta).rem_euclid(self.tabs.len() as isize) as usize;
+        self.activate_tab(self.tabs[index].id, cx);
+    }
+
+    fn restore_recovery_tabs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let directory = self.model.read(cx).paths.data_dir.join("recovery");
+        let Ok(entries) = std::fs::read_dir(directory) else {
+            return;
+        };
+        let mut paths: Vec<_> = entries
+            .flatten()
+            .map(|entry| entry.path())
+            .filter(|path| path.extension().is_some_and(|ext| ext == "json"))
+            .collect();
+        paths.sort();
+        for path in paths {
+            let Some(name) = path.file_stem().and_then(|name| name.to_str()) else {
+                continue;
+            };
+            let mode = if name.starts_with("analysis-") {
+                Mode::Analyse
+            } else if name.starts_with("play-") {
+                Mode::Play
+            } else {
+                continue;
+            };
+            let Some(id) = name
+                .rsplit('-')
+                .next()
+                .and_then(|value| value.parse::<u64>().ok())
+                .filter(|id| *id > 1 && *id < u64::MAX)
+            else {
+                continue;
+            };
+            if self.tabs.iter().any(|tab| tab.id == id)
+                || crate::recovery::Recovery::load(&path).is_none()
+            {
+                continue;
+            }
+            self.next_tab_id = self.next_tab_id.max(id + 1);
+            let tab = self.make_tab(mode, id, Some(path), window, cx);
+            self.tabs.push(tab);
+        }
+    }
+
+    fn tab_bar(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let mut tabs = h_flex().gap(px(4.));
+        for tab in &self.tabs {
+            let id = tab.id;
+            let select = cx.entity();
+            let close = select.clone();
+            tabs = tabs.child(
+                h_flex()
+                    .flex_none()
+                    .gap(px(2.))
+                    .child(
+                        btn(
+                            ("tab", id as usize),
+                            format!("{} · {}", id, tab.content.title(cx)),
+                        )
+                        .h(30.)
+                        .pad(9.)
+                        .text(12.)
+                        .selected(id == self.active_tab)
+                        .on_click(move |_, cx| {
+                            select.update(cx, |this, cx| this.activate_tab(id, cx))
+                        }),
+                    )
+                    .child(
+                        btn(("close-tab", id as usize), "×")
+                            .h(26.)
+                            .pad(5.)
+                            .tooltip("Close tab; reopen with Ctrl/Cmd+Shift+T")
+                            .on_click(move |window, cx| {
+                                close.update(cx, |this, cx| this.close_tab(id, window, cx))
+                            }),
+                    ),
+            );
+        }
+        let analyse = cx.entity();
+        let play = analyse.clone();
+        let database = analyse.clone();
+        let reopen = analyse.clone();
+        h_flex()
+            .flex_none()
+            .h(px(38.))
+            .px(px(10.))
+            .gap(px(8.))
+            .bg(rgb(T.surface))
+            .border_b_1()
+            .border_color(rgb(T.border))
+            .child(
+                div()
+                    .id("workspace-tabs")
+                    .flex_1()
+                    .min_w_0()
+                    .overflow_x_scroll()
+                    .child(tabs),
+            )
+            .child(
+                btn("new-analysis-tab", "+ Analyse")
+                    .h(26.)
+                    .pad(7.)
+                    .text(12.)
+                    .on_click(move |window, cx| {
+                        analyse.update(cx, |this, cx| this.new_tab(Mode::Analyse, window, cx))
+                    }),
+            )
+            .child(
+                btn("new-play-tab", "+ Play")
+                    .h(26.)
+                    .pad(7.)
+                    .text(12.)
+                    .on_click(move |window, cx| {
+                        play.update(cx, |this, cx| this.new_tab(Mode::Play, window, cx))
+                    }),
+            )
+            .child(
+                btn("new-database-tab", "+ Database")
+                    .h(26.)
+                    .pad(7.)
+                    .text(12.)
+                    .on_click(move |window, cx| {
+                        database.update(cx, |this, cx| this.new_tab(Mode::Database, window, cx))
+                    }),
+            )
+            .child(
+                btn("reopen-tab", "Reopen")
+                    .h(26.)
+                    .pad(7.)
+                    .text(12.)
+                    .disabled(self.closed_tabs.is_empty())
+                    .on_click(move |_, cx| reopen.update(cx, |this, cx| this.reopen_tab(cx))),
+            )
     }
 
     /// Runs an Analyse-only shortcut, ignored on other screens where its effect
@@ -338,15 +749,16 @@ impl Workspace {
         // A FEN opens in Analyse; anything else searches players in the database.
         if chess_core::GameTree::from_fen(query).is_ok() {
             let fen = query.to_owned();
+            self.new_tab(Mode::Analyse, window, cx);
             self.analyse
                 .update(cx, |analyse, cx| analyse.load_fen(&fen, window, cx));
-            self.set_mode(Mode::Analyse, cx);
         } else {
             let text = query.to_owned();
             self.database
                 .update(cx, |database, cx| database.search_player(&text, window, cx));
             self.set_mode(Mode::Database, cx);
         }
+        self.focus.focus(window, cx);
     }
 
     /// Opens Settings on one engine's full option list.
@@ -749,13 +1161,14 @@ impl Render for Workspace {
             .id("workspace")
             .relative()
             .track_focus(&self.focus)
+            .key_context(TAB_CONTEXT)
             // One node carries both contexts: it must be an ancestor of the focused element.
             .when(!typing, |root| {
                 root.key_context(
                     if on_button {
-                        SHORTCUT_CONTEXT.to_owned()
+                        format!("{SHORTCUT_CONTEXT} {TAB_CONTEXT}")
                     } else {
-                        format!("{SHORTCUT_CONTEXT} {SPACE_CONTEXT}")
+                        format!("{SHORTCUT_CONTEXT} {SPACE_CONTEXT} {TAB_CONTEXT}")
                     }
                     .as_str(),
                 )
@@ -770,6 +1183,7 @@ impl Render for Workspace {
                     .font_family(SANS)
                     .text_size(px(14.))
                     .child(self.top_bar(viewport_w, controls, window, cx))
+                    .child(self.tab_bar(cx))
                     .children(path_bar)
                     .child(div().flex_1().min_h_0().w_full().child(body)),
             )
@@ -831,11 +1245,26 @@ impl Render for Workspace {
                 this.analyse.update(cx, |screen, cx| screen.save_game(cx));
             }))
             .on_action(cx.listener(|this, _: &NewGame, window, cx| {
+                this.new_tab(Mode::Analyse, window, cx);
                 this.analyse
                     .update(cx, |screen, cx| screen.new_game(window, cx));
-                this.set_mode(Mode::Analyse, cx);
             }))
-            .on_action(cx.listener(|this, _: &OpenGame, _, cx| {
+            .on_action(cx.listener(|this, _: &NewTab, window, cx| {
+                let mode = match this.mode {
+                    Mode::Play => Mode::Play,
+                    Mode::Database => Mode::Database,
+                    _ => Mode::Analyse,
+                };
+                this.new_tab(mode, window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &CloseTab, window, cx| {
+                this.close_tab(this.active_tab, window, cx)
+            }))
+            .on_action(cx.listener(|this, _: &ReopenTab, _, cx| this.reopen_tab(cx)))
+            .on_action(cx.listener(|this, _: &NextTab, _, cx| this.cycle_tab(1, cx)))
+            .on_action(cx.listener(|this, _: &PrevTab, _, cx| this.cycle_tab(-1, cx)))
+            .on_action(cx.listener(|this, _: &OpenGame, window, cx| {
+                this.new_tab(Mode::Analyse, window, cx);
                 this.analyse.update(cx, |screen, cx| screen.open_file(cx));
                 this.set_mode(Mode::Analyse, cx);
             }))
