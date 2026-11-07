@@ -4,7 +4,7 @@ use crate::T;
 use gpui::{App, ElementId, IntoElement, Pixels, RenderOnce, Window, div, prelude::*, px, rgb};
 use std::time::{Duration, Instant};
 
-const TRANSITION: Duration = Duration::from_millis(240);
+const TRANSITION: Duration = Duration::from_millis(650);
 
 struct Transition {
     from: f32,
