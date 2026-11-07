@@ -651,9 +651,13 @@ impl TournamentScreen {
             .entry(program.clone())
             .or_insert_with(|| tournament_live::has_events(&program));
         let live_off = if !has_events {
-            Some("Live boards need a fastchess build with the -events option.")
+            Some(ui::i18n::t(
+                "Live boards need a fastchess build with the -events option.",
+            ))
         } else if tournament_live::has_own_events(&launch.args) {
-            Some("Live boards are off because this command sets its own -events option.")
+            Some(ui::i18n::t(
+                "Live boards are off because this command sets its own -events option.",
+            ))
         } else {
             None
         };
@@ -1125,7 +1129,7 @@ impl TournamentScreen {
         let mut list = v_flex().gap(px(6.));
         if engines.is_empty() && self.extra_engines.is_empty() {
             list = list.child(div().text_size(px(13.)).text_color(rgb(T.muted)).child(
-                "No engines yet. Add them in Settings › Engines, or add an executable here.",
+                ui::i18n::t("No engines yet. Add them in Settings › Engines, or add an executable here."),
             ));
         }
         for engine in engines {
@@ -1157,7 +1161,9 @@ impl TournamentScreen {
                         btn(("selfplay-copy", id as usize), "Add selfplay copy")
                             .h(26.)
                             .text(12.)
-                            .tooltip("Run another process of this engine as an opponent")
+                            .tooltip(ui::i18n::t(
+                                "Run another process of this engine as an opponent",
+                            ))
                             .on_click(move |_, cx| {
                                 selfplay.update(cx, |screen, cx| {
                                     if !screen.selected.contains(&id) {
@@ -1280,7 +1286,7 @@ impl TournamentScreen {
             ))
             .child(field("Opening book", select_el(&self.book)))
             .child(div().text_size(px(12.)).text_color(rgb(T.muted)).child(
-                "Recommended: UHO_Lichess_4852_v1.epd. Stockfish books download on first use. Choose Custom file to use a local book."
+                ui::i18n::t("Recommended: UHO_Lichess_4852_v1.epd. Stockfish books download on first use. Choose Custom file to use a local book.")
             ))
             .child(field(
                 "Custom book (.epd or .pgn)",
@@ -1333,7 +1339,7 @@ impl TournamentScreen {
                 div()
                     .text_size(px(13.))
                     .font_weight(FontWeight::SEMIBOLD)
-                    .child("Advanced settings"),
+                    .child(ui::i18n::t("Advanced settings")),
             )
             .child(
                 div()
@@ -1344,7 +1350,9 @@ impl TournamentScreen {
                     .text_ellipsis()
                     .text_size(px(12.))
                     .text_color(rgb(T.muted))
-                    .child("Hash and threads, pairing, adjudication, recovery, extra options"),
+                    .child(ui::i18n::t(
+                        "Hash and threads, pairing, adjudication, recovery, extra options",
+                    )),
             )
             .on_click(move |_, _, cx| {
                 expand.update(cx, |screen, cx| {
@@ -1402,7 +1410,7 @@ impl TournamentScreen {
                         segmented(
                             "tournament-order",
                             vec![
-                                (true, "Random".into(), false),
+                                (true, ui::i18n::t("Random").into(), false),
                                 (false, "Sequential".into(), false),
                             ],
                             self.random_order,
@@ -1767,7 +1775,7 @@ impl TournamentScreen {
                 div()
                     .text_size(px(22.))
                     .text_color(rgb(T.muted))
-                    .child("vs"),
+                    .child(ui::i18n::t("vs")),
             )
             .child(name_chip(b, engine_colour(&run.names, b), 22.));
 
@@ -1821,7 +1829,7 @@ impl TournamentScreen {
             .relative()
             .child(
                 btn("tournament-more", "⋯")
-                    .tooltip("More actions")
+                    .tooltip(ui::i18n::t("More actions"))
                     .on_click(move |_, cx| {
                         more.update(cx, |screen, cx| {
                             screen.menu_open = !screen.menu_open;
@@ -2180,10 +2188,10 @@ impl TournamentScreen {
                     .font_weight(FontWeight::SEMIBOLD)
                     .text_color(rgb(T.faint))
                     .child(div().w(px(72.)).child("#"))
-                    .child(div().flex_1().min_w_0().child("WHITE"))
-                    .child(div().flex_1().min_w_0().child("BLACK"))
-                    .child(div().w(px(96.)).child("RESULT"))
-                    .child(div().flex_1().min_w_0().child("TERMINATION"))
+                    .child(div().flex_1().min_w_0().child(ui::i18n::t("WHITE")))
+                    .child(div().flex_1().min_w_0().child(ui::i18n::t("BLACK")))
+                    .child(div().w(px(96.)).child(ui::i18n::t("RESULT")))
+                    .child(div().flex_1().min_w_0().child(ui::i18n::t("TERMINATION")))
                     .child(div().w(px(96.)).child("")),
             );
             for row in rows {
@@ -2243,7 +2251,7 @@ impl TournamentScreen {
                             div()
                                 .w(px(96.))
                                 .text_color(rgb(T.engine_a))
-                                .child("Analyse →"),
+                                .child(ui::i18n::t("Analyse →")),
                         ),
                 );
             }
@@ -2351,7 +2359,7 @@ impl TournamentScreen {
                 div()
                     .text_size(px(18.))
                     .font_weight(FontWeight::SEMIBOLD)
-                    .child("Engine against engine"),
+                    .child(ui::i18n::t("Engine against engine")),
             )
             .child(div().text_color(rgb(T.fg_2)).child(
                 "Pick two or more engines and a time control, then start. fastchess plays the \
@@ -2483,7 +2491,7 @@ fn tile(label: &str) -> Div {
                 .text_size(px(12.))
                 .font_weight(FontWeight::SEMIBOLD)
                 .text_color(rgb(T.faint))
-                .child(SharedString::from(label.to_uppercase())),
+                .child(SharedString::from(ui::i18n::t(label).to_uppercase())),
         )
 }
 
@@ -2493,21 +2501,21 @@ fn heading(text: impl Into<SharedString>) -> Div {
         .text_size(px(13.))
         .font_weight(FontWeight::SEMIBOLD)
         .text_color(rgb(T.muted))
-        .child(SharedString::from(text.to_uppercase()))
+        .child(SharedString::from(ui::i18n::t(&text).to_uppercase()))
 }
 
 fn small(text: impl Into<SharedString>) -> Div {
     div()
         .text_size(px(12.))
         .text_color(rgb(T.muted))
-        .child(text.into())
+        .child(ui::i18n::t(&text.into()).to_owned())
 }
 
 fn big(text: impl Into<SharedString>) -> Div {
     div()
         .text_size(px(30.))
         .font_weight(FontWeight::BOLD)
-        .child(text.into())
+        .child(ui::i18n::t(&text.into()).to_owned())
 }
 
 /// A thin bar filled to `fraction`.
@@ -2555,7 +2563,7 @@ fn ratio(label: &str, value: String) -> Div {
         .child(
             div()
                 .text_color(rgb(T.muted))
-                .child(SharedString::from(label.to_owned())),
+                .child(SharedString::from(ui::i18n::t(label).to_owned())),
         )
         .child(div().font_family(MONO).child(SharedString::from(value)))
 }
@@ -2569,7 +2577,7 @@ fn def_row(label: &str, value: String) -> Div {
             div()
                 .flex_none()
                 .text_color(rgb(T.muted))
-                .child(SharedString::from(label.to_owned())),
+                .child(SharedString::from(ui::i18n::t(label).to_owned())),
         )
         .child(
             div()
@@ -2654,7 +2662,7 @@ fn player_row(game: &LiveGame, white: bool, names: &[String], to_move: bool) -> 
             div()
                 .text_size(px(11.))
                 .text_color(rgb(T.live_fg))
-                .child("to move")
+                .child(ui::i18n::t("to move"))
         }))
         .child(
             div()

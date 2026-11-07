@@ -303,7 +303,7 @@ impl AppModel {
         self.next_toast += 1;
         self.toasts.push(Toast {
             id,
-            text: text.into(),
+            text: ui::i18n::t(&text.into()).to_owned().into(),
         });
         cx.notify();
         cx.spawn(async move |this, cx| {

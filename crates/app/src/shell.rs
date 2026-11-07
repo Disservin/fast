@@ -332,8 +332,10 @@ impl Workspace {
         let train = cx.new(|cx| TrainScreen::new(model.clone(), this.clone(), window, cx));
         let play = cx.new(|cx| PlayScreen::new(model.clone(), this.clone(), window, cx));
         let settings = cx.new(|cx| SettingsScreen::new(model.clone(), window, cx));
-        let search = cx
-            .new(|cx| InputState::new(window, cx).placeholder("Search positions, games, openings"));
+        let search = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder(ui::i18n::t("Search positions, games, openings"))
+        });
         let path_input = cx.new(|cx| InputState::new(window, cx).placeholder("/path/to/file"));
         let paths_input = cx.new(|cx| TextareaState::new(window, cx));
         let path_sub = cx.subscribe_in(&path_input, window, |this, _, event, window, cx| {
@@ -923,7 +925,7 @@ impl Workspace {
                             .h(24.)
                             .w(24.)
                             .pad(3.)
-                            .tooltip("Close tab; reopen with Ctrl/Cmd+Shift+T")
+                            .tooltip(ui::i18n::t("Close tab; reopen with Ctrl/Cmd+Shift+T"))
                             .on_click(move |window, cx| {
                                 close.update(cx, |this, cx| this.close_tab(id, window, cx))
                             }),
@@ -978,7 +980,7 @@ impl Workspace {
                         .h(26.)
                         .w(28.)
                         .pad(4.)
-                        .tooltip("Add a tab")
+                        .tooltip(ui::i18n::t("Add a tab"))
                         .on_click(move |_, cx| {
                             add.update(cx, |this, cx| {
                                 this.new_tab_menu_open = !this.new_tab_menu_open;
@@ -1364,7 +1366,7 @@ impl Workspace {
                                     .font_weight(FontWeight::BOLD)
                                     .text_size(px(15.))
                                     .text_color(rgb(T.fg))
-                                    .child("Fast"),
+                                    .child(ui::i18n::t("Fast")),
                             )
                             .children(menu_bar)
                             .when(show_crumb, |row| {

@@ -321,8 +321,9 @@ impl AnalyseScreen {
         let live = cx.new(|cx| LiveAnalysis::new(model.clone(), cx));
         let note = cx.new(|cx| TextareaState::new(window, cx));
         let comment = cx.new(|cx| TextareaState::new(window, cx));
-        let fen_input =
-            cx.new(|cx| InputState::new(window, cx).placeholder("Paste a FEN and press Enter"));
+        let fen_input = cx.new(|cx| {
+            InputState::new(window, cx).placeholder(ui::i18n::t("Paste a FEN and press Enter"))
+        });
         let subscriptions = vec![
             cx.subscribe_in(&board, window, |this, _, event, window, cx| match event {
                 BoardEvent::Moved(mv) => this.play_move(*mv, window, cx),
@@ -985,7 +986,7 @@ impl AnalyseScreen {
     /// Starts analysing the shown line from its end back to the first move, or stops.
     pub fn toggle_backward(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.backward.is_some() {
-            self.stop_backward(Some("Backwards analysis stopped."), cx);
+            self.stop_backward(Some(ui::i18n::t("Backwards analysis stopped.")), cx);
             return;
         }
         if self.model.read(cx).analysis_engines().is_empty() {
@@ -1057,7 +1058,9 @@ impl AnalyseScreen {
         };
         if loaded == 0 {
             self.stop_backward(
-                Some("Backwards analysis stopped: no engine is running."),
+                Some(ui::i18n::t(
+                    "Backwards analysis stopped: no engine is running.",
+                )),
                 cx,
             );
             return false;
@@ -1066,7 +1069,7 @@ impl AnalyseScreen {
             return true;
         }
         let Some(parent) = self.tree.node(self.current).parent else {
-            self.stop_backward(Some("Backwards analysis finished."), cx);
+            self.stop_backward(Some(ui::i18n::t("Backwards analysis finished.")), cx);
             return false;
         };
         // Recorded before the jump, so the run sees its own move and carries on.
@@ -1227,7 +1230,7 @@ impl AnalyseScreen {
                 .text_size(px(14.))
                 .cursor_pointer()
                 .hover(|style| style.bg(rgb(T.hover)))
-                .child(label)
+                .child(ui::i18n::t(&label).to_owned())
                 .child(
                     div()
                         .text_size(px(12.))
@@ -1273,7 +1276,7 @@ impl AnalyseScreen {
                 icon_btn("copy", "icons/copy.svg")
                     .w(width)
                     .selected(self.copy_menu)
-                    .tooltip("Copy FEN or PGN")
+                    .tooltip(ui::i18n::t("Copy FEN or PGN"))
                     .on_click(move |_, cx| {
                         toggle_this.update(cx, |screen, cx| {
                             screen.copy_menu = !screen.copy_menu;
@@ -1503,7 +1506,7 @@ impl AnalyseScreen {
             .header("Opening")
             .map(str::to_owned)
             .or_else(|| self.opening().map(|o| format!("{} {}", o.eco, o.name)))
-            .unwrap_or_else(|| "Starting position".to_owned());
+            .unwrap_or_else(|| ui::i18n::t("Starting position").to_owned());
         let name_row = |name: String, rating: String| {
             h_flex()
                 .justify_between()
@@ -1701,7 +1704,7 @@ impl AnalyseScreen {
         };
         let end = self.live.read(cx).end;
         let status = if self.editor.is_some() {
-            "Edit position".to_owned()
+            ui::i18n::t("Edit position").to_owned()
         } else if let Some(end) = end {
             end.describe().to_owned()
         } else {
@@ -1879,7 +1882,7 @@ impl AnalyseScreen {
                                 icon_btn("edit-position", "icons/pencil.svg")
                                     .w(nav_width)
                                     .selected(self.editor.is_some())
-                                    .tooltip("Edit position")
+                                    .tooltip(ui::i18n::t("Edit position"))
                                     .on_click({
                                         let this = this.clone();
                                         move |_, cx| {
@@ -1891,7 +1894,7 @@ impl AnalyseScreen {
                             .child(
                                 icon_btn("snapshot", "icons/camera.svg")
                                     .w(nav_width)
-                                    .tooltip("Copy the board as an image and save it")
+                                    .tooltip(ui::i18n::t("Copy the board as an image and save it"))
                                     .on_click({
                                         let this = this.clone();
                                         move |_, cx| {
@@ -2284,7 +2287,7 @@ impl AnalyseScreen {
                             .flex_none()
                             .font_weight(FontWeight::SEMIBOLD)
                             .text_color(rgb(label_color))
-                            .child(label),
+                            .child(ui::i18n::t(&label).to_owned()),
                     )
                     .children(scores.into_iter().map(|score| {
                         div()
@@ -2391,7 +2394,7 @@ impl AnalyseScreen {
                         div()
                             .text_size(px(16.))
                             .font_weight(FontWeight::SEMIBOLD)
-                            .child("Moves from here"),
+                            .child(ui::i18n::t("Moves from here")),
                     )
                     .child(self.render_table_tools(cx)),
             )
@@ -2506,7 +2509,7 @@ impl AnalyseScreen {
                     .child(stat("White win", format!("{w:.1}%")))
                     .child(stat("Draw", format!("{d:.1}%")))
                     .child(stat("Black win", format!("{l:.1}%"))),
-                None => header.child("Waiting for WDL data"),
+                None => header.child(ui::i18n::t("Waiting for WDL data")),
             };
             v_flex()
                 .gap(px(6.))
@@ -2607,7 +2610,7 @@ impl AnalyseScreen {
                 .cursor_pointer()
                 .hover(|style| style.bg(rgb(T.hover)))
                 .on_click(move |_, window, cx| handler(window, cx))
-                .child(label)
+                .child(ui::i18n::t(&label).to_owned())
         };
         let delete_this = this.clone();
         let delete_sidelines_this = this.clone();
@@ -2632,14 +2635,14 @@ impl AnalyseScreen {
                     }))
                     .child(item(
                         0,
-                        "Delete from here",
+                        ui::i18n::t("Delete from here"),
                         Box::new(move |window, cx| {
                             delete_this.update(cx, |screen, cx| screen.delete_from(id, window, cx));
                         }),
                     ))
                     .child(item(
                         3,
-                        "Delete all sidelines",
+                        ui::i18n::t("Delete all sidelines"),
                         Box::new(move |window, cx| {
                             delete_sidelines_this.update(cx, |screen, cx| {
                                 let selected = screen.tree.delete_all_sidelines(screen.current);
@@ -2654,14 +2657,14 @@ impl AnalyseScreen {
                     ))
                     .child(item(
                         1,
-                        "Promote variation",
+                        ui::i18n::t("Promote variation"),
                         Box::new(move |_, cx| {
                             promote_this.update(cx, |screen, cx| screen.promote(id, cx));
                         }),
                     ))
                     .child(item(
                         2,
-                        "Copy PGN from here",
+                        ui::i18n::t("Copy PGN from here"),
                         Box::new(move |_, cx| {
                             copy_this.update(cx, |screen, cx| {
                                 let text = write_pgn_from(&screen.tree, id);

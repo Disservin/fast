@@ -256,14 +256,14 @@ impl AnalyseScreen {
                         .mr(px(2.))
                         .text_size(px(12.))
                         .text_color(rgb(T.muted))
-                        .child("Lines"),
+                        .child(ui::i18n::t("Lines")),
                 )
                 .child(
                     small("lines-down", "−")
                         .w(24.)
                         .pad(0.)
                         .disabled(value <= 1)
-                        .tooltip("Search one fewer engine line")
+                        .tooltip(ui::i18n::t("Search one fewer engine line"))
                         .on_click(move |_, cx| {
                             down_this.update(cx, |screen, cx| screen.step_lines(false, cx));
                         }),
@@ -279,7 +279,7 @@ impl AnalyseScreen {
                     small("lines-up", "+")
                         .w(24.)
                         .pad(0.)
-                        .tooltip("MultiPV: lines each engine searches, saved in its options")
+                        .tooltip(ui::i18n::t("MultiPV: lines each engine searches, saved in its options"))
                         .on_click(move |_, cx| {
                             up_this.update(cx, |screen, cx| screen.step_lines(true, cx));
                         }),
@@ -288,7 +288,7 @@ impl AnalyseScreen {
                     small("lines-reset", ui::i18n::t("Reset"))
                         .w(48.)
                         .pad(0.)
-                        .tooltip("Back to each engine's default number of lines")
+                        .tooltip(ui::i18n::t("Back to each engine's default number of lines"))
                         .on_click(move |_, cx| {
                             reset_this.update(cx, |screen, cx| {
                                 screen.set_lines(LinesTarget::Default, cx)
@@ -299,7 +299,7 @@ impl AnalyseScreen {
                     small("lines-max", "Max")
                         .w(40.)
                         .pad(0.)
-                        .tooltip("A line for every legal move in every position (up to 256, as far as the engine allows)")
+                        .tooltip(ui::i18n::t("A line for every legal move in every position (up to 256, as far as the engine allows)"))
                         .on_click(move |_, cx| {
                             max_this
                                 .update(cx, |screen, cx| screen.set_lines(LinesTarget::All, cx));
@@ -319,7 +319,9 @@ impl AnalyseScreen {
                     },
                 )
                 .w(72.)
-                .tooltip("Order engine lines by evaluation or by search depth")
+                .tooltip(ui::i18n::t(
+                    "Order engine lines by evaluation or by search depth",
+                ))
                 .on_click(move |_, cx| {
                     sort_this.update(cx, |screen, cx| {
                         screen.set_view(cx, |view| {
@@ -334,7 +336,7 @@ impl AnalyseScreen {
             .child(
                 small("all-moves", ui::i18n::t("All moves"))
                     .selected(view.all_moves)
-                    .tooltip("List every legal move, analysed or not")
+                    .tooltip(ui::i18n::t("List every legal move, analysed or not"))
                     .on_click(move |_, cx| {
                         all_this.update(cx, |screen, cx| {
                             screen.set_view(cx, |view| view.all_moves = !view.all_moves);
@@ -344,7 +346,9 @@ impl AnalyseScreen {
             .child(
                 small("quality-arrows", "Arrows")
                     .selected(view.quality_arrows)
-                    .tooltip("An arrow per engine line, coloured from best (blue) to blunder (red)")
+                    .tooltip(ui::i18n::t(
+                        "An arrow per engine line, coloured from best (blue) to blunder (red)",
+                    ))
                     .on_click(move |_, cx| {
                         arrows_this.update(cx, |screen, cx| {
                             screen.set_view(cx, |view| view.quality_arrows = !view.quality_arrows);
@@ -393,7 +397,7 @@ impl AnalyseScreen {
                     .pad(8.)
                     .text(12.)
                     .selected(self.engine_panel_open)
-                    .tooltip("Choose an engine and adjust its search settings")
+                    .tooltip(ui::i18n::t("Choose an engine and adjust its search settings"))
                     .on_click(move |_, cx| {
                         engine_this.update(cx, |screen, cx| {
                             screen.engine_panel_open = !screen.engine_panel_open;
@@ -407,7 +411,7 @@ impl AnalyseScreen {
                     .pad(8.)
                     .text(12.)
                     .selected(self.log_panel_open)
-                    .tooltip("Show or hide engine output")
+                    .tooltip(ui::i18n::t("Show or hide engine output"))
                     .on_click(move |_, cx| {
                         log_this.update(cx, |screen, cx| {
                             screen.log_panel_open = !screen.log_panel_open;
@@ -546,7 +550,7 @@ impl AnalyseScreen {
                 div()
                     .text_size(px(12.))
                     .text_color(rgb(T.muted))
-                    .child(label),
+                    .child(ui::i18n::t(&label).to_owned()),
             )
             .child(
                 h_flex()
@@ -719,7 +723,9 @@ impl AnalyseScreen {
                         .p(px(16.))
                         .text_size(px(13.))
                         .text_color(rgb(T.muted))
-                        .child("No engines yet. Add one in Settings › Engines."),
+                        .child(ui::i18n::t(
+                            "No engines yet. Add one in Settings › Engines.",
+                        )),
                 )
                 .into_any_element();
         }
@@ -778,7 +784,9 @@ impl AnalyseScreen {
                                             .pad(7.)
                                             .mono()
                                             .selected(restricted.contains(&uci))
-                                            .tooltip("Toggle this move in the engine's root search")
+                                            .tooltip(ui::i18n::t(
+                                                "Toggle this move in the engine's root search",
+                                            ))
                                             .on_click(move |_, cx| {
                                                 this.update(cx, |screen, cx| {
                                                     screen.live.update(cx, |live, cx| {
@@ -840,7 +848,7 @@ impl AnalyseScreen {
                             div()
                                 .text_size(px(12.))
                                 .text_color(rgb(T.muted))
-                                .child("Search limit"),
+                                .child(ui::i18n::t("Search limit")),
                         )
                         .child(limits),
                 )
@@ -849,7 +857,9 @@ impl AnalyseScreen {
                         .h(26.)
                         .pad(8.)
                         .text(12.)
-                        .tooltip("Every option this engine offers, in Settings › Engines")
+                        .tooltip(ui::i18n::t(
+                            "Every option this engine offers, in Settings › Engines",
+                        ))
                         .on_click(move |window, cx| {
                             if let Some(workspace) = workspace.upgrade() {
                                 workspace.update(cx, |workspace, cx| {
@@ -862,7 +872,9 @@ impl AnalyseScreen {
         .when(has_cached, |panel| {
             panel.child(
                 btn("replace-cached-analysis", "Replace cached analysis")
-                    .tooltip("Discard this saved result and run a fresh search")
+                    .tooltip(ui::i18n::t(
+                        "Discard this saved result and run a fresh search",
+                    ))
                     .on_click(move |_, cx| {
                         replace_this.update(cx, |screen, cx| {
                             screen
@@ -1051,7 +1063,9 @@ impl AnalyseScreen {
                     div()
                         .text_size(px(12.))
                         .text_color(rgb(T.warn))
-                        .child("Held while selected. Ctrl+C copies, Esc releases."),
+                        .child(ui::i18n::t(
+                            "Held while selected. Ctrl+C copies, Esc releases.",
+                        )),
                 )
             })
             .child(div().flex_1())
@@ -1112,7 +1126,9 @@ impl AnalyseScreen {
                     .h(26.)
                     .pad(8.)
                     .text(12.)
-                    .tooltip("Follow this engine's raw output in its own window")
+                    .tooltip(ui::i18n::t(
+                        "Follow this engine's raw output in its own window",
+                    ))
                     .on_click({
                         let this = cx.entity();
                         move |_, cx| this.update(cx, |screen, cx| screen.open_engine_output(cx))
@@ -1151,7 +1167,9 @@ impl AnalyseScreen {
                 .p(px(16.))
                 .text_size(px(13.))
                 .text_color(rgb(T.muted))
-                .child("Nothing logged yet. Start the engine to see its UCI traffic.")
+                .child(ui::i18n::t(
+                    "Nothing logged yet. Start the engine to see its UCI traffic.",
+                ))
                 .into_any_element()
         } else {
             uniform_list(
@@ -1319,9 +1337,9 @@ impl AnalyseScreen {
                                 .flex_1()
                                 .text_size(px(12.))
                                 .text_color(rgb(T.muted))
-                                .child(
+                                .child(ui::i18n::t(
                                     "Drag across moves to highlight. Ctrl+C copies, Esc returns.",
-                                ),
+                                )),
                         )
                         .child(
                             btn("pv-back", "Back to game")

@@ -76,7 +76,7 @@ pub fn new_input(
 ) -> Entity<InputState> {
     let value = value.into();
     cx.new(|cx| {
-        let mut state = InputState::new(window, cx).placeholder(placeholder);
+        let mut state = InputState::new(window, cx).placeholder(ui::i18n::t(placeholder));
         state.set_value(value, window, cx);
         state
     })
@@ -90,7 +90,12 @@ pub fn new_select(
 ) -> TextSelect {
     cx.new(|cx| {
         SelectState::new(
-            SearchableVec::new(items),
+            SearchableVec::new(
+                items
+                    .into_iter()
+                    .map(|item| ui::i18n::t(&item).to_owned().into())
+                    .collect::<Vec<SharedString>>(),
+            ),
             Some(gpui_component::IndexPath::new(selected)),
             window,
             cx,
@@ -118,7 +123,7 @@ pub fn field(label: impl Into<SharedString>, control: impl IntoElement) -> Div {
             h_flex()
                 .text_size(px(12.5))
                 .text_color(rgb(T.muted))
-                .child(label.into()),
+                .child(ui::i18n::t(&label.into()).to_owned()),
         )
         .child(control)
 }

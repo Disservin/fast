@@ -220,7 +220,7 @@ impl AnalyseScreen {
             .w(cell)
             .h(cell)
             .selected(editor.brush.is_none())
-            .tooltip("Erase (or right-click a square)")
+            .tooltip(ui::i18n::t("Erase (or right-click a square)"))
             .on_click(move |_, cx| {
                 erase_this.update(cx, |screen, cx| {
                     screen.edit_position(cx, |editor| editor.brush = None);
@@ -269,7 +269,7 @@ impl AnalyseScreen {
                         .w(px(48.))
                         .text_size(px(13.))
                         .text_color(rgb(T.muted))
-                        .child(label),
+                        .child(ui::i18n::t(&label).to_owned()),
                 )
                 .child(castle(first))
                 .child(castle(first + 1))
@@ -280,7 +280,7 @@ impl AnalyseScreen {
                 div()
                     .text_size(px(13.))
                     .text_color(rgb(T.muted))
-                    .child("Castling"),
+                    .child(ui::i18n::t("Castling")),
             )
             .child(castle_row(ui::i18n::t("White"), 0))
             .child(castle_row(ui::i18n::t("Black"), 2));
@@ -321,7 +321,7 @@ impl AnalyseScreen {
                             .text_size(px(13.))
                             .text_color(rgb(T.muted))
                             .mr(px(4.))
-                            .child("To move"),
+                            .child(ui::i18n::t("To move")),
                     )
                     .child(side(Color::White))
                     .child(side(Color::Black)),

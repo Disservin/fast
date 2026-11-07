@@ -277,6 +277,378 @@ pub fn translate(language: Language, text: &str) -> &str {
             }
             "Engine-vs-engine matches run with fastchess." => "Engine-Turniere mit fastchess.",
             "Analyse backwards" => "Rückwärts analysieren",
+            "Acc." => "Genauigkeit",
+            "Add an engine in Settings › Engines to play." => {
+                "Fügen Sie unter Einstellungen › Engines eine Engine zum Spielen hinzu."
+            }
+            "Add as variation" => "Als Variante hinzufügen",
+            "Add executable…" => "Programm hinzufügen…",
+            "Add line" => "Variante hinzufügen",
+            "Add to repertoire" => "Zum Repertoire hinzufügen",
+            "Adjudication" => "Abschätzung",
+            "Advanced settings" => "Erweiterte Einstellungen",
+            "All options" => "Alle Optionen",
+            "Analyse this game" => "Diese Partie analysieren",
+            "Analyse →" => "Analysieren →",
+            "Asset" => "Ressource",
+            "BLACK" => "SCHWARZ",
+            "Back to game" => "Zurück zur Partie",
+            "Batch review" => "Stapelprüfung",
+            "By" => "Von",
+            "Cancel restore" => "Wiederherstellung abbrechen",
+            "Castling" => "Rochade",
+            "Check for update" => "Nach Updates suchen",
+            "Cloud" => "Cloud",
+            "Copy all" => "Alles kopieren",
+            "Copy command" => "Befehl kopieren",
+            "Copy config" => "Konfiguration kopieren",
+            "Custom" => "Benutzerdefiniert",
+            "Download an engine" => "Engine herunterladen",
+            "Download engine" => "Engine herunterladen",
+            "Drill these lines" => "Diese Varianten üben",
+            "Duplicate" => "Duplizieren",
+            "Earlier tournaments" => "Frühere Turniere",
+            "Edit shortcuts" => "Tastenkürzel bearbeiten",
+            "Engine against engine" => "Engine gegen Engine",
+            "Export PGN" => "PGN exportieren",
+            "Export complete backup" => "Vollständige Sicherung exportieren",
+            "Filter" => "Filter",
+            "Find gaps" => "Lücken finden",
+            "Follow" => "Folgen",
+            "Game graph" => "Partiediagramm",
+            "Hash and threads, pairing, adjudication, recovery, extra options" => {
+                "Hash und Threads, Paarung, Abschätzung, Wiederherstellung, weitere Optionen"
+            }
+            "Held while selected. Ctrl+C copies, Esc releases." => {
+                "Während der Auswahl angehalten. Strg+C kopiert, Esc gibt frei."
+            }
+            "Info lines" => "Infozeilen",
+            "Leaks from your games" => "Abweichungen in Ihren Partien",
+            "Left rep." => "Repertoire verlassen",
+            "Licence" => "Lizenz",
+            "Line" => "Variante",
+            "Line preview" => "Variantenvorschau",
+            "Lines" => "Varianten",
+            "Load config file…" => "Konfigurationsdatei laden…",
+            "Log" => "Protokoll",
+            "Moves from here" => "Züge ab hier",
+            "New game vs engine" => "Neue Partie gegen Engine",
+            "No databases yet. Use Import to add a PGN." => {
+                "Noch keine Datenbanken. Fügen Sie mit Importieren eine PGN-Datei hinzu."
+            }
+            "No engines yet. Add one in Settings › Engines." => {
+                "Noch keine Engines. Fügen Sie unter Einstellungen › Engines eine hinzu."
+            }
+            "Nothing logged yet. Start the engine to see its UCI traffic." => {
+                "Noch kein Protokoll. Starten Sie die Engine, um ihre UCI-Kommunikation zu sehen."
+            }
+            "Online" => "Online",
+            "Open folder" => "Ordner öffnen",
+            "Open in Analyse" => "In Analyse öffnen",
+            "Open last game" => "Letzte Partie öffnen",
+            "Open output window" => "Ausgabefenster öffnen",
+            "Other" => "Sonstiges",
+            "Pairing" => "Paarung",
+            "Play line on board" => "Variante auf dem Brett spielen",
+            "Position note" => "Stellungsnotiz",
+            "Preview backup to restore" => "Sicherung zur Wiederherstellung ansehen",
+            "Promote" => "Zur Hauptvariante machen",
+            "Protocol" => "Protokoll",
+            "RESULT" => "ERGEBNIS",
+            "Replace cached analysis" => "Gespeicherte Analyse ersetzen",
+            "Reset panel sizes" => "Panelgrößen zurücksetzen",
+            "Restart" => "Neu starten",
+            "Retry saving settings and repertoire" => {
+                "Einstellungen und Repertoire erneut speichern"
+            }
+            "Review" => "Prüfung",
+            "Review findings" => "Prüfergebnisse",
+            "Run benchmark" => "Benchmark starten",
+            "Runs on" => "Läuft auf",
+            "Save comment" => "Kommentar speichern",
+            "Save current" => "Aktuelle speichern",
+            "Scoresheet" => "Partieformular",
+            "Search limit" => "Suchlimit",
+            "Sends debug on and shows the raw engine output in its own window" => {
+                "Aktiviert den Debug-Modus und zeigt die Engine-Ausgabe in einem eigenen Fenster"
+            }
+            "Start fresh" => "Neu beginnen",
+            "Start game" => "Partie starten",
+            "Start tournament" => "Turnier starten",
+            "Storage and backup" => "Speicher und Sicherung",
+            "Strength" => "Spielstärke",
+            "TERMINATION" => "BEENDIGUNG",
+            "Tablebase" => "Endspieldatenbank",
+            "Takeback" => "Zug zurücknehmen",
+            "To move" => "Am Zug",
+            "Used for" => "Verwendet für",
+            "WHITE" => "WEISS",
+            "Waiting for WDL data" => "Warten auf WDL-Daten",
+            "Watch all live" => "Alle live verfolgen",
+            "Where you left the repertoire" => "Wo Sie vom Repertoire abgewichen sind",
+            "to move" => "am Zug",
+            "vs" => "gegen",
+            "Delete from here" => "Ab hier löschen",
+            "Delete all sidelines" => "Alle Nebenvarianten löschen",
+            "Promote variation" => "Variante zur Hauptvariante machen",
+            "Copy PGN from here" => "PGN ab hier kopieren",
+            "PGN copied." => "PGN kopiert.",
+            "FEN copied." => "FEN kopiert.",
+            "White win" => "Sieg Weiß",
+            "Black win" => "Sieg Schwarz",
+            "Draw" => "Remis",
+            "whole game" => "ganze Partie",
+            "current position" => "aktuelle Stellung",
+            "Start of game" => "Partieanfang",
+            "End of line" => "Variantenende",
+            "Open PGN or FEN" => "PGN oder FEN öffnen",
+            "Save as PGN" => "Als PGN speichern",
+            "Paste FEN or PGN" => "FEN oder PGN einfügen",
+            "Engine on / off" => "Engine ein / aus",
+            "Pause / resume" => "Pausieren / fortsetzen",
+            "Analyse game backwards" => "Partie rückwärts analysieren",
+            "More lines (MultiPV)" => "Mehr Varianten (MultiPV)",
+            "Fewer lines (MultiPV)" => "Weniger Varianten (MultiPV)",
+            "Engine output window" => "Engine-Ausgabefenster",
+            "Analysis display" => "Analysedarstellung",
+            "Sort by eval / depth" => "Nach Bewertung / Tiefe sortieren",
+            "Next graph" => "Nächstes Diagramm",
+            "Table / inline scoresheet" => "Partieformular als Tabelle / Fließtext",
+            "Memory for the transposition table" => "Speicher für die Transpositionstabelle",
+            "Lines shown in Moves from here" => "Angezeigte Varianten unter Züge ab hier",
+            "Syzygy path" => "Syzygy-Pfad",
+            "Endgame tablebases, 3–6 pieces" => "Endspieldatenbanken, 3–6 Figuren",
+            "Nodes per position" => "Knoten pro Stellung",
+            "A line for every legal move in every position (up to 256, as far as the engine allows)" => {
+                "Eine Variante für jeden legalen Zug in jeder Stellung (bis zu 256, soweit die Engine dies unterstützt)"
+            }
+            "Add a tab" => "Tab hinzufügen",
+            "An arrow per engine line, coloured from best (blue) to blunder (red)" => {
+                "Ein Pfeil pro Engine-Variante, vom besten Zug (blau) bis zum groben Fehler (rot)"
+            }
+            "Another entry for this binary with its own options, e.g. Lc0 with another network" => {
+                "Ein weiterer Eintrag für dieses Programm mit eigenen Optionen, z. B. Lc0 mit einem anderen Netz"
+            }
+            "Back to each engine's default number of lines" => {
+                "Zur Standardanzahl der Varianten jeder Engine zurückkehren"
+            }
+            "Choose an enabled review engine" => "Eine aktivierte Prüf-Engine auswählen",
+            "Choose an engine and adjust its search settings" => {
+                "Eine Engine auswählen und ihre Sucheinstellungen anpassen"
+            }
+            "Choose which player's moves to review" => "Auswählen, wessen Züge geprüft werden",
+            "Close tab; reopen with Ctrl/Cmd+Shift+T" => {
+                "Tab schließen; mit Strg/Cmd+Umschalt+T wieder öffnen"
+            }
+            "Copy FEN or PGN" => "FEN oder PGN kopieren",
+            "Copy the board as an image and save it" => "Brett als Bild kopieren und speichern",
+            "Cycle between time, depth, and node limits" => {
+                "Zwischen Zeit-, Tiefen- und Knotenlimit wechseln"
+            }
+            "Discard this saved result and run a fresh search" => {
+                "Dieses gespeicherte Ergebnis verwerfen und neu suchen"
+            }
+            "Discard this session and start the queue again" => {
+                "Diese Sitzung verwerfen und die Warteschlange neu starten"
+            }
+            "Edit position" => "Stellung bearbeiten",
+            "Erase (or right-click a square)" => "Entfernen (oder ein Feld rechtsklicken)",
+            "Every option this engine offers, in Settings › Engines" => {
+                "Alle Optionen dieser Engine unter Einstellungen › Engines"
+            }
+            "Follow this engine's raw output in its own window" => {
+                "Die Ausgabe dieser Engine in einem eigenen Fenster verfolgen"
+            }
+            "List every legal move, analysed or not" => {
+                "Alle legalen Züge anzeigen, auch ohne Analyse"
+            }
+            "More actions" => "Weitere Aktionen",
+            "MultiPV: lines each engine searches, saved in its options" => {
+                "MultiPV: Varianten, die jede Engine durchsucht; in ihren Optionen gespeichert"
+            }
+            "Open the containing folder" => "Übergeordneten Ordner öffnen",
+            "Open this move and its engine continuation in Analyse" => {
+                "Diesen Zug und seine Engine-Fortsetzung in Analyse öffnen"
+            }
+            "Order engine lines by evaluation or by search depth" => {
+                "Engine-Varianten nach Bewertung oder Suchtiefe sortieren"
+            }
+            "Recommended: UHO_Lichess_4852_v1.epd. Stockfish books download on first use. Choose Custom file to use a local book." => {
+                "Empfohlen: UHO_Lichess_4852_v1.epd. Stockfish-Bücher werden bei der ersten Verwendung heruntergeladen. Wählen Sie Eigene Datei für ein lokales Buch."
+            }
+            "Review the selected game or all filtered games" => {
+                "Die ausgewählte Partie oder alle gefilterten Partien prüfen"
+            }
+            "Run another process of this engine as an opponent" => {
+                "Einen weiteren Prozess dieser Engine als Gegner starten"
+            }
+            "Search one fewer engine line" => "Eine Engine-Variante weniger durchsuchen",
+            "Show or hide engine output" => "Engine-Ausgabe anzeigen oder ausblenden",
+            "Toggle this move in the engine's root search" => {
+                "Diesen Zug in der Wurzelsuche der Engine ein- oder ausschließen"
+            }
+            "Win / draw / loss odds next to the eval" => {
+                "Sieg-/Remis-/Niederlagechancen neben der Bewertung"
+            }
+            "Weights file" => "Gewichtedatei",
+            "Show WDL" => "WDL anzeigen",
+            "Lc0 network file" => "Lc0-Netzdatei",
+            "Shown in tables and menus" => "In Tabellen und Menüs angezeigt",
+            "Overrides move-quality colours for this engine" => {
+                "Ersetzt die Zugqualitätsfarben für diese Engine"
+            }
+            "Preset option sets for this engine" => "Vordefinierte Optionssätze für diese Engine",
+            "How you appear in PGN headers. Used for My games and leak detection." => {
+                "Ihr Name in PGN-Partiedaten. Wird für Meine Partien und die Erkennung von Repertoireabweichungen verwendet."
+            }
+            "Arrow colour" => "Pfeilfarbe",
+            "Auto" => "Automatisch",
+            "Use the default rook" => "Standardturm verwenden",
+            "Choose an icon" => "Symbol auswählen",
+            "Debug" => "Debug",
+            "Live analysis" => "Live-Analyse",
+            "Batch game review" => "Stapelweise Partieprüfung",
+            "Change" => "Ändern",
+            "No default" => "Kein Standard",
+            "Games, notes, repertoire and history" => "Partien, Notizen, Repertoire und Verlauf",
+            "Time control" => "Bedenkzeit",
+            "Colour" => "Farbe",
+            "Random" => "Zufällig",
+            "Start from" => "Ausgangsstellung",
+            "Starting position" => "Grundstellung",
+            "Current Analyse position" => "Aktuelle Analysestellung",
+            "Repertoire line" => "Repertoirevariante",
+            "Hide evaluation during the game" => "Bewertung während der Partie ausblenden",
+            "Allow premoves" => "Vorauszüge erlauben",
+            "Allow takebacks" => "Zugrücknahmen erlauben",
+            "No engine configured" => "Keine Engine eingerichtet",
+            "Hint" => "Hinweis",
+            "Show answer" => "Antwort anzeigen",
+            "Why this move?" => "Warum dieser Zug?",
+            "Skip" => "Überspringen",
+            "Again" => "Noch einmal",
+            "Known" => "Bekannt",
+            "Learning" => "In Arbeit",
+            "Due" => "Fällig",
+            "New" => "Neu",
+            "Nothing due" => "Nichts fällig",
+            "Not in repertoire yet" => "Noch nicht im Repertoire",
+            "No leaks found. Import your games to see where you leave the repertoire." => {
+                "Keine Abweichungen gefunden. Importieren Sie Ihre Partien, um Repertoireabweichungen zu sehen."
+            }
+            "Mode: every prepared reply" => "Modus: jede vorbereitete Antwort",
+            "Mode: any prepared reply" => "Modus: eine beliebige vorbereitete Antwort",
+            "Answer shown. Grade how well you knew it." => {
+                "Antwort angezeigt. Bewerten Sie, wie gut Sie sie kannten."
+            }
+            "No note saved for this move yet." => {
+                "Für diesen Zug ist noch keine Notiz gespeichert."
+            }
+            "No leaks to drill." => "Keine Abweichungen zum Üben.",
+            "No gaps: every line ends on an answered move." => {
+                "Keine Lücken: Jede Variante endet mit einem beantworteten Zug."
+            }
+            "Add lines from PGN" => "Varianten aus PGN hinzufügen",
+            "Backwards analysis finished." => "Rückwärtsanalyse abgeschlossen.",
+            "Backwards analysis stopped." => "Rückwärtsanalyse angehalten.",
+            "Backwards analysis stopped: no engine is running." => {
+                "Rückwärtsanalyse angehalten: Keine Engine läuft."
+            }
+            "Benchmark needs a real engine; demo mode only has scripted lines." => {
+                "Der Benchmark benötigt eine echte Engine; der Demomodus enthält nur vorgegebene Varianten."
+            }
+            "Beyond cp" => "Über cp",
+            "Book order" => "Buchreihenfolge",
+            "Custom book (.epd or .pgn)" => "Eigenes Buch (.epd oder .pgn)",
+            "Delay between games (ms)" => "Pause zwischen Partien (ms)",
+            "Downloads require an internet connection. Installed engines run offline." => {
+                "Downloads benötigen eine Internetverbindung. Installierte Engines laufen offline."
+            }
+            "Drag across moves to highlight. Ctrl+C copies, Esc returns." => {
+                "Zum Markieren über Züge ziehen. Strg+C kopiert, Esc kehrt zurück."
+            }
+            "Draw ratio" => "Remisquote",
+            "Engine ready. Select it for analysis, review or play below." => {
+                "Engine bereit. Wählen Sie unten Analyse, Prüfung oder Spielen aus."
+            }
+            "Extra fastchess options" => "Weitere fastchess-Optionen",
+            "Filter by name or licence" => "Nach Name oder Lizenz filtern",
+            "For moves in a row" => "Für aufeinanderfolgende Züge",
+            "From move" => "Ab Zug",
+            "Games per round" => "Partien pro Runde",
+            "Hash (MB)" => "Hash (MB)",
+            "Installed. Checking UCI handshake…" => "Installiert. UCI-Verbindung wird geprüft…",
+            "Live boards are off because this command sets its own -events option." => {
+                "Live-Bretter sind deaktiviert, weil dieser Befehl eine eigene -events-Option setzt."
+            }
+            "Live boards need a fastchess build with the -events option." => {
+                "Live-Bretter benötigen eine fastchess-Version mit der Option -events."
+            }
+            "Maximum moves" => "Maximale Zugzahl",
+            "No engines yet. Add them in Settings › Engines, or add an executable here." => {
+                "Noch keine Engines. Fügen Sie unter Einstellungen › Engines oder hier ein Programm hinzu."
+            }
+            "Opening book" => "Eröffnungsbuch",
+            "Opp. rating ≥" => "Gegnerwertung ≥",
+            "Own executable (optional)" => "Eigenes Programm (optional)",
+            "Pairs ratio" => "Paarquote",
+            "Paste a FEN and press Enter" => "FEN einfügen und Eingabetaste drücken",
+            "Plies from book" => "Halbzüge aus dem Buch",
+            "Profile name, e.g. BT2" => "Profilname, z. B. BT2",
+            "Random seed" => "Zufallsstartwert",
+            "Run a command line in folder (for its relative paths)" => {
+                "Befehl in einem Ordner ausführen (für relative Pfade)"
+            }
+            "Running benchmark…" => "Benchmark läuft…",
+            "Search positions, games, openings" => "Stellungen, Partien, Eröffnungen suchen",
+            "Time margin (ms)" => "Zeitreserve (ms)",
+            "WL/DD ratio" => "Sieg/Niederlage-zu-Remis/Remis-Verhältnis",
+            "Within ± cp" => "Innerhalb ± cp",
+            "Crate" => "Crate",
+            "Version" => "Version",
+            "Each analysis engine searches this many nodes in every position, from the last move back to the first. A fixed node count gives every position the same effort on any machine." => {
+                "Jede Analyse-Engine durchsucht so viele Knoten pro Stellung, vom letzten Zug zurück zum ersten. Eine feste Knotenzahl gewährleistet für jede Stellung auf jedem Computer denselben Suchaufwand."
+            }
+            "Start it with Analyse backwards above the game graph, or its shortcut. The search limit for ordinary analysis is not used." => {
+                "Starten Sie die Analyse mit Rückwärts analysieren über dem Partiediagramm oder dem zugehörigen Tastenkürzel. Das Suchlimit der normalen Analyse wird dabei nicht verwendet."
+            }
+            "Fast has no accounts or cloud sync: everything stays on this computer. Only Analyse's Online panel, while open, sends the position on the board to chesstb-explorer.hf.space and chessdb.cn." => {
+                "Fast hat keine Konten oder Cloud-Synchronisierung: Alles bleibt auf diesem Computer. Nur das geöffnete Online-Panel in Analyse sendet die Brettstellung an chesstb-explorer.hf.space und chessdb.cn."
+            }
+            "Arrows" => "Pfeile",
+            "Resume search (P)" => "Suche fortsetzen (P)",
+            "Pause search and keep the current lines (P)" => {
+                "Suche pausieren und aktuelle Varianten behalten (P)"
+            }
+            "Stop analysis" => "Analyse stoppen",
+            "Start analysis" => "Analyse starten",
+            "Search moves · all" => "Suchzüge · alle",
+            "Search moves · selected only" => "Suchzüge · nur ausgewählte",
+            "No engine" => "Keine Engine",
+            "Selection copied." => "Auswahl kopiert.",
+            "Log copied." => "Protokoll kopiert.",
+            "Line copied." => "Variante kopiert.",
+            "Info" => "Info",
+            "Not in the tablebase" => "Nicht in der Endspieldatenbank",
+            "No moves" => "Keine Züge",
+            "Not analysed yet" => "Noch nicht analysiert",
+            "Mate" => "Matt",
+            "Looking up…" => "Abfrage läuft…",
+            "Too many pieces for the tablebase" => "Zu viele Figuren für die Endspieldatenbank",
+            "Slate" => "Schiefer",
+            "Paper" => "Papier",
+            "Sand" => "Sand",
+            "Forest" => "Wald",
+            "Plum" => "Pflaume",
+            "Obsidian" => "Obsidian",
+            "Blue" => "Blau",
+            "Walnut" => "Walnuss",
+            "Moss" => "Moos",
+            "Graphite" => "Graphit",
+            "Classic" => "Klassisch",
+            "Fantasy" => "Fantasie",
+            "Letters" => "Buchstaben",
+            "Flat" => "Flach",
             _ => text,
         }
     } else {

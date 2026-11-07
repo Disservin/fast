@@ -396,7 +396,7 @@ impl TrainScreen {
         let Some(from) = mv.from() else { return };
         self.evidence().reveals += 1;
         self.phase = Phase::Revealed;
-        self.message = Some("Answer shown. Grade how well you knew it.".into());
+        self.message = Some(ui::i18n::t("Answer shown. Grade how well you knew it.").into());
         self.board.update(cx, |board, cx| {
             board.set_arrows(vec![Arrow::new(from, mv.to())], cx);
             board.set_interactive(false, cx);
@@ -411,7 +411,7 @@ impl TrainScreen {
             .map(|drill| drill.note.clone())
             .unwrap_or_default();
         self.message = Some(if note.is_empty() {
-            "No note saved for this move yet.".into()
+            ui::i18n::t("No note saved for this move yet.").into()
         } else {
             note.into()
         });
@@ -480,7 +480,7 @@ impl TrainScreen {
             })
             .collect();
         if drills.is_empty() {
-            self.message = Some("No leaks to drill.".into());
+            self.message = Some(ui::i18n::t("No leaks to drill.").into());
             cx.notify();
             return;
         }
@@ -515,7 +515,7 @@ impl TrainScreen {
     fn find_gaps(&mut self, cx: &mut Context<Self>) {
         let gaps = self.model.read(cx).repertoire.gaps();
         let text = match gaps.first() {
-            None => "No gaps: every line ends on an answered move.".to_owned(),
+            None => ui::i18n::t("No gaps: every line ends on an answered move.").to_owned(),
             Some(first) => format!(
                 "{} positions need an answer, for example after {}.",
                 gaps.len(),
@@ -869,7 +869,7 @@ impl TrainScreen {
                             .child(if has_drill {
                                 format!("Your move as {side}")
                             } else {
-                                "Nothing due".to_owned()
+                                ui::i18n::t("Nothing due").to_owned()
                             }),
                     )
                     .children(
@@ -901,7 +901,7 @@ impl TrainScreen {
                     .gap(px(6.))
                     .child(recall(
                         "again",
-                        "Again".to_owned(),
+                        ui::i18n::t("Again").to_owned(),
                         Grade::Again,
                         BtnKind::Normal,
                         this.clone(),
@@ -1022,7 +1022,7 @@ impl TrainScreen {
             let title = format_pv(start as u32, &gap.path[start..]);
             body = body.child(row(
                 title,
-                "Not in repertoire yet".to_owned(),
+                ui::i18n::t("Not in repertoire yet").to_owned(),
                 gap.games,
                 false,
             ));
@@ -1052,7 +1052,7 @@ impl TrainScreen {
                             div()
                                 .text_size(px(16.))
                                 .font_weight(FontWeight::SEMIBOLD)
-                                .child("Leaks from your games"),
+                                .child(ui::i18n::t("Leaks from your games")),
                         )
                         .child(
                             div()
@@ -1062,7 +1062,7 @@ impl TrainScreen {
                                 .overflow_hidden()
                                 .whitespace_nowrap()
                                 .text_ellipsis()
-                                .child("Where you left the repertoire"),
+                                .child(ui::i18n::t("Where you left the repertoire")),
                         ),
                 ),
             )
@@ -1123,7 +1123,9 @@ impl Render for TrainScreen {
                         .h(26.)
                         .pad(8.)
                         .text(12.)
-                        .tooltip("Discard this session and start the queue again")
+                        .tooltip(ui::i18n::t(
+                            "Discard this session and start the queue again",
+                        ))
                         .on_click(move |_, cx| {
                             reset.update(cx, |this, cx| {
                                 this.attempts.clear();

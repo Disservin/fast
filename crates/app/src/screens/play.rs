@@ -817,7 +817,7 @@ impl PlayScreen {
                             .justify_between()
                             .text_size(px(13.))
                             .text_color(rgb(T.muted))
-                            .child("Strength")
+                            .child(ui::i18n::t("Strength"))
                             .child(mono(self.strength_value.to_string()).text_color(rgb(T.fg_2))),
                     )
                     .child(Slider::new(&self.strength).bg(rgb(T.accent))),
@@ -908,7 +908,7 @@ impl PlayScreen {
                         .mt(px(10.))
                         .text_size(px(13.))
                         .text_color(rgb(T.muted))
-                        .child("Add an engine in Settings › Engines to play."),
+                        .child(ui::i18n::t("Add an engine in Settings › Engines to play.")),
                 )
             })
     }
@@ -1165,7 +1165,7 @@ fn supports_limit(config: &EngineConfig) -> bool {
 
 fn opponent_names(engines: &[EngineConfig]) -> Vec<SharedString> {
     if engines.is_empty() {
-        return vec!["No engine configured".into()];
+        return vec![ui::i18n::t("No engine configured").into()];
     }
     engines
         .iter()

@@ -881,7 +881,7 @@ impl DatabaseScreen {
                     .py(px(8.))
                     .text_size(px(13.))
                     .text_color(rgb(T.muted))
-                    .child("No databases yet. Use Import to add a PGN."),
+                    .child(ui::i18n::t("No databases yet. Use Import to add a PGN.")),
             );
         }
         let reached = self.reached;
@@ -1038,7 +1038,7 @@ impl DatabaseScreen {
             .child(section_label("Batch review"))
             .child(
                 btn("review-engine", format!("Engine: {engine_name}  ›"))
-                    .tooltip("Choose an enabled review engine")
+                    .tooltip(ui::i18n::t("Choose an enabled review engine"))
                     .on_click(move |_, cx| {
                         engine_this.update(cx, |screen, cx| screen.cycle_review_engine(cx))
                     }),
@@ -1048,7 +1048,7 @@ impl DatabaseScreen {
                     "review-limit",
                     format!("Limit: {}  ›", ReviewLimit::ALL[self.review_limit].label()),
                 )
-                .tooltip("Cycle between time, depth, and node limits")
+                .tooltip(ui::i18n::t("Cycle between time, depth, and node limits"))
                 .on_click(move |_, cx| {
                     limit_this.update(cx, |screen, cx| screen.cycle_review_limit(cx))
                 }),
@@ -1066,7 +1066,7 @@ impl DatabaseScreen {
                         ][self.review_side]
                     ),
                 )
-                .tooltip("Choose which player's moves to review")
+                .tooltip(ui::i18n::t("Choose which player's moves to review"))
                 .on_click(move |_, cx| {
                     side_this.update(cx, |screen, cx| screen.cycle_review_side(cx))
                 }),
@@ -1080,7 +1080,9 @@ impl DatabaseScreen {
                         "Scope: Filtered"
                     },
                 )
-                .tooltip("Review the selected game or all filtered games")
+                .tooltip(ui::i18n::t(
+                    "Review the selected game or all filtered games",
+                ))
                 .on_click(move |_, cx| {
                     this.update(cx, |screen, cx| screen.toggle_review_scope(cx))
                 }),
@@ -1371,7 +1373,9 @@ impl DatabaseScreen {
                         btn(("review-finding", ply), finding.text)
                             .full()
                             .text(11.)
-                            .tooltip("Open this move and its engine continuation in Analyse")
+                            .tooltip(ui::i18n::t(
+                                "Open this move and its engine continuation in Analyse",
+                            ))
                             .on_click(move |window, cx| {
                                 this.update(cx, |screen, cx| {
                                     screen.preview_key = ply;
@@ -1519,7 +1523,7 @@ fn move_snippet(preview: &GameDetails, key: usize) -> impl IntoElement + use<> {
                         .bg(rgb(T.accent))
                         .text_color(rgb(T.accent_fg))
                 })
-                .child(label),
+                .child(ui::i18n::t(&label).to_owned()),
         );
     }
     row

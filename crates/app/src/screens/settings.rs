@@ -151,18 +151,24 @@ fn option_label(name: &str) -> (String, Option<&'static str>) {
         ),
         "Hash" => (
             "Hash".to_owned(),
-            Some("Memory for the transposition table"),
+            Some(ui::i18n::t("Memory for the transposition table")),
         ),
-        "MultiPV" => ("MultiPV".to_owned(), Some("Lines shown in Moves from here")),
+        "MultiPV" => (
+            "MultiPV".to_owned(),
+            Some(ui::i18n::t("Lines shown in Moves from here")),
+        ),
         "SyzygyPath" => (
-            "Syzygy path".to_owned(),
-            Some("Endgame tablebases, 3–6 pieces"),
+            ui::i18n::t("Syzygy path").to_owned(),
+            Some(ui::i18n::t("Endgame tablebases, 3–6 pieces")),
         ),
         "UCI_ShowWDL" => (
-            "Show WDL".to_owned(),
-            Some("Win / draw / loss odds next to the eval"),
+            ui::i18n::t("Show WDL").to_owned(),
+            Some(ui::i18n::t("Win / draw / loss odds next to the eval")),
         ),
-        "WeightsFile" => ("Weights file".to_owned(), Some("Lc0 network file")),
+        "WeightsFile" => (
+            ui::i18n::t("Weights file").to_owned(),
+            Some(ui::i18n::t("Lc0 network file")),
+        ),
         other => (other.to_owned(), None),
     }
 }
@@ -296,10 +302,12 @@ impl SettingsScreen {
         let backward_nodes = new_input(nodes.to_string(), "e.g. 500000 or 500k", window, cx);
         let path_input = cx.new(|cx| InputState::new(window, cx));
         let name_input = cx.new(|cx| InputState::new(window, cx));
-        let profile_input =
-            cx.new(|cx| InputState::new(window, cx).placeholder("Profile name, e.g. BT2"));
-        let license_filter =
-            cx.new(|cx| InputState::new(window, cx).placeholder("Filter by name or licence"));
+        let profile_input = cx.new(|cx| {
+            InputState::new(window, cx).placeholder(ui::i18n::t("Profile name, e.g. BT2"))
+        });
+        let license_filter = cx.new(|cx| {
+            InputState::new(window, cx).placeholder(ui::i18n::t("Filter by name or licence"))
+        });
         let subscriptions = vec![
             cx.subscribe(
                 &language,
@@ -906,7 +914,7 @@ impl SettingsScreen {
                             this.update(cx, |this, cx| {
                                 this.select_engine(Some(id), window, cx);
                                 this.install_status = Some(
-                                    "Engine ready. Select it for analysis, review or play below."
+                                    ui::i18n::t("Engine ready. Select it for analysis, review or play below.")
                                         .into(),
                                 );
                             });
@@ -947,12 +955,14 @@ impl SettingsScreen {
             return;
         };
         if self.model.read(cx).demo {
-            self.benchmark =
-                Some("Benchmark needs a real engine; demo mode only has scripted lines.".into());
+            self.benchmark = Some(
+                ui::i18n::t("Benchmark needs a real engine; demo mode only has scripted lines.")
+                    .into(),
+            );
             cx.notify();
             return;
         }
-        self.benchmark = Some("Running benchmark…".into());
+        self.benchmark = Some(ui::i18n::t("Running benchmark…").into());
         cx.notify();
         let task = cx.background_spawn(async move { benchmark(&config) });
         cx.spawn(async move |this, cx| {
@@ -1489,7 +1499,7 @@ impl SettingsScreen {
                 pair("first_move", "last_move"),
             ))
             .child(row(
-                "Engine on / off",
+                ui::i18n::t("Engine on / off"),
                 keys("toggle_engine"),
                 ui::i18n::t("Flip board"),
                 keys("flip_board"),
@@ -1553,7 +1563,7 @@ impl SettingsScreen {
                         .child(
                             btn(id, "Open")
                                 .h(28.)
-                                .tooltip("Open the containing folder")
+                                .tooltip(ui::i18n::t("Open the containing folder"))
                                 .on_click(move |_, cx| {
                                     cx.reveal_path(&folder);
                                 }),
@@ -1779,7 +1789,8 @@ impl SettingsScreen {
                 screen.install_cancel = None;
                 match result {
                     Ok(path) => {
-                        screen.install_status = Some("Installed. Checking UCI handshake…".into());
+                        screen.install_status =
+                            Some(ui::i18n::t("Installed. Checking UCI handshake…").into());
                         let existing = screen
                             .model
                             .read(cx)
@@ -1806,13 +1817,17 @@ impl SettingsScreen {
     }
 
     fn render_catalog(&self, cx: &mut Context<Self>) -> Div {
-        let mut body =
-            v_flex()
-                .gap(px(12.))
-                .child(section_label("Download an engine"))
-                .child(div().text_size(px(13.)).text_color(rgb(T.muted)).child(
-                    "Downloads require an internet connection. Installed engines run offline.",
-                ));
+        let mut body = v_flex()
+            .gap(px(12.))
+            .child(section_label("Download an engine"))
+            .child(
+                div()
+                    .text_size(px(13.))
+                    .text_color(rgb(T.muted))
+                    .child(ui::i18n::t(
+                        "Downloads require an internet connection. Installed engines run offline.",
+                    )),
+            );
         let busy = self.install_cancel.is_some();
         match crate::engine_catalog::Catalog::bundled() {
             Err(err) => body = body.child(format!("Engine catalog unavailable: {err:#}")),
@@ -2230,7 +2245,7 @@ impl SettingsScreen {
         let body = v_flex()
             .child(detail_row(
                 "Name",
-                Some("Shown in tables and menus"),
+                Some(ui::i18n::t("Shown in tables and menus")),
                 div().w(px(320.)).child(text_input(&self.name_input)),
             ))
             .child(detail_row(
@@ -2250,7 +2265,9 @@ impl SettingsScreen {
             .child(self.render_profiles(config, cx))
             .child(detail_row(
                 "Arrow colour",
-                Some("Overrides move-quality colours for this engine"),
+                Some(ui::i18n::t(
+                    "Overrides move-quality colours for this engine",
+                )),
                 h_flex().gap(px(6.)).children(
                     [
                         None,
@@ -2373,7 +2390,7 @@ impl SettingsScreen {
                                     );
                                 });
                             }))
-                            .child(btn("duplicate-engine", "Duplicate").h(32.).tooltip("Another entry for this binary with its own options, e.g. Lc0 with another network").on_click(move |window, cx| {
+                            .child(btn("duplicate-engine", "Duplicate").h(32.).tooltip(ui::i18n::t("Another entry for this binary with its own options, e.g. Lc0 with another network")).on_click(move |window, cx| {
                                 duplicate_this.update(cx, |screen, cx| screen.duplicate_engine(window, cx));
                             }))
                             .child(btn("remove-engine", ui::i18n::t("Remove")).h(32.).on_click(move |window, cx| {
@@ -2404,7 +2421,7 @@ impl SettingsScreen {
                         div()
                             .text_size(px(12.))
                             .text_color(rgb(T.muted))
-                            .child("Sends debug on and shows the raw engine output in its own window"),
+                            .child(ui::i18n::t("Sends debug on and shows the raw engine output in its own window")),
                     )
                     .when(debug, |row| {
                         row.child(btn("debug-window", "Open output window").h(26.).pad(8.).text(12.).on_click(move |_, cx| {
@@ -2480,7 +2497,7 @@ impl SettingsScreen {
         let save_this = this;
         detail_row(
             "Profiles",
-            Some("Preset option sets for this engine"),
+            Some(ui::i18n::t("Preset option sets for this engine")),
             h_flex().gap(px(12.)).flex_wrap().child(chips).child(
                 h_flex()
                     .gap(px(6.))
@@ -2539,7 +2556,9 @@ impl SettingsScreen {
             .child(page_title(ui::i18n::t("Databases")))
             .child(section(ui::i18n::t("You")).child(option_row(
                 "Player name",
-                Some("How you appear in PGN headers. Used for My games and leak detection."),
+                Some(ui::i18n::t(
+                    "How you appear in PGN headers. Used for My games and leak detection.",
+                )),
                 div().w(px(320.)).child(text_input(&self.player_name)),
             )))
             .child(
@@ -2635,7 +2654,7 @@ impl SettingsScreen {
                                         .pad(10.)
                                         .disabled(current == default)
                                         .tooltip(if default.is_empty() {
-                                            "No default".to_owned()
+                                            ui::i18n::t("No default").to_owned()
                                         } else {
                                             format!("Default: {default}")
                                         })
@@ -2888,11 +2907,11 @@ impl SettingsScreen {
             .gap(px(16.))
             .child(page_title(ui::i18n::t("Accounts")))
             .child(section(ui::i18n::t("Offline by design")).child(
-                div().text_color(rgb(T.fg_2)).child(
+                div().text_color(rgb(T.fg_2)).child(ui::i18n::t(
                     "Fast has no accounts or cloud sync: everything stays on this computer. \
                      Only Analyse's Online panel, while open, sends the position on the board \
                      to chesstb-explorer.hf.space and chessdb.cn.",
-                ),
+                )),
             ))
     }
 }
@@ -2981,12 +3000,12 @@ impl SettingsScreen {
             .child(
                 section(ui::i18n::t("Backwards analysis"))
                     .child(option_row(
-                        "Nodes per position",
-                        Some(
+                        ui::i18n::t("Nodes per position"),
+                        Some(ui::i18n::t(
                             "Each analysis engine searches this many nodes in every position, \
                              from the last move back to the first. A fixed node count gives \
                              every position the same effort on any machine.",
-                        ),
+                        )),
                         field,
                     ))
                     .child(
@@ -2994,10 +3013,10 @@ impl SettingsScreen {
                             .pt(px(10.))
                             .text_size(px(12.))
                             .text_color(rgb(T.muted))
-                            .child(
+                            .child(ui::i18n::t(
                                 "Start it with Analyse backwards above the game graph, or its \
                                  shortcut. The search limit for ordinary analysis is not used.",
-                            ),
+                            )),
                     ),
             )
     }
@@ -3062,7 +3081,7 @@ fn detail_row(label: &str, hint: Option<&'static str>, control: impl IntoElement
                     div()
                         .font_weight(FontWeight::MEDIUM)
                         .text_size(px(14.))
-                        .child(SharedString::from(label.to_owned())),
+                        .child(SharedString::from(ui::i18n::t(label).to_owned())),
                 )
                 .children(hint.map(|hint| {
                     div()
@@ -3099,7 +3118,10 @@ fn tile(id: impl Into<gpui::ElementId>, selected: bool) -> gpui::Stateful<Div> {
 }
 
 fn tile_label(text: &'static str) -> Div {
-    div().text_size(px(13.)).text_color(rgb(T.fg_2)).child(text)
+    div()
+        .text_size(px(13.))
+        .text_color(rgb(T.fg_2))
+        .child(ui::i18n::t(text))
 }
 
 fn board_check(

@@ -30,7 +30,7 @@ pub fn sans(text: impl Into<SharedString>) -> Div {
 /// Tracked uppercase section label (11px, 600, muted, 0.08em letter spacing).
 /// GPUI text has no letter-spacing, so each glyph is laid out on its own.
 pub fn section_label(text: impl AsRef<str>) -> Div {
-    let text = text.as_ref().to_uppercase();
+    let text = crate::i18n::t(text.as_ref()).to_uppercase();
     let mut row = h_flex()
         .flex_none()
         .text_size(px(11.))
@@ -78,7 +78,7 @@ pub fn stat(label: impl Into<SharedString>, value: impl Into<SharedString>) -> D
             div()
                 .text_size(px(11.))
                 .text_color(rgb(T.muted))
-                .child(label.into()),
+                .child(crate::i18n::t(&label.into()).to_owned()),
         )
         .child(
             mono(value)
@@ -144,7 +144,7 @@ pub struct Btn {
 pub fn btn(id: impl Into<ElementId>, label: impl Into<SharedString>) -> Btn {
     Btn {
         id: id.into(),
-        label: Some(label.into()),
+        label: Some(crate::i18n::t(&label.into()).to_owned().into()),
         icon: None,
         kind: BtnKind::Normal,
         mono: false,
@@ -230,7 +230,7 @@ impl Btn {
     }
 
     pub fn tooltip(mut self, text: impl Into<SharedString>) -> Self {
-        self.tooltip = Some(text.into());
+        self.tooltip = Some(crate::i18n::t(&text.into()).to_owned().into());
         self
     }
 
@@ -380,7 +380,7 @@ pub fn check(id: impl Into<ElementId>, checked: bool, label: impl Into<SharedStr
     Check {
         id: id.into(),
         checked,
-        label: Some(label.into()),
+        label: Some(crate::i18n::t(&label.into()).to_owned().into()),
         on_change: None,
         text_size: px(14.),
     }

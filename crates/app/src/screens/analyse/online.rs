@@ -207,7 +207,7 @@ impl AnalyseScreen {
                     Outcome::Loss => format!("{} wins", side(false)),
                     _ => match &probe.draw_reason {
                         Some(reason) => format!("Draw ({})", reason.replace('_', " ")),
-                        None => "Draw".into(),
+                        None => ui::i18n::t("Draw").into(),
                     },
                 };
                 let decided = probe.wdl != 0;
@@ -326,7 +326,7 @@ fn note(text: impl Into<gpui::SharedString>) -> Div {
     div()
         .text_size(px(13.))
         .text_color(rgb(T.muted))
-        .child(text.into())
+        .child(ui::i18n::t(&text.into()).to_owned())
 }
 
 fn status<T>(lookup: &Lookup<T>) -> Div {
