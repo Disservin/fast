@@ -79,7 +79,21 @@ pub fn pick_path(
     cx: &mut App,
     on_path: impl FnOnce(PathBuf, &mut App) + 'static,
 ) {
-    pick_path_kind(model, title, save_name, false, cx, on_path);
+    pick_path_kind(model, title, save_name, false, false, cx, move |paths, cx| {
+        if let Some(path) = paths.into_iter().next() {
+            on_path(path, cx);
+        }
+    });
+}
+
+/// Select several files in one native dialog.
+pub fn pick_paths(
+    model: Entity<AppModel>,
+    title: &'static str,
+    cx: &mut App,
+    on_paths: impl FnOnce(Vec<PathBuf>, &mut App) + 'static,
+) {
+    pick_path_kind(model, title, None, false, true, cx, on_paths);
 }
 
 /// Select a directory using the platform's native folder dialog.
@@ -89,7 +103,11 @@ pub fn pick_directory(
     cx: &mut App,
     on_path: impl FnOnce(PathBuf, &mut App) + 'static,
 ) {
-    pick_path_kind(model, title, None, true, cx, on_path);
+    pick_path_kind(model, title, None, true, false, cx, move |paths, cx| {
+        if let Some(path) = paths.into_iter().next() {
+            on_path(path, cx);
+        }
+    });
 }
 
 fn pick_path_kind(
@@ -97,8 +115,9 @@ fn pick_path_kind(
     title: &'static str,
     save_name: Option<&'static str>,
     directory: bool,
+    multiple: bool,
     cx: &mut App,
-    on_path: impl FnOnce(PathBuf, &mut App) + 'static,
+    on_paths: impl FnOnce(Vec<PathBuf>, &mut App) + 'static,
 ) {
     let prompt = match save_name {
         Some(name) => {
@@ -114,7 +133,7 @@ fn pick_path_kind(
             let answer = cx.prompt_for_paths(PathPromptOptions {
                 files: !directory,
                 directories: directory,
-                multiple: false,
+                multiple,
                 prompt: Some(title.into()),
             });
             cx.background_spawn(answer)
@@ -122,9 +141,7 @@ fn pick_path_kind(
     };
     cx.spawn(async move |cx| match prompt.await {
         Ok(Ok(Some(paths))) => {
-            if let Some(path) = paths.into_iter().next() {
-                cx.update(|cx| on_path(path, cx));
-            }
+            cx.update(|cx| on_paths(paths, cx));
         }
         // Cancelled by the user.
         Ok(Ok(None)) => {}
@@ -133,7 +150,7 @@ fn pick_path_kind(
             model.update(cx, |model, cx| {
                 model.pending_path = Some(PendingPath {
                     title: title.into(),
-                    on_path: Box::new(on_path),
+                    on_path: Box::new(move |path, cx| on_paths(vec![path], cx)),
                 });
                 cx.notify();
             });

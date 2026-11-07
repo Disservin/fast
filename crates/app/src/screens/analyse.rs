@@ -845,33 +845,52 @@ impl AnalyseScreen {
         self.position_changed(false, window, cx);
     }
 
-    /// Opens a PGN or FEN file from disk; the first game of a PGN is loaded.
+    /// Opens multiple PGN/FEN files, with each game in its own board tab.
     pub fn open_file(&mut self, cx: &mut Context<Self>) {
         let this = cx.entity().downgrade();
-        crate::model::pick_path(
+        let workspace = self.workspace.clone();
+        crate::model::pick_paths(
             self.model.clone(),
-            "Open game",
-            None,
+            "Open games",
             cx,
-            move |path, cx| {
-                let text = match std::fs::read_to_string(&path) {
-                    Ok(text) => text,
-                    Err(err) => {
-                        if let Some(this) = this.upgrade() {
-                            this.update(cx, |screen, cx| {
-                                screen
-                                    .toast(format!("Could not read {}: {err}", path.display()), cx);
-                            });
-                        }
-                        return;
+            move |paths, cx| {
+                let mut games = Vec::new();
+                let mut errors = Vec::new();
+                for path in paths {
+                    let result = std::fs::read_to_string(&path)
+                        .map_err(|err| err.to_string())
+                        .and_then(|text| {
+                            if let Ok(tree) = GameTree::from_fen(text.trim()) {
+                                Ok(vec![tree])
+                            } else {
+                                parse_pgn(&text).map_err(|err| err.to_string())
+                            }
+                        });
+                    match result {
+                        Ok(mut loaded) if !loaded.is_empty() => games.append(&mut loaded),
+                        Ok(_) => errors.push(format!("{}: no games", path.display())),
+                        Err(err) => errors.push(format!("{}: {err}", path.display())),
                     }
-                };
-                let Some(window) = cx.active_window() else {
-                    return;
-                };
+                }
+                let Some(window) = cx.active_window() else { return };
                 let _ = window.update(cx, |_, window, cx| {
-                    if let Some(this) = this.upgrade() {
-                        this.update(cx, |screen, cx| screen.load_text(&text, window, cx));
+                    let mut games = games.into_iter();
+                    if let Some(first) = games.next()
+                        && let Some(this) = this.upgrade()
+                    {
+                        this.update(cx, |screen, cx| screen.load_tree(first, window, cx));
+                    }
+                    if let Some(workspace) = workspace.upgrade() {
+                        workspace.update(cx, |workspace, cx| {
+                            for tree in games {
+                                workspace.open_analysis(tree, window, cx);
+                            }
+                        });
+                    }
+                    if !errors.is_empty()
+                        && let Some(this) = this.upgrade()
+                    {
+                        this.update(cx, |screen, cx| screen.toast(errors.join("; "), cx));
                     }
                 });
             },
