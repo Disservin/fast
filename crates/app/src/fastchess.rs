@@ -198,7 +198,17 @@ pub struct Setup {
     pub alpha: String,
     pub beta: String,
     pub draw_adjudication: bool,
+    /// Draw adjudication: from this full move, after this many moves in a row with both
+    /// scores within this many centipawns of zero.
+    pub draw_movenumber: String,
+    pub draw_movecount: String,
+    pub draw_score: String,
     pub resign_adjudication: bool,
+    /// Resign adjudication: after this many moves in a row beyond this many centipawns,
+    /// as seen by both engines when `resign_twosided`, else by the losing one.
+    pub resign_movecount: String,
+    pub resign_score: String,
+    pub resign_twosided: bool,
     pub maxmoves: String,
     pub recover: bool,
     pub extra: String,
@@ -342,17 +352,32 @@ impl Setup {
         if self.draw_adjudication {
             push(&[
                 "-draw".into(),
-                "movenumber=32".into(),
-                "movecount=6".into(),
-                "score=10".into(),
+                format!(
+                    "movenumber={}",
+                    number::<u32>(&self.draw_movenumber, "Draw adjudication's first move")?
+                ),
+                format!(
+                    "movecount={}",
+                    number::<u32>(&self.draw_movecount, "Draw adjudication's move count")?
+                ),
+                format!(
+                    "score={}",
+                    number::<u32>(&self.draw_score, "Draw adjudication's score")?
+                ),
             ]);
         }
         if self.resign_adjudication {
             push(&[
                 "-resign".into(),
-                "movecount=3".into(),
-                "score=600".into(),
-                "twosided=true".into(),
+                format!(
+                    "movecount={}",
+                    number::<u32>(&self.resign_movecount, "Resign adjudication's move count")?
+                ),
+                format!(
+                    "score={}",
+                    number::<u32>(&self.resign_score, "Resign adjudication's score")?
+                ),
+                format!("twosided={}", self.resign_twosided),
             ]);
         }
         if !self.maxmoves.trim().is_empty() {
@@ -1039,7 +1064,13 @@ mod tests {
             alpha: "0.05".into(),
             beta: "0.05".into(),
             draw_adjudication: false,
+            draw_movenumber: "32".into(),
+            draw_movecount: "6".into(),
+            draw_score: "10".into(),
             resign_adjudication: false,
+            resign_movecount: "3".into(),
+            resign_score: "600".into(),
+            resign_twosided: true,
             maxmoves: String::new(),
             recover: true,
             extra: "-srand 42".into(),
@@ -1119,6 +1150,32 @@ mod tests {
         let mut bad = setup(vec![engine("a"), engine("b")]);
         bad.openings = "/no/such/book.epd".into();
         assert!(bad.args(dir).is_err());
+        let mut bad = setup(vec![engine("a"), engine("b")]);
+        bad.draw_adjudication = true;
+        bad.draw_score = "-5".into();
+        assert!(bad.args(dir).is_err());
+    }
+
+    #[test]
+    fn setup_passes_the_adjudication_rules_given() {
+        let dir = Path::new("/data/t1");
+        let mut setup = setup(vec![engine("a"), engine("b")]);
+        setup.draw_adjudication = true;
+        (
+            setup.draw_movenumber,
+            setup.draw_movecount,
+            setup.draw_score,
+        ) = ("40".into(), "8".into(), "5".into());
+        setup.resign_adjudication = true;
+        (setup.resign_movecount, setup.resign_score) = ("4".into(), "800".into());
+        setup.resign_twosided = false;
+        let args = setup.args(dir).unwrap();
+        let after = |flag: &str| {
+            let start = args.iter().position(|arg| arg == flag).unwrap() + 1;
+            args[start..start + 3].join(" ")
+        };
+        assert_eq!(after("-draw"), "movenumber=40 movecount=8 score=5");
+        assert_eq!(after("-resign"), "movecount=4 score=800 twosided=false");
     }
 
     #[test]

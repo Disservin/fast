@@ -231,7 +231,13 @@ pub struct TournamentScreen {
     sprt: bool,
     draw_adjudication: bool,
     resign_adjudication: bool,
+    resign_twosided: bool,
     recover: bool,
+    draw_movenumber: Entity<InputState>,
+    draw_movecount: Entity<InputState>,
+    draw_score: Entity<InputState>,
+    resign_movecount: Entity<InputState>,
+    resign_score: Entity<InputState>,
     limit_value: Entity<InputState>,
     hash: Entity<InputState>,
     threads: Entity<InputState>,
@@ -335,7 +341,13 @@ impl TournamentScreen {
             sprt: false,
             draw_adjudication: true,
             resign_adjudication: true,
+            resign_twosided: true,
             recover: true,
+            draw_movenumber: new_input("32", "32", window, cx),
+            draw_movecount: new_input("6", "6", window, cx),
+            draw_score: new_input("10", "10", window, cx),
+            resign_movecount: new_input("3", "3", window, cx),
+            resign_score: new_input("600", "600", window, cx),
             limit_value: new_input("10+0.1", "10+0.1", window, cx),
             hash: new_input("16", "MB", window, cx),
             threads: new_input("1", "1", window, cx),
@@ -442,7 +454,13 @@ impl TournamentScreen {
             alpha: self.text(&self.alpha, cx),
             beta: self.text(&self.beta, cx),
             draw_adjudication: self.draw_adjudication,
+            draw_movenumber: self.text(&self.draw_movenumber, cx),
+            draw_movecount: self.text(&self.draw_movecount, cx),
+            draw_score: self.text(&self.draw_score, cx),
             resign_adjudication: self.resign_adjudication,
+            resign_movecount: self.text(&self.resign_movecount, cx),
+            resign_score: self.text(&self.resign_score, cx),
+            resign_twosided: self.resign_twosided,
             maxmoves: self.text(&self.maxmoves, cx),
             recover: self.recover,
             extra: self.text(&self.extra, cx),
@@ -1110,6 +1128,7 @@ impl TournamentScreen {
                 .child(a.flex_1())
                 .child(b.flex_1())
         };
+        let triple = |a: gpui::Div, b: gpui::Div, c: gpui::Div| pair(a, b).child(c.flex_1());
         let limit_this = cx.entity();
         let games_this = cx.entity();
         let type_this = cx.entity();
@@ -1227,17 +1246,38 @@ impl TournamentScreen {
             .child(self.toggle(
                 "tournament-draw",
                 self.draw_adjudication,
-                "Draw adjudication (from move 32, 6 moves within ±10 cp)",
+                "Draw adjudication",
                 cx,
                 |screen, on| screen.draw_adjudication = on,
             ))
+            .when(self.draw_adjudication, |column| {
+                column.child(triple(
+                    field("From move", text_input(&self.draw_movenumber)),
+                    field("For moves in a row", text_input(&self.draw_movecount)),
+                    field("Within ± cp", text_input(&self.draw_score)),
+                ))
+            })
             .child(self.toggle(
                 "tournament-resign",
                 self.resign_adjudication,
-                "Resign adjudication (3 moves beyond 600 cp, both engines)",
+                "Resign adjudication",
                 cx,
                 |screen, on| screen.resign_adjudication = on,
             ))
+            .when(self.resign_adjudication, |column| {
+                column
+                    .child(pair(
+                        field("For moves in a row", text_input(&self.resign_movecount)),
+                        field("Beyond cp", text_input(&self.resign_score)),
+                    ))
+                    .child(self.toggle(
+                        "tournament-resign-twosided",
+                        self.resign_twosided,
+                        "Both engines must agree on the score",
+                        cx,
+                        |screen, on| screen.resign_twosided = on,
+                    ))
+            })
             .child(field("Maximum moves", text_input(&self.maxmoves)))
             .child(self.toggle(
                 "tournament-recover",
@@ -2798,10 +2838,36 @@ fn locked_summary(run: &Run) -> Div {
     } else {
         "Off".to_owned()
     };
+    let draw = if has(args, "-draw") {
+        let draw = flag_values(args, "-draw");
+        format!(
+            "From move {} · {} moves within ±{} cp",
+            kv(&draw, "movenumber").unwrap_or("–"),
+            kv(&draw, "movecount").unwrap_or("–"),
+            kv(&draw, "score").unwrap_or("–")
+        )
+    } else {
+        "Off".to_owned()
+    };
+    let resign = if has(args, "-resign") {
+        let resign = flag_values(args, "-resign");
+        format!(
+            "{} moves beyond {} cp{}",
+            kv(&resign, "movecount").unwrap_or("–"),
+            kv(&resign, "score").unwrap_or("–"),
+            if kv(&resign, "twosided") == Some("true") {
+                " · both engines"
+            } else {
+                ""
+            }
+        )
+    } else {
+        "Off".to_owned()
+    };
     let mut rules = v_flex().gap(px(8.));
     for (label, value) in [
-        ("Draw adjudication", on_off("-draw").to_owned()),
-        ("Resign adjudication", on_off("-resign").to_owned()),
+        ("Draw adjudication", draw),
+        ("Resign adjudication", resign),
         ("Recover crashes", on_off("-recover").to_owned()),
         ("SPRT", sprt),
     ] {
