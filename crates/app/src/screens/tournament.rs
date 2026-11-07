@@ -2154,6 +2154,7 @@ impl TournamentScreen {
 
 impl Render for TournamentScreen {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let empty = self.run.is_none();
         let main = match &self.run {
             Some(run) => self.render_run(run, cx),
             None => self.render_empty(cx).into_any_element(),
@@ -2172,7 +2173,16 @@ impl Render for TournamentScreen {
                     .child(
                         h_flex()
                             .justify_center()
-                            .child(div().w_full().max_w(px(1440.)).child(main)),
+                            // With no run, the intro sits in the middle of the tab.
+                            .when(empty, |row| row.min_h_full().items_center())
+                            .child(
+                                h_flex().justify_center().w_full().max_w(px(1440.)).child(
+                                    div()
+                                        .w_full()
+                                        .when(empty, |main| main.max_w(px(620.)))
+                                        .child(main),
+                                ),
+                            ),
                     ),
             )
             .children(setup)
