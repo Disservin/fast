@@ -13,6 +13,7 @@ mod licenses;
 mod live;
 mod model;
 mod online;
+mod opening_books;
 mod persistence;
 mod process_guard;
 mod recovery;

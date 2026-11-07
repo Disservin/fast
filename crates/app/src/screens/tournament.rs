@@ -23,7 +23,7 @@ use ui::{
 };
 
 use crate::{
-    controls::{field, new_input, text_input},
+    controls::{TextSelect, field, new_input, new_select, select_el, text_input},
     fastchess::{self, Limit, Line, Participant, Pasted, Setup, StopHandle},
     model::{AppModel, ModelEvent, pick_path},
     shell::Workspace,
@@ -243,6 +243,8 @@ pub struct TournamentScreen {
     threads: Entity<InputState>,
     rounds: Entity<InputState>,
     concurrency: Entity<InputState>,
+    book: TextSelect,
+    book_task: Option<Task<()>>,
     openings: Entity<InputState>,
     plies: Entity<InputState>,
     elo0: Entity<InputState>,
@@ -365,6 +367,18 @@ impl TournamentScreen {
                 window,
                 cx,
             ),
+            book: new_select(
+                crate::opening_books::BOOKS
+                    .iter()
+                    .copied()
+                    .chain(["No book", "Custom file…"])
+                    .map(SharedString::from)
+                    .collect(),
+                0,
+                window,
+                cx,
+            ),
+            book_task: None,
             openings: new_input(
                 "",
                 "No book: games start from the initial position",
@@ -500,7 +514,50 @@ impl TournamentScreen {
     }
 
     fn start_form(&mut self, cx: &mut Context<Self>) {
-        let setup = self.setup(cx);
+        if self.book_task.is_some() {
+            return;
+        }
+        let mut setup = self.setup(cx);
+        let index = self
+            .book
+            .read(cx)
+            .selected_index(cx)
+            .map(|index| index.row)
+            .unwrap_or(0);
+        if let Some(&name) = crate::opening_books::BOOKS.get(index) {
+            let data = self.data_dir(cx);
+            let path = crate::opening_books::path(&data, name);
+            setup.openings = path.to_string_lossy().into_owned();
+            if !path.is_file() {
+                self.form_error = Some(format!("Downloading {name}…").into());
+                let worker =
+                    cx.background_spawn(async move { crate::opening_books::install(&data, name) });
+                self.book_task = Some(cx.spawn(async move |this, cx| {
+                    let result = worker.await;
+                    let _ = this.update(cx, |screen, cx| {
+                        screen.book_task = None;
+                        match result {
+                            Ok(()) => {
+                                screen.form_error = None;
+                                screen.start_setup(setup, cx);
+                            }
+                            Err(err) => screen.fail(
+                                format!("Book download failed: {err:#}. Start again to retry."),
+                                cx,
+                            ),
+                        }
+                    });
+                }));
+                cx.notify();
+                return;
+            }
+        } else if index == crate::opening_books::BOOKS.len() {
+            setup.openings.clear();
+        }
+        self.start_setup(setup, cx);
+    }
+
+    fn start_setup(&mut self, setup: Setup, cx: &mut Context<Self>) {
         let dir = match fastchess::new_run_dir(&self.data_dir(cx)) {
             Ok(dir) => dir,
             Err(err) => return self.fail(format!("{err:#}"), cx),
@@ -908,6 +965,15 @@ impl TournamentScreen {
                         screen.openings.update(cx, |input, cx| {
                             input.set_value(path.display().to_string(), window, cx)
                         });
+                        screen.book.update(cx, |book, cx| {
+                            book.set_selected_index(
+                                Some(gpui_component::IndexPath::new(
+                                    crate::opening_books::BOOKS.len() + 1,
+                                )),
+                                window,
+                                cx,
+                            );
+                        });
                     });
                 });
             },
@@ -1206,8 +1272,12 @@ impl TournamentScreen {
                 field("Rounds", text_input(&self.rounds)),
                 field("Concurrency", text_input(&self.concurrency)),
             ))
+            .child(field("Opening book", select_el(&self.book)))
+            .child(div().text_size(px(12.)).text_color(rgb(T.muted)).child(
+                "Recommended: UHO_Lichess_4852_v1.epd. Stockfish books download on first use. Choose Custom file to use a local book."
+            ))
             .child(field(
-                "Book (.epd or .pgn)",
+                "Custom book (.epd or .pgn)",
                 h_flex()
                     .gap(px(6.))
                     .child(div().flex_1().child(text_input(&self.openings)))

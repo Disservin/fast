@@ -21,6 +21,11 @@ Train and Settings each have a single shared tab.
 A king in check is highlighted in red on every board, including checkmate. The
 highlight clears when check ends and is hidden while editing a position.
 
+Tournament setup includes a searchable dropdown of [Stockfish opening books](https://github.com/official-stockfish/books),
+with `UHO_Lichess_4852_v1.epd` selected and recommended by default. Books download on
+first use and are cached for offline reuse. Choose **No book** for the initial position,
+or **Custom file…** to supply a local EPD or PGN.
+
 ## Run it
 
 ```sh
