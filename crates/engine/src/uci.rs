@@ -55,7 +55,7 @@ impl Wdl {
 }
 
 /// One `info` line carrying a principal variation.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AnalysisUpdate {
     pub depth: u32,
     pub seldepth: Option<u32>,

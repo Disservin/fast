@@ -542,6 +542,9 @@ impl AnalyseScreen {
         let live = self.live.read(cx);
         let running = live.engines.iter().find(|engine| engine.config.id == id);
         let stats = running.and_then(|engine| engine.stats());
+        let cached = running
+            .and_then(|engine| engine.lines.get(&1))
+            .is_some_and(|line| line.cached);
         let cell = |text: String, width: f32, title: &'static str| {
             v_flex()
                 .w(px(width))
@@ -555,9 +558,16 @@ impl AnalyseScreen {
                 .child(mono(text).text_size(px(12.)).text_color(rgb(T.fg_2)))
         };
         let dash = || "—".to_owned();
-        let depth = stats.map_or_else(dash, |stats| match stats.seldepth {
-            Some(sel) => format!("{}/{sel}", stats.depth),
-            None => stats.depth.to_string(),
+        let depth = stats.map_or_else(dash, |stats| {
+            let depth = match stats.seldepth {
+                Some(sel) => format!("{}/{sel}", stats.depth),
+                None => stats.depth.to_string(),
+            };
+            if cached {
+                format!("cached {depth}")
+            } else {
+                depth
+            }
         });
         let nodes = stats
             .and_then(|stats| stats.nodes)

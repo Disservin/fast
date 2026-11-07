@@ -1,5 +1,6 @@
 //! Continuous multi-engine analysis of one position, throttled for the UI.
 
+use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, HashMap},
     time::Duration,
@@ -104,7 +105,7 @@ pub fn score_cp(score: Score) -> i32 {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct LiveLine {
     pub update: AnalysisUpdate,
     /// White-relative score.
@@ -405,6 +406,30 @@ impl LiveAnalysis {
         }
         if analysed {
             self.cache.store(id, hash, &live.lines);
+            let position = crate::analysis_store::position_key(&self.fen, &self.moves);
+            let limit = crate::analysis_store::current_limit(
+                self.limit_override
+                    .unwrap_or(self.model.read(cx).config.analysis_limit),
+            );
+            let key = crate::analysis_store::identity(&position, &live.config, &limit);
+            let record = crate::analysis_store::AnalysisRecord {
+                position,
+                engine: serde_json::to_string(&(
+                    live.config.name.as_str(),
+                    live.config.version.as_str(),
+                    live.config.path.to_string_lossy(),
+                    &live.config.options,
+                ))
+                .unwrap_or_default(),
+                limit,
+                lines: live.lines.clone(),
+                saved_at: crate::model::today(),
+            };
+            if let Some(store) = self.model.read(cx).analyses.as_ref()
+                && let Err(err) = store.put(&key, id, &record)
+            {
+                log::warn!("could not save engine analysis: {err:#}");
+            }
         }
         if let Some(reason) = crash {
             live.handle = None;
@@ -540,6 +565,11 @@ impl LiveAnalysis {
         self.fen = root_fen;
         self.moves = moves;
         let hash = self.hash;
+        let position_key = crate::analysis_store::position_key(&self.fen, &self.moves);
+        let search_limit = crate::analysis_store::current_limit(
+            self.limit_override
+                .unwrap_or(self.model.read(cx).config.analysis_limit),
+        );
         let mut known = self.end.map(|end| {
             let cp = match end {
                 chess_core::GameEnd::Checkmate { winner } if winner.is_white() => {
@@ -559,6 +589,28 @@ impl LiveAnalysis {
                 self.cache
                     .get(engine.config.id, hash)
                     .cloned()
+                    .or_else(|| {
+                        let key = crate::analysis_store::identity(
+                            &position_key,
+                            &engine.config,
+                            &search_limit,
+                        );
+                        self.model.read(cx).analyses.as_ref().and_then(|store| {
+                            match store.get(&key) {
+                                Ok(Some(mut record)) => {
+                                    for line in record.lines.values_mut() {
+                                        line.cached = true;
+                                    }
+                                    Some(record.lines)
+                                }
+                                Ok(None) => None,
+                                Err(err) => {
+                                    log::warn!("could not load saved analysis: {err:#}");
+                                    None
+                                }
+                            }
+                        })
+                    })
                     .unwrap_or_default()
             };
             if known.is_none()

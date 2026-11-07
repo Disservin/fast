@@ -45,6 +45,10 @@ impl Paths {
     pub fn notes_file(&self) -> PathBuf {
         self.data_dir.join("notes.sqlite")
     }
+
+    pub fn analysis_file(&self) -> PathBuf {
+        self.data_dir.join("analysis.sqlite")
+    }
 }
 
 /// Moves a directory to its new name unless the new one already exists.

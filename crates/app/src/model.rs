@@ -59,6 +59,7 @@ pub struct AppModel {
     pub leaks: Vec<Leak>,
     pub gaps: Vec<BookGap>,
     pub notes: Option<NoteStore>,
+    pub analyses: Option<crate::analysis_store::AnalysisStore>,
     pub toasts: Vec<Toast>,
     next_toast: u64,
     pub pending_path: Option<PendingPath>,
@@ -173,6 +174,13 @@ impl AppModel {
                 None
             }
         };
+        let analyses = match crate::analysis_store::AnalysisStore::open(paths.analysis_file()) {
+            Ok(analyses) => Some(analyses),
+            Err(err) => {
+                log::error!("saved analysis unavailable: {err:#}");
+                None
+            }
+        };
         let engine_status = config
             .engines
             .iter()
@@ -197,6 +205,7 @@ impl AppModel {
             leaks: Vec::new(),
             gaps: Vec::new(),
             notes,
+            analyses,
             toasts: Vec::new(),
             next_toast: 0,
             pending_path: None,

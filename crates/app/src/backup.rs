@@ -56,6 +56,12 @@ impl Archive {
         if paths.notes_file().exists() {
             files.insert("notes.sqlite".into(), sqlite_snapshot(&paths.notes_file())?);
         }
+        if paths.analysis_file().exists() {
+            files.insert(
+                "analysis.sqlite".into(),
+                sqlite_snapshot(&paths.analysis_file())?,
+            );
+        }
         if let Ok(entries) = std::fs::read_dir(paths.databases_dir()) {
             for entry in entries {
                 let path = entry?.path();
@@ -103,6 +109,7 @@ impl Archive {
                 "config.toml"
                     | "repertoire.json"
                     | "notes.sqlite"
+                    | "analysis.sqlite"
                     | "game-recovery.json"
                     | "play-recovery.json"
                     | "study.json"
@@ -131,12 +138,11 @@ impl Archive {
                     if integrity != "ok" {
                         bail!("Damaged database: {name}");
                     }
-                    let table = if name == "notes.sqlite" {
-                        "notes"
-                    } else {
-                        "games"
+                    match name.as_str() {
+                        "notes.sqlite" => db.prepare("SELECT * FROM notes LIMIT 0")?,
+                        "analysis.sqlite" => db.prepare("SELECT * FROM analyses LIMIT 0")?,
+                        _ => db.prepare("SELECT * FROM games LIMIT 0")?,
                     };
-                    db.prepare(&format!("SELECT * FROM {table} LIMIT 0"))?;
                 }
                 _ => {
                     serde_json::from_slice::<serde_json::Value>(bytes)?;
