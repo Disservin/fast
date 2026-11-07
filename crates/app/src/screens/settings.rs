@@ -14,6 +14,7 @@ use gpui::{
 };
 use gpui_component::{
     input::{InputEvent, InputState},
+    scroll::ScrollableElement,
     slider::{Slider, SliderEvent, SliderState},
 };
 use ui::{
@@ -2038,11 +2039,13 @@ impl SettingsScreen {
                 )
                 .child(section_label("By")),
         );
+        let mut asset_rows = v_flex().w_full();
         for (name, author, license) in ASSETS {
-            assets = assets.child(
+            asset_rows = asset_rows.child(
                 h_flex()
                     .w_full()
                     .h(px(34.))
+                    .flex_shrink_0()
                     .px(px(12.))
                     .border_b_1()
                     .border_color(rgb(T.divider))
@@ -2074,6 +2077,14 @@ impl SettingsScreen {
                     ),
             );
         }
+        assets = assets.child(
+            div()
+                .id("bundled-assets-rows")
+                .w_full()
+                .max_h(px(204.))
+                .child(asset_rows)
+                .overflow_y_scrollbar(),
+        );
         let summary = license_counts(all)
             .into_iter()
             .take(6)
@@ -2181,7 +2192,12 @@ impl SettingsScreen {
                         panel()
                             .overflow_hidden()
                             .child(header(["Crate", "Version", "Licence", "Source"]))
-                            .child(list),
+                            .child(
+                                div()
+                                    .relative()
+                                    .child(list)
+                                    .vertical_scrollbar(&self.license_scroll),
+                            ),
                     ),
             )
     }
@@ -2429,11 +2445,11 @@ impl Render for SettingsScreen {
                 .flex_1()
                 .min_w_0()
                 .h_full()
-                .overflow_y_scroll()
                 .px(px(28.))
                 .pt(px(24.))
                 .pb(px(24.))
-                .child(div().max_w(px(1180.)).child(content)),
+                .child(div().w_full().child(content))
+                .overflow_y_scrollbar(),
         )
     }
 }
