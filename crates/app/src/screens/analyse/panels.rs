@@ -2,7 +2,7 @@
 
 use std::ops::Range;
 
-use chess_core::{Move, format_pv, shakmaty::san::San};
+use chess_core::{Chess, Move, Position, format_pv, shakmaty::san::San};
 use engine::{EngineConfig, EngineId, LogKind, LogLine, OptionKind};
 use gpui::{
     AnyElement, ClipboardItem, Context, Div, FontWeight, IntoElement, KeyDownEvent, MouseButton,
@@ -17,6 +17,8 @@ use super::{AnalyseScreen, MoveRow};
 use crate::config::AnalysisLimit;
 
 const LOG_ROW_H: f32 = 19.;
+/// A hovered PV move has to stand out against the panel surface.
+const HOVER_BG: u32 = 0x3F4753;
 const LIMITS: [(AnalysisLimit, &str); 5] = [
     (AnalysisLimit::Infinite, "∞"),
     (AnalysisLimit::Depth(20), "d20"),
@@ -28,7 +30,6 @@ const LIMITS: [(AnalysisLimit, &str); 5] = [
 /// A highlighted run of moves in the selected line. The line is copied so engine
 /// updates cannot move it while it is being read.
 pub struct PvView {
-    pub san: String,
     pub sans: Vec<String>,
     pub anchor: usize,
     pub head: usize,
@@ -38,6 +39,17 @@ impl PvView {
     /// Inclusive first and last highlighted move.
     pub fn range(&self) -> (usize, usize) {
         (self.anchor.min(self.head), self.anchor.max(self.head))
+    }
+
+    pub fn is_range(&self) -> bool {
+        self.anchor != self.head
+    }
+
+    /// How many of the line's moves the board has played: through a single highlighted
+    /// move, or up to the start of a range, whose moves are drawn as arrows instead.
+    pub fn played(&self) -> usize {
+        let (start, end) = self.range();
+        if start == end { end + 1 } else { start }
     }
 
     fn contains(&self, index: usize) -> bool {
@@ -64,6 +76,24 @@ pub fn spin_option(config: &EngineConfig, name: &str) -> Option<(i64, i64, i64)>
     Some((value, min, max))
 }
 
+/// Plays SAN moves from a position, stopping at the first that does not apply.
+fn replay(base: &Chess, sans: &[String]) -> (Chess, Vec<Move>) {
+    let mut pos = base.clone();
+    let mut moves = Vec::with_capacity(sans.len());
+    for san in sans {
+        let Some(mv) = san
+            .parse::<San>()
+            .ok()
+            .and_then(|parsed| parsed.to_move(&pos).ok())
+        else {
+            break;
+        };
+        pos.play_unchecked(mv);
+        moves.push(mv);
+    }
+    (pos, moves)
+}
+
 /// The next stepper value: Hash doubles and halves, everything else moves by one.
 pub fn step_value(name: &str, value: i64, up: bool, min: i64, max: i64) -> i64 {
     let next = match (name, up) {
@@ -76,6 +106,28 @@ pub fn step_value(name: &str, value: i64, up: bool, min: i64, max: i64) -> i64 {
 }
 
 impl AnalyseScreen {
+    /// The moves being looked at beyond the game position.
+    fn preview_moves(&self) -> &[String] {
+        self.pv_view
+            .as_ref()
+            .map_or(&[], |view| &view.sans[..view.played()])
+    }
+
+    /// The position on the board, which the engine and the table are also following.
+    pub(super) fn analysed_pos(&self) -> Chess {
+        replay(&self.tree.node(self.current).pos, self.preview_moves()).0
+    }
+
+    pub(super) fn analysed_ply(&self) -> u32 {
+        self.tree.node(self.current).ply + self.preview_moves().len() as u32
+    }
+
+    pub(super) fn analysed_san_path(&self) -> Vec<String> {
+        let mut path = self.base_san_path();
+        path.extend_from_slice(self.preview_moves());
+        path
+    }
+
     /// The engine the panels show: the chosen one if still configured, else the first.
     fn panel_engine_config(&self, cx: &gpui::App) -> Option<EngineConfig> {
         let engines = &self.model.read(cx).config.engines;
@@ -565,25 +617,20 @@ impl AnalyseScreen {
             .into_any_element()
     }
 
-    /// The line as individual moves: click one to see it, drag to highlight several.
+    /// The line as individual moves: click one to go there, drag to highlight several.
     pub(super) fn render_pv(
         &mut self,
         selected: Option<&MoveRow>,
-        ply: u32,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
-        let view = self
-            .pv_view
-            .as_ref()
-            .filter(|view| selected.is_some_and(|row| row.san == view.san));
-        let sans: Vec<String> = match (view, selected) {
+        let sans: Vec<String> = match (&self.pv_view, selected) {
             (Some(view), _) => view.sans.clone(),
             (None, Some(row)) if !row.pv.is_empty() => row.pv.clone(),
             (None, Some(row)) => vec![row.san.clone()],
             (None, None) => Vec::new(),
         };
-        let row_san = selected.map(|row| row.san.clone()).unwrap_or_default();
-        let text = format_pv(ply, &sans);
+        // Numbered from the game position, wherever the preview has got to.
+        let text = format_pv(self.tree.node(self.current).ply, &sans);
         let labels: Vec<&str> = if text.is_empty() {
             Vec::new()
         } else {
@@ -603,16 +650,6 @@ impl AnalyseScreen {
             .text_size(px(14.))
             .line_height(px(26.))
             .text_color(rgb(T.fg))
-            .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
-                let keystroke = &event.keystroke;
-                if keystroke.key == "c" && keystroke.modifiers.secondary(cx) {
-                    this.copy_pv(cx);
-                    cx.stop_propagation();
-                } else if keystroke.key == "escape" {
-                    this.exit_pv_preview(cx);
-                    cx.stop_propagation();
-                }
-            }))
             .on_mouse_up_out(
                 MouseButton::Left,
                 cx.listener(|this, _, _, _| this.pv_dragging = false),
@@ -621,9 +658,10 @@ impl AnalyseScreen {
             let highlighted = self
                 .pv_view
                 .as_ref()
-                .is_some_and(|view| view.san == row_san && view.contains(index));
+                .is_some_and(|view| view.contains(index));
+            let hovered = self.pv_hover == Some(index) && !highlighted;
             let begin_sans = sans.clone();
-            let begin_san = row_san.clone();
+            let hover_sans = sans.clone();
             flow = flow.child(
                 div()
                     .id(("pv-move", index))
@@ -631,19 +669,14 @@ impl AnalyseScreen {
                     .cursor_pointer()
                     .rounded(px(3.))
                     .when(highlighted, |chip| chip.bg(rgb(T.fg)).text_color(rgb(T.bg)))
-                    .when(!highlighted, |chip| {
-                        chip.hover(|style| style.bg(rgb(T.hover)))
-                    })
+                    .when(hovered, |chip| chip.bg(rgb(HOVER_BG)).text_color(rgb(T.fg)))
+                    .on_hover(cx.listener(move |this, hovering: &bool, _, cx| {
+                        this.hover_pv_move(index, *hovering, &hover_sans, cx);
+                    }))
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(move |this, _, window, cx| {
-                            this.begin_pv_highlight(
-                                begin_san.clone(),
-                                begin_sans.clone(),
-                                index,
-                                window,
-                                cx,
-                            );
+                            this.begin_pv_highlight(begin_sans.clone(), index, window, cx);
                             cx.stop_propagation();
                         }),
                     )
@@ -687,26 +720,24 @@ impl AnalyseScreen {
 
     fn begin_pv_highlight(
         &mut self,
-        san: String,
         sans: Vec<String>,
         index: usize,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         self.pv_focus.focus(window, cx);
+        self.pv_hover = None;
         // A second click on the only highlighted move goes back to the game.
         self.pv_toggle_off = self
             .pv_view
             .as_ref()
-            .is_some_and(|view| view.san == san && view.anchor == index && view.head == index);
+            .is_some_and(|view| view.anchor == index && view.head == index);
         self.pv_view = Some(PvView {
-            san,
             sans,
             anchor: index,
             head: index,
         });
         self.pv_dragging = true;
-        self.row_chosen = true;
         self.show_pv_preview(cx);
     }
 
@@ -732,58 +763,165 @@ impl AnalyseScreen {
         }
     }
 
-    /// Shows the highlight on the board. One move: the position after it. Several: the
-    /// position before them, with each drawn as an arrow.
+    /// Hovering a move draws it on the board and marks it in the line.
+    fn hover_pv_move(
+        &mut self,
+        index: usize,
+        hovering: bool,
+        sans: &[String],
+        cx: &mut Context<Self>,
+    ) {
+        // The move being previewed is already on the board.
+        let on_highlight = self
+            .pv_view
+            .as_ref()
+            .is_some_and(|view| view.contains(index));
+        if self.pv_dragging || on_highlight || self.pv_view.as_ref().is_some_and(PvView::is_range) {
+            return;
+        }
+        if !hovering {
+            // Moving to the next move reports its hover first, so only clear our own.
+            if self.pv_hover == Some(index) {
+                self.pv_hover = None;
+                self.update_arrows(cx);
+                cx.notify();
+            }
+            return;
+        }
+        self.pv_hover = Some(index);
+        let base = &self.tree.node(self.current).pos;
+        let (_, moves) = replay(base, &sans[..sans.len().min(index + 1)]);
+        let arrows: Vec<Arrow> = moves
+            .get(index)
+            .and_then(move_squares)
+            .map(|(from, to)| Arrow { from, to })
+            .into_iter()
+            .collect();
+        self.board
+            .update(cx, |board, cx| board.set_arrows(arrows, cx));
+        cx.notify();
+    }
+
+    /// Puts the highlight on the board and points the engine and table at that position.
+    /// One move: the position after it. Several: the position before them, each drawn
+    /// as an arrow.
     fn show_pv_preview(&mut self, cx: &mut Context<Self>) {
         let Some(view) = &self.pv_view else {
             return;
         };
         let (start, end) = view.range();
-        let played = if start == end { end + 1 } else { start };
-        let mut pos = self.tree.node(self.current).pos.clone();
-        let mut shown = pos.clone();
-        let mut last = None;
-        let mut arrows = Vec::new();
-        for (index, san) in view.sans.iter().enumerate().take(end + 1) {
-            let Some(mv) = san
-                .parse::<San>()
-                .ok()
-                .and_then(|parsed| parsed.to_move(&pos).ok())
-            else {
-                break;
-            };
-            let squares = move_squares(&mv);
-            chess_core::Position::play_unchecked(&mut pos, mv);
-            if index < played {
-                shown = pos.clone();
-                last = squares;
-            } else if let Some((from, to)) = squares {
-                arrows.push(Arrow { from, to });
-            }
-        }
+        let played = view.played();
+        let base = self.tree.node(self.current).pos.clone();
+        let (_, moves) = replay(&base, &view.sans[..=end.min(view.sans.len() - 1)]);
+        let (shown, _) = replay(&base, &view.sans[..played]);
+        let last = played
+            .checked_sub(1)
+            .and_then(|index| moves.get(index))
+            .and_then(move_squares);
+        let arrows: Vec<Arrow> = if start == end {
+            Vec::new()
+        } else {
+            moves[start.min(moves.len())..]
+                .iter()
+                .filter_map(move_squares)
+                .map(|(from, to)| Arrow { from, to })
+                .collect()
+        };
         self.board.update(cx, |board, cx| {
             board.set_position(shown, last, false, cx);
             board.set_arrows(arrows, cx);
             board.set_interactive(false, cx);
         });
+        // A new position needs a new search, and a new best line in the table.
+        if self.pv_played != Some(played) {
+            self.pv_played = Some(played);
+            self.selected_san = None;
+            self.row_chosen = false;
+            let extra: Vec<Move> = moves.into_iter().take(played).collect();
+            let (tree, current) = (self.tree.clone(), self.current);
+            self.live
+                .update(cx, |live, cx| live.set_line(&tree, current, &extra, cx));
+            self.query_databases(cx);
+        }
         cx.notify();
     }
 
-    /// Ends any highlight and puts the game's position back on the board.
+    /// Picking a table row during a preview continues the line with that row. Returns
+    /// false when there is no preview to continue.
+    pub(super) fn continue_pv_with(&mut self, san: &str, cx: &mut Context<Self>) -> bool {
+        let Some(played) = self.pv_view.as_ref().map(PvView::played) else {
+            return false;
+        };
+        if played == 0 {
+            self.exit_pv_preview(cx);
+            return false;
+        }
+        let continuation = self
+            .rows
+            .iter()
+            .find(|row| row.san == san)
+            .map(|row| {
+                if row.pv.is_empty() {
+                    vec![row.san.clone()]
+                } else {
+                    row.pv.clone()
+                }
+            })
+            .unwrap_or_default();
+        if let Some(view) = &mut self.pv_view {
+            view.sans.truncate(played);
+            view.sans.extend(continuation);
+            view.anchor = played - 1;
+            view.head = played - 1;
+        }
+        self.row_chosen = true;
+        self.selected_san = Some(san.to_owned());
+        self.update_arrows(cx);
+        cx.notify();
+        true
+    }
+
+    /// Ends any highlight and returns the board, engine and table to the game position.
     pub(super) fn exit_pv_preview(&mut self, cx: &mut Context<Self>) {
         if self.pv_view.take().is_none() {
             return;
         }
         self.pv_dragging = false;
+        self.pv_played = None;
+        self.pv_hover = None;
+        self.selected_san = None;
+        self.row_chosen = false;
         let node = self.tree.node(self.current);
         let pos = node.pos.clone();
         let last = node.mv.as_ref().and_then(move_squares);
         self.board.update(cx, |board, cx| {
             board.set_position(pos, last, false, cx);
+            board.set_arrows(Vec::new(), cx);
             board.set_interactive(true, cx);
         });
-        self.update_arrows(cx);
+        let (tree, current) = (self.tree.clone(), self.current);
+        self.live
+            .update(cx, |live, cx| live.set_position(&tree, current, cx));
+        self.query_databases(cx);
         cx.notify();
+    }
+
+    /// Esc leaves a preview and Ctrl+C copies a highlight, wherever focus has gone.
+    /// Returns whether the key was used.
+    pub fn handle_pv_key(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) -> bool {
+        if self.pv_view.is_none() {
+            return false;
+        }
+        let keystroke = &event.keystroke;
+        if keystroke.key == "escape" {
+            self.exit_pv_preview(cx);
+            true
+        } else if keystroke.key == "c" && keystroke.modifiers.secondary(cx) {
+            self.copy_pv(cx);
+            true
+        } else {
+            false
+        }
     }
 
     /// Copies the highlighted moves, or the whole line if none are highlighted.
@@ -821,6 +959,13 @@ fn move_squares(mv: &Move) -> Option<(chess_core::Square, chess_core::Square)> {
 mod tests {
     use super::*;
     use engine::{EngineInfo, UciOption};
+
+    #[test]
+    fn replay_stops_at_a_move_that_does_not_apply() {
+        let line = ["e4", "e5", "e4", "Nf6"].map(String::from);
+        let (_, moves) = replay(&Chess::default(), &line);
+        assert_eq!(moves.len(), 2);
+    }
 
     fn config() -> EngineConfig {
         EngineConfig {
@@ -860,7 +1005,6 @@ mod tests {
     #[test]
     fn highlight_ranges_work_in_either_direction() {
         let view = PvView {
-            san: "f4".to_owned(),
             sans: Vec::new(),
             anchor: 5,
             head: 2,
@@ -868,5 +1012,14 @@ mod tests {
         assert_eq!(view.range(), (2, 5));
         assert!(view.contains(3));
         assert!(!view.contains(6));
+        assert!(view.is_range());
+        assert_eq!(view.played(), 2);
+        let single = PvView {
+            sans: Vec::new(),
+            anchor: 3,
+            head: 3,
+        };
+        assert!(!single.is_range());
+        assert_eq!(single.played(), 4);
     }
 }

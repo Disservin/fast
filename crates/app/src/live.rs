@@ -2,7 +2,7 @@
 
 use std::{collections::BTreeMap, time::Duration};
 
-use chess_core::{GameTree, NodeId, Position, position_hash, shakmaty::uci::UciMove};
+use chess_core::{GameTree, Move, NodeId, Position, position_hash, shakmaty::uci::UciMove};
 use engine::{
     AnalysisUpdate, EngineConfig, EngineEvent, EngineHandle, EngineId, EngineLog, EngineStatus,
     Limits, LogKind, Score, SearchRequest, Wdl,
@@ -323,15 +323,32 @@ impl LiveAnalysis {
 
     /// Points analysis at a node. Cancels the running search immediately.
     pub fn set_position(&mut self, tree: &GameTree, node: NodeId, cx: &mut Context<Self>) {
+        self.set_line(tree, node, &[], cx);
+    }
+
+    /// Analyses the position `extra` moves past a node, without adding them to the game.
+    /// Evals found there are not recorded on the node.
+    pub fn set_line(
+        &mut self,
+        tree: &GameTree,
+        node: NodeId,
+        extra: &[Move],
+        cx: &mut Context<Self>,
+    ) {
         let root_fen = tree.fen(GameTree::ROOT);
         let moves: Vec<String> = tree
             .path_to(node)
             .iter()
-            .filter_map(|&id| tree.node(id).mv.as_ref())
-            .map(|mv| UciMove::from_standard(*mv).to_string())
+            .filter_map(|&id| tree.node(id).mv)
+            .chain(extra.iter().copied())
+            .map(|mv| UciMove::from_standard(mv).to_string())
             .collect();
-        self.node = Some(node);
-        self.pos = Some(tree.node(node).pos.clone());
+        let mut pos = tree.node(node).pos.clone();
+        for mv in extra {
+            pos.play_unchecked(*mv);
+        }
+        self.node = extra.is_empty().then_some(node);
+        self.pos = Some(pos);
         self.fen = root_fen;
         self.moves = moves;
         for engine in &mut self.engines {

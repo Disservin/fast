@@ -36,8 +36,10 @@ sudo apt install libfontconfig-dev libfreetype-dev libxkbcommon-dev \
 the search limit while the search runs, without restarting the engine. **Log** shows the raw UCI
 traffic and stderr; tick **Info** to include search output.
 
-In **Line preview**, click a move to see that position on the board, or drag across moves to
-highlight them as arrows. `Ctrl/Cmd+C` copies the highlight and `Esc` returns to the game.
+In **Line preview**, hover a move to see it as an arrow. Click a move to go there: the board, engine
+and table all follow, without changing the game. Click a table row to continue the line that way,
+or drag across moves to highlight them as arrows. `Ctrl/Cmd+C` copies the highlight and `Esc`
+returns to the game.
 
 ## Keyboard shortcuts
 

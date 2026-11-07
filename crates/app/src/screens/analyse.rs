@@ -161,6 +161,8 @@ pub struct AnalyseScreen {
     pv_view: Option<PvView>,
     pv_dragging: bool,
     pv_toggle_off: bool,
+    pv_played: Option<usize>,
+    pv_hover: Option<usize>,
     pv_focus: FocusHandle,
     _subscriptions: Vec<Subscription>,
 }
@@ -202,21 +204,17 @@ impl AnalyseScreen {
                     this.load_fen(fen.trim(), window, cx);
                 }
             }),
-            cx.subscribe_in(
-                &model,
-                window,
-                |this, model, event, window, cx| match event {
-                    ModelEvent::BoardPrefs => {
-                        let prefs = model.read(cx).config.board.prefs();
-                        this.board
-                            .update(cx, |board, cx| board.set_prefs(prefs, cx));
-                    }
-                    ModelEvent::Databases | ModelEvent::Repertoire => {
-                        this.query_databases(window, cx);
-                    }
-                    ModelEvent::Engines => {}
-                },
-            ),
+            cx.subscribe_in(&model, window, |this, model, event, _, cx| match event {
+                ModelEvent::BoardPrefs => {
+                    let prefs = model.read(cx).config.board.prefs();
+                    this.board
+                        .update(cx, |board, cx| board.set_prefs(prefs, cx));
+                }
+                ModelEvent::Databases | ModelEvent::Repertoire => {
+                    this.query_databases(cx);
+                }
+                ModelEvent::Engines => {}
+            }),
         ];
         let demo = model.read(cx).demo;
         let tree = if demo {
@@ -270,6 +268,8 @@ impl AnalyseScreen {
             pv_view: None,
             pv_dragging: false,
             pv_toggle_off: false,
+            pv_played: None,
+            pv_hover: None,
             pv_focus: cx.focus_handle(),
             _subscriptions: subscriptions,
         };
@@ -315,7 +315,7 @@ impl AnalyseScreen {
     }
 
     /// SAN path from the root, for repertoire lookups.
-    fn san_path(&self) -> Vec<String> {
+    fn base_san_path(&self) -> Vec<String> {
         self.tree
             .path_to(self.current)
             .iter()
@@ -326,6 +326,8 @@ impl AnalyseScreen {
     fn position_changed(&mut self, animate: bool, window: &mut Window, cx: &mut Context<Self>) {
         self.pv_view = None;
         self.pv_dragging = false;
+        self.pv_hover = None;
+        self.pv_played = None;
         self.board
             .update(cx, |board, cx| board.set_interactive(true, cx));
         let node = self.tree.node(self.current);
@@ -345,14 +347,14 @@ impl AnalyseScreen {
         let text = self.model.read(cx).note(self.note_hash);
         self.note
             .update(cx, |note, cx| note.set_value(text, window, cx));
-        self.query_databases(window, cx);
+        self.query_databases(cx);
         self.scoresheet_scroll.scroll_to_item(0);
         cx.notify();
     }
 
-    fn query_databases(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+    fn query_databases(&mut self, cx: &mut Context<Self>) {
         self.selected_san = self.selected_san.take();
-        let hash = position_hash(&self.tree.node(self.current).pos);
+        let hash = position_hash(&self.analysed_pos());
         let model = self.model.read(cx);
         let reference = model.reference_db().map(|entry| entry.path.clone());
         let mine = model.my_games().map(|entry| entry.path.clone());
@@ -387,8 +389,7 @@ impl AnalyseScreen {
     }
 
     fn rebuild_rows(&mut self, cx: &mut Context<Self>) {
-        let node = self.tree.node(self.current);
-        let white_to_move = node.pos.turn().is_white();
+        let white_to_move = self.analysed_pos().turn().is_white();
         let model = self.model.read(cx);
         let live = self.live.read(cx);
         let mut lines = Vec::new();
@@ -420,7 +421,7 @@ impl AnalyseScreen {
                 }
             }
         }
-        let path = self.san_path();
+        let path = self.analysed_san_path();
         // Repertoires are stored as lines from the initial position.
         let from_start = self.tree.header("FEN").is_none();
         let rep_moves: Vec<(String, bool)> = model
@@ -454,11 +455,11 @@ impl AnalyseScreen {
     }
 
     fn update_arrows(&mut self, cx: &mut Context<Self>) {
-        // A highlighted line owns the board until the user goes back to the game.
-        if self.pv_view.is_some() {
+        // A hovered move or a highlighted range is already drawn on the board.
+        if self.pv_hover.is_some() || self.pv_view.as_ref().is_some_and(PvView::is_range) {
             return;
         }
-        let pos = self.tree.node(self.current).pos.clone();
+        let pos = self.analysed_pos();
         let arrows: Vec<Arrow> = self
             .selected_san
             .iter()
@@ -633,54 +634,73 @@ impl AnalyseScreen {
     }
 
     fn select_row(&mut self, san: String, cx: &mut Context<Self>) {
-        self.exit_pv_preview(cx);
+        if self.continue_pv_with(&san, cx) {
+            return;
+        }
         self.row_chosen = true;
         self.selected_san = Some(san);
         self.update_arrows(cx);
         cx.notify();
     }
 
-    /// Adds SAN moves as a line from the current node; returns the last node.
-    fn add_line(&mut self, sans: &[String]) -> NodeId {
+    /// Adds SAN moves as a line from the current node, returning each new node.
+    fn add_line(&mut self, sans: &[String]) -> Vec<NodeId> {
+        let mut nodes = Vec::with_capacity(sans.len());
         let mut node = self.current;
         for san in sans {
             match self.tree.add_san(node, san) {
-                Ok(next) => node = next,
+                Ok(next) => {
+                    nodes.push(next);
+                    node = next;
+                }
                 Err(err) => {
                     log::warn!("could not add {san}: {err}");
                     break;
                 }
             }
         }
-        node
+        nodes
+    }
+
+    /// The line the Line preview buttons act on, from the game position.
+    fn action_line(&self) -> Option<Vec<String>> {
+        if let Some(view) = &self.pv_view {
+            return Some(view.sans.clone());
+        }
+        let row = self.selected_row()?;
+        Some(if row.pv.is_empty() {
+            vec![row.san.clone()]
+        } else {
+            row.pv.clone()
+        })
     }
 
     fn play_line(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(pv) = self.selected_row().map(|row| row.pv.clone()) else {
+        let Some(line) = self.action_line() else {
             return;
         };
-        let end = self.add_line(&pv);
-        self.jump(end, window, cx);
+        // From a preview, stop at the move being looked at; otherwise play it all.
+        let target = self.pv_view.as_ref().map(PvView::played);
+        let nodes = self.add_line(&line);
+        let index = target.unwrap_or(nodes.len()).saturating_sub(1);
+        if let Some(&node) = nodes.get(index) {
+            self.jump(node, window, cx);
+        }
     }
 
     fn add_variation(&mut self, cx: &mut Context<Self>) {
-        let Some(pv) = self.selected_row().map(|row| row.pv.clone()) else {
-            return;
-        };
-        self.add_line(&pv);
-        cx.notify();
+        if let Some(line) = self.action_line() {
+            self.add_line(&line);
+            cx.notify();
+        }
     }
 
     fn add_to_repertoire(&mut self, cx: &mut Context<Self>) {
-        let Some(row) = self.selected_row().cloned() else {
+        let Some(line) = self.action_line() else {
             return;
         };
-        let mut path = self.san_path();
-        if row.pv.is_empty() {
-            path.push(row.san.clone());
-        } else {
-            path.extend(row.pv.iter().cloned());
-        }
+        let mut path = self.base_san_path();
+        path.extend(line);
         let refs: Vec<&str> = path.iter().map(String::as_str).collect();
         self.model
             .update(cx, |model, cx| match model.repertoire.add_line(&refs) {
@@ -859,15 +879,15 @@ impl AnalyseScreen {
         let this = cx.entity();
         let compact = board_size < px(440.);
         let nav_width = if compact { 34. } else { 42. };
-        let node = self.tree.node(self.current);
-        let turn = if node.pos.turn().is_white() {
+        let shown = self.analysed_pos();
+        let turn = if shown.turn().is_white() {
             "White"
         } else {
             "Black"
         };
-        let status = if node.pos.is_checkmate() {
+        let status = if shown.is_checkmate() {
             "Checkmate".to_owned()
-        } else if node.pos.is_stalemate() {
+        } else if shown.is_stalemate() {
             "Stalemate".to_owned()
         } else {
             format!("{turn} to move")
@@ -886,6 +906,7 @@ impl AnalyseScreen {
             .or_else(|| {
                 self.evals
                     .get(&self.current)
+                    .filter(|_| self.pv_view.is_none())
                     .map(|cp| Score::Cp(*cp).display())
             })
             .unwrap_or_else(|| "–".to_owned());
@@ -1102,8 +1123,8 @@ impl AnalyseScreen {
                     .child(section_label("My games")),
             )
             .child(div().flex_1().min_w_0().child(section_label("Repertoire")));
-        let ply = self.tree.node(self.current).ply;
-        let pos = self.tree.node(self.current).pos.clone();
+        let ply = self.analysed_ply();
+        let pos = self.analysed_pos();
         let white_to_move = pos.turn().is_white();
         let mut rows = v_flex().w_full();
         for (index, row) in self.rows.iter().enumerate() {
@@ -1257,7 +1278,7 @@ impl AnalyseScreen {
     fn render_line_preview(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let this = cx.entity();
         let demo = self.model.read(cx).demo;
-        let ply = self.tree.node(self.current).ply;
+        let ply = self.analysed_ply();
         let selected = self.selected_row().cloned();
         let selected_label = selected
             .as_ref()
@@ -1299,7 +1320,7 @@ impl AnalyseScreen {
                             .child(text)
                     })),
             )
-            .child(self.render_pv(selected.as_ref(), ply, cx))
+            .child(self.render_pv(selected.as_ref(), cx))
             .child(divider().bg(rgb(T.border)))
             .child(
                 div()

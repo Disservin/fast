@@ -629,6 +629,26 @@ impl Render for Workspace {
                     .child(div().flex_1().min_h_0().w_full().child(body)),
             )
             .size_full()
+            // Clicks on nothing focusable would drop keyboard focus and with it every shortcut.
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this, _, window, cx| {
+                    if !window.default_prevented() {
+                        window.prevent_default();
+                        this.focus.focus(window, cx);
+                    }
+                }),
+            )
+            .on_key_down(cx.listener(move |this, event, _, cx| {
+                if !typing
+                    && this.mode == Mode::Analyse
+                    && this
+                        .analyse
+                        .update(cx, |screen, cx| screen.handle_pv_key(event, cx))
+                {
+                    cx.stop_propagation();
+                }
+            }))
             .on_action(cx.listener(|this, _: &PrevMove, window, cx| {
                 this.analyse
                     .update(cx, |screen, cx| screen.step(-1, window, cx));
