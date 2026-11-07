@@ -61,17 +61,73 @@ impl SettingsPage {
     }
 }
 
-/// Human labels for the rebindable actions, in display order.
-const SHORTCUT_ROWS: [(&str, &str); 8] = [
-    ("prev_move", "Previous move"),
-    ("next_move", "Next move"),
-    ("first_move", "Start of game"),
-    ("last_move", "End of game"),
-    ("toggle_engine", "Engine on / off"),
-    ("flip_board", "Flip board"),
-    ("search", "Search"),
-    ("save_game", "Save game"),
+/// The rebindable actions with their labels, grouped as Settings shows them.
+const SHORTCUT_GROUPS: [(&str, &[(&str, &str)]); 5] = [
+    (
+        "Navigation",
+        &[
+            ("prev_move", "Previous move"),
+            ("next_move", "Next move"),
+            ("first_move", "Start of game"),
+            ("last_move", "End of line"),
+            ("flip_board", "Flip board"),
+        ],
+    ),
+    (
+        "Game",
+        &[
+            ("new_game", "New game"),
+            ("open_game", "Open PGN or FEN"),
+            ("save_game", "Save to My games"),
+            ("save_pgn_as", "Save as PGN"),
+            ("paste_game", "Paste FEN or PGN"),
+            ("copy_fen", "Copy FEN"),
+            ("copy_pgn", "Copy PGN"),
+        ],
+    ),
+    (
+        "Engine",
+        &[
+            ("toggle_engine", "Engine on / off"),
+            ("pause_engine", "Pause / resume"),
+            ("analyse_backward", "Analyse game backwards"),
+            ("more_lines", "More lines (MultiPV)"),
+            ("fewer_lines", "Fewer lines (MultiPV)"),
+            ("engine_output", "Engine output window"),
+        ],
+    ),
+    (
+        "Analysis display",
+        &[
+            ("all_moves", "All moves"),
+            ("quality_arrows", "Quality arrows"),
+            ("sort_lines", "Sort by eval / depth"),
+            ("next_graph", "Next graph"),
+            ("scoresheet_style", "Table / inline scoresheet"),
+        ],
+    ),
+    (
+        "Window",
+        &[
+            ("search", "Search"),
+            ("show_analyse", "Analyse"),
+            ("show_database", "Database"),
+            ("show_train", "Train"),
+            ("show_play", "Play"),
+            ("show_settings", "Settings"),
+            ("quit", "Quit"),
+        ],
+    ),
 ];
+
+/// The label of a rebindable action.
+fn shortcut_label(action: &str) -> &'static str {
+    SHORTCUT_GROUPS
+        .iter()
+        .flat_map(|(_, rows)| rows.iter())
+        .find(|(name, _)| *name == action)
+        .map_or("another action", |(_, label)| label)
+}
 
 /// Friendly hint and display name for well-known UCI options.
 fn option_label(name: &str) -> (String, Option<&'static str>) {
@@ -749,21 +805,70 @@ impl SettingsScreen {
         }
         text.push_str(&keystroke.key);
         cx.stop_propagation();
-        let model = self.model.clone();
-        model.update(cx, |model, cx| {
+        self.assign_shortcut(action, text, cx);
+        self.capturing = None;
+        cx.notify();
+    }
+
+    /// Binds `keystroke` to `action` (empty clears it). Another action holding the
+    /// same keystroke loses it, so no key ever triggers two actions.
+    fn assign_shortcut(&mut self, action: &str, keystroke: String, cx: &mut Context<Self>) {
+        self.model.update(cx, |model, cx| {
+            let freed: Vec<String> = if keystroke.is_empty() {
+                Vec::new()
+            } else {
+                model
+                    .config
+                    .shortcuts
+                    .iter()
+                    .filter(|(other, key)| other.as_str() != action && **key == keystroke)
+                    .map(|(other, _)| other.clone())
+                    .collect()
+            };
+            for other in &freed {
+                if let Some(old) = model.config.shortcuts.get(other).cloned() {
+                    shell::unbind_shortcut(&old, other, cx);
+                }
+                model.config.shortcuts.insert(other.clone(), String::new());
+            }
             if let Some(old) = model.config.shortcuts.get(action).cloned() {
                 shell::unbind_shortcut(&old, action, cx);
             }
             model
                 .config
                 .shortcuts
-                .insert(action.to_owned(), text.clone());
+                .insert(action.to_owned(), keystroke.clone());
             let single: std::collections::BTreeMap<String, String> =
-                [(action.to_owned(), text)].into_iter().collect();
+                [(action.to_owned(), keystroke.clone())]
+                    .into_iter()
+                    .collect();
             shell::bind_shortcuts(&single, cx);
             model.save_config(cx);
+            if let Some(other) = freed.first() {
+                model.toast(
+                    format!(
+                        "{keystroke} now does {}; {} has no shortcut.",
+                        shortcut_label(action),
+                        shortcut_label(other)
+                    ),
+                    cx,
+                );
+            }
         });
-        self.capturing = None;
+        cx.notify();
+    }
+
+    fn reset_all_shortcuts(&mut self, cx: &mut Context<Self>) {
+        let defaults = crate::config::default_shortcuts();
+        self.model.update(cx, |model, cx| {
+            for (action, key) in &model.config.shortcuts {
+                shell::unbind_shortcut(key, action, cx);
+            }
+            model.config.shortcuts = defaults.clone();
+            shell::bind_shortcuts(&defaults, cx);
+            model.save_config(cx);
+            model.toast("Shortcuts reset to their defaults.", cx);
+        });
         cx.notify();
     }
 
@@ -1718,45 +1823,98 @@ impl SettingsScreen {
     fn render_shortcuts(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let this = cx.entity();
         let model = self.model.read(cx);
-        let mut list = v_flex();
-        for (index, (action, label)) in SHORTCUT_ROWS.into_iter().enumerate() {
-            let capturing = self.capturing == Some(action);
-            let this = this.clone();
-            let capture_focus = self.capture_focus.clone();
-            list = list.child(
-                h_flex()
-                    .h(px(44.))
-                    .justify_between()
-                    .border_b_1()
-                    .border_color(rgb(T.divider))
-                    .child(div().font_weight(FontWeight::MEDIUM).child(label))
-                    .child(
-                        h_flex()
-                            .gap(px(14.))
-                            .child(if capturing {
-                                div()
-                                    .text_size(px(13.))
-                                    .text_color(rgb(T.warn))
-                                    .child("Press a key… (Esc cancels)")
-                            } else {
-                                keycaps(model.config.shortcuts.get(action))
-                            })
-                            .child(btn(("rebind", index), "Change").h(30.).on_click(
-                                move |window, cx| {
-                                    capture_focus.focus(window, cx);
-                                    this.update(cx, |screen, cx| {
-                                        screen.capturing = Some(action);
-                                        cx.notify();
-                                    });
-                                },
-                            )),
-                    ),
-            );
+        let defaults = crate::config::default_shortcuts();
+        let mut page = v_flex().gap(px(16.)).child(
+            h_flex()
+                .justify_between()
+                .child(page_title("Keyboard shortcuts"))
+                .child(btn("reset-shortcuts", "Reset all").on_click({
+                    let this = this.clone();
+                    move |_, cx| this.update(cx, |screen, cx| screen.reset_all_shortcuts(cx))
+                })),
+        );
+        let mut index = 0usize;
+        for (group, rows) in SHORTCUT_GROUPS {
+            let mut list = v_flex();
+            for &(action, label) in rows {
+                index += 1;
+                let capturing = self.capturing == Some(action);
+                let current = model
+                    .config
+                    .shortcuts
+                    .get(action)
+                    .cloned()
+                    .unwrap_or_default();
+                let default = defaults.get(action).cloned().unwrap_or_default();
+                let capture_focus = self.capture_focus.clone();
+                let (change_this, clear_this, reset_this) =
+                    (this.clone(), this.clone(), this.clone());
+                list = list.child(
+                    h_flex()
+                        .h(px(40.))
+                        .justify_between()
+                        .border_b_1()
+                        .border_color(rgb(T.divider))
+                        .child(div().font_weight(FontWeight::MEDIUM).child(label))
+                        .child(
+                            h_flex()
+                                .gap(px(8.))
+                                .child(if capturing {
+                                    div()
+                                        .text_size(px(13.))
+                                        .text_color(rgb(T.warn))
+                                        .child("Press a key… (Esc cancels)")
+                                } else if current.is_empty() {
+                                    div()
+                                        .text_size(px(13.))
+                                        .text_color(rgb(T.muted))
+                                        .child("None")
+                                } else {
+                                    keycaps(Some(&current))
+                                })
+                                .child(btn(("rebind", index), "Change").h(28.).pad(10.).on_click(
+                                    move |window, cx| {
+                                        capture_focus.focus(window, cx);
+                                        change_this.update(cx, |screen, cx| {
+                                            screen.capturing = Some(action);
+                                            cx.notify();
+                                        });
+                                    },
+                                ))
+                                .child(
+                                    btn(("clear-shortcut", index), "Clear")
+                                        .h(28.)
+                                        .pad(10.)
+                                        .disabled(current.is_empty())
+                                        .on_click(move |_, cx| {
+                                            clear_this.update(cx, |screen, cx| {
+                                                screen.assign_shortcut(action, String::new(), cx);
+                                            });
+                                        }),
+                                )
+                                .child(
+                                    btn(("reset-shortcut", index), "Reset")
+                                        .h(28.)
+                                        .pad(10.)
+                                        .disabled(current == default)
+                                        .tooltip(if default.is_empty() {
+                                            "No default".to_owned()
+                                        } else {
+                                            format!("Default: {default}")
+                                        })
+                                        .on_click(move |_, cx| {
+                                            let default = default.clone();
+                                            reset_this.update(cx, |screen, cx| {
+                                                screen.assign_shortcut(action, default, cx);
+                                            });
+                                        }),
+                                ),
+                        ),
+                );
+            }
+            page = page.child(section(group).child(list));
         }
-        v_flex()
-            .gap(px(16.))
-            .child(page_title("Keyboard shortcuts"))
-            .child(section("Shortcuts").child(list))
+        page
     }
 
     fn render_accounts(&mut self) -> impl IntoElement + use<> {
@@ -1886,7 +2044,7 @@ fn board_check(
 /// Renders "ctrl-k" as separate caps, with friendly names.
 fn keycaps(keystroke: Option<&String>) -> Div {
     let mut row = h_flex().gap(px(4.));
-    let Some(keystroke) = keystroke else {
+    let Some(keystroke) = keystroke.filter(|keystroke| !keystroke.is_empty()) else {
         return row;
     };
     for part in keystroke.split('-') {
@@ -2046,6 +2204,27 @@ mod tests {
         assert!(
             option_group(&OptionKind::Check { default: true }) < option_group(&OptionKind::Button)
         );
+    }
+
+    #[test]
+    fn every_default_shortcut_is_listed_in_settings_once() {
+        let listed: Vec<&str> = SHORTCUT_GROUPS
+            .iter()
+            .flat_map(|(_, rows)| rows.iter().map(|(action, _)| *action))
+            .collect();
+        let defaults = crate::config::default_shortcuts();
+        assert_eq!(listed.len(), defaults.len());
+        for action in defaults.keys() {
+            assert_eq!(
+                listed
+                    .iter()
+                    .filter(|name| **name == action.as_str())
+                    .count(),
+                1,
+                "{action}"
+            );
+        }
+        assert_eq!(shortcut_label("flip_board"), "Flip board");
     }
 
     #[test]

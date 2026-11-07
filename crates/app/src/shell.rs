@@ -45,6 +45,13 @@ actions!(
         PauseEngine,
         EngineOutput,
         AnalyseBackward,
+        MoreLines,
+        FewerLines,
+        ToggleAllMoves,
+        ToggleArrows,
+        ToggleSortLines,
+        NextGraph,
+        ToggleScoresheet,
         ShowAnalyse,
         ShowDatabase,
         ShowTrain,
@@ -127,6 +134,28 @@ pub fn action_for(name: &str) -> Option<(Box<dyn Action>, &'static str)> {
         "flip_board" => (Box::new(FlipBoard), SHORTCUT_CONTEXT),
         "search" => (Box::new(FocusSearch), SHORTCUT_CONTEXT),
         "save_game" => (Box::new(SaveGame), SHORTCUT_CONTEXT),
+        "new_game" => (Box::new(NewGame), SHORTCUT_CONTEXT),
+        "open_game" => (Box::new(OpenGame), SHORTCUT_CONTEXT),
+        "save_pgn_as" => (Box::new(SavePgnAs), SHORTCUT_CONTEXT),
+        "paste_game" => (Box::new(PasteGame), SHORTCUT_CONTEXT),
+        "copy_fen" => (Box::new(CopyFen), SHORTCUT_CONTEXT),
+        "copy_pgn" => (Box::new(CopyPgn), SHORTCUT_CONTEXT),
+        "pause_engine" => (Box::new(PauseEngine), SHORTCUT_CONTEXT),
+        "analyse_backward" => (Box::new(AnalyseBackward), SHORTCUT_CONTEXT),
+        "more_lines" => (Box::new(MoreLines), SHORTCUT_CONTEXT),
+        "fewer_lines" => (Box::new(FewerLines), SHORTCUT_CONTEXT),
+        "engine_output" => (Box::new(EngineOutput), SHORTCUT_CONTEXT),
+        "all_moves" => (Box::new(ToggleAllMoves), SHORTCUT_CONTEXT),
+        "quality_arrows" => (Box::new(ToggleArrows), SHORTCUT_CONTEXT),
+        "sort_lines" => (Box::new(ToggleSortLines), SHORTCUT_CONTEXT),
+        "next_graph" => (Box::new(NextGraph), SHORTCUT_CONTEXT),
+        "scoresheet_style" => (Box::new(ToggleScoresheet), SHORTCUT_CONTEXT),
+        "show_analyse" => (Box::new(ShowAnalyse), SHORTCUT_CONTEXT),
+        "show_database" => (Box::new(ShowDatabase), SHORTCUT_CONTEXT),
+        "show_train" => (Box::new(ShowTrain), SHORTCUT_CONTEXT),
+        "show_play" => (Box::new(ShowPlay), SHORTCUT_CONTEXT),
+        "show_settings" => (Box::new(ShowSettings), SHORTCUT_CONTEXT),
+        "quit" => (Box::new(Quit), SHORTCUT_CONTEXT),
         _ => return None,
     })
 }
@@ -134,6 +163,10 @@ pub fn action_for(name: &str) -> Option<(Box<dyn Action>, &'static str)> {
 /// Binds the configured keystrokes, skipping any that do not parse.
 pub fn bind_shortcuts(shortcuts: &BTreeMap<String, String>, cx: &mut App) {
     for (name, keystroke) in shortcuts {
+        // Cleared in Settings.
+        if keystroke.is_empty() {
+            continue;
+        }
         let Some((action, context)) = action_for(name) else {
             continue;
         };
@@ -153,6 +186,9 @@ fn load_binding(keystroke: &str, action: Box<dyn Action>, context: &str, cx: &mu
 
 /// Removes a shortcut so it can be rebound.
 pub fn unbind_shortcut(keystroke: &str, name: &str, cx: &mut App) {
+    if keystroke.is_empty() {
+        return;
+    }
     if let Some((_, context)) = action_for(name) {
         load_binding(keystroke, Box::new(gpui::NoAction), context, cx);
     }
@@ -277,6 +313,18 @@ impl Workspace {
         self.analyse
             .update(cx, |analyse, cx| analyse.set_visible(visible, cx));
         cx.notify();
+    }
+
+    /// Runs an Analyse-only shortcut, ignored on other screens where its effect
+    /// would be invisible.
+    fn in_analyse(
+        &mut self,
+        cx: &mut Context<Self>,
+        action: impl FnOnce(&mut AnalyseScreen, &mut Context<AnalyseScreen>),
+    ) {
+        if self.mode == Mode::Analyse {
+            self.analyse.update(cx, action);
+        }
     }
 
     fn run_search(&mut self, query: &str, window: &mut Window, cx: &mut Context<Self>) {
@@ -806,6 +854,27 @@ impl Render for Workspace {
             .on_action(cx.listener(|this, _: &PauseEngine, _, cx| {
                 this.analyse
                     .update(cx, |screen, cx| screen.toggle_pause(cx));
+            }))
+            .on_action(cx.listener(|this, _: &MoreLines, _, cx| {
+                this.in_analyse(cx, |screen, cx| screen.change_lines(true, cx));
+            }))
+            .on_action(cx.listener(|this, _: &FewerLines, _, cx| {
+                this.in_analyse(cx, |screen, cx| screen.change_lines(false, cx));
+            }))
+            .on_action(cx.listener(|this, _: &ToggleAllMoves, _, cx| {
+                this.in_analyse(cx, |screen, cx| screen.toggle_all_moves(cx));
+            }))
+            .on_action(cx.listener(|this, _: &ToggleArrows, _, cx| {
+                this.in_analyse(cx, |screen, cx| screen.toggle_quality_arrows(cx));
+            }))
+            .on_action(cx.listener(|this, _: &ToggleSortLines, _, cx| {
+                this.in_analyse(cx, |screen, cx| screen.toggle_sort(cx));
+            }))
+            .on_action(cx.listener(|this, _: &NextGraph, _, cx| {
+                this.in_analyse(cx, |screen, cx| screen.next_graph(cx));
+            }))
+            .on_action(cx.listener(|this, _: &ToggleScoresheet, _, cx| {
+                this.in_analyse(cx, |screen, cx| screen.toggle_scoresheet_style(cx));
             }))
             .on_action(cx.listener(|this, _: &AnalyseBackward, window, cx| {
                 this.set_mode(Mode::Analyse, cx);

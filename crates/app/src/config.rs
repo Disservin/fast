@@ -161,34 +161,58 @@ impl BoardConfig {
     }
 }
 
-/// Default keystrokes per action name. Users can rebind them in Settings.
+/// Ctrl, or Cmd on macOS, plus `key`.
+fn primary(key: &str) -> String {
+    let modifier = if cfg!(target_os = "macos") {
+        "cmd"
+    } else {
+        "ctrl"
+    };
+    format!("{modifier}-{key}")
+}
+
+/// Default keystrokes per action name. Users can rebind them in Settings; an empty
+/// keystroke means the action has no shortcut.
 pub fn default_shortcuts() -> BTreeMap<String, String> {
     [
-        ("prev_move", "left"),
-        ("next_move", "right"),
-        ("first_move", "home"),
-        ("last_move", "end"),
-        ("toggle_engine", "space"),
-        ("flip_board", "f"),
-        (
-            "search",
-            if cfg!(target_os = "macos") {
-                "cmd-k"
-            } else {
-                "ctrl-k"
-            },
-        ),
-        (
-            "save_game",
-            if cfg!(target_os = "macos") {
-                "cmd-s"
-            } else {
-                "ctrl-s"
-            },
-        ),
+        // Navigation
+        ("prev_move", "left".to_owned()),
+        ("next_move", "right".to_owned()),
+        ("first_move", "home".to_owned()),
+        ("last_move", "end".to_owned()),
+        ("flip_board", "f".to_owned()),
+        // Game
+        ("new_game", primary("n")),
+        ("open_game", primary("o")),
+        ("save_game", primary("s")),
+        ("save_pgn_as", primary("shift-s")),
+        ("paste_game", primary("shift-v")),
+        ("copy_fen", primary("shift-f")),
+        ("copy_pgn", primary("shift-p")),
+        // Engine
+        ("toggle_engine", "space".to_owned()),
+        ("pause_engine", "p".to_owned()),
+        ("analyse_backward", "b".to_owned()),
+        ("more_lines", "]".to_owned()),
+        ("fewer_lines", "[".to_owned()),
+        ("engine_output", primary("shift-l")),
+        // Analysis display
+        ("all_moves", "a".to_owned()),
+        ("quality_arrows", "r".to_owned()),
+        ("sort_lines", "d".to_owned()),
+        ("next_graph", "g".to_owned()),
+        ("scoresheet_style", "i".to_owned()),
+        // Window
+        ("search", primary("k")),
+        ("show_analyse", primary("1")),
+        ("show_database", primary("2")),
+        ("show_train", primary("3")),
+        ("show_play", primary("4")),
+        ("show_settings", primary(",")),
+        ("quit", primary("q")),
     ]
     .into_iter()
-    .map(|(action, key)| (action.to_owned(), key.to_owned()))
+    .map(|(action, key)| (action.to_owned(), key))
     .collect()
 }
 
@@ -395,6 +419,22 @@ mod tests {
         let path = dir.path().join("config.toml");
         std::fs::write(&path, "[board]\ntheme = \"stone\"\n").unwrap();
         assert_eq!(Config::load(&path).board.theme, SavedTheme::Blue);
+    }
+
+    #[test]
+    fn default_shortcuts_are_unique_and_all_bindable() {
+        let defaults = default_shortcuts();
+        let mut keys: Vec<&String> = defaults.values().collect();
+        let count = keys.len();
+        keys.sort();
+        keys.dedup();
+        assert_eq!(keys.len(), count, "two actions share a default key");
+        for action in defaults.keys() {
+            assert!(
+                crate::shell::action_for(action).is_some(),
+                "{action} has no action"
+            );
+        }
     }
 
     #[test]

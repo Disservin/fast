@@ -978,6 +978,48 @@ impl AnalyseScreen {
         self.copy_pgn(cx);
     }
 
+    pub fn toggle_all_moves(&mut self, cx: &mut Context<Self>) {
+        self.set_view(cx, |view| view.all_moves = !view.all_moves);
+    }
+
+    pub fn toggle_quality_arrows(&mut self, cx: &mut Context<Self>) {
+        self.set_view(cx, |view| view.quality_arrows = !view.quality_arrows);
+    }
+
+    pub fn toggle_sort(&mut self, cx: &mut Context<Self>) {
+        self.set_view(cx, |view| {
+            view.sort = match view.sort {
+                LineSort::Eval => LineSort::Depth,
+                LineSort::Depth => LineSort::Eval,
+            };
+        });
+    }
+
+    /// The next graph tab under the board.
+    pub fn next_graph(&mut self, cx: &mut Context<Self>) {
+        self.set_view(cx, |view| {
+            let index = GraphTab::ALL
+                .iter()
+                .position(|tab| *tab == view.graph)
+                .unwrap_or(0);
+            view.graph = GraphTab::ALL[(index + 1) % GraphTab::ALL.len()];
+        });
+    }
+
+    pub fn toggle_scoresheet_style(&mut self, cx: &mut Context<Self>) {
+        self.set_view(cx, |view| {
+            view.scoresheet = match view.scoresheet {
+                ScoresheetStyle::Table => ScoresheetStyle::Inline,
+                ScoresheetStyle::Inline => ScoresheetStyle::Table,
+            };
+        });
+    }
+
+    /// One more or one fewer MultiPV line on every analysis engine.
+    pub fn change_lines(&mut self, up: bool, cx: &mut Context<Self>) {
+        self.step_lines(up, cx);
+    }
+
     /// Changes one of the Analyse display options and redraws.
     pub(super) fn set_view(
         &mut self,

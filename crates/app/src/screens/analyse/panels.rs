@@ -381,7 +381,7 @@ impl AnalyseScreen {
 
     /// Steps MultiPV on every analysis engine that has it, saved in each engine's
     /// options, without restarting them.
-    fn step_lines(&mut self, up: bool, cx: &mut Context<Self>) {
+    pub(super) fn step_lines(&mut self, up: bool, cx: &mut Context<Self>) {
         let Some(current) = self.shown_lines(cx) else {
             return;
         };
