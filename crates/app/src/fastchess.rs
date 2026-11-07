@@ -211,6 +211,11 @@ pub struct Setup {
     pub resign_twosided: bool,
     pub maxmoves: String,
     pub recover: bool,
+    pub seed: String,
+    pub wait: String,
+    pub time_margin: String,
+    pub restart: bool,
+    pub affinity: bool,
     pub extra: String,
 }
 
@@ -291,6 +296,30 @@ impl Setup {
                 number::<u32>(&self.threads, "Threads")?
             ),
         ]);
+        if !self.time_margin.trim().is_empty() {
+            push(&[format!(
+                "timemargin={}",
+                number::<u64>(&self.time_margin, "Time margin")?
+            )]);
+        }
+        if self.restart {
+            push(&["restart=on".into()]);
+        }
+        if !self.seed.trim().is_empty() {
+            push(&[
+                "-srand".into(),
+                number::<u64>(&self.seed, "Random seed")?.to_string(),
+            ]);
+        }
+        if !self.wait.trim().is_empty() {
+            push(&[
+                "-wait".into(),
+                number::<u64>(&self.wait, "Delay between games")?.to_string(),
+            ]);
+        }
+        if self.affinity {
+            push(&["-use-affinity".into()]);
+        }
         let rounds = number::<u64>(&self.rounds, "Rounds")?;
         ensure!(rounds > 0, "Rounds must be at least 1");
         push(&["-rounds".into(), rounds.to_string()]);
@@ -1073,8 +1102,44 @@ mod tests {
             resign_twosided: true,
             maxmoves: String::new(),
             recover: true,
+            seed: String::new(),
+            wait: String::new(),
+            time_margin: String::new(),
+            restart: false,
+            affinity: false,
             extra: "-srand 42".into(),
         }
+    }
+
+    #[test]
+    fn advanced_engine_and_scheduling_options() {
+        let mut setup = setup(vec![engine("A"), engine("B")]);
+        setup.extra.clear();
+        setup.seed = "42".into();
+        setup.wait = "100".into();
+        setup.time_margin = "50".into();
+        setup.restart = true;
+        setup.affinity = true;
+        let args = setup.args(Path::new("/tmp/run")).unwrap();
+        for expected in ["timemargin=50", "restart=on", "-use-affinity"] {
+            assert!(args.iter().any(|arg| arg == expected));
+        }
+        for pair in [["-srand", "42"], ["-wait", "100"]] {
+            assert!(args.windows(2).any(|args| args == pair));
+        }
+        let each = args.iter().position(|arg| arg == "-each").unwrap();
+        let next_flag = args[each + 1..]
+            .iter()
+            .position(|arg| arg.starts_with('-'))
+            .unwrap()
+            + each
+            + 1;
+        assert!(args[each..next_flag].iter().any(|arg| arg == "restart=on"));
+        setup.wait = "-1".into();
+        assert!(setup.args(Path::new("/tmp/run")).is_err());
+        setup.wait.clear();
+        setup.seed = "invalid".into();
+        assert!(setup.args(Path::new("/tmp/run")).is_err());
     }
 
     fn engine(name: &str) -> Participant {

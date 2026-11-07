@@ -250,6 +250,11 @@ pub struct TournamentScreen {
     alpha: Entity<InputState>,
     beta: Entity<InputState>,
     maxmoves: Entity<InputState>,
+    seed: Entity<InputState>,
+    wait: Entity<InputState>,
+    time_margin: Entity<InputState>,
+    restart: bool,
+    affinity: bool,
     extra: Entity<InputState>,
     paste: Entity<TextareaState>,
     paste_dir: Entity<InputState>,
@@ -372,6 +377,11 @@ impl TournamentScreen {
             alpha: new_input("0.05", "0.05", window, cx),
             beta: new_input("0.05", "0.05", window, cx),
             maxmoves: new_input("", "No limit", window, cx),
+            seed: new_input("", "Automatic", window, cx),
+            wait: new_input("", "0", window, cx),
+            time_margin: new_input("", "Fastchess default", window, cx),
+            restart: false,
+            affinity: false,
             extra: new_input("", "e.g. -srand 42 -use-affinity", window, cx),
             paste,
             paste_dir: new_input("", "Default: a new folder of its own", window, cx),
@@ -466,6 +476,11 @@ impl TournamentScreen {
             resign_twosided: self.resign_twosided,
             maxmoves: self.text(&self.maxmoves, cx),
             recover: self.recover,
+            seed: self.text(&self.seed, cx),
+            wait: self.text(&self.wait, cx),
+            time_margin: self.text(&self.time_margin, cx),
+            restart: self.restart,
+            affinity: self.affinity,
             extra: self.text(&self.extra, cx),
         }
     }
@@ -1369,6 +1384,25 @@ impl TournamentScreen {
                     "Recover crashed engines",
                     cx,
                     |screen, on| screen.recover = on,
+                ))
+                .child(pair(
+                    field("Random seed", text_input(&self.seed)),
+                    field("Delay between games (ms)", text_input(&self.wait)),
+                ))
+                .child(field("Time margin (ms)", text_input(&self.time_margin)))
+                .child(self.toggle(
+                    "tournament-restart",
+                    self.restart,
+                    "Restart engines between games",
+                    cx,
+                    |screen, on| screen.restart = on,
+                ))
+                .child(self.toggle(
+                    "tournament-affinity",
+                    self.affinity,
+                    "Bind engines to CPU cores",
+                    cx,
+                    |screen, on| screen.affinity = on,
                 ))
                 .child(field("Extra fastchess options", text_input(&self.extra)))
         });
