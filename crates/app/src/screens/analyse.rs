@@ -55,7 +55,8 @@ pub struct MoveRow {
     pub depth: u32,
     pub nodes: Option<u64>,
     pub nps: Option<u64>,
-    pub engine_name: String,
+    /// The engine whose line this row previews.
+    pub engine_id: Option<EngineId>,
     pub reference: Option<MoveStat>,
     pub mine: Option<MoveStat>,
     pub rep: RepTag,
@@ -546,7 +547,7 @@ impl AnalyseScreen {
                             depth: line.update.depth,
                             nodes: line.update.nodes,
                             nps: line.update.nps,
-                            engine_name: engine.config.name.clone(),
+                            engine_id: Some(engine.config.id),
                             ..Default::default()
                         });
                         lines.last_mut().expect("just pushed")
@@ -1965,7 +1966,13 @@ impl AnalyseScreen {
         let ply = self.analysed_ply();
         let pos = self.analysed_pos();
         let white_to_move = pos.turn().is_white();
-        let mut rows = v_flex().w_full();
+        // Room for every requested line is kept while the engine runs, so lines
+        // arriving one by one early in a search do not move what is below.
+        let reserved = self
+            .shown_lines(cx)
+            .filter(|_| self.live.read(cx).on)
+            .map_or(0., |lines| lines.clamp(1, 64) as f32 * MOVE_ROW_H);
+        let mut rows = v_flex().w_full().min_h(px(reserved));
         for (index, row) in self.rows.iter().enumerate() {
             let selected = self.selected_san.as_deref() == Some(row.san.as_str());
             let san = row.san.clone();
@@ -2008,7 +2015,7 @@ impl AnalyseScreen {
                 h_flex()
                     .id(("move-row", index))
                     .relative()
-                    .h(px(46.))
+                    .h(px(MOVE_ROW_H))
                     .flex_none()
                     .px(px(16.))
                     .cursor_pointer()
@@ -2124,6 +2131,80 @@ impl AnalyseScreen {
             .child(rows)
     }
 
+    /// Who found the selected line and how hard it searched: the engine, then small
+    /// labelled figures. Depth is the line's own; the rest describe the whole search.
+    fn render_search_stats(&self, row: &MoveRow, cx: &gpui::App) -> gpui::AnyElement {
+        let live = self.live.read(cx);
+        let engine = row
+            .engine_id
+            .and_then(|id| live.engines.iter().find(|engine| engine.config.id == id));
+        let stats = engine.and_then(|engine| engine.stats());
+        let depth = match stats.and_then(|stats| stats.seldepth) {
+            Some(sel) if sel > row.depth => format!("{}/{sel}", row.depth),
+            _ => row.depth.to_string(),
+        };
+        let mut figures: Vec<(&'static str, String)> = vec![("Depth", depth)];
+        let nodes = stats.and_then(|stats| stats.nodes).or(row.nodes);
+        figures.extend(nodes.map(|nodes| ("Nodes", engine::format_nodes(nodes))));
+        let nps = stats.and_then(|stats| stats.nps).or(row.nps);
+        figures.extend(nps.map(|nps| ("Speed", engine::format_speed(nps))));
+        if let Some(stats) = stats {
+            figures.extend(stats.time_ms.map(|ms| ("Time", search_time(ms))));
+            figures.extend(
+                stats
+                    .hashfull
+                    .filter(|full| *full > 0)
+                    .map(|full| ("Hash", format!("{:.0}%", f64::from(full) / 10.))),
+            );
+            figures.extend(
+                stats
+                    .tbhits
+                    .filter(|hits| *hits > 0)
+                    .map(|hits| ("TB", engine::format_nodes(hits).replace(" n", ""))),
+            );
+        }
+        // Fixed widths, so changing figures never push each other around.
+        let width = |label: &str| match label {
+            "Depth" => 46.,
+            "Nodes" | "Speed" => 74.,
+            "Time" => 52.,
+            _ => 40.,
+        };
+        let figure = |(label, value): (&'static str, String)| {
+            v_flex()
+                .w(px(width(label)))
+                .flex_none()
+                .gap(px(1.))
+                .child(
+                    div()
+                        .text_size(px(9.5))
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(rgb(T.faint))
+                        .child(label.to_uppercase()),
+                )
+                .child(mono(value).text_size(px(12.)).text_color(rgb(T.fg_2)))
+        };
+        let mut row_el = h_flex().gap(px(8.)).items_center();
+        if let Some(engine) = engine {
+            row_el = row_el.child(
+                h_flex()
+                    .gap(px(6.))
+                    .mr(px(6.))
+                    .child(crate::controls::engine_icon(&engine.config, 18.))
+                    .child(
+                        div()
+                            .text_size(px(12.))
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(rgb(T.fg_2))
+                            .child(engine.config.name.clone()),
+                    ),
+            );
+        }
+        row_el
+            .children(figures.into_iter().map(figure))
+            .into_any_element()
+    }
+
     fn render_line_preview(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let this = cx.entity();
         let demo = self.model.read(cx).demo;
@@ -2133,17 +2214,10 @@ impl AnalyseScreen {
             .as_ref()
             .map(|row| chess_core::notation::numbered(ply + 1, &row.san))
             .unwrap_or_default();
-        let meta = selected.as_ref().filter(|row| row.depth > 0).map(|row| {
-            let nodes = row
-                .nodes
-                .map(|nodes| format!(", {}", engine::format_nodes(nodes)))
-                .unwrap_or_default();
-            let speed = row
-                .nps
-                .map(|nps| format!(", {}", engine::format_speed(nps)))
-                .unwrap_or_default();
-            format!("{}, depth {}{nodes}{speed}", row.engine_name, row.depth)
-        });
+        let meta = selected
+            .as_ref()
+            .filter(|row| row.depth > 0)
+            .map(|row| self.render_search_stats(row, cx));
         // Hook for future move explanations; only demo mode has text today.
         let explanation = selected
             .as_ref()
@@ -2162,12 +2236,7 @@ impl AnalyseScreen {
                             .child(section_label("Line preview"))
                             .child(mono(selected_label).font_weight(FontWeight::SEMIBOLD)),
                     )
-                    .children(meta.map(|text| {
-                        div()
-                            .text_size(px(13.))
-                            .text_color(rgb(T.muted))
-                            .child(text)
-                    })),
+                    .children(meta),
             )
             .child(self.render_pv(selected.as_ref(), cx))
             .child(divider().bg(rgb(T.border)))
@@ -2286,6 +2355,18 @@ impl AnalyseScreen {
                     )),
             ),
         ))
+    }
+}
+
+/// Height of one row in Moves from here.
+const MOVE_ROW_H: f32 = 46.;
+
+/// Search time as "850 ms", "12.4 s" or "3:05".
+fn search_time(ms: u64) -> String {
+    match ms {
+        0..1_000 => format!("{ms} ms"),
+        1_000..60_000 => format!("{:.1} s", ms as f64 / 1000.),
+        _ => format!("{}:{:02}", ms / 60_000, (ms / 1000) % 60),
     }
 }
 
@@ -2505,6 +2586,13 @@ mod tests {
             rows.iter().find(|row| row.san == "e5").unwrap().rep,
             RepTag::None
         );
+    }
+
+    #[test]
+    fn search_times_read_naturally() {
+        assert_eq!(search_time(850), "850 ms");
+        assert_eq!(search_time(12_400), "12.4 s");
+        assert_eq!(search_time(185_000), "3:05");
     }
 
     #[test]

@@ -213,13 +213,6 @@ impl AnalyseScreen {
     /// Depth, nodes and speed, with the buttons that open the panels.
     pub(super) fn render_table_tools(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let this = cx.entity();
-        let stats = self.live.read(cx).primary().and_then(|engine| {
-            let stats = engine.stats()?;
-            let mut parts = vec![format!("d{}", stats.depth)];
-            parts.extend(stats.nodes.map(engine::format_nodes));
-            parts.extend(stats.nps.map(engine::format_speed));
-            Some(parts.join("  "))
-        });
         let live = self.live.read(cx);
         let (on, paused) = (live.on, live.paused);
         let view = self.model.read(cx).config.view.clone();
@@ -278,6 +271,7 @@ impl AnalyseScreen {
                         crate::config::LineSort::Depth => "By depth",
                     },
                 )
+                .w(72.)
                 .tooltip("Order engine lines by evaluation or by search depth")
                 .on_click(move |_, cx| {
                     sort_this.update(cx, |screen, cx| {
@@ -316,17 +310,10 @@ impl AnalyseScreen {
         h_flex()
             .gap(px(6.))
             .child(view_tools)
-            .when_some(stats.filter(|_| self.show_wdl), |row, stats| {
-                row.child(
-                    mono(stats)
-                        .mr(px(4.))
-                        .text_size(px(12.))
-                        .text_color(rgb(T.muted)),
-                )
-            })
             .when(on, |row| {
                 row.child(
                     btn("engine-pause", if paused { "Resume" } else { "Pause" })
+                        .w(64.)
                         .h(26.)
                         .pad(8.)
                         .text(12.)
@@ -370,7 +357,7 @@ impl AnalyseScreen {
     }
 
     /// Lines shown by the analysis engines: the first one's MultiPV.
-    fn shown_lines(&self, cx: &gpui::App) -> Option<i64> {
+    pub(super) fn shown_lines(&self, cx: &gpui::App) -> Option<i64> {
         self.live
             .read(cx)
             .engines
