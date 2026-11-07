@@ -121,15 +121,17 @@ pub enum UiTheme {
     Sand,
     Forest,
     Plum,
+    Obsidian,
 }
 
 impl UiTheme {
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::Slate,
         Self::Paper,
         Self::Sand,
         Self::Forest,
         Self::Plum,
+        Self::Obsidian,
     ];
 
     pub fn name(self) -> &'static str {
@@ -139,6 +141,7 @@ impl UiTheme {
             Self::Sand => "Sand",
             Self::Forest => "Forest",
             Self::Plum => "Plum",
+            Self::Obsidian => "Obsidian",
         }
     }
 
@@ -152,7 +155,7 @@ impl UiTheme {
 }
 
 // Every palette changes the full surface hierarchy, typography, and accent.
-const PALETTES: [Theme; 5] = [
+const PALETTES: [Theme; 6] = [
     SLATE,
     Theme {
         bg: 0xF3F5F8,
@@ -326,6 +329,17 @@ const PALETTES: [Theme; 5] = [
         chip_b_fg: 0xF8BE94,
         chip_draw_bg: 0x402B47,
         chip_draw_fg: 0xC3A4C5,
+        ..SLATE
+    },
+    Theme {
+        bg: 0x08090B, surface: 0x101114, surface_2: 0x0C0D10,
+        hover: 0x202226, selected: 0x222C3A, border: 0x26282D,
+        border_strong: 0x3A3D44, divider: 0x1D1F24,
+        fg: 0xF1F2F4, fg_2: 0xCED1D7, muted: 0xA2A7B1, faint: 0x858B96,
+        accent: 0x91B7FF, accent_hover: 0xB0CCFF, accent_fg: 0x0A1426,
+        tour_bg: 0x08090B, tour_card: 0x101114, tour_card_border: 0x26282D,
+        tour_tile: 0x0C0D10, tour_tile_border: 0x1D1F24,
+        chip_draw_bg: 0x202226, chip_draw_fg: 0xA2A7B1,
         ..SLATE
     },
 ];

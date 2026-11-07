@@ -409,7 +409,7 @@ impl Config {
     pub fn set_ui_theme(&mut self, theme: ui::UiTheme) {
         self.ui_theme = theme;
         self.board.theme = match theme {
-            ui::UiTheme::Slate => SavedTheme::Blue,
+            ui::UiTheme::Slate | ui::UiTheme::Obsidian => SavedTheme::Blue,
             ui::UiTheme::Paper => SavedTheme::Paper,
             ui::UiTheme::Plum => SavedTheme::Plum,
             ui::UiTheme::Sand => SavedTheme::Walnut,
