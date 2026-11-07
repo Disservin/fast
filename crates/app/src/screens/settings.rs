@@ -253,6 +253,8 @@ pub struct SettingsScreen {
     install_status: Option<SharedString>,
     install_cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
     install_task: Option<gpui::Task<()>>,
+    opening_task: Option<gpui::Task<()>>,
+    opening_status: Option<SharedString>,
     _subscriptions: Vec<Subscription>,
     _option_subscriptions: Vec<Subscription>,
 }
@@ -422,6 +424,8 @@ impl SettingsScreen {
             install_status: None,
             install_cancel: None,
             install_task: None,
+            opening_task: None,
+            opening_status: None,
             _subscriptions: subscriptions,
             _option_subscriptions: Vec::new(),
         };
@@ -1711,6 +1715,7 @@ impl SettingsScreen {
             .gap(px(16.))
             .child(page_title(ui::i18n::t("General")))
             .child(self.render_storage(cx))
+            .child(self.render_opening_data(cx))
             .child(self.render_appearance(cx))
             .when(
                 {
@@ -1733,6 +1738,39 @@ impl SettingsScreen {
             )
             .child(self.render_board_section(cx))
             .child(self.render_shortcut_summary(cx))
+    }
+
+    fn render_opening_data(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let this = cx.entity();
+        panel().p(px(16.)).child(v_flex().gap(px(8.))
+            .child(section_label("Opening data"))
+            .child("Update opening names and ECO codes from Lichess. Updates apply immediately and are saved for offline use. Bundled data is the fallback.")
+            .child(btn("update-opening-data", if self.opening_task.is_some() { "Updating…" } else { "Update opening data" })
+                .disabled(self.opening_task.is_some())
+                .on_click(move |_, cx| this.update(cx, |screen, cx| screen.update_opening_data(cx))))
+            .children(self.opening_status.clone()))
+    }
+
+    fn update_opening_data(&mut self, cx: &mut Context<Self>) {
+        if self.opening_task.is_some() {
+            return;
+        }
+        self.opening_status = Some("Downloading Lichess opening data…".into());
+        let data = self.model.read(cx).paths.data_dir.clone();
+        let worker = cx.background_spawn(async move { crate::opening_data::update(&data) });
+        self.opening_task = Some(cx.spawn(async move |this, cx| {
+            let result = worker.await;
+            let _ = this.update(cx, |screen, cx| {
+                screen.opening_task = None;
+                screen.opening_status = Some(match result {
+                    Ok(message) => message,
+                    Err(err) => format!("Opening update failed: {err:#}. Existing opening data is still active. You can retry."),
+                }.into());
+                screen.model.update(cx, |_, cx| cx.notify());
+                cx.notify();
+            });
+        }));
+        cx.notify();
     }
 
     fn render_board_page(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {

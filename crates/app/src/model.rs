@@ -182,6 +182,7 @@ pub fn today() -> i64 {
 impl AppModel {
     pub fn load(demo: bool) -> Self {
         let paths = Paths::resolve(demo);
+        crate::opening_data::load(&paths.data_dir);
         let mut config = Config::load(&paths.config_file);
         if demo {
             crate::demo::prepare(&paths, &mut config);

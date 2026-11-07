@@ -28,6 +28,14 @@ or **Custom file…** to supply a local EPD or PGN.
 
 ## Run it
 
+Opening names and all 500 ECO codes are bundled at build time from Lichess.
+To refresh them, run `python3 scripts/update_openings.py`, then rebuild Fast.
+The command downloads, validates, records the upstream revision, and tests the data.
+Installed users can choose **Settings → General → Opening data → Update opening data**.
+Updates apply immediately and persist for offline use across restarts. Failed updates
+keep the existing data; bundled openings remain the fallback. Existing database games
+keep their stored ECO tags; new imports use the updated classifier.
+
 ```sh
 cargo run --release -p fast            # your real profile
 cargo run --release -p fast -- --demo  # a generated profile with every screen populated
