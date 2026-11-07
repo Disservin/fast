@@ -47,6 +47,7 @@ pub enum ModelEvent {
 }
 
 pub struct AppModel {
+    pub pending_backup: Option<crate::backup::Archive>,
     pub paths: Paths,
     pub demo: bool,
     pub config: Config,
@@ -132,7 +133,7 @@ impl AppModel {
         if demo {
             crate::demo::prepare(&paths, &mut config);
         }
-        let repertoire = std::fs::read_to_string(paths.repertoire_file())
+        let repertoire: Repertoire = std::fs::read_to_string(paths.repertoire_file())
             .ok()
             .and_then(|text| serde_json::from_str(&text).ok())
             .unwrap_or_else(|| Repertoire::new("My repertoire", true));
@@ -156,6 +157,7 @@ impl AppModel {
             })
             .collect();
         let mut model = Self {
+            pending_backup: None,
             paths,
             demo,
             config,

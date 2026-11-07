@@ -17,6 +17,7 @@ gpui-kit-assets = { git = "https://github.com/longbridge/gpui-component", rev = 
 chess_core.workspace = true
 engine.workspace = true
 db.workspace = true
+rusqlite.workspace = true
 trainer.workspace = true
 ui.workspace = true
 anyhow.workspace = true

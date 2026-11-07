@@ -1779,6 +1779,7 @@ dependencies = [
  "log",
  "resvg 0.46.0",
  "rodio",
+ "rusqlite",
  "rust-embed",
  "serde",
  "serde_json",

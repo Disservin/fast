@@ -1283,10 +1283,121 @@ impl SettingsScreen {
             )
     }
 
+    fn render_storage(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let model = self.model.clone();
+        let export = model.clone();
+        let import = model.clone();
+        let paths = &model.read(cx).paths;
+        let mut body = v_flex()
+            .gap(px(12.))
+            .child(section_label("Storage and backup"))
+            .child(format!("Settings: {}", paths.config_file.display()))
+            .child(format!(
+                "Games, notes, repertoire and history: {}",
+                paths.data_dir.display()
+            ))
+            .child(
+                btn("export-backup", "Export complete backup").on_click(move |_, cx| {
+                    let target = export.clone();
+                    crate::model::pick_path(
+                        export.clone(),
+                        "Export backup",
+                        Some("fast-backup.json"),
+                        cx,
+                        move |path, cx| {
+                            target.update(cx, |model, cx| {
+                                let result = crate::backup::Archive::capture(
+                                    &model.paths,
+                                    &model.config,
+                                    &model.repertoire,
+                                )
+                                .and_then(|archive| Ok(serde_json::to_vec(&archive)?))
+                                .and_then(|bytes| crate::persistence::atomic_write(&path, &bytes));
+                                model.toast(
+                                    match result {
+                                        Ok(()) => "Backup exported".into(),
+                                        Err(err) => format!("Backup failed: {err:#}"),
+                                    },
+                                    cx,
+                                );
+                            });
+                        },
+                    );
+                }),
+            )
+            .child(
+                btn("preview-backup", "Preview backup to restore").on_click(move |_, cx| {
+                    let target = import.clone();
+                    crate::model::pick_path(
+                        import.clone(),
+                        "Preview backup",
+                        None,
+                        cx,
+                        move |path, cx| {
+                            target.update(cx, |model, cx| {
+                                match crate::backup::Archive::read(&path) {
+                                    Ok(archive) => {
+                                        model.pending_backup = Some(archive);
+                                        cx.notify();
+                                    }
+                                    Err(err) => {
+                                        model.toast(format!("Cannot restore backup: {err:#}"), cx)
+                                    }
+                                }
+                            });
+                        },
+                    );
+                }),
+            );
+        if let Some(archive) = &model.read(cx).pending_backup {
+            body = body.child(format!(
+                "Backup preview ({} files): {}",
+                archive.files.len(),
+                archive.files.keys().cloned().collect::<Vec<_>>().join(", ")
+            ));
+            for (id, label, replace) in [
+                (
+                    "restore-keep",
+                    "Restore missing files; keep conflicts",
+                    false,
+                ),
+                ("restore-replace", "Restore and replace conflicts", true),
+            ] {
+                let model = model.clone();
+                body = body.child(btn(id, label).on_click(move |_, cx| model.update(cx, |model, cx| {
+                    if let Some(archive) = model.pending_backup.take() {
+                        match archive.restore(&model.paths, replace) {
+                            Ok(()) => {
+                                model.config = crate::config::Config::load(&model.paths.config_file);
+                                if let Ok(bytes) = std::fs::read(model.paths.repertoire_file()) && let Ok(rep) = serde_json::from_slice(&bytes) { model.repertoire = rep; }
+                                model.refresh_databases();
+                                cx.emit(crate::model::ModelEvent::Repertoire);
+                                cx.emit(crate::model::ModelEvent::Databases);
+                                cx.emit(crate::model::ModelEvent::BoardPrefs);
+                                model.toast("Backup restored. Restart Fast to reload all settings and study state.", cx);
+                            }
+                            Err(err) => { model.pending_backup = Some(archive); model.toast(format!("Restore failed: {err:#}"), cx); }
+                        }
+                    }
+                })));
+            }
+            body = body.child(
+                btn("cancel-restore", "Cancel restore").on_click(move |_, cx| {
+                    model.update(cx, |model, cx| {
+                        model.pending_backup = None;
+                        cx.notify();
+                    })
+                }),
+            );
+        }
+        panel().p(px(16.)).child(body)
+    }
+
     fn render_general(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         v_flex()
             .gap(px(16.))
             .child(page_title("General"))
+            .child(self.render_storage(cx))
             .child(self.render_appearance())
             .child(
                 btn("retry-saves", "Retry saving settings and repertoire").on_click({
