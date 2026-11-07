@@ -1,12 +1,12 @@
 [package]
-name = "outpost"
+name = "fast"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 description = "A desktop chess workstation for analysis, databases, opening training and engine play."
 
 [[bin]]
-name = "outpost"
+name = "fast"
 path = "src/main.rs"
 
 [dependencies]
@@ -33,7 +33,7 @@ rust-embed = "8"
 tempfile.workspace = true
 
 [package.metadata.bundle]
-name = "Outpost"
-identifier = "dev.outpost.app"
+name = "Fast"
+identifier = "dev.fast.app"
 category = "Utility"
 short_description = "Desktop chess workstation"

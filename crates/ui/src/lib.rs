@@ -1,4 +1,4 @@
-//! Shared GPUI views and widgets used by every Outpost screen.
+//! Shared GPUI views and widgets used by every Fast screen.
 
 pub mod board;
 pub mod scoresheet;

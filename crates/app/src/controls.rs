@@ -1,4 +1,4 @@
-//! Thin wrappers styling the component library's stateful inputs for Outpost.
+//! Thin wrappers styling the component library's stateful inputs for Fast.
 
 use gpui::{
     App, Div, Entity, Focusable as _, IntoElement, RenderOnce, SharedString, Window, div,

@@ -9,7 +9,7 @@ use rust_embed::RustEmbed;
 #[exclude = "fonts/*"]
 struct Bundled;
 
-/// Outpost's assets first, then the component library's icons.
+/// Fast's assets first, then the component library's icons.
 pub struct Assets;
 
 impl AssetSource for Assets {

@@ -26,7 +26,7 @@ use crate::{
 };
 
 actions!(
-    outpost,
+    fast,
     [
         PrevMove,
         NextMove,
@@ -45,9 +45,9 @@ const WINDOW_CONTROLS_W: f32 = WINDOW_CONTROL_W * 3. + 4.;
 const MODE_SWITCH_HALF_W: f32 = 165.;
 
 /// Key context present unless a text field has focus.
-pub const SHORTCUT_CONTEXT: &str = "OutpostShortcuts";
+pub const SHORTCUT_CONTEXT: &str = "FastShortcuts";
 /// Additionally present unless a button has focus, where Space means "activate".
-const SPACE_CONTEXT: &str = "OutpostIdle";
+const SPACE_CONTEXT: &str = "FastIdle";
 
 pub fn action_for(name: &str) -> Option<(Box<dyn Action>, &'static str)> {
     Some(match name {
@@ -499,7 +499,7 @@ impl Workspace {
                                     .font_weight(FontWeight::BOLD)
                                     .text_size(px(15.))
                                     .text_color(rgb(T.fg))
-                                    .child("Outpost"),
+                                    .child("Fast"),
                             )
                             .child(
                                 div()
@@ -578,9 +578,7 @@ impl Render for Workspace {
         let viewport_w = f32::from(window.viewport_size().width);
         let client_drawn = matches!(window.window_decorations(), Decorations::Client { .. });
         let controls = client_drawn || self.force_window_controls;
-        let on_button = stack
-            .iter()
-            .any(|context| context.contains("OutpostButton"));
+        let on_button = stack.iter().any(|context| context.contains("FastButton"));
         let body = match self.mode {
             Mode::Analyse => self.analyse.clone().into_any_element(),
             Mode::Database => self.database.clone().into_any_element(),

@@ -1681,6 +1681,31 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7360491ce676a36bf9bb3c56c1aa791658183a54d2744120f27285738d90465a"
 
 [[package]]
+name = "fast"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chess_core",
+ "db",
+ "dirs 6.0.0",
+ "engine",
+ "env_logger",
+ "gpui-component",
+ "gpui-kit-assets",
+ "gpui-pre",
+ "gpui-pre-platform",
+ "log",
+ "rust-embed",
+ "serde",
+ "serde_json",
+ "smol",
+ "tempfile",
+ "toml 0.9.12+spec-1.1.0",
+ "trainer",
+ "ui",
+]
+
+[[package]]
 name = "fastrand"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4635,31 +4660,6 @@ checksum = "9aa2b01e1d916879f73a53d01d1d6cee68adbb31d6d9177a8cfce093cced1d50"
 dependencies = [
  "futures-core",
  "pin-project-lite",
-]
-
-[[package]]
-name = "outpost"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chess_core",
- "db",
- "dirs 6.0.0",
- "engine",
- "env_logger",
- "gpui-component",
- "gpui-kit-assets",
- "gpui-pre",
- "gpui-pre-platform",
- "log",
- "rust-embed",
- "serde",
- "serde_json",
- "smol",
- "tempfile",
- "toml 0.9.12+spec-1.1.0",
- "trainer",
- "ui",
 ]
 
 [[package]]

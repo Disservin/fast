@@ -1,4 +1,4 @@
-# Outpost
+# Fast
 
 A native desktop chess workstation for analysis, game databases, opening training and
 playing against engines. Offline and single-user. Built with Rust and
@@ -7,17 +7,17 @@ playing against engines. Offline and single-user. Built with Rust and
 ## Run it
 
 ```sh
-cargo run --release -p outpost            # your real profile
-cargo run --release -p outpost -- --demo  # a generated profile with every screen populated
+cargo run --release -p fast            # your real profile
+cargo run --release -p fast -- --demo  # a generated profile with every screen populated
 ```
 
-`--demo` uses its own directories (`outpost-demo`), never touching your data. Its engine output
+`--demo` uses its own directories (`fast-demo`), never touching your data. Its engine output
 is scripted, so no engine needs to be installed. A first start generates its databases, which
 takes a few seconds. `--screen analyse|database|train|play|settings[:engines|board|databases|shortcuts]`
 picks the opening screen.
 
 In normal mode, add a UCI engine under **Settings › Engines › Add from file**, and import PGNs
-with **Database › Import**. Set your name under **Settings › Databases** so Outpost can tell which
+with **Database › Import**. Set your name under **Settings › Databases** so Fast can tell which
 games are yours.
 
 On a shell without a Wayland session variable set correctly (some WSLg terminals), set
@@ -51,4 +51,4 @@ cargo clippy --workspace --all-targets -- -D warnings
 ```
 
 See [ARCHITECTURE.md](ARCHITECTURE.md). Package installers with
-[cargo-bundle](https://github.com/burtonageo/cargo-bundle): `cargo bundle --release -p outpost`.
+[cargo-bundle](https://github.com/burtonageo/cargo-bundle): `cargo bundle --release -p fast`.

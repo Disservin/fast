@@ -9,7 +9,7 @@
 | `db` | no | One SQLite file per database, streaming PGN import, filters, position search, notes |
 | `trainer` | no | Repertoire tree, SM-2 scheduler, leak and gap detection |
 | `ui` | yes | Design tokens and shared views: `BoardView`, scoresheet, timeline, buttons |
-| `outpost` (`crates/app`) | yes | Window, routing, shortcuts, the five screens, configuration, demo mode |
+| `fast` (`crates/app`) | yes | Window, routing, shortcuts, the five screens, configuration, demo mode |
 
 The four domain crates are pure and unit-tested, including a fake UCI engine for process tests
 (`crates/engine/tests`).
@@ -54,14 +54,14 @@ The UI thread never blocks on engines or databases.
 ## Rendering cost
 
 Profiling a full redraw at 1440×900 under llvmpipe puts about 97% of frame time in rasterization
-and about 2% in Outpost's code, and every screen costs about the same. Views should still avoid
+and about 2% in Fast's code, and every screen costs about the same. Views should still avoid
 needless frames: the board positions pieces proportionally so a resize needs only one draw.
 
 ## Files
 
-- Config: `<config dir>/outpost/config.toml`, including per-engine options re-applied at launch.
-- Data: `<data dir>/outpost/{databases/*.sqlite, repertoire.json, notes.sqlite}`.
-- Demo mode uses `outpost-demo` instead and is regenerated if its stamp file is missing.
+- Config: `<config dir>/fast/config.toml`, including per-engine options re-applied at launch.
+- Data: `<data dir>/fast/{databases/*.sqlite, repertoire.json, notes.sqlite}`.
+- Demo mode uses `fast-demo` instead and is regenerated if its stamp file is missing.
 
 ## Known limits
 
@@ -73,5 +73,5 @@ needless frames: the board positions pieces proportionally so a resize needs onl
 - **Language** only offers English; Light and Match system themes are disabled, as planned.
 - **Tablebases:** `SyzygyPath` is passed to engines, but there is no built-in WDL/DTZ badge, so
   `shakmaty-syzygy` is not a dependency yet.
-- **Check for update** cannot check anything, since Outpost is offline; it says so.
+- **Check for update** cannot check anything, since Fast is offline; it says so.
 - The Line preview explanation is a hook with no content outside demo mode.

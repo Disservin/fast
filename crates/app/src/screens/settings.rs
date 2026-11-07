@@ -1165,7 +1165,7 @@ impl SettingsScreen {
                                 let name = name.clone();
                                 update_model.update(cx, |model, cx| {
                                     model.toast(
-                                        format!("Outpost works offline, so it cannot look up {name} versions. Compare with the engine's website."),
+                                        format!("Fast works offline, so it cannot look up {name} versions. Compare with the engine's website."),
                                         cx,
                                     );
                                 });
@@ -1295,9 +1295,11 @@ impl SettingsScreen {
 
     fn render_accounts(&mut self) -> impl IntoElement + use<> {
         v_flex().gap(px(16.)).child(page_title("Accounts")).child(
-            section("Offline by design").child(div().text_color(rgb(T.fg_2)).child(
-                "Outpost has no accounts or cloud sync: everything stays on this computer.",
-            )),
+            section("Offline by design").child(
+                div().text_color(rgb(T.fg_2)).child(
+                    "Fast has no accounts or cloud sync: everything stays on this computer.",
+                ),
+            ),
         )
     }
 }

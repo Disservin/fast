@@ -1,4 +1,4 @@
-//! Outpost: a desktop chess workstation.
+//! Fast: a desktop chess workstation.
 
 mod assets;
 mod config;
@@ -97,9 +97,9 @@ mod tests {
     #[test]
     fn cli_parsing() {
         let parse = |args: &[&str]| Cli::parse(args.iter().map(|arg| (*arg).to_owned()));
-        assert_eq!(parse(&["outpost"]), Cli::default());
+        assert_eq!(parse(&["fast"]), Cli::default());
         assert_eq!(
-            parse(&["outpost", "--demo", "--screen", "train"]),
+            parse(&["fast", "--demo", "--screen", "train"]),
             Cli {
                 demo: true,
                 screen: Some("train".to_owned()),

@@ -11,7 +11,7 @@ use engine::EngineConfig;
 use serde::{Deserialize, Serialize};
 use ui::{BoardPrefs, BoardTheme, CoordinateStyle, PieceSet};
 
-/// Where Outpost keeps its files. Demo mode uses a separate tree.
+/// Where Fast keeps its files. Demo mode uses a separate tree.
 #[derive(Clone, Debug)]
 pub struct Paths {
     pub config_file: PathBuf,
@@ -22,7 +22,12 @@ impl Paths {
     pub fn resolve(demo: bool) -> Self {
         let base_config = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
         let base_data = dirs::data_dir().unwrap_or_else(|| PathBuf::from("."));
-        let suffix = if demo { "outpost-demo" } else { "outpost" };
+        let suffix = if demo { "fast-demo" } else { "fast" };
+        if !demo {
+            // Profiles from when the app was called Outpost move over on first launch.
+            migrate_dir(&base_config.join("outpost"), &base_config.join(suffix));
+            migrate_dir(&base_data.join("outpost"), &base_data.join(suffix));
+        }
         Self {
             config_file: base_config.join(suffix).join("config.toml"),
             data_dir: base_data.join(suffix),
@@ -39,6 +44,20 @@ impl Paths {
 
     pub fn notes_file(&self) -> PathBuf {
         self.data_dir.join("notes.sqlite")
+    }
+}
+
+/// Moves a directory to its new name unless the new one already exists.
+fn migrate_dir(old: &Path, new: &Path) {
+    if old.is_dir()
+        && !new.exists()
+        && let Err(err) = std::fs::rename(old, new)
+    {
+        log::warn!(
+            "could not move {} to {}: {err}",
+            old.display(),
+            new.display()
+        );
     }
 }
 
@@ -240,6 +259,21 @@ mod tests {
         });
         config.save(&path).unwrap();
         assert_eq!(Config::load(&path), config);
+    }
+
+    #[test]
+    fn old_profile_moves_only_when_the_new_one_is_absent() {
+        let dir = tempfile::tempdir().unwrap();
+        let (old, new) = (dir.path().join("outpost"), dir.path().join("fast"));
+        std::fs::create_dir(&old).unwrap();
+        std::fs::write(old.join("config.toml"), "x").unwrap();
+        migrate_dir(&old, &new);
+        assert!(new.join("config.toml").exists());
+        assert!(!old.exists());
+        // An existing new profile is never overwritten.
+        std::fs::create_dir(&old).unwrap();
+        migrate_dir(&old, &new);
+        assert!(old.exists() && new.exists());
     }
 
     #[test]

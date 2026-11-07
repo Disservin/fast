@@ -227,7 +227,7 @@ impl RenderOnce for Btn {
         let disabled = self.disabled;
         let mut el = div()
             .id(self.id)
-            .key_context("OutpostButton")
+            .key_context("FastButton")
             .track_focus(&focus)
             .flex()
             .flex_none()
@@ -384,7 +384,7 @@ impl RenderOnce for Check {
             });
         div()
             .id(self.id)
-            .key_context("OutpostButton")
+            .key_context("FastButton")
             .track_focus(&focus)
             .flex()
             .w_full()

@@ -55,7 +55,7 @@ fn hsla(color: u32) -> Hsla {
     rgb(color).into()
 }
 
-/// Maps Outpost's tokens onto the component library so inputs, selects, sliders
+/// Maps Fast's tokens onto the component library so inputs, selects, sliders
 /// and checkboxes read as part of one design.
 pub fn apply_component_theme(cx: &mut App) {
     let theme = ComponentTheme::global_mut(cx);
