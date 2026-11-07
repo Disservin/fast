@@ -2617,6 +2617,9 @@ impl AnalyseScreen {
             anchored().position(position).child(
                 v_flex()
                     .id("scoresheet-context")
+                    // Keep the parent dismissal handler from removing the menu
+                    // on mouse-down before its items receive their click.
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                     .w(px(190.))
                     .py(px(4.))
                     .bg(rgb(T.surface))
