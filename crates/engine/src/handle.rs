@@ -83,6 +83,7 @@ enum Request {
     Stop,
     SetOption { name: String, value: Option<String> },
     NewGame,
+    Debug(bool),
     Line(UciLine),
     Eof(String),
     Quit,
@@ -152,6 +153,11 @@ impl EngineHandle {
             name: name.into(),
             value,
         });
+    }
+
+    /// Turns the engine's UCI debug mode on or off (`debug on` / `debug off`).
+    pub fn set_debug(&self, on: bool) {
+        let _ = self.commands.send(Request::Debug(on));
     }
 
     pub fn new_game(&self) {
@@ -429,6 +435,11 @@ fn supervise(
                 Ok(())
             }
             Request::NewGame => process.send("ucinewgame"),
+            Request::Debug(on) if !handshake_done => {
+                deferred.push_back(Request::Debug(on));
+                Ok(())
+            }
+            Request::Debug(on) => process.send(if on { "debug on" } else { "debug off" }),
             Request::Eof(reason) => {
                 emit(EngineEvent::Crashed(reason));
                 return;
@@ -460,6 +471,9 @@ fn supervise(
                     }
                     Request::NewGame => {
                         let _ = process.send("ucinewgame");
+                    }
+                    Request::Debug(on) => {
+                        let _ = process.send(if on { "debug on" } else { "debug off" });
                     }
                     _ => {}
                 }

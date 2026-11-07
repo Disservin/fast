@@ -92,6 +92,54 @@ impl Default for BoardPrefs {
 pub struct Arrow {
     pub from: Square,
     pub to: Square,
+    /// `0xRRGGBB`; the theme's arrow orange when `None`.
+    pub color: Option<u32>,
+}
+
+impl Arrow {
+    pub fn new(from: Square, to: Square) -> Self {
+        Self {
+            from,
+            to,
+            color: None,
+        }
+    }
+
+    pub fn with_color(mut self, color: u32) -> Self {
+        self.color = Some(color);
+        self
+    }
+}
+
+/// An arrow in grid coordinates: from, to and colour.
+type ArrowCells = ((u32, u32), (u32, u32), u32);
+
+/// Lichess' last-move tint, rgba(155, 199, 0, 0.41), laid over a square colour.
+pub fn last_move_color(base: u32) -> u32 {
+    blend(base, 0x9BC700, 0.41)
+}
+
+/// Lichess' selected-square and move-destination green, rgba(20, 85, 30, 0.5).
+pub const DEST_GREEN: (f32, f32, f32, f32) = (20., 85., 30., 0.5);
+
+/// `top` at opacity `alpha` over `base`, both `0xRRGGBB`.
+pub fn blend(base: u32, top: u32, alpha: f32) -> u32 {
+    let channel = |shift: u32| {
+        let b = ((base >> shift) & 0xFF) as f32;
+        let t = ((top >> shift) & 0xFF) as f32;
+        ((b + (t - b) * alpha).round() as u32).min(255) << shift
+    };
+    channel(16) | channel(8) | channel(0)
+}
+
+fn dest_green() -> gpui::Rgba {
+    let (r, g, b, a) = DEST_GREEN;
+    gpui::Rgba {
+        r: r / 255.,
+        g: g / 255.,
+        b: b / 255.,
+        a,
+    }
 }
 
 pub enum BoardEvent {
@@ -402,7 +450,7 @@ impl BoardView {
                         self.circles.insert(to);
                     }
                 } else {
-                    let arrow = Arrow { from, to };
+                    let arrow = Arrow::new(from, to);
                     if let Some(index) = self.user_arrows.iter().position(|a| *a == arrow) {
                         self.user_arrows.remove(index);
                     } else {
@@ -572,11 +620,14 @@ impl Render for BoardView {
                 let color = match (is_light, highlighted) {
                     (true, false) => light,
                     (false, false) => dark,
-                    (true, true) => T.last_move_light,
-                    (false, true) => T.last_move_dark,
+                    (true, true) => last_move_color(light),
+                    (false, true) => last_move_color(dark),
                 };
                 let coordinate_color = if is_light { 0x5C5851 } else { 0xF0EEE9 };
                 let mut sq = div().relative().flex_1().bg(rgb(color));
+                if self.selected == Some(square) && self.interactive && !editing {
+                    sq = sq.child(div().absolute().inset_0().bg(dest_green()));
+                }
                 if on_squares && x == 0 {
                     sq = sq.child(
                         div()
@@ -669,17 +720,15 @@ impl Render for BoardView {
                 .flex()
                 .items_center()
                 .justify_center()
+                // Lichess: a round dot on empty squares, a ring around capturable pieces.
                 .child(if occupied {
                     div()
                         .size_full()
                         .rounded_full()
-                        .border(cell * 0.08)
-                        .border_color(gpui::hsla(0., 0., 0.08, 0.42))
+                        .border(cell * 0.09)
+                        .border_color(dest_green())
                 } else {
-                    div()
-                        .size(relative(0.28))
-                        .rounded_full()
-                        .bg(gpui::hsla(0., 0., 0.08, 0.42))
+                    div().size(relative(0.3)).rounded_full().bg(dest_green())
                 });
             root = root.child(hint);
         }
@@ -692,9 +741,15 @@ impl Render for BoardView {
             self.arrows.clone()
         };
         arrows.extend(self.user_arrows.iter().copied());
-        let arrow_cells: Vec<((u32, u32), (u32, u32))> = arrows
+        let arrow_cells: Vec<ArrowCells> = arrows
             .iter()
-            .map(|arrow| (self.grid(arrow.from), self.grid(arrow.to)))
+            .map(|arrow| {
+                (
+                    self.grid(arrow.from),
+                    self.grid(arrow.to),
+                    arrow.color.unwrap_or(T.arrow),
+                )
+            })
             .collect();
         let capture = entity.clone();
         let letters = self.prefs.pieces == PieceSet::Letters;
@@ -718,17 +773,14 @@ impl Render for BoardView {
                     let entity = entity.clone();
                     let interactive = self.interactive;
                     move |bounds, _, window, cx| {
-                        let color: gpui::Hsla = {
-                            let mut color: gpui::Hsla = rgb(T.arrow).into();
-                            color.a = 0.88;
-                            color
-                        };
                         let cell = bounds.size.width / 8.;
                         let center = |(x, y): (u32, u32)| {
                             bounds.origin + point(cell * (x as f32 + 0.5), cell * (y as f32 + 0.5))
                         };
-                        for (from, to) in &arrow_cells {
+                        for (from, to, color) in &arrow_cells {
                             if let Some(path) = arrow_path(center(*from), center(*to), cell) {
+                                let mut color: gpui::Hsla = rgb(*color).into();
+                                color.a = 0.85;
                                 window.paint_path(path, color);
                             }
                         }
@@ -915,4 +967,19 @@ pub fn theme_swatch(theme: BoardTheme, size: Pixels, _cx: &App) -> impl IntoElem
         .size(size)
         .child(div().flex().child(square(light)).child(square(dark)))
         .child(div().flex().child(square(dark)).child(square(light)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn last_move_tint_blends_toward_lichess_green_yellow() {
+        assert_eq!(blend(0x000000, 0xFFFFFF, 0.5), 0x808080);
+        assert_eq!(blend(0x123456, 0xABCDEF, 0.0), 0x123456);
+        let tinted = last_move_color(0xDCD8D0);
+        // Green rises above red and blue drops, like Lichess' highlight.
+        let (r, g, b) = (tinted >> 16, (tinted >> 8) & 0xFF, tinted & 0xFF);
+        assert!(g > r && b < 0xD0);
+    }
 }

@@ -43,6 +43,13 @@ the edges. `--client-decorations` forces the controls on, to test them elsewhere
 only set while idle always holds. Each handle also keeps a bounded `EngineLog` of stdin, stdout
 and stderr, which outlives the process so a crash can still be read.
 
+## Analysis cache
+
+`LiveAnalysis` keeps a `LineCache` of each engine's lines per position hash (Zobrist), so lines
+survive navigation and transpositions share them. Restored lines are marked `cached` and stay
+until the new search reaches their depth. Changing an engine's options or configuration
+forgets its entries; the cache starts over past 50,000 positions.
+
 ## Threads
 
 The UI thread never blocks on engines or databases.
@@ -75,7 +82,6 @@ needless frames: the board positions pieces proportionally so a resize needs onl
 - **WSLg frame rate:** measured at 25–28 fps at 1440×900, including through an RTX 4090 via Mesa's
   D3D12 driver, so a faster renderer does not lift it there.
 
-- **Set up** takes a FEN rather than offering a drag-and-drop board editor.
 - **Move sounds** is stored but no audio is played.
 - **Language** only offers English; Light and Match system themes are disabled, as planned.
 - **Tablebases:** `SyzygyPath` is passed to engines, but there is no built-in WDL/DTZ badge, so

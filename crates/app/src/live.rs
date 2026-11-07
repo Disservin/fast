@@ -1,6 +1,9 @@
 //! Continuous multi-engine analysis of one position, throttled for the UI.
 
-use std::{collections::BTreeMap, time::Duration};
+use std::{
+    collections::{BTreeMap, HashMap},
+    time::Duration,
+};
 
 use chess_core::{GameTree, Move, NodeId, Position, position_hash, shakmaty::uci::UciMove};
 use engine::{
@@ -17,6 +20,73 @@ use crate::{
 /// UI updates per engine are bounded to one per this interval (≤ 10 Hz).
 const THROTTLE: Duration = Duration::from_millis(100);
 
+/// Positions remembered per engine before the cache starts over.
+const CACHE_LIMIT: usize = 50_000;
+
+/// Lines per engine and position hash. Keyed by position, not by node, so a
+/// transposition reached by another move order finds the same analysis.
+#[derive(Default)]
+pub struct LineCache {
+    entries: HashMap<(EngineId, u64), BTreeMap<u32, LiveLine>>,
+}
+
+impl LineCache {
+    pub fn get(&self, engine: EngineId, hash: u64) -> Option<&BTreeMap<u32, LiveLine>> {
+        self.entries.get(&(engine, hash))
+    }
+
+    /// Stores lines, keeping deeper ones already known for the position.
+    pub fn store(&mut self, engine: EngineId, hash: u64, lines: &BTreeMap<u32, LiveLine>) {
+        if lines.is_empty() {
+            return;
+        }
+        if self.entries.len() >= CACHE_LIMIT {
+            self.entries.clear();
+        }
+        let deepest =
+            |lines: &BTreeMap<u32, LiveLine>| lines.get(&1).map_or(0, |line| line.update.depth);
+        let key = (engine, hash);
+        if self
+            .entries
+            .get(&key)
+            .is_some_and(|known| deepest(known) > deepest(lines))
+        {
+            return;
+        }
+        let stored = lines
+            .iter()
+            .map(|(multipv, line)| {
+                let mut line = line.clone();
+                line.cached = true;
+                (*multipv, line)
+            })
+            .collect();
+        self.entries.insert(key, stored);
+    }
+
+    pub fn forget_engine(&mut self, engine: EngineId) {
+        self.entries.retain(|(id, _), _| *id != engine);
+    }
+
+    /// The best line's White-relative eval and depth for a position from any engine,
+    /// preferring the order given.
+    pub fn eval(&self, engines: &[EngineId], hash: u64) -> Option<(i32, u32)> {
+        engines.iter().find_map(|&id| {
+            let line = self.get(id, hash)?.get(&1)?;
+            Some((score_cp(line.score?), line.update.depth))
+        })
+    }
+}
+
+/// A White-relative score as centipawns for graphs, mates at the edge.
+pub fn score_cp(score: Score) -> i32 {
+    match score {
+        Score::Cp(cp) => cp,
+        Score::Mate(mate) if mate > 0 => chess_core::annotation::MATE_CP,
+        Score::Mate(_) => -chess_core::annotation::MATE_CP,
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct LiveLine {
     pub update: AnalysisUpdate,
@@ -26,6 +96,9 @@ pub struct LiveLine {
     pub wdl: Option<Wdl>,
     /// PV converted to SAN from the analysed position.
     pub sans: Vec<String>,
+    /// Remembered from an earlier visit to this position; replaced once the running
+    /// search reaches the same depth.
+    pub cached: bool,
 }
 
 pub struct LiveEngine {
@@ -47,8 +120,9 @@ impl LiveEngine {
 
 pub enum LiveEvent {
     Updated,
-    /// An engine reached an evaluation for the analysed node (White-relative cp).
-    Eval(NodeId, i32),
+    /// An engine reached an evaluation for the analysed node (White-relative cp)
+    /// at a depth.
+    Eval(NodeId, i32, u32),
 }
 
 pub struct LiveAnalysis {
@@ -61,6 +135,8 @@ pub struct LiveAnalysis {
     search_id: u64,
     node: Option<NodeId>,
     pos: Option<chess_core::Chess>,
+    hash: u64,
+    pub cache: LineCache,
     fen: String,
     moves: Vec<String>,
     _model_sub: gpui::Subscription,
@@ -84,6 +160,8 @@ impl LiveAnalysis {
             search_id: 0,
             node: None,
             pos: None,
+            hash: 0,
+            cache: LineCache::default(),
             fen: String::new(),
             moves: Vec::new(),
             _model_sub: sub,
@@ -104,10 +182,17 @@ impl LiveAnalysis {
         let previous: Vec<_> = std::mem::take(&mut self.engines);
         for config in configs {
             let existing = previous.iter().find(|live| live.config == config);
+            if existing.is_none() {
+                self.cache.forget_engine(config.id);
+            }
             let mut live = LiveEngine {
                 config: config.clone(),
                 handle: None,
-                lines: BTreeMap::new(),
+                lines: self
+                    .cache
+                    .get(config.id, self.hash)
+                    .cloned()
+                    .unwrap_or_default(),
                 running: false,
                 log: EngineLog::default(),
                 _reader: None,
@@ -168,9 +253,11 @@ impl LiveAnalysis {
     fn apply_events(&mut self, id: EngineId, batch: Vec<EngineEvent>, cx: &mut Context<Self>) {
         let mut crash = None;
         let mut newest_eval = None;
+        let mut analysed = false;
         let search_id = self.search_id;
         let node = self.node;
         let pos = self.pos.clone();
+        let hash = self.hash;
         let Some(live) = self.engines.iter_mut().find(|live| live.config.id == id) else {
             return;
         };
@@ -197,6 +284,15 @@ impl LiveAnalysis {
                     update,
                 } if from == search_id => {
                     let Some(pos) = &pos else { continue };
+                    // Remembered lines stay until the new search is as deep.
+                    if live
+                        .lines
+                        .get(&update.multipv)
+                        .is_some_and(|line| line.cached && line.update.depth > update.depth)
+                    {
+                        continue;
+                    }
+                    analysed = true;
                     // A fail-high/low line's move is only the one being tried: keep the
                     // last real line and its score, and take just the search progress.
                     if update.bound
@@ -223,16 +319,7 @@ impl LiveAnalysis {
                         && !update.bound
                         && let Some(score) = score
                     {
-                        newest_eval = Some(match score {
-                            Score::Cp(cp) => cp,
-                            Score::Mate(mate) => {
-                                if mate > 0 {
-                                    2000
-                                } else {
-                                    -2000
-                                }
-                            }
-                        });
+                        newest_eval = Some((score_cp(score), update.depth));
                     }
                     let sans = chess_core::pv_to_san(pos, &update.pv);
                     live.lines.insert(
@@ -242,6 +329,7 @@ impl LiveAnalysis {
                             score,
                             wdl,
                             sans,
+                            cached: false,
                         },
                     );
                 }
@@ -256,6 +344,9 @@ impl LiveAnalysis {
                 EngineEvent::Crashed(reason) => crash = Some(reason),
             }
         }
+        if analysed {
+            self.cache.store(id, hash, &live.lines);
+        }
         if let Some(reason) = crash {
             live.handle = None;
             live.running = false;
@@ -268,8 +359,8 @@ impl LiveAnalysis {
                 model.toast(format!("{name} stopped: {reason}"), cx);
             });
         }
-        if let (Some(node), Some(cp)) = (node, newest_eval) {
-            cx.emit(LiveEvent::Eval(node, cp));
+        if let (Some(node), Some((cp, depth))) = (node, newest_eval) {
+            cx.emit(LiveEvent::Eval(node, cp, depth));
         }
         cx.emit(LiveEvent::Updated);
         cx.notify();
@@ -307,6 +398,8 @@ impl LiveAnalysis {
             }
             model.save_config(cx);
         });
+        // Lines found under other settings (another network, fewer lines) no longer apply.
+        self.cache.forget_engine(id);
         if let Some(live) = self.engines.iter_mut().find(|live| live.config.id == id) {
             live.config.options.insert(name.to_owned(), value.clone());
             live.lines.clear();
@@ -389,11 +482,27 @@ impl LiveAnalysis {
             pos.play_unchecked(*mv);
         }
         self.node = extra.is_empty().then_some(node);
+        self.hash = position_hash(&pos);
         self.pos = Some(pos);
         self.fen = root_fen;
         self.moves = moves;
+        let hash = self.hash;
+        let mut known = None;
         for engine in &mut self.engines {
-            engine.lines.clear();
+            engine.lines = self
+                .cache
+                .get(engine.config.id, hash)
+                .cloned()
+                .unwrap_or_default();
+            if known.is_none()
+                && let Some(line) = engine.lines.get(&1)
+                && let Some(score) = line.score
+            {
+                known = Some((score_cp(score), line.update.depth));
+            }
+        }
+        if let (Some(node), Some((cp, depth))) = (self.node, known) {
+            cx.emit(LiveEvent::Eval(node, cp, depth));
         }
         self.search(cx);
         cx.emit(LiveEvent::Updated);
@@ -409,6 +518,10 @@ impl LiveAnalysis {
         let terminal = pos.is_game_over();
         self.search_id += 1;
         let hash = position_hash(pos);
+        let depth_limit = match self.model.read(cx).config.analysis_limit {
+            AnalysisLimit::Depth(depth) => Some(depth),
+            _ => None,
+        };
         let demo = self.model.read(cx).demo;
         let limits = match self.model.read(cx).config.analysis_limit {
             AnalysisLimit::Infinite => None,
@@ -461,6 +574,7 @@ impl LiveAnalysis {
                                 score,
                                 wdl,
                                 sans,
+                                cached: false,
                             },
                         );
                     }
@@ -476,6 +590,17 @@ impl LiveAnalysis {
                 handle.stop();
                 continue;
             }
+            // A remembered line already reaches the depth limit: nothing to search.
+            if let Some(limit) = depth_limit
+                && engine
+                    .lines
+                    .get(&1)
+                    .is_some_and(|line| line.update.depth >= limit)
+            {
+                handle.stop();
+                engine.running = false;
+                continue;
+            }
             engine.running = true;
             handle.search(SearchRequest {
                 fen: self.fen.clone(),
@@ -484,6 +609,11 @@ impl LiveAnalysis {
                 search_id: self.search_id,
             });
         }
+    }
+
+    /// Engine ids in table order, for cache lookups.
+    pub fn engine_ids(&self) -> Vec<EngineId> {
+        self.engines.iter().map(|engine| engine.config.id).collect()
     }
 
     /// Principal engine for the eval column and line preview.
@@ -506,5 +636,49 @@ impl LiveAnalysis {
                     .iter()
                     .find(|engine| engine.lines.values().any(|line| line.wdl.is_some()))
             })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn lines(depth: u32, cp: i32) -> BTreeMap<u32, LiveLine> {
+        let line = LiveLine {
+            update: AnalysisUpdate {
+                depth,
+                multipv: 1,
+                ..Default::default()
+            },
+            score: Some(Score::Cp(cp)),
+            ..Default::default()
+        };
+        [(1, line)].into_iter().collect()
+    }
+
+    #[test]
+    fn cache_keeps_the_deepest_lines_and_marks_them() {
+        let mut cache = LineCache::default();
+        cache.store(1, 42, &lines(20, 30));
+        cache.store(1, 42, &lines(12, -10));
+        let kept = cache.get(1, 42).unwrap();
+        assert_eq!(kept[&1].update.depth, 20);
+        assert!(kept[&1].cached);
+        cache.store(1, 42, &lines(25, 15));
+        assert_eq!(cache.eval(&[1], 42), Some((15, 25)));
+        // Another engine's analysis of the same position is separate.
+        assert_eq!(cache.eval(&[2], 42), None);
+        cache.store(2, 42, &lines(8, 50));
+        assert_eq!(cache.eval(&[2, 1], 42), Some((50, 8)));
+        cache.forget_engine(1);
+        assert!(cache.get(1, 42).is_none());
+        assert!(cache.get(2, 42).is_some());
+    }
+
+    #[test]
+    fn mates_map_to_the_graph_edge() {
+        assert_eq!(score_cp(Score::Mate(3)), 2000);
+        assert_eq!(score_cp(Score::Mate(-1)), -2000);
+        assert_eq!(score_cp(Score::Cp(-37)), -37);
     }
 }

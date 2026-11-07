@@ -348,6 +348,26 @@ impl AppModel {
     }
 }
 
+/// Opens the raw-output window for a running engine, or says how to start it.
+pub fn open_debug_window(model: &Entity<AppModel>, id: EngineId, cx: &mut App) {
+    let (log, name) = {
+        let model = model.read(cx);
+        let name = model
+            .engine(id)
+            .map_or_else(|| "Engine".to_owned(), |config| config.name.clone());
+        (model.manager.get(id).map(|handle| handle.log()), name)
+    };
+    match log {
+        Some(log) => crate::debug_window::DebugWindow::open(&name, log, cx),
+        None => model.update(cx, |model, cx| {
+            model.toast(
+                format!("{name} is not running. Turn it on for analysis to see its output."),
+                cx,
+            );
+        }),
+    }
+}
+
 fn file_key(path: &Path) -> String {
     path.file_stem()
         .map(|stem| stem.to_string_lossy().into_owned())

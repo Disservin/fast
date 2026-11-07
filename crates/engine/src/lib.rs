@@ -7,11 +7,13 @@
 pub mod handle;
 pub mod log;
 pub mod manager;
+pub mod quality;
 pub mod uci;
 
 pub use handle::{EngineEvent, EngineHandle, EngineId, Limits, SearchRequest};
 pub use log::{EngineLog, LogKind, LogLine};
-pub use manager::{EngineConfig, EngineManager, EngineStatus};
+pub use manager::{EngineConfig, EngineManager, EngineProfile, EngineStatus};
+pub use quality::{Quality, classify as classify_move};
 pub use uci::{
     AnalysisUpdate, EngineInfo, OptionKind, Score, UciOption, Wdl, format_nodes, format_speed,
 };

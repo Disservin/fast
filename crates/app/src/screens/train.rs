@@ -257,7 +257,7 @@ impl TrainScreen {
         self.phase = Phase::Revealed;
         self.message = Some("Answer shown. Grade how well you knew it.".into());
         self.board.update(cx, |board, cx| {
-            board.set_arrows(vec![Arrow { from, to: mv.to() }], cx);
+            board.set_arrows(vec![Arrow::new(from, mv.to())], cx);
             board.set_interactive(false, cx);
         });
         cx.notify();

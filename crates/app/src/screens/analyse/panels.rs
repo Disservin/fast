@@ -206,6 +206,10 @@ impl AnalyseScreen {
             .cloned()
     }
 
+    pub(super) fn panel_engine_id(&self, cx: &gpui::App) -> Option<EngineId> {
+        self.panel_engine_config(cx).map(|config| config.id)
+    }
+
     /// Depth, nodes and speed, with the buttons that open the panels.
     pub(super) fn render_table_tools(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let this = cx.entity();
@@ -218,11 +222,60 @@ impl AnalyseScreen {
         });
         let live = self.live.read(cx);
         let (on, paused) = (live.on, live.paused);
+        let view = self.model.read(cx).config.view.clone();
+        let sort_this = this.clone();
+        let all_this = this.clone();
+        let arrows_this = this.clone();
+        let small = |id: &'static str, label: &'static str| btn(id, label).h(26.).pad(8.).text(12.);
+        let view_tools = h_flex()
+            .gap(px(4.))
+            .mr(px(6.))
+            .child(
+                small(
+                    "sort-lines",
+                    match view.sort {
+                        crate::config::LineSort::Eval => "By eval",
+                        crate::config::LineSort::Depth => "By depth",
+                    },
+                )
+                .tooltip("Order engine lines by evaluation or by search depth")
+                .on_click(move |_, cx| {
+                    sort_this.update(cx, |screen, cx| {
+                        screen.set_view(cx, |view| {
+                            view.sort = match view.sort {
+                                crate::config::LineSort::Eval => crate::config::LineSort::Depth,
+                                crate::config::LineSort::Depth => crate::config::LineSort::Eval,
+                            };
+                        });
+                    });
+                }),
+            )
+            .child(
+                small("all-moves", "All moves")
+                    .selected(view.all_moves)
+                    .tooltip("List every legal move, analysed or not")
+                    .on_click(move |_, cx| {
+                        all_this.update(cx, |screen, cx| {
+                            screen.set_view(cx, |view| view.all_moves = !view.all_moves);
+                        });
+                    }),
+            )
+            .child(
+                small("quality-arrows", "Arrows")
+                    .selected(view.quality_arrows)
+                    .tooltip("An arrow per engine line, coloured from best (blue) to blunder (red)")
+                    .on_click(move |_, cx| {
+                        arrows_this.update(cx, |screen, cx| {
+                            screen.set_view(cx, |view| view.quality_arrows = !view.quality_arrows);
+                        });
+                    }),
+            );
         let pause_this = this.clone();
         let engine_this = this.clone();
         let log_this = this;
         h_flex()
             .gap(px(6.))
+            .child(view_tools)
             .when_some(stats.filter(|_| self.show_wdl), |row, stats| {
                 row.child(
                     mono(stats)
@@ -417,6 +470,7 @@ impl AnalyseScreen {
                     }),
                 ),
             )
+            .child(crate::controls::engine_icon(config, 20.))
             .child(
                 div()
                     .id(SharedString::from(format!("engine-pick-{id}")))
@@ -785,6 +839,17 @@ impl AnalyseScreen {
                             });
                         }),
                 )
+                .child(
+                    btn("log-window", "Window")
+                        .h(26.)
+                        .pad(8.)
+                        .text(12.)
+                        .tooltip("Follow this engine's raw output in its own window")
+                        .on_click({
+                            let this = cx.entity();
+                            move |_, cx| this.update(cx, |screen, cx| screen.open_engine_output(cx))
+                        }),
+                )
                 .child(btn("log-clear", "Clear").h(26.).pad(8.).text(12.).on_click(
                     move |_, cx| {
                         clear_this.update(cx, |screen, cx| {
@@ -1058,7 +1123,7 @@ impl AnalyseScreen {
         self.pv_peek_at = (moves.len() > index).then(|| window.mouse_position());
         let squares = moves.get(index).and_then(move_squares);
         let arrows: Vec<Arrow> = squares
-            .map(|(from, to)| Arrow { from, to })
+            .map(|(from, to)| Arrow::new(from, to))
             .into_iter()
             .collect();
         self.board
@@ -1098,7 +1163,7 @@ impl AnalyseScreen {
             moves[start.min(moves.len())..]
                 .iter()
                 .filter_map(move_squares)
-                .map(|(from, to)| Arrow { from, to })
+                .map(|(from, to)| Arrow::new(from, to))
                 .collect()
         };
         self.board.update(cx, |board, cx| {

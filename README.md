@@ -41,6 +41,37 @@ and table all follow, without changing the game. Click a table row to continue t
 or drag across moves to highlight them as arrows. `Ctrl/Cmd+C` copies the highlight and `Esc`
 returns to the game.
 
+## Analysis display
+
+- **Moves from here** lists engine lines (MultiPV), database and repertoire moves. **By eval /
+  By depth** changes the order, **All moves** adds every legal move like Nibbler, and **Arrows**
+  draws one arrow per engine line, coloured from best (blue) through good (green), inaccuracy
+  (yellow) and mistake (orange) to blunder (red).
+- Lines are remembered per position, so stepping back and forth keeps them, and a position
+  reached by another move order (a transposition) shows what was already found.
+- Stepping forward returns into the variation you came back from.
+- The graph under the board has tabs: **Eval** (symmetric log scale), **Time** per move from
+  `[%clk]`/`[%emt]` or TCEC `mt=` comments, **Depth**, and the original **Bars** timeline.
+  Annotated games (`[%eval]`, TCEC `wv=`/`d=`) fill the graphs without an engine.
+- The scoresheet toggles between **Table** (Lichess style) and **Inline** (Nibbler style, each
+  variation depth in its own colour).
+
+## Engines
+
+Several engines can run side by side, including two entries for one binary: **Duplicate** an
+engine in Settings, then give each its own options (for example Lc0 with BT2 and Lc0 with Maia).
+Options are read from the engine and laid out in a compact grid; every UCI type is supported.
+**Profiles** save and switch whole option sets. Click the icon to choose a picture, otherwise a
+rook is shown; an image named after the binary, `logo.*` or `icon.*` next to it is picked up
+when the engine is added. The engine's `UCI_EngineAbout` text is shown as its description.
+**Debug** sends `debug on` and opens a window following the raw output (also under
+**Engine › Engine output window**, or **Window** in the Log panel).
+
+## Menus
+
+File, Edit, View, Go and Engine menus are native on macOS and drawn in the top bar elsewhere.
+**File** opens and saves PGN files (FEN too), and **Edit** copies or pastes FEN and PGN.
+
 ## Keyboard shortcuts
 
 Rebindable under **Settings › Keyboard shortcuts**.

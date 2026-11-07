@@ -187,6 +187,75 @@ pub enum AnalysisLimit {
     Seconds(u32),
 }
 
+/// How the Moves table orders engine lines.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LineSort {
+    #[default]
+    Eval,
+    Depth,
+}
+
+/// How the scoresheet lays out the game.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ScoresheetStyle {
+    /// Lichess: a move table, variations as indented blocks.
+    #[default]
+    Table,
+    /// Nibbler: running text, each variation depth in its own colour.
+    Inline,
+}
+
+/// Which graph sits under the board.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GraphTab {
+    Timeline,
+    #[default]
+    Eval,
+    Time,
+    Depth,
+}
+
+impl GraphTab {
+    pub const ALL: [Self; 4] = [Self::Eval, Self::Time, Self::Depth, Self::Timeline];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Timeline => "Bars",
+            Self::Eval => "Eval",
+            Self::Time => "Time",
+            Self::Depth => "Depth",
+        }
+    }
+}
+
+/// Analyse screen display choices.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AnalysisView {
+    pub sort: LineSort,
+    /// List every legal move, analysed or not, like Nibbler.
+    pub all_moves: bool,
+    /// One arrow per engine line, coloured by how much it loses against the best.
+    pub quality_arrows: bool,
+    pub scoresheet: ScoresheetStyle,
+    pub graph: GraphTab,
+}
+
+impl Default for AnalysisView {
+    fn default() -> Self {
+        Self {
+            sort: LineSort::Eval,
+            all_moves: false,
+            quality_arrows: true,
+            scoresheet: ScoresheetStyle::Table,
+            graph: GraphTab::Eval,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
@@ -200,6 +269,7 @@ pub struct Config {
     pub next_engine_id: u64,
     pub engine_on: bool,
     pub analysis_limit: AnalysisLimit,
+    pub view: AnalysisView,
 }
 
 impl Default for Config {
@@ -214,6 +284,7 @@ impl Default for Config {
             next_engine_id: 1,
             engine_on: true,
             analysis_limit: AnalysisLimit::default(),
+            view: AnalysisView::default(),
         }
     }
 }
@@ -264,6 +335,9 @@ mod tests {
         config.board.theme = SavedTheme::Moss;
         config.board.notation = Notation::Figurine;
         config.analysis_limit = AnalysisLimit::Depth(30);
+        config.view.sort = LineSort::Depth;
+        config.view.scoresheet = ScoresheetStyle::Inline;
+        config.view.graph = GraphTab::Time;
         config.engines.push(EngineConfig {
             id: 3,
             name: "Stockfish".to_owned(),
@@ -271,6 +345,14 @@ mod tests {
             options: [("Hash".to_owned(), "512".to_owned())]
                 .into_iter()
                 .collect(),
+            profiles: vec![engine::EngineProfile {
+                name: "Big hash".to_owned(),
+                options: [("Hash".to_owned(), "4096".to_owned())]
+                    .into_iter()
+                    .collect(),
+            }],
+            icon: Some("/tmp/sf.png".into()),
+            debug: true,
             ..Default::default()
         });
         config.save(&path).unwrap();

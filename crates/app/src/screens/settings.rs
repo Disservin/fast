@@ -23,7 +23,7 @@ use ui::{
 
 use crate::{
     config::{SavedCoordinates, SavedPieces, SavedTheme},
-    controls::{TextSelect, new_input, new_select, select_el, text_input},
+    controls::{TextSelect, engine_icon, new_input, new_select, select_el, text_input},
     model::{AppModel, ModelEvent, pick_path, split_engine_name},
     screens::database::format_count,
     shell,
@@ -111,18 +111,51 @@ fn option_rank(name: &str) -> usize {
 }
 
 /// Options the app itself drives, so they are not offered as settings.
+/// `UCI_EngineAbout` is the engine's description and is shown as text instead.
 fn option_is_hidden(name: &str) -> bool {
     matches!(
         name,
-        "UCI_LimitStrength" | "UCI_Elo" | "UCI_AnalyseMode" | "UCI_Chess960" | "Ponder"
+        "UCI_LimitStrength"
+            | "UCI_Elo"
+            | "UCI_AnalyseMode"
+            | "UCI_Chess960"
+            | "Ponder"
+            | "UCI_EngineAbout"
     )
 }
+
+/// Inputs first, then switches, then buttons, as Arena groups them.
+fn option_group(kind: &OptionKind) -> usize {
+    match kind {
+        OptionKind::Spin { .. } | OptionKind::Combo { .. } | OptionKind::String { .. } => 0,
+        OptionKind::Check { .. } => 1,
+        OptionKind::Button => 2,
+    }
+}
+
+/// A picture shipped next to the engine binary: `<name>.png`, `logo.png`, `icon.svg`…
+pub fn find_icon(engine: &std::path::Path) -> Option<PathBuf> {
+    let dir = engine.parent()?;
+    let stem = engine.file_stem()?.to_string_lossy().into_owned();
+    let names = [stem.as_str(), "logo", "icon"];
+    names.iter().find_map(|name| {
+        ["png", "svg", "jpg", "jpeg"].iter().find_map(|ext| {
+            let candidate = dir.join(format!("{name}.{ext}"));
+            candidate.is_file().then_some(candidate)
+        })
+    })
+}
+
+/// Width of one cell in the engine options grid.
+const OPTION_CELL_W: f32 = 232.;
 
 pub struct SettingsScreen {
     model: Entity<AppModel>,
     page: SettingsPage,
     selected_engine: Option<EngineId>,
     path_input: Entity<InputState>,
+    name_input: Entity<InputState>,
+    profile_input: Entity<InputState>,
     option_inputs: HashMap<String, Entity<InputState>>,
     option_selects: HashMap<String, TextSelect>,
     language: TextSelect,
@@ -149,7 +182,21 @@ impl SettingsScreen {
         let name = model.read(cx).config.player_name.clone();
         let player_name = new_input(name, "Your name in game headers", window, cx);
         let path_input = cx.new(|cx| InputState::new(window, cx));
+        let name_input = cx.new(|cx| InputState::new(window, cx));
+        let profile_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("Profile name, e.g. BT2"));
         let subscriptions = vec![
+            cx.subscribe_in(&name_input, window, |this, state, event, _, cx| {
+                if matches!(event, InputEvent::Blur | InputEvent::PressEnter { .. }) {
+                    let name = state.read(cx).value().trim().to_owned();
+                    this.rename_engine(name, cx);
+                }
+            }),
+            cx.subscribe_in(&profile_input, window, |this, _, event, window, cx| {
+                if matches!(event, InputEvent::PressEnter { .. }) {
+                    this.save_profile(window, cx);
+                }
+            }),
             cx.subscribe(&animation, |this, _, event: &SliderEvent, cx| {
                 if let SliderEvent::Change(value) = event {
                     let ms = value.start().round() as u32;
@@ -182,6 +229,8 @@ impl SettingsScreen {
             page: SettingsPage::General,
             selected_engine: None,
             path_input,
+            name_input,
+            profile_input,
             option_inputs: HashMap::new(),
             option_selects: HashMap::new(),
             language,
@@ -237,6 +286,9 @@ impl SettingsScreen {
         };
         self.path_input.update(cx, |input, cx| {
             input.set_value(config.path.display().to_string(), window, cx);
+        });
+        self.name_input.update(cx, |input, cx| {
+            input.set_value(config.name.clone(), window, cx);
         });
         for option in &config.info.options {
             let current = config.options.get(&option.name).cloned();
@@ -335,6 +387,162 @@ impl SettingsScreen {
         });
     }
 
+    fn rename_engine(&mut self, name: String, cx: &mut Context<Self>) {
+        let Some(id) = self.selected_engine else {
+            return;
+        };
+        self.model.update(cx, |model, cx| {
+            let Some(config) = model.engine_mut(id) else {
+                return;
+            };
+            if name.is_empty() || config.name == name {
+                return;
+            }
+            config.name = name;
+            model.save_config(cx);
+            cx.emit(ModelEvent::Engines);
+        });
+    }
+
+    /// A second entry for the same binary with its own options, such as Lc0 with
+    /// another network.
+    fn duplicate_engine(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(id) = self.selected_engine else {
+            return;
+        };
+        let new_id = self.model.update(cx, |model, cx| {
+            let source = model.engine(id)?.clone();
+            let new_id = model.config.next_engine_id;
+            model.config.next_engine_id += 1;
+            let mut copy = source.duplicate(new_id, &model.config.engines);
+            // Only one copy analyses at first, so the table does not double up.
+            copy.use_analysis = false;
+            copy.enabled = copy.use_review || copy.use_play;
+            let status = if copy.enabled {
+                EngineStatus::Ready
+            } else {
+                EngineStatus::Disabled
+            };
+            model.config.engines.push(copy);
+            model.engine_status.insert(new_id, status);
+            model.save_config(cx);
+            cx.emit(ModelEvent::Engines);
+            Some(new_id)
+        });
+        if new_id.is_some() {
+            self.select_engine(new_id, window, cx);
+        }
+    }
+
+    fn choose_icon(&mut self, cx: &mut Context<Self>) {
+        let Some(id) = self.selected_engine else {
+            return;
+        };
+        let model = self.model.clone();
+        pick_path(
+            self.model.clone(),
+            "Engine icon (PNG, SVG or JPEG)",
+            None,
+            cx,
+            move |path, cx| {
+                model.update(cx, |model, cx| {
+                    if let Some(config) = model.engine_mut(id) {
+                        config.icon = Some(path);
+                        model.save_config(cx);
+                    }
+                });
+            },
+        );
+    }
+
+    fn reset_icon(&mut self, cx: &mut Context<Self>) {
+        let Some(id) = self.selected_engine else {
+            return;
+        };
+        self.model.update(cx, |model, cx| {
+            if let Some(config) = model.engine_mut(id) {
+                config.icon = None;
+                model.save_config(cx);
+            }
+        });
+    }
+
+    fn save_profile(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(id) = self.selected_engine else {
+            return;
+        };
+        let name = self.profile_input.read(cx).value().trim().to_owned();
+        if name.is_empty() {
+            self.model
+                .update(cx, |model, cx| model.toast("Name the profile first.", cx));
+            return;
+        }
+        self.model.update(cx, |model, cx| {
+            if let Some(config) = model.engine_mut(id) {
+                config.save_profile(&name);
+                model.save_config(cx);
+                model.toast(format!("Saved profile {name}."), cx);
+            }
+        });
+        self.profile_input
+            .update(cx, |input, cx| input.set_value("", window, cx));
+    }
+
+    /// Switches the engine to a saved set of options; a running engine restarts with them.
+    fn apply_profile(&mut self, name: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(id) = self.selected_engine else {
+            return;
+        };
+        self.model.update(cx, |model, cx| {
+            let Some(config) = model.engine_mut(id) else {
+                return;
+            };
+            config.apply_profile(name);
+            model.save_config(cx);
+            cx.emit(ModelEvent::Engines);
+        });
+        self.select_engine(Some(id), window, cx);
+    }
+
+    fn delete_profile(&mut self, name: &str, cx: &mut Context<Self>) {
+        let Some(id) = self.selected_engine else {
+            return;
+        };
+        self.model.update(cx, |model, cx| {
+            if let Some(config) = model.engine_mut(id) {
+                config.delete_profile(name);
+                model.save_config(cx);
+            }
+        });
+    }
+
+    /// Turns UCI debug mode on or off and, when on, opens a window with the raw output.
+    fn set_debug(&mut self, on: bool, cx: &mut Context<Self>) {
+        let Some(id) = self.selected_engine else {
+            return;
+        };
+        self.model.update(cx, |model, cx| {
+            let Some(config) = model.engine_mut(id) else {
+                return;
+            };
+            config.debug = on;
+            if let Some(handle) = model.manager.get(id) {
+                handle.set_debug(on);
+            }
+            model.save_config(cx);
+        });
+        if on {
+            self.open_debug_window(cx);
+        }
+    }
+
+    fn open_debug_window(&mut self, cx: &mut Context<Self>) {
+        let Some(id) = self.selected_engine else {
+            return;
+        };
+        crate::model::open_debug_window(&self.model, id, cx);
+    }
+
     fn set_engine_use(&mut self, change: impl FnOnce(&mut EngineConfig), cx: &mut Context<Self>) {
         let Some(id) = self.selected_engine else {
             return;
@@ -424,7 +632,9 @@ impl SettingsScreen {
                         use_analysis: true,
                         use_review: true,
                         use_play: true,
+                        icon: find_icon(&path),
                         info,
+                        ..Default::default()
                     });
                     model.engine_status.insert(id, EngineStatus::Ready);
                     model.save_config(cx);
@@ -978,6 +1188,7 @@ impl SettingsScreen {
                         h_flex()
                             .w(col_engine)
                             .gap(px(4.))
+                            .child(div().mr(px(6.)).child(engine_icon(engine, 24.)))
                             .child(
                                 div()
                                     .font_weight(FontWeight::BOLD)
@@ -1051,33 +1262,83 @@ impl SettingsScreen {
             .filter(|option| !option_is_hidden(&option.name))
             .cloned()
             .collect();
-        options.sort_by_key(|option| option_rank(&option.name));
-        let mut body = v_flex().child(detail_row(
-            "Executable",
-            None,
-            div().w_full().child(text_input(&self.path_input)),
-        ));
+        options.sort_by_key(|option| (option_group(&option.kind), option_rank(&option.name)));
+        // Arena-style: a grid of compact cells, label above the control, so every
+        // option fits on screen without a long scrolling list.
+        let mut grid = div()
+            .flex()
+            .flex_row()
+            .flex_wrap()
+            .gap_x(px(16.))
+            .gap_y(px(12.))
+            .py(px(14.));
+        let cell = |label: String, detail: Option<String>, control: gpui::AnyElement| {
+            v_flex()
+                .w(px(OPTION_CELL_W))
+                .gap(px(4.))
+                .child(
+                    h_flex()
+                        .gap(px(6.))
+                        .h(px(16.))
+                        .overflow_hidden()
+                        .whitespace_nowrap()
+                        .child(
+                            div()
+                                .text_size(px(12.))
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .text_color(rgb(T.fg_2))
+                                .child(SharedString::from(label)),
+                        )
+                        .children(detail.map(|detail| {
+                            div()
+                                .text_size(px(11.))
+                                .text_color(rgb(T.faint))
+                                .child(SharedString::from(detail))
+                        })),
+                )
+                .child(control)
+        };
         for option in options {
             let (label, hint) = option_label(&option.name);
-            let control: gpui::AnyElement = match &option.kind {
-                OptionKind::Spin { .. } | OptionKind::String { .. } => {
+            let element: gpui::AnyElement = match &option.kind {
+                OptionKind::Spin { min, max, .. } => {
                     let Some(input) = self.option_inputs.get(&option.name) else {
                         continue;
                     };
                     let suffix = (option.name == "Hash").then_some("MB");
-                    div()
-                        .w(px(320.))
-                        .child(text_input(input).suffix(suffix))
-                        .into_any_element()
+                    let range =
+                        (*min > i64::MIN && *max < i64::MAX).then(|| format!("{min}–{max}"));
+                    cell(
+                        label,
+                        hint.map(str::to_owned).or(range),
+                        text_input(input)
+                            .height(30.)
+                            .suffix(suffix)
+                            .into_any_element(),
+                    )
+                    .into_any_element()
                 }
-                OptionKind::Combo { .. } => {
+                OptionKind::String { .. } => {
+                    let Some(input) = self.option_inputs.get(&option.name) else {
+                        continue;
+                    };
+                    cell(
+                        label,
+                        hint.map(str::to_owned),
+                        text_input(input).height(30.).into_any_element(),
+                    )
+                    .into_any_element()
+                }
+                OptionKind::Combo { choices, .. } => {
                     let Some(select) = self.option_selects.get(&option.name) else {
                         continue;
                     };
-                    div()
-                        .w(px(320.))
-                        .child(select_el(select))
-                        .into_any_element()
+                    cell(
+                        label,
+                        Some(format!("{} choices", choices.len())),
+                        div().w_full().child(select_el(select)).into_any_element(),
+                    )
+                    .into_any_element()
                 }
                 OptionKind::Check { default } => {
                     let current = config
@@ -1086,46 +1347,65 @@ impl SettingsScreen {
                         .map_or(*default, |value| value == "true");
                     let name = option.name.clone();
                     let this = this.clone();
+                    // Label beside the box, like Arena's check options.
                     div()
-                        .id(SharedString::from(format!("toggle-{}", option.name)))
-                        .w(px(320.))
-                        .h(px(36.))
-                        .px(px(12.))
+                        .w(px(OPTION_CELL_W))
+                        .h(px(30.))
                         .flex()
                         .items_center()
-                        .cursor_pointer()
-                        .rounded(px(4.))
-                        .bg(rgb(T.bg))
-                        .border_1()
-                        .border_color(rgb(T.border_strong))
-                        .on_click(move |_, _, cx| {
-                            let value = (!current).to_string();
-                            this.update(cx, |screen, cx| {
-                                screen.set_engine_option(&name, value, cx)
-                            });
-                        })
-                        .child(if current { "On" } else { "Off" })
+                        .child(
+                            check(
+                                SharedString::from(format!("toggle-{}", option.name)),
+                                current,
+                                label,
+                            )
+                            .text(13.)
+                            .on_change(move |value, _, cx| {
+                                let value = value.to_string();
+                                this.update(cx, |screen, cx| {
+                                    screen.set_engine_option(&name, value, cx)
+                                });
+                            }),
+                        )
                         .into_any_element()
                 }
                 OptionKind::Button => {
                     let name = option.name.clone();
                     let model = self.model.clone();
                     let id = config.id;
-                    btn(
-                        SharedString::from(format!("button-{}", option.name)),
-                        option.name.clone(),
-                    )
-                    .h(30.)
-                    .on_click(move |_, cx| {
-                        if let Some(handle) = model.read(cx).manager.get(id) {
-                            handle.set_option(name.clone(), None);
-                        }
-                    })
-                    .into_any_element()
+                    div()
+                        .w(px(OPTION_CELL_W))
+                        .child(
+                            btn(
+                                SharedString::from(format!("button-{}", option.name)),
+                                option.name.clone(),
+                            )
+                            .h(30.)
+                            .full()
+                            .on_click(move |_, cx| {
+                                if let Some(handle) = model.read(cx).manager.get(id) {
+                                    handle.set_option(name.clone(), None);
+                                }
+                            }),
+                        )
+                        .into_any_element()
                 }
             };
-            body = body.child(detail_row(&label, hint, control));
+            grid = grid.child(element);
         }
+        let body = v_flex()
+            .child(detail_row(
+                "Name",
+                Some("Shown in tables and menus"),
+                div().w(px(320.)).child(text_input(&self.name_input)),
+            ))
+            .child(detail_row(
+                "Executable",
+                None,
+                div().w_full().child(text_input(&self.path_input)),
+            ))
+            .child(self.render_profiles(config, cx))
+            .child(grid);
         let usage_check = |id: &'static str,
                            value: bool,
                            label: &'static str,
@@ -1141,7 +1421,15 @@ impl SettingsScreen {
         let update_model = self.model.clone();
         let remove_this = this.clone();
         let restart_this = this.clone();
+        let duplicate_this = this.clone();
+        let icon_this = this.clone();
+        let reset_icon_this = this.clone();
+        let debug_this = this.clone();
+        let window_this = this.clone();
         let name = config.name.clone();
+        let about = config.info.about().map(str::to_owned);
+        let has_icon = config.icon.is_some();
+        let debug = config.debug;
         panel()
             .p(px(21.))
             .child(
@@ -1150,10 +1438,47 @@ impl SettingsScreen {
                     .mb(px(6.))
                     .child(
                         h_flex()
-                            .gap(px(10.))
-                            .items_baseline()
-                            .child(div().text_size(px(20.)).font_weight(FontWeight::SEMIBOLD).child(name.clone()))
-                            .child(mono(config.version.clone()).text_size(px(16.)).text_color(rgb(T.muted))),
+                            .gap(px(12.))
+                            .child(
+                                div()
+                                    .id("engine-icon")
+                                    .cursor_pointer()
+                                    .on_click(move |_, _, cx| {
+                                        icon_this.update(cx, |screen, cx| screen.choose_icon(cx));
+                                    })
+                                    .child(engine_icon(config, 40.)),
+                            )
+                            .child(
+                                v_flex()
+                                    .child(
+                                        h_flex()
+                                            .gap(px(10.))
+                                            .items_baseline()
+                                            .child(div().text_size(px(20.)).font_weight(FontWeight::SEMIBOLD).child(name.clone()))
+                                            .child(mono(config.version.clone()).text_size(px(16.)).text_color(rgb(T.muted))),
+                                    )
+                                    .child(
+                                        h_flex()
+                                            .gap(px(10.))
+                                            .text_size(px(12.))
+                                            .child(
+                                                div()
+                                                    .id("icon-choose")
+                                                    .cursor_pointer()
+                                                    .text_color(rgb(T.accent))
+                                                    .on_click(move |_, _, cx| {
+                                                        reset_icon_this.update(cx, |screen, cx| {
+                                                            if has_icon {
+                                                                screen.reset_icon(cx);
+                                                            } else {
+                                                                screen.choose_icon(cx);
+                                                            }
+                                                        });
+                                                    })
+                                                    .child(if has_icon { "Use the default rook" } else { "Choose an icon" }),
+                                            ),
+                                    ),
+                            ),
                     )
                     .child(
                         h_flex()
@@ -1175,10 +1500,44 @@ impl SettingsScreen {
                                     );
                                 });
                             }))
+                            .child(btn("duplicate-engine", "Duplicate").h(32.).tooltip("Another entry for this binary with its own options, e.g. Lc0 with another network").on_click(move |window, cx| {
+                                duplicate_this.update(cx, |screen, cx| screen.duplicate_engine(window, cx));
+                            }))
                             .child(btn("remove-engine", "Remove").h(32.).on_click(move |window, cx| {
                                 remove_this.update(cx, |screen, cx| screen.remove_engine(window, cx));
                             })),
                     ),
+            )
+            .children(about.map(|about| {
+                div()
+                    .mb(px(8.))
+                    .text_size(px(13.))
+                    .line_height(px(19.))
+                    .text_color(rgb(T.fg_2))
+                    .child(SharedString::from(about))
+            }))
+            .child(
+                h_flex()
+                    .gap(px(12.))
+                    .mb(px(4.))
+                    .child(
+                        check("engine-debug", debug, "Debug")
+                            .text(13.)
+                            .on_change(move |on, _, cx| {
+                                debug_this.update(cx, |screen, cx| screen.set_debug(on, cx));
+                            }),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(12.))
+                            .text_color(rgb(T.muted))
+                            .child("Sends debug on and shows the raw engine output in its own window"),
+                    )
+                    .when(debug, |row| {
+                        row.child(btn("debug-window", "Open output window").h(26.).pad(8.).text(12.).on_click(move |_, cx| {
+                            window_this.update(cx, |screen, cx| screen.open_debug_window(cx));
+                        }))
+                    }),
             )
             .children(self.benchmark.clone().map(|text| {
                 div().mb(px(4.)).text_size(px(13.)).font_family(MONO).text_color(rgb(T.fg_2)).child(text)
@@ -1202,6 +1561,71 @@ impl SettingsScreen {
                             .child(usage_check("use-play", config.use_play, "Play", this.clone(), |c, v| c.use_play = v)),
                     ),
             )
+    }
+
+    /// Saved option sets: click one to switch to it, or save the current options.
+    fn render_profiles(&self, config: &EngineConfig, cx: &mut Context<Self>) -> Div {
+        let this = cx.entity();
+        let matching = config.matching_profile().map(str::to_owned);
+        let mut chips = h_flex().gap(px(6.)).flex_wrap();
+        for (index, profile) in config.profiles.iter().enumerate() {
+            let name = profile.name.clone();
+            let active = matching.as_deref() == Some(name.as_str());
+            let apply_this = this.clone();
+            let delete_this = this.clone();
+            let delete_name = name.clone();
+            chips = chips.child(
+                h_flex()
+                    .gap(px(2.))
+                    .child(
+                        btn(("profile", index), name.clone())
+                            .h(28.)
+                            .pad(10.)
+                            .text(13.)
+                            .selected(active)
+                            .tooltip(format!("{} options", profile.options.len()))
+                            .on_click(move |window, cx| {
+                                apply_this.update(cx, |screen, cx| {
+                                    screen.apply_profile(&name, window, cx);
+                                });
+                            }),
+                    )
+                    .child(icon_x(("profile-delete", index)).on_click(move |_, cx| {
+                        delete_this
+                            .update(cx, |screen, cx| screen.delete_profile(&delete_name, cx));
+                    })),
+            );
+        }
+        if config.profiles.is_empty() {
+            chips = chips.child(
+                div()
+                    .text_size(px(13.))
+                    .text_color(rgb(T.muted))
+                    .child("None yet"),
+            );
+        }
+        let save_this = this;
+        detail_row(
+            "Profiles",
+            Some("Preset option sets for this engine"),
+            h_flex().gap(px(12.)).flex_wrap().child(chips).child(
+                h_flex()
+                    .gap(px(6.))
+                    .child(
+                        div()
+                            .w(px(180.))
+                            .child(text_input(&self.profile_input).height(30.)),
+                    )
+                    .child(
+                        btn("profile-save", "Save current")
+                            .h(30.)
+                            .pad(10.)
+                            .on_click(move |window, cx| {
+                                save_this.update(cx, |screen, cx| screen.save_profile(window, cx));
+                            }),
+                    ),
+            ),
+        )
     }
 
     fn render_databases(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
@@ -1380,6 +1804,15 @@ fn detail_row(label: &str, hint: Option<&'static str>, control: impl IntoElement
         .child(div().flex_1().min_w_0().child(control))
 }
 
+/// A small delete button.
+fn icon_x(id: impl Into<gpui::ElementId>) -> ui::widgets::Btn {
+    ui::widgets::icon_btn(id, "icons/x.svg")
+        .w(22.)
+        .h(28.)
+        .pad(0.)
+        .tooltip("Delete")
+}
+
 fn tile(id: impl Into<gpui::ElementId>, selected: bool) -> gpui::Stateful<Div> {
     div()
         .id(id)
@@ -1548,6 +1981,32 @@ mod tests {
             "stuff\nTotal time (ms) : 100\nNodes searched  : 1000\nNodes/second    : 123456\n";
         assert_eq!(parse_bench(text).as_deref(), Some("bench: 123,456 n/s"));
         assert_eq!(parse_bench("no numbers"), None);
+    }
+
+    #[test]
+    fn icons_next_to_the_binary_are_found() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = dir.path().join("lc0");
+        std::fs::write(&engine, "").unwrap();
+        assert_eq!(find_icon(&engine), None);
+        std::fs::write(dir.path().join("logo.svg"), "<svg/>").unwrap();
+        assert_eq!(find_icon(&engine), Some(dir.path().join("logo.svg")));
+        std::fs::write(dir.path().join("lc0.png"), "").unwrap();
+        assert_eq!(find_icon(&engine), Some(dir.path().join("lc0.png")));
+    }
+
+    #[test]
+    fn options_group_inputs_before_switches_and_buttons() {
+        assert!(option_is_hidden("UCI_EngineAbout"));
+        assert!(
+            option_group(&OptionKind::Combo {
+                default: String::new(),
+                choices: Vec::new()
+            }) < option_group(&OptionKind::Check { default: false })
+        );
+        assert!(
+            option_group(&OptionKind::Check { default: true }) < option_group(&OptionKind::Button)
+        );
     }
 
     #[test]

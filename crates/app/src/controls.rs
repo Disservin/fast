@@ -122,3 +122,31 @@ pub fn field(label: impl Into<SharedString>, control: impl IntoElement) -> Div {
         )
         .child(control)
 }
+
+/// An engine's picture: its custom icon if the file exists, otherwise a rook.
+pub fn engine_icon(config: &engine::EngineConfig, size: f32) -> gpui::AnyElement {
+    let frame = div()
+        .size(px(size))
+        .flex_none()
+        .flex()
+        .items_center()
+        .justify_center()
+        .rounded(px(4.))
+        .overflow_hidden();
+    match config.icon.as_ref().filter(|path| path.is_file()) {
+        Some(path) => frame
+            .child(gpui::img(path.clone()).size_full())
+            .into_any_element(),
+        None => frame
+            .bg(rgb(T.bg))
+            .border_1()
+            .border_color(rgb(T.border_strong))
+            .child(
+                gpui::svg()
+                    .path("pieces/merida/wR.svg")
+                    .size(px(size * 0.72))
+                    .text_color(rgb(T.fg_2)),
+            )
+            .into_any_element(),
+    }
+}

@@ -3,6 +3,7 @@
 mod assets;
 mod config;
 mod controls;
+mod debug_window;
 mod demo;
 mod live;
 mod model;

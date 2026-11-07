@@ -107,6 +107,18 @@ pub struct EngineInfo {
     pub options: Vec<UciOption>,
 }
 
+impl EngineInfo {
+    /// The engine's self-description from its `UCI_EngineAbout` option, if offered.
+    pub fn about(&self) -> Option<&str> {
+        self.options.iter().find_map(|option| match &option.kind {
+            OptionKind::String { default } if option.name == "UCI_EngineAbout" => {
+                Some(default.as_str()).filter(|text| !text.trim().is_empty())
+            }
+            _ => None,
+        })
+    }
+}
+
 /// Parsed engine output. Unknown lines are preserved as `Other`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum UciLine {
@@ -443,6 +455,22 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn engine_about_comes_from_its_option() {
+        let UciLine::Option(option) = parse_line(
+            "option name UCI_EngineAbout type string default Stockfish by the Stockfish developers see https://stockfishchess.org",
+        ) else {
+            panic!();
+        };
+        let mut info = EngineInfo::default();
+        assert_eq!(info.about(), None);
+        info.options.push(option);
+        assert_eq!(
+            info.about(),
+            Some("Stockfish by the Stockfish developers see https://stockfishchess.org")
+        );
     }
 
     #[test]

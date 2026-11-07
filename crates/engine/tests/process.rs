@@ -157,6 +157,36 @@ fn log_records_traffic_and_stderr() {
 }
 
 #[test]
+fn debug_mode_is_sent_after_the_handshake() {
+    let engine = EngineHandle::spawn(fixture(), Vec::new(), Vec::new());
+    // Requested before `uciok`, so it must wait for the handshake.
+    engine.set_debug(true);
+    let events = engine.events();
+    assert!(matches!(next(&events), EngineEvent::Ready(_)));
+    engine.set_debug(false);
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    loop {
+        let sent: Vec<String> = engine
+            .log()
+            .snapshot(true)
+            .into_iter()
+            .filter(|line| line.kind == engine::LogKind::Sent)
+            .map(|line| line.text)
+            .collect();
+        let on = sent.iter().position(|text| text == "debug on");
+        let off = sent.iter().position(|text| text == "debug off");
+        if let (Some(on), Some(off)) = (on, off) {
+            assert!(on < off);
+            assert!(sent.iter().position(|text| text == "uci") < Some(on));
+            break;
+        }
+        assert!(std::time::Instant::now() < deadline, "{sent:?}");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    engine.quit();
+}
+
+#[test]
 fn crash_is_reported_not_fatal() {
     let engine = EngineHandle::spawn(fixture(), vec!["crash".to_owned()], Vec::new());
     let events = engine.events();

@@ -35,9 +35,71 @@ actions!(
         ToggleEngine,
         FlipBoard,
         FocusSearch,
-        SaveGame
+        SaveGame,
+        NewGame,
+        OpenGame,
+        SavePgnAs,
+        PasteGame,
+        CopyFen,
+        CopyPgn,
+        PauseEngine,
+        EngineOutput,
+        ShowAnalyse,
+        ShowDatabase,
+        ShowTrain,
+        ShowPlay,
+        ShowSettings,
+        Quit
     ]
 );
+
+/// The application menus: native on macOS, drawn in the top bar elsewhere.
+fn app_menus() -> Vec<gpui::Menu> {
+    use gpui::{Menu, MenuItem};
+    vec![
+        Menu::new("File").items([
+            MenuItem::action("New game", NewGame),
+            MenuItem::action("Open PGN or FEN…", OpenGame),
+            MenuItem::separator(),
+            MenuItem::action("Save to My games", SaveGame),
+            MenuItem::action("Save as PGN…", SavePgnAs),
+            MenuItem::separator(),
+            MenuItem::action("Settings", ShowSettings),
+            MenuItem::separator(),
+            MenuItem::action("Quit", Quit),
+        ]),
+        Menu::new("Edit").items([
+            MenuItem::action("Copy FEN", CopyFen),
+            MenuItem::action("Copy PGN", CopyPgn),
+            MenuItem::action("Paste FEN or PGN", PasteGame),
+        ]),
+        Menu::new("View").items([
+            MenuItem::action("Analyse", ShowAnalyse),
+            MenuItem::action("Database", ShowDatabase),
+            MenuItem::action("Train", ShowTrain),
+            MenuItem::action("Play", ShowPlay),
+            MenuItem::separator(),
+            MenuItem::action("Flip board", FlipBoard),
+        ]),
+        Menu::new("Go").items([
+            MenuItem::action("Start of game", FirstMove),
+            MenuItem::action("Previous move", PrevMove),
+            MenuItem::action("Next move", NextMove),
+            MenuItem::action("End of line", LastMove),
+        ]),
+        Menu::new("Engine").items([
+            MenuItem::action("Engine on / off", ToggleEngine),
+            MenuItem::action("Pause / resume", PauseEngine),
+            MenuItem::separator(),
+            MenuItem::action("Engine output window", EngineOutput),
+        ]),
+    ]
+}
+
+/// Whether the menus are drawn by the app rather than the system.
+fn draws_own_menus() -> bool {
+    !cfg!(target_os = "macos")
+}
 
 const WINDOW_CONTROL_W: f32 = 36.;
 const WINDOW_CONTROLS_W: f32 = WINDOW_CONTROL_W * 3. + 4.;
@@ -90,7 +152,12 @@ pub fn unbind_shortcut(keystroke: &str, name: &str, cx: &mut App) {
     }
 }
 
-pub fn init(_cx: &mut App) {}
+pub fn init(cx: &mut App) {
+    cx.on_action(|_: &Quit, cx| cx.quit());
+    cx.set_menus(app_menus());
+    gpui_component::GlobalState::global_mut(cx)
+        .set_app_menus(app_menus().into_iter().map(gpui::Menu::owned).collect());
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Mode {
@@ -111,6 +178,7 @@ pub struct Workspace {
     pub settings: Entity<SettingsScreen>,
     search: Entity<InputState>,
     path_input: Entity<InputState>,
+    menu_bar: Option<Entity<gpui_component::menu::AppMenuBar>>,
     focus: FocusHandle,
     first_frame: bool,
     /// Test switch: draw window controls regardless of what the system reports.
@@ -185,6 +253,7 @@ impl Workspace {
             settings,
             search,
             path_input,
+            menu_bar: draws_own_menus().then(|| gpui_component::menu::AppMenuBar::new(cx)),
             focus,
             first_frame: true,
             force_window_controls: false,
@@ -488,6 +557,13 @@ impl Workspace {
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
         let crumb = self.breadcrumb(cx);
+        // The drawn menu bar takes the breadcrumb's room on narrow windows.
+        let show_crumb = self.menu_bar.is_none() || viewport_w >= 1360.;
+        let menu_bar = self.menu_bar.clone().map(|bar| {
+            div()
+                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                .child(bar)
+        });
         div()
             .relative()
             .h(px(58.))
@@ -515,12 +591,15 @@ impl Workspace {
                                     .text_color(rgb(T.fg))
                                     .child("Fast"),
                             )
-                            .child(
-                                div()
-                                    .text_size(px(13.))
-                                    .text_color(rgb(T.muted))
-                                    .child(SharedString::from(format!("/ {crumb}"))),
-                            ),
+                            .children(menu_bar)
+                            .when(show_crumb, |row| {
+                                row.child(
+                                    div()
+                                        .text_size(px(13.))
+                                        .text_color(rgb(T.muted))
+                                        .child(SharedString::from(format!("/ {crumb}"))),
+                                )
+                            }),
                     )
                     .child(self.right_controls(viewport_w, controls, window, cx)),
             )
@@ -685,6 +764,48 @@ impl Render for Workspace {
             .on_action(cx.listener(|this, _: &SaveGame, _, cx| {
                 this.analyse.update(cx, |screen, cx| screen.save_game(cx));
             }))
+            .on_action(cx.listener(|this, _: &NewGame, window, cx| {
+                this.analyse
+                    .update(cx, |screen, cx| screen.new_game(window, cx));
+                this.set_mode(Mode::Analyse, cx);
+            }))
+            .on_action(cx.listener(|this, _: &OpenGame, _, cx| {
+                this.analyse.update(cx, |screen, cx| screen.open_file(cx));
+                this.set_mode(Mode::Analyse, cx);
+            }))
+            .on_action(cx.listener(|this, _: &SavePgnAs, _, cx| {
+                this.analyse.update(cx, |screen, cx| screen.save_pgn_as(cx));
+            }))
+            .on_action(cx.listener(|this, _: &PasteGame, window, cx| {
+                this.analyse
+                    .update(cx, |screen, cx| screen.paste_game(window, cx));
+                this.set_mode(Mode::Analyse, cx);
+            }))
+            .on_action(cx.listener(|this, _: &CopyFen, _, cx| {
+                this.analyse
+                    .update(cx, |screen, cx| screen.copy_fen_action(cx));
+            }))
+            .on_action(cx.listener(|this, _: &CopyPgn, _, cx| {
+                this.analyse
+                    .update(cx, |screen, cx| screen.copy_pgn_action(cx));
+            }))
+            .on_action(cx.listener(|this, _: &PauseEngine, _, cx| {
+                this.analyse
+                    .update(cx, |screen, cx| screen.toggle_pause(cx));
+            }))
+            .on_action(cx.listener(|this, _: &EngineOutput, _, cx| {
+                this.analyse
+                    .update(cx, |screen, cx| screen.open_engine_output(cx));
+            }))
+            .on_action(cx.listener(|this, _: &ShowAnalyse, _, cx| this.set_mode(Mode::Analyse, cx)))
+            .on_action(
+                cx.listener(|this, _: &ShowDatabase, _, cx| this.set_mode(Mode::Database, cx)),
+            )
+            .on_action(cx.listener(|this, _: &ShowTrain, _, cx| this.set_mode(Mode::Train, cx)))
+            .on_action(cx.listener(|this, _: &ShowPlay, _, cx| this.set_mode(Mode::Play, cx)))
+            .on_action(
+                cx.listener(|this, _: &ShowSettings, _, cx| this.set_mode(Mode::Settings, cx)),
+            )
             .child(self.toasts(cx))
             .when(client_drawn && !window.is_maximized(), |root| {
                 root.children(resize_handles())

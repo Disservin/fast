@@ -9,7 +9,6 @@ use chess_core::{
 };
 use gpui::AssetSource;
 use resvg::{tiny_skia, usvg};
-use ui::T;
 
 use crate::assets::Assets;
 
@@ -46,8 +45,8 @@ pub fn board_svg(pos: &Chess, look: &BoardLook) -> Result<String> {
             let color = match (is_light, moved) {
                 (true, false) => look.light,
                 (false, false) => look.dark,
-                (true, true) => T.last_move_light,
-                (false, true) => T.last_move_dark,
+                (true, true) => ui::board::last_move_color(look.light),
+                (false, true) => ui::board::last_move_color(look.dark),
             };
             let (left, top) = (x * SQUARE, y * SQUARE);
             svg.push_str(&format!(

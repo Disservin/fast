@@ -129,7 +129,7 @@ fn variation_block(tree: &GameTree, start: NodeId, props: &ScoresheetProps, dept
         flow = flow.child(inline_move(tree, current, numbered, props));
         numbered = false;
         let node = tree.node(current);
-        if !node.comment.is_empty() {
+        if has_text(&node.comment) {
             nested.push(comment(&node.comment));
         }
         let Some((&next, others)) = node.children.split_first() else {
@@ -153,6 +153,8 @@ fn variation_block(tree: &GameTree, start: NodeId, props: &ScoresheetProps, dept
 }
 
 fn comment(text: &str) -> Div {
+    // Clock and eval commands are data for the graphs, not prose.
+    let text = chess_core::strip_commands(text);
     div()
         .ml(px(47.))
         .mr(px(14.))
@@ -191,7 +193,7 @@ pub fn scoresheet_body(tree: &GameTree, props: &ScoresheetProps) -> impl IntoEle
 
     // Root comment and root alternatives.
     let root = tree.node(GameTree::ROOT);
-    if !root.comment.is_empty() {
+    if has_text(&root.comment) {
         body = body.child(comment(&root.comment));
     }
 
@@ -238,7 +240,7 @@ pub fn scoresheet_body(tree: &GameTree, props: &ScoresheetProps) -> impl IntoEle
         let shown: Vec<NodeId> = white_id.into_iter().chain(black_id).collect();
         for &move_id in &shown {
             let move_node = tree.node(move_id);
-            if !move_node.comment.is_empty() {
+            if has_text(&move_node.comment) {
                 body = body.child(comment(&move_node.comment));
             }
             // Alternatives to this move hang off its parent.
@@ -275,6 +277,151 @@ pub fn scoresheet_body(tree: &GameTree, props: &ScoresheetProps) -> impl IntoEle
     body
 }
 
+/// A comment with something to read once `[%clk]`-style commands are removed.
+fn has_text(comment: &str) -> bool {
+    !comment.is_empty() && !chess_core::strip_commands(comment).is_empty()
+}
+
+/// Colours for variation depths in the inline view: main line, then each nesting level.
+const DEPTH_COLORS: [u32; 5] = [T.fg, 0x7AB5FF, 0x6FCF7F, 0xE6C229, 0xD38BE8];
+
+pub fn depth_color(depth: usize) -> u32 {
+    if depth == 0 {
+        DEPTH_COLORS[0]
+    } else {
+        DEPTH_COLORS[1 + (depth - 1) % (DEPTH_COLORS.len() - 1)]
+    }
+}
+
+/// One piece of running text in the inline view.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Token {
+    Move {
+        id: NodeId,
+        numbered: bool,
+        depth: usize,
+    },
+    Open(usize),
+    Close(usize),
+    Comment(String),
+}
+
+/// The game as running text, PGN-like: a move's alternatives follow it in
+/// parentheses, so `1. e4 (1. d4 d5) 1... e5`.
+pub fn inline_tokens(tree: &GameTree) -> Vec<Token> {
+    fn line(tree: &GameTree, start: NodeId, depth: usize, out: &mut Vec<Token>) {
+        let mut current = start;
+        let mut numbered = true;
+        loop {
+            out.push(Token::Move {
+                id: current,
+                numbered,
+                depth,
+            });
+            numbered = false;
+            let node = tree.node(current);
+            if has_text(&node.comment) {
+                out.push(Token::Comment(chess_core::strip_commands(&node.comment)));
+                numbered = true;
+            }
+            // Alternatives to this move hang off its parent and follow it.
+            if let Some(parent) = node.parent {
+                let siblings = &tree.node(parent).children;
+                if siblings.first() == Some(&current) {
+                    for &other in &siblings[1..] {
+                        out.push(Token::Open(depth + 1));
+                        line(tree, other, depth + 1, out);
+                        out.push(Token::Close(depth + 1));
+                        numbered = true;
+                    }
+                }
+            }
+            match node.children.first() {
+                Some(&next) => current = next,
+                None => break,
+            }
+        }
+    }
+    let mut out = Vec::new();
+    let root = tree.node(GameTree::ROOT);
+    if has_text(&root.comment) {
+        out.push(Token::Comment(chess_core::strip_commands(&root.comment)));
+    }
+    if let Some(&first) = root.children.first() {
+        line(tree, first, 0, &mut out);
+    }
+    out
+}
+
+/// Nibbler-style scoresheet: running text, variations coloured by depth.
+pub fn scoresheet_inline(tree: &GameTree, props: &ScoresheetProps) -> impl IntoElement + use<> {
+    let mut flow = div()
+        .flex()
+        .flex_row()
+        .flex_wrap()
+        .items_baseline()
+        .gap_x(px(4.))
+        .gap_y(px(2.))
+        .px(px(16.))
+        .py(px(6.))
+        .font_family(MONO)
+        .text_size(px(14.))
+        .line_height(px(22.));
+    for token in inline_tokens(tree) {
+        flow = match token {
+            Token::Move {
+                id,
+                numbered,
+                depth,
+            } => {
+                let node = tree.node(id);
+                let san = display_san(&node.san, node.mv.as_ref(), props.notation);
+                let mut text = if numbered || node.ply % 2 == 1 {
+                    chess_core::notation::numbered(node.ply, &san)
+                } else {
+                    san
+                };
+                if let Some(nags) = nag_text(&node.nags) {
+                    text.push_str(&nags);
+                }
+                let current = props.current == id;
+                let select = props.on_select.clone();
+                let context = props.on_context.clone();
+                flow.child(
+                    div()
+                        .id(("inline-mv", id))
+                        .cursor_pointer()
+                        .px(px(3.))
+                        .rounded(px(3.))
+                        .text_color(rgb(depth_color(depth)))
+                        .when(depth == 0, |el| el.font_weight(FontWeight::SEMIBOLD))
+                        .when(depth > 0, |el| el.text_size(px(13.)))
+                        .when(current, |pill| {
+                            pill.bg(rgb(T.accent)).text_color(rgb(T.accent_fg))
+                        })
+                        .when(!current, |pill| pill.hover(|style| style.bg(rgb(T.hover))))
+                        .on_click(move |_, window, cx| select(id, window, cx))
+                        .on_mouse_down(MouseButton::Right, move |event, window, cx| {
+                            context(id, event, window, cx)
+                        })
+                        .child(text),
+                )
+            }
+            Token::Open(depth) => flow.child(div().text_color(rgb(depth_color(depth))).child("(")),
+            Token::Close(depth) => flow.child(div().text_color(rgb(depth_color(depth))).child(")")),
+            Token::Comment(text) => flow.child(
+                div()
+                    .font_family(SANS)
+                    .italic()
+                    .text_size(px(13.))
+                    .text_color(rgb(T.muted))
+                    .child(SharedString::from(text)),
+            ),
+        };
+    }
+    flow
+}
+
 trait GameOverLike {
     fn is_game_over_like(&self) -> bool;
 }
@@ -283,5 +430,56 @@ impl GameOverLike for chess_core::Chess {
     fn is_game_over_like(&self) -> bool {
         use chess_core::Position as _;
         self.is_game_over()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn inline_tokens_put_alternatives_after_their_move() {
+        let tree = chess_core::parse_pgn("1. e4 {best} (1. d4 d5 (1... Nf6)) 1... e5 *")
+            .unwrap()
+            .remove(0);
+        let tokens = inline_tokens(&tree);
+        let shape: Vec<String> = tokens
+            .iter()
+            .map(|token| match token {
+                Token::Move { id, depth, .. } => format!("{}@{depth}", tree.node(*id).san),
+                Token::Open(depth) => format!("({depth}"),
+                Token::Close(depth) => format!("){depth}"),
+                Token::Comment(text) => format!("{{{text}}}"),
+            })
+            .collect();
+        assert_eq!(
+            shape,
+            vec![
+                "e4@0", "{best}", "(1", "d4@1", "d5@1", "(2", "Nf6@2", ")2", ")1", "e5@0"
+            ]
+        );
+        // After a comment or a variation the next move repeats its number.
+        let numbered: Vec<bool> = tokens
+            .iter()
+            .filter_map(|token| match token {
+                Token::Move { numbered, .. } => Some(*numbered),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(numbered, vec![true, true, false, true, true]);
+    }
+
+    #[test]
+    fn clock_only_comments_are_hidden() {
+        let tree = chess_core::parse_pgn("1. e4 {[%clk 0:01:00]} e5 *")
+            .unwrap()
+            .remove(0);
+        assert!(
+            !inline_tokens(&tree)
+                .iter()
+                .any(|token| matches!(token, Token::Comment(_)))
+        );
+        assert_ne!(depth_color(1), depth_color(2));
+        assert_eq!(depth_color(1), depth_color(5));
     }
 }

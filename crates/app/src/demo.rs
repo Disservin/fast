@@ -756,6 +756,7 @@ fn demo_engine(
             author: String::new(),
             options: schema,
         },
+        ..Default::default()
     }
 }
 

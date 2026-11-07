@@ -7,7 +7,7 @@ use chess_core::{
     write_pgn_from,
 };
 use db::{Database, ImportControl, MoveStat, import_games};
-use engine::{EngineId, LogLine, Score, Wdl};
+use engine::{EngineId, LogLine, Quality, Score, Wdl};
 use gpui::{
     AppContext as _, ClipboardItem, Context, Entity, FocusHandle, FontWeight, IntoElement,
     MouseButton, Pixels, Point, Render, ScrollHandle, SharedString, Subscription, Task, TextLayout,
@@ -16,12 +16,13 @@ use gpui::{
 use gpui_component::input::{InputEvent, InputState, TextareaState};
 use ui::{
     Arrow, BoardEvent, BoardView, MONO, T,
-    scoresheet::{ScoresheetProps, scoresheet_body},
+    scoresheet::{ScoresheetProps, scoresheet_body, scoresheet_inline},
     timeline::{TimelineProps, timeline},
     widgets::{btn, divider, h_flex, icon_btn, mono, panel, section_label, v_flex},
 };
 
 use crate::{
+    config::{GraphTab, LineSort, ScoresheetStyle},
     live::{LiveAnalysis, LiveEvent},
     model::{AppModel, ModelEvent},
     shell::Workspace,
@@ -44,6 +45,8 @@ pub struct MoveRow {
     pub reference: Option<MoveStat>,
     pub mine: Option<MoveStat>,
     pub rep: RepTag,
+    /// How this line compares with the best one, for its arrow and label colour.
+    pub quality: Option<Quality>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -55,16 +58,30 @@ pub enum RepTag {
     None,
 }
 
+/// Where rows come from and how to order them.
+#[derive(Clone, Copy, Debug)]
+pub struct RowOptions {
+    pub white_to_move: bool,
+    pub user_to_move: bool,
+    pub sort: LineSort,
+}
+
 /// Merges candidate sources into table rows, sorted by engine eval for the side to
-/// move; moves with no eval follow, by popularity.
+/// move (or by depth, deepest first); moves with no eval follow, by popularity, then
+/// any remaining legal moves in `legal`, so every candidate is listed.
 pub fn merge_rows(
     engine_lines: Vec<MoveRow>,
     reference: Vec<MoveStat>,
     mine: Vec<MoveStat>,
     rep_moves: &[(String, bool)],
-    white_to_move: bool,
-    user_to_move: bool,
+    legal: &[String],
+    options: RowOptions,
 ) -> Vec<MoveRow> {
+    let RowOptions {
+        white_to_move,
+        user_to_move,
+        sort,
+    } = options;
     fn clean(san: &str) -> &str {
         san.trim_end_matches(['+', '#'])
     }
@@ -93,6 +110,9 @@ pub fn merge_rows(
         let index = upsert(&mut rows, san);
         rows[index].rep = if *main { RepTag::Main } else { RepTag::Side };
     }
+    for san in legal {
+        upsert(&mut rows, san);
+    }
     // The user played something the repertoire does not cover, when it has an answer.
     if user_to_move && !rep_moves.is_empty() {
         for row in &mut rows {
@@ -105,19 +125,49 @@ pub fn merge_rows(
         row.reference.as_ref().map_or(0, |stat| stat.games)
             + row.mine.as_ref().map_or(0, |stat| stat.games)
     };
+    let key = |row: &MoveRow| {
+        row.score
+            .map(|score| score.sort_key() * if white_to_move { 1 } else { -1 })
+    };
     rows.sort_by(|a, b| {
-        let key = |row: &MoveRow| {
-            row.score
-                .map(|score| score.sort_key() * if white_to_move { 1 } else { -1 })
-        };
-        match (key(a), key(b)) {
+        let by_eval = match (key(a), key(b)) {
             (Some(x), Some(y)) => y.cmp(&x),
             (Some(_), None) => std::cmp::Ordering::Less,
             (None, Some(_)) => std::cmp::Ordering::Greater,
             (None, None) => popularity(b).cmp(&popularity(a)),
+        };
+        match sort {
+            LineSort::Eval => by_eval,
+            LineSort::Depth => b.depth.cmp(&a.depth).then(by_eval),
         }
     });
+    // Grade each line against the best one, from the side to move's view.
+    let relative = |score: Score| {
+        if white_to_move { score } else { score.negate() }
+    };
+    let best = rows
+        .iter()
+        .filter_map(|row| row.score.map(relative))
+        .max_by_key(|score| score.sort_key());
+    if let Some(best) = best {
+        for row in &mut rows {
+            row.quality = row
+                .score
+                .map(|score| engine::classify_move(best, relative(score)));
+        }
+    }
     rows
+}
+
+/// The colour for a move's quality.
+pub fn quality_color(quality: Quality) -> u32 {
+    match quality {
+        Quality::Best => T.q_best,
+        Quality::Good => T.q_good,
+        Quality::Inaccuracy => T.q_inaccuracy,
+        Quality::Mistake => T.q_mistake,
+        Quality::Blunder => T.q_blunder,
+    }
 }
 
 mod editor;
@@ -141,6 +191,11 @@ pub struct AnalyseScreen {
     reference: Vec<MoveStat>,
     mine: Vec<MoveStat>,
     evals: HashMap<NodeId, i32>,
+    /// Search depth behind each eval, for the depth graph.
+    depths: HashMap<NodeId, u32>,
+    /// The child last visited from each node, so stepping forward returns into the
+    /// line you came back from rather than always the main line.
+    last_child: HashMap<NodeId, NodeId>,
     note: Entity<TextareaState>,
     note_hash: u64,
     comment: Entity<TextareaState>,
@@ -208,8 +263,14 @@ impl AnalyseScreen {
             }),
             cx.subscribe_in(&live, window, |this, _, event, _, cx| match event {
                 LiveEvent::Updated => this.rebuild_rows(cx),
-                LiveEvent::Eval(node, cp) => {
-                    this.evals.insert(*node, *cp);
+                LiveEvent::Eval(node, cp, depth) => {
+                    // Keep the deeper of what is known: a game's annotations or the engine.
+                    if this.depths.get(node).is_none_or(|known| *known <= *depth)
+                        || !this.evals.contains_key(node)
+                    {
+                        this.evals.insert(*node, *cp);
+                        this.depths.insert(*node, *depth);
+                    }
                     cx.notify();
                 }
             }),
@@ -268,6 +329,8 @@ impl AnalyseScreen {
             board,
             live,
             rows: Vec::new(),
+            depths: HashMap::new(),
+            last_child: HashMap::new(),
             selected_san: None,
             row_chosen: false,
             reference: Vec::new(),
@@ -500,13 +563,29 @@ impl AnalyseScreen {
                     .collect()
             })
             .unwrap_or_default();
+        let view = &model.config.view;
+        let legal: Vec<String> = if view.all_moves {
+            let pos = self.analysed_pos();
+            pos.legal_moves()
+                .iter()
+                .map(|mv| {
+                    chess_core::shakmaty::san::SanPlus::from_move(pos.clone(), *mv).to_string()
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
         self.rows = merge_rows(
             lines,
             self.reference.clone(),
             self.mine.clone(),
             &rep_moves,
-            white_to_move,
-            white_to_move == model.repertoire.white,
+            &legal,
+            RowOptions {
+                white_to_move,
+                user_to_move: white_to_move == model.repertoire.white,
+                sort: view.sort,
+            },
         );
         // The selection follows the best line until the user picks a row.
         if !self.row_chosen
@@ -524,18 +603,44 @@ impl AnalyseScreen {
             return;
         }
         let pos = self.analysed_pos();
-        let arrows: Vec<Arrow> = self
-            .selected_san
-            .iter()
-            .filter_map(|san| {
-                let parsed: chess_core::shakmaty::san::San = san.parse().ok()?;
-                let mv = parsed.to_move(&pos).ok()?;
-                Some(Arrow {
-                    from: mv.from()?,
-                    to: mv.to(),
-                })
-            })
-            .collect();
+        let arrow_for = |san: &str| -> Option<Arrow> {
+            let parsed: chess_core::shakmaty::san::San = san.parse().ok()?;
+            let mv = parsed.to_move(&pos).ok()?;
+            Some(Arrow::new(mv.from()?, mv.to()))
+        };
+        let quality_arrows = self.model.read(cx).config.view.quality_arrows;
+        let mut arrows: Vec<Arrow> = Vec::new();
+        if quality_arrows {
+            // Every engine line gets an arrow coloured by quality, worst drawn first
+            // so the best end up on top; the selected one is drawn last of all.
+            let mut graded: Vec<(&MoveRow, Quality)> = self
+                .rows
+                .iter()
+                .filter(|row| !row.pv.is_empty())
+                .filter_map(|row| Some((row, row.quality?)))
+                .collect();
+            graded.sort_by_key(|(_, quality)| std::cmp::Reverse(*quality));
+            for (row, quality) in graded {
+                if self.selected_san.as_deref() == Some(row.san.as_str()) {
+                    continue;
+                }
+                if let Some(arrow) = arrow_for(&row.san) {
+                    arrows.push(arrow.with_color(quality_color(quality)));
+                }
+            }
+        }
+        if let Some(san) = &self.selected_san
+            && let Some(arrow) = arrow_for(san)
+        {
+            let quality = self
+                .selected_row()
+                .and_then(|row| row.quality)
+                .filter(|_| quality_arrows);
+            arrows.push(match quality {
+                Some(quality) => arrow.with_color(quality_color(quality)),
+                None => arrow,
+            });
+        }
         self.board
             .update(cx, |board, cx| board.set_arrows(arrows, cx));
     }
@@ -547,6 +652,13 @@ impl AnalyseScreen {
 
     pub fn jump(&mut self, id: NodeId, window: &mut Window, cx: &mut Context<Self>) {
         let adjacent = self.tree.node(id).parent == Some(self.current);
+        // Remember the way here, so forward steps retrace it after stepping back.
+        let path = self.tree.path_to(id);
+        for &node in &path {
+            if let Some(parent) = self.tree.node(node).parent {
+                self.last_child.insert(parent, node);
+            }
+        }
         self.current = id;
         self.context_menu = None;
         self.position_changed(adjacent, window, cx);
@@ -557,11 +669,21 @@ impl AnalyseScreen {
         let target = if delta < 0 {
             node.parent
         } else {
-            node.children.first().copied()
+            self.next_child(self.current)
         };
         if let Some(target) = target {
             self.jump(target, window, cx);
         }
+    }
+
+    /// The child to step forward into: the one last visited, else the main line.
+    fn next_child(&self, id: NodeId) -> Option<NodeId> {
+        let children = &self.tree.node(id).children;
+        self.last_child
+            .get(&id)
+            .copied()
+            .filter(|child| children.contains(child))
+            .or_else(|| children.first().copied())
     }
 
     pub fn go_first(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -569,12 +691,10 @@ impl AnalyseScreen {
     }
 
     pub fn go_last(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let end = self
-            .tree
-            .line_from(self.current)
-            .last()
-            .copied()
-            .unwrap_or(self.current);
+        let mut end = self.current;
+        while let Some(next) = self.next_child(end) {
+            end = next;
+        }
         self.jump(end, window, cx);
     }
 
@@ -606,7 +726,138 @@ impl AnalyseScreen {
         self.tree = tree;
         self.current = GameTree::ROOT;
         self.evals.clear();
+        self.depths.clear();
+        self.last_child.clear();
+        // Evals and depths recorded in the game itself (Lichess, TCEC) fill the graphs
+        // straight away, for reviewing games already played.
+        let mut stack = vec![GameTree::ROOT];
+        while let Some(id) = stack.pop() {
+            let node = self.tree.node(id);
+            stack.extend(node.children.iter().copied());
+            let note = chess_core::parse_annotation(&node.comment);
+            if let Some(cp) = note.eval_cp {
+                self.evals.insert(id, cp);
+                self.depths.insert(id, note.depth.unwrap_or(0));
+            } else if let Some(depth) = note.depth {
+                self.depths.insert(id, depth);
+            }
+        }
         self.position_changed(false, window, cx);
+    }
+
+    /// Opens a PGN or FEN file from disk; the first game of a PGN is loaded.
+    pub fn open_file(&mut self, cx: &mut Context<Self>) {
+        let this = cx.entity().downgrade();
+        crate::model::pick_path(
+            self.model.clone(),
+            "Open game",
+            None,
+            cx,
+            move |path, cx| {
+                let text = match std::fs::read_to_string(&path) {
+                    Ok(text) => text,
+                    Err(err) => {
+                        if let Some(this) = this.upgrade() {
+                            this.update(cx, |screen, cx| {
+                                screen
+                                    .toast(format!("Could not read {}: {err}", path.display()), cx);
+                            });
+                        }
+                        return;
+                    }
+                };
+                let Some(window) = cx.active_window() else {
+                    return;
+                };
+                let _ = window.update(cx, |_, window, cx| {
+                    if let Some(this) = this.upgrade() {
+                        this.update(cx, |screen, cx| screen.load_text(&text, window, cx));
+                    }
+                });
+            },
+        );
+    }
+
+    /// Loads text that is either a FEN or PGN, e.g. from a file or the clipboard.
+    pub fn load_text(&mut self, text: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let text = text.trim();
+        if text.is_empty() {
+            self.toast("Nothing to load.", cx);
+            return;
+        }
+        if GameTree::from_fen(text).is_ok() {
+            self.load_fen(text, window, cx);
+            return;
+        }
+        let count = parse_pgn(text).map(|games| games.len()).unwrap_or(0);
+        self.load_pgn_at(text, 0, window, cx);
+        if count > 1 {
+            self.toast(
+                format!("Loaded the first of {count} games. Import the file in Database to browse them all."),
+                cx,
+            );
+        }
+    }
+
+    /// Loads a FEN or PGN from the clipboard.
+    pub fn paste_game(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        match cx.read_from_clipboard().and_then(|item| item.text()) {
+            Some(text) => self.load_text(&text, window, cx),
+            None => self.toast("The clipboard has no text.", cx),
+        }
+    }
+
+    /// Writes the game, with variations and comments, to a PGN file.
+    pub fn save_pgn_as(&mut self, cx: &mut Context<Self>) {
+        let pgn = write_pgn(&self.tree);
+        let model = self.model.clone();
+        crate::model::pick_path(
+            self.model.clone(),
+            "Save game as PGN",
+            Some("game.pgn"),
+            cx,
+            move |path, cx| {
+                let result = std::fs::write(&path, pgn);
+                model.update(cx, |model, cx| match result {
+                    Ok(()) => model.toast(format!("Saved {}", path.display()), cx),
+                    Err(err) => model.toast(format!("Could not save: {err}"), cx),
+                });
+            },
+        );
+    }
+
+    /// Starts an empty game from the initial position.
+    pub fn new_game(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.load_tree(GameTree::new(), window, cx);
+    }
+
+    /// Opens the raw-output window for the engine the panels show.
+    pub fn open_engine_output(&mut self, cx: &mut Context<Self>) {
+        match self.panel_engine_id(cx) {
+            Some(id) => crate::model::open_debug_window(&self.model, id, cx),
+            None => self.toast("No engine yet. Add one in Settings › Engines.", cx),
+        }
+    }
+
+    pub fn copy_fen_action(&mut self, cx: &mut Context<Self>) {
+        self.copy_fen(cx);
+    }
+
+    pub fn copy_pgn_action(&mut self, cx: &mut Context<Self>) {
+        self.copy_pgn(cx);
+    }
+
+    /// Changes one of the Analyse display options and redraws.
+    pub(super) fn set_view(
+        &mut self,
+        cx: &mut Context<Self>,
+        change: impl FnOnce(&mut crate::config::AnalysisView),
+    ) {
+        self.model.update(cx, |model, cx| {
+            change(&mut model.config.view);
+            model.save_config(cx);
+        });
+        self.rebuild_rows(cx);
     }
 
     /// Loads a PGN and jumps to a given ply of the main line.
@@ -961,6 +1212,33 @@ impl AnalyseScreen {
                 });
             }),
         };
+        let style = self.model.read(cx).config.view.scoresheet;
+        let sheet = match style {
+            ScoresheetStyle::Table => scoresheet_body(&self.tree, &props).into_any_element(),
+            ScoresheetStyle::Inline => scoresheet_inline(&self.tree, &props).into_any_element(),
+        };
+        let style_toggle = {
+            let this = this.clone();
+            let (label, tip) = match style {
+                ScoresheetStyle::Table => ("Table", "Lichess style. Click for running text."),
+                ScoresheetStyle::Inline => ("Inline", "Nibbler style. Click for the move table."),
+            };
+            btn("sheet-style", label)
+                .h(22.)
+                .pad(7.)
+                .text(11.)
+                .tooltip(tip)
+                .on_click(move |_, cx| {
+                    this.update(cx, |screen, cx| {
+                        screen.set_view(cx, |view| {
+                            view.scoresheet = match view.scoresheet {
+                                ScoresheetStyle::Table => ScoresheetStyle::Inline,
+                                ScoresheetStyle::Inline => ScoresheetStyle::Table,
+                            };
+                        });
+                    });
+                })
+        };
         let nag_button = |id: &'static str, label: &'static str, nag: u8, this: Entity<Self>| {
             btn(id, label)
                 .w(36.)
@@ -984,7 +1262,13 @@ impl AnalyseScreen {
                     .gap(px(1.))
                     .border_b_1()
                     .border_color(rgb(T.border))
-                    .child(section_label("Scoresheet").mb(px(9.)))
+                    .child(
+                        h_flex()
+                            .justify_between()
+                            .mb(px(9.))
+                            .child(section_label("Scoresheet"))
+                            .child(style_toggle),
+                    )
                     .child(name_row(white, white_elo))
                     .child(name_row(black, black_elo))
                     .child(
@@ -1003,7 +1287,7 @@ impl AnalyseScreen {
                     .overflow_y_scroll()
                     .track_scroll(&self.scoresheet_scroll)
                     .py(px(4.))
-                    .child(scoresheet_body(&self.tree, &props)),
+                    .child(sheet),
             )
             .when(self.editing_comment, |column| {
                 let comment = self.comment.clone();
@@ -1113,11 +1397,7 @@ impl AnalyseScreen {
             })
             .filter(|_| self.editor.is_none())
             .unwrap_or_else(|| "–".to_owned());
-        let ids = self.timeline_ids();
-        let evals: Vec<Option<i32>> = ids.iter().map(|id| self.evals.get(id).copied()).collect();
-        let current_index = ids.iter().position(|&id| id == self.current);
-        let scrub_this = this.clone();
-        let scrub_ids = ids.clone();
+        let graph = self.render_graph(cx);
         let nav = |id: &'static str,
                    icon: &'static str,
                    tip: &'static str,
@@ -1169,20 +1449,7 @@ impl AnalyseScreen {
                     ),
             )
             .child(div().size(board_size).flex_none().child(self.board.clone()))
-            .child(section_label("Game timeline").mt(px(16.)).mb(px(6.)))
-            .child(timeline(TimelineProps {
-                evals,
-                current: current_index,
-                on_scrub: Rc::new(move |index, window, cx| {
-                    if let Some(&id) = scrub_ids.get(index) {
-                        scrub_this.update(cx, |screen, cx| {
-                            if screen.current != id {
-                                screen.jump(id, window, cx);
-                            }
-                        });
-                    }
-                }),
-            }))
+            .child(graph)
             .child(
                 h_flex()
                     .mt(px(12.))
@@ -1262,6 +1529,162 @@ impl AnalyseScreen {
             )
     }
 
+    /// Evals along the shown line: the game's own, else what any engine found for that
+    /// position, including by another move order.
+    fn line_evals(&self, ids: &[NodeId], cx: &gpui::App) -> (Vec<Option<i32>>, Vec<Option<u32>>) {
+        let live = self.live.read(cx);
+        let engines = live.engine_ids();
+        ids.iter()
+            .map(|id| {
+                let cached = || {
+                    live.cache
+                        .eval(&engines, position_hash(&self.tree.node(*id).pos))
+                };
+                match self.evals.get(id) {
+                    Some(cp) => (Some(*cp), self.depths.get(id).copied().filter(|d| *d > 0)),
+                    None => match cached() {
+                        Some((cp, depth)) => (Some(cp), Some(depth)),
+                        None => (None, None),
+                    },
+                }
+            })
+            .unzip()
+    }
+
+    /// The graph under the board, with tabs for eval, time, depth and the bar timeline.
+    fn render_graph(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+        let this = cx.entity();
+        let tab = self.model.read(cx).config.view.graph;
+        let ids = self.timeline_ids();
+        let (evals, depths) = self.line_evals(&ids, cx);
+        let current = ids.iter().position(|&id| id == self.current);
+        let scrub_ids = ids.clone();
+        let scrub_this = this.clone();
+        let on_scrub: ui::timeline::ScrubHandler = Rc::new(move |index, window, cx| {
+            if let Some(&id) = scrub_ids.get(index) {
+                scrub_this.update(cx, |screen, cx| {
+                    if screen.current != id {
+                        screen.jump(id, window, cx);
+                    }
+                });
+            }
+        });
+        let mut tabs = h_flex().gap(px(2.));
+        for (index, option) in GraphTab::ALL.into_iter().enumerate() {
+            let this = this.clone();
+            let active = option == tab;
+            tabs = tabs.child(
+                div()
+                    .id(("graph-tab", index))
+                    .px(px(8.))
+                    .py(px(2.))
+                    .rounded(px(4.))
+                    .cursor_pointer()
+                    .text_size(px(11.))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(rgb(if active { T.fg } else { T.muted }))
+                    .when(active, |el| el.bg(rgb(T.selected)))
+                    .when(!active, |el| el.hover(|style| style.bg(rgb(T.hover))))
+                    .on_click(move |_, _, cx| {
+                        this.update(cx, |screen, cx| {
+                            screen.set_view(cx, |view| view.graph = option);
+                        });
+                    })
+                    .child(option.label()),
+            );
+        }
+        let count = ids.len();
+        let body = match tab {
+            GraphTab::Timeline => timeline(TimelineProps {
+                evals,
+                current,
+                on_scrub,
+            })
+            .into_any_element(),
+            GraphTab::Eval => ui::graph::graph(ui::graph::GraphProps {
+                series: vec![ui::graph::Series {
+                    values: evals.iter().map(|cp| cp.map(|cp| cp as f32)).collect(),
+                    color: T.fg,
+                    fill: true,
+                    connect: false,
+                }],
+                count,
+                current,
+                scale: ui::graph::Scale::SymLog {
+                    max: chess_core::annotation::MATE_CP as f32,
+                    unit: 100.0,
+                },
+                ticks: ui::graph::eval_ticks(),
+                height: 80.,
+                on_scrub,
+                empty: "No evaluations yet. Turn the engine on or load an annotated game.",
+            })
+            .into_any_element(),
+            GraphTab::Time => {
+                let times = chess_core::move_times(&self.tree, &ids);
+                let max = times.iter().flatten().fold(0.0f64, |a, b| a.max(*b)) as f32;
+                let side = |white: bool| ui::graph::Series {
+                    values: ids
+                        .iter()
+                        .zip(&times)
+                        .map(|(id, time)| {
+                            let is_white = self.tree.node(*id).ply % 2 == 1;
+                            time.filter(|_| is_white == white).map(|t| t as f32)
+                        })
+                        .collect(),
+                    color: if white { T.fg } else { T.warn },
+                    fill: false,
+                    connect: true,
+                };
+                ui::graph::graph(ui::graph::GraphProps {
+                    series: vec![side(true), side(false)],
+                    count,
+                    current,
+                    scale: ui::graph::Scale::Linear {
+                        max: (max * 1.1).max(1.0),
+                    },
+                    ticks: ui::graph::linear_ticks(max, "s"),
+                    height: 80.,
+                    on_scrub,
+                    empty: "No clock data. Games with [%clk] or [%emt] comments show time per move.",
+                })
+                .into_any_element()
+            }
+            GraphTab::Depth => {
+                let max = depths.iter().flatten().copied().max().unwrap_or(0) as f32;
+                ui::graph::graph(ui::graph::GraphProps {
+                    series: vec![ui::graph::Series {
+                        values: depths.iter().map(|d| d.map(|d| d as f32)).collect(),
+                        color: T.accent,
+                        fill: false,
+                        connect: true,
+                    }],
+                    count,
+                    current,
+                    scale: ui::graph::Scale::Linear {
+                        max: (max * 1.1).max(1.0),
+                    },
+                    ticks: ui::graph::linear_ticks(max, ""),
+                    height: 80.,
+                    on_scrub,
+                    empty: "No search depths yet.",
+                })
+                .into_any_element()
+            }
+        };
+        v_flex()
+            .child(
+                h_flex()
+                    .mt(px(12.))
+                    .mb(px(6.))
+                    .justify_between()
+                    .child(section_label("Game graph"))
+                    .child(tabs),
+            )
+            .child(body)
+            .into_any_element()
+    }
+
     fn render_moves_table(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let this = cx.entity();
         let model = self.model.read(cx);
@@ -1295,6 +1718,7 @@ impl AnalyseScreen {
             .map(|entry| reference_column_title(&entry.name))
             .unwrap_or_else(|| "Reference".to_owned());
         let show_wdl = self.show_wdl;
+        let quality_arrows = model.config.view.quality_arrows;
         const COL_MOVE: f32 = 64.;
         const COL_SF: f32 = 66.;
         const COL_WDL: f32 = 88.;
@@ -1356,6 +1780,10 @@ impl AnalyseScreen {
                 .and_then(|parsed| parsed.to_move(&pos).ok());
             let shown = display_san(&row.san, mv.as_ref(), notation);
             let label = chess_core::notation::numbered(ply + 1, &shown);
+            let label_color = row
+                .quality
+                .filter(|_| quality_arrows)
+                .map_or(T.fg, quality_color);
             let select_this = this.clone();
             let scores: Vec<String> = (0..eval_columns)
                 .map(|column| {
@@ -1417,7 +1845,7 @@ impl AnalyseScreen {
                             .w(px(COL_MOVE))
                             .flex_none()
                             .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(rgb(T.fg))
+                            .text_color(rgb(label_color))
                             .child(label),
                     )
                     .children(scores.into_iter().map(|score| {
@@ -1708,7 +2136,7 @@ impl Render for AnalyseScreen {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let viewport = window.viewport_size();
         // The side column keeps room for its table, so the board gives way first.
-        let board_size = (viewport.height - px(324.))
+        let board_size = (viewport.height - px(338.))
             .min(viewport.width - px(820.))
             .max(px(320.));
         let side_width = viewport.width - board_size - px(300. + 56. + 24.);
@@ -1792,6 +2220,14 @@ mod tests {
         }
     }
 
+    fn opts(white_to_move: bool, user_to_move: bool) -> RowOptions {
+        RowOptions {
+            white_to_move,
+            user_to_move,
+            sort: LineSort::Eval,
+        }
+    }
+
     fn line(san: &str, cp: i32) -> MoveRow {
         MoveRow {
             san: san.to_owned(),
@@ -1807,8 +2243,8 @@ mod tests {
             vec![stat("f4", 412), stat("Kb1", 131), stat("Ng3", 47)],
             vec![stat("h4", 9)],
             &[("f4".to_owned(), true), ("Ng3".to_owned(), false)],
-            true,
-            true,
+            &[],
+            opts(true, true),
         );
         let order: Vec<&str> = rows.iter().map(|row| row.san.as_str()).collect();
         assert_eq!(order, vec!["f4", "h4", "Kb1", "Ng3"]);
@@ -1826,8 +2262,8 @@ mod tests {
             vec![],
             vec![],
             &[],
-            false,
-            false,
+            &[],
+            opts(false, false),
         );
         assert_eq!(rows[0].san, "b");
     }
@@ -1839,15 +2275,22 @@ mod tests {
             vec![stat("Qh5", 3)],
             vec![],
             &[],
-            true,
-            true,
+            &[],
+            opts(true, true),
         );
         assert_eq!(rows.len(), 1);
     }
 
     #[test]
     fn no_repertoire_means_no_deviation_tag() {
-        let rows = merge_rows(vec![], vec![], vec![stat("e4", 3)], &[], true, true);
+        let rows = merge_rows(
+            vec![],
+            vec![],
+            vec![stat("e4", 3)],
+            &[],
+            &[],
+            opts(true, true),
+        );
         assert_eq!(rows[0].rep, RepTag::None);
         // Nor on the opponent's turn, where the moves are not the user's choices.
         let rows = merge_rows(
@@ -1855,12 +2298,65 @@ mod tests {
             vec![],
             vec![stat("e5", 3)],
             &[("c5".to_owned(), true)],
-            false,
-            false,
+            &[],
+            opts(false, false),
         );
         assert_eq!(
             rows.iter().find(|row| row.san == "e5").unwrap().rep,
             RepTag::None
         );
+    }
+
+    #[test]
+    fn depth_sort_puts_deeper_lines_first() {
+        let mut shallow = line("a", 90);
+        shallow.depth = 10;
+        let mut deep = line("b", 20);
+        deep.depth = 30;
+        let rows = merge_rows(
+            vec![shallow, deep],
+            vec![],
+            vec![],
+            &[],
+            &[],
+            RowOptions {
+                sort: LineSort::Depth,
+                ..opts(true, true)
+            },
+        );
+        assert_eq!(rows[0].san, "b");
+    }
+
+    #[test]
+    fn all_legal_moves_are_listed_once_after_analysed_ones() {
+        let rows = merge_rows(
+            vec![line("e4", 30)],
+            vec![],
+            vec![],
+            &[],
+            &["e4".to_owned(), "d4".to_owned(), "Nf3".to_owned()],
+            opts(true, true),
+        );
+        let order: Vec<&str> = rows.iter().map(|row| row.san.as_str()).collect();
+        assert_eq!(order, vec!["e4", "d4", "Nf3"]);
+        assert!(rows[1].score.is_none());
+    }
+
+    #[test]
+    fn lines_are_graded_against_the_best_for_the_side_to_move() {
+        let rows = merge_rows(
+            vec![line("a", -40), line("b", 300), line("c", 0)],
+            vec![],
+            vec![],
+            &[],
+            &[],
+            opts(false, false),
+        );
+        // Black to move: -0.40 is best for Black, +3.00 throws the game away.
+        assert_eq!(rows[0].san, "a");
+        assert_eq!(rows[0].quality, Some(Quality::Best));
+        assert_eq!(rows[2].san, "b");
+        assert_eq!(rows[2].quality, Some(Quality::Blunder));
+        assert!(rows[1].quality > Some(Quality::Best));
     }
 }

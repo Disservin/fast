@@ -32,6 +32,12 @@ pub struct Theme {
     pub accent_hover: u32,
     /// Text and icons on the accent.
     pub accent_fg: u32,
+    /// MultiPV arrow and label colours by move quality, best to worst.
+    pub q_best: u32,
+    pub q_good: u32,
+    pub q_inaccuracy: u32,
+    pub q_mistake: u32,
+    pub q_blunder: u32,
 }
 
 /// The active theme.
@@ -59,6 +65,11 @@ pub const T: Theme = Theme {
     accent: 0x5AA2FF,
     accent_hover: 0x7AB5FF,
     accent_fg: 0x0B1626,
+    q_best: 0x5AA2FF,
+    q_good: 0x46C25A,
+    q_inaccuracy: 0xE6C229,
+    q_mistake: 0xE8892B,
+    q_blunder: 0xE5534B,
 };
 
 fn hsla(color: u32) -> Hsla {
