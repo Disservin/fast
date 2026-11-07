@@ -31,7 +31,10 @@ use crate::{
 #[derive(Clone, Debug, Default)]
 pub struct MoveRow {
     pub san: String,
+    /// The score the table sorts by: the primary engine's, else another engine's.
     pub score: Option<Score>,
+    /// Each analysis engine's score for this move, in `LiveAnalysis::engines` order.
+    pub scores: Vec<Option<Score>>,
     pub wdl: Option<Wdl>,
     pub pv: Vec<String>,
     pub depth: u32,
@@ -437,23 +440,39 @@ impl AnalyseScreen {
         let white_to_move = self.analysed_pos().turn().is_white();
         let model = self.model.read(cx);
         let live = self.live.read(cx);
-        let mut lines = Vec::new();
-        if let Some(primary) = live.primary() {
-            for line in primary.lines.values() {
+        let mut lines: Vec<MoveRow> = Vec::new();
+        // Every engine's lines, merged by move. The primary engine goes first, so its
+        // line is the one a row previews and its score the one the table sorts by.
+        let count = live.engines.len();
+        let primary_id = live.primary().map(|engine| engine.config.id);
+        let mut order: Vec<usize> = (0..count).collect();
+        order.sort_by_key(|&index| Some(live.engines[index].config.id) != primary_id);
+        for index in order {
+            let engine = &live.engines[index];
+            for line in engine.lines.values() {
                 let Some(san) = line.sans.first() else {
                     continue;
                 };
-                lines.push(MoveRow {
-                    san: san.clone(),
-                    score: line.score,
-                    wdl: line.wdl,
-                    pv: line.sans.clone(),
-                    depth: line.update.depth,
-                    nodes: line.update.nodes,
-                    nps: line.update.nps,
-                    engine_name: primary.config.name.clone(),
-                    ..Default::default()
-                });
+                let row = match lines.iter().position(|row| &row.san == san) {
+                    Some(found) => &mut lines[found],
+                    None => {
+                        lines.push(MoveRow {
+                            san: san.clone(),
+                            scores: vec![None; count],
+                            wdl: line.wdl,
+                            pv: line.sans.clone(),
+                            depth: line.update.depth,
+                            nodes: line.update.nodes,
+                            nps: line.update.nps,
+                            engine_name: engine.config.name.clone(),
+                            ..Default::default()
+                        });
+                        lines.last_mut().expect("just pushed")
+                    }
+                };
+                row.scores[index] = line.score;
+                row.score = row.score.or(line.score);
+                row.wdl = row.wdl.or(line.wdl);
             }
         }
         if let Some(wdl_engine) = live.wdl_engine() {
@@ -1248,9 +1267,11 @@ impl AnalyseScreen {
         let model = self.model.read(cx);
         let notation = model.config.board.notation;
         let live = self.live.read(cx);
-        let primary = live.primary();
         let wdl_engine = live.wdl_engine();
-        let eval_title = primary
+        // One eval column per analysis engine, so engines can be compared move by move.
+        let mut eval_titles: Vec<String> = live
+            .engines
+            .iter()
             .map(|engine| {
                 let short = short_engine(&engine.config.name);
                 // Long development version strings would not fit the column.
@@ -1261,7 +1282,11 @@ impl AnalyseScreen {
                     short
                 }
             })
-            .unwrap_or_else(|| "Eval".to_owned());
+            .collect();
+        if eval_titles.is_empty() {
+            eval_titles.push("Eval".to_owned());
+        }
+        let eval_columns = eval_titles.len();
         let wdl_title = wdl_engine
             .map(|engine| format!("{} W / D / L", short_engine(&engine.config.name)))
             .unwrap_or_else(|| "W / D / L".to_owned());
@@ -1271,7 +1296,7 @@ impl AnalyseScreen {
             .unwrap_or_else(|| "Reference".to_owned());
         let show_wdl = self.show_wdl;
         const COL_MOVE: f32 = 64.;
-        const COL_SF: f32 = 56.;
+        const COL_SF: f32 = 66.;
         const COL_WDL: f32 = 88.;
         const COL_REF: f32 = 84.;
         const COL_MY: f32 = 80.;
@@ -1287,12 +1312,14 @@ impl AnalyseScreen {
                     .flex_none()
                     .child(section_label("Move")),
             )
-            .child(
+            .children(eval_titles.iter().map(|title| {
                 div()
                     .w(px(COL_SF))
                     .flex_none()
-                    .child(section_label(&eval_title)),
-            )
+                    .pr(px(6.))
+                    .overflow_hidden()
+                    .child(section_label(title))
+            }))
             .when(show_wdl, |header| {
                 header.child(
                     div()
@@ -1330,10 +1357,16 @@ impl AnalyseScreen {
             let shown = display_san(&row.san, mv.as_ref(), notation);
             let label = chess_core::notation::numbered(ply + 1, &shown);
             let select_this = this.clone();
-            let score = row
-                .score
-                .map(Score::display)
-                .unwrap_or_else(|| "—".to_owned());
+            let scores: Vec<String> = (0..eval_columns)
+                .map(|column| {
+                    row.scores
+                        .get(column)
+                        .copied()
+                        .flatten()
+                        .map(Score::display)
+                        .unwrap_or_else(|| "—".to_owned())
+                })
+                .collect();
             let stat_text = |stat: &Option<MoveStat>| {
                 stat.as_ref()
                     .map(|stat| {
@@ -1387,14 +1420,14 @@ impl AnalyseScreen {
                             .text_color(rgb(T.fg))
                             .child(label),
                     )
-                    .child(
+                    .children(scores.into_iter().map(|score| {
                         div()
                             .w(px(COL_SF))
                             .flex_none()
                             .text_size(px(13.))
                             .text_color(rgb(T.fg_2))
-                            .child(score),
-                    )
+                            .child(score)
+                    }))
                     .when(show_wdl, |row_el| {
                         row_el.child(
                             div()
@@ -1679,7 +1712,9 @@ impl Render for AnalyseScreen {
             .min(viewport.width - px(820.))
             .max(px(320.));
         let side_width = viewport.width - board_size - px(300. + 56. + 24.);
-        self.show_wdl = side_width >= px(450.);
+        // Each engine past the first adds an eval column.
+        let extra_engines = self.live.read(cx).engines.len().saturating_sub(1) as f32;
+        self.show_wdl = side_width >= px(460. + 66. * extra_engines);
         let scoresheet = self.render_scoresheet(cx);
         let board_column = self.render_board_column(board_size, cx);
         let table = self.render_moves_table(cx);
