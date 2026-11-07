@@ -98,6 +98,8 @@ pub struct BoardConfig {
     pub highlight_last: bool,
     pub auto_queen: bool,
     pub move_sounds: bool,
+    /// Analyse shows Black at the bottom. Kept across games and restarts.
+    pub flipped: bool,
 }
 
 impl Default for BoardConfig {
@@ -112,6 +114,7 @@ impl Default for BoardConfig {
             highlight_last: true,
             auto_queen: false,
             move_sounds: true,
+            flipped: false,
         }
     }
 }

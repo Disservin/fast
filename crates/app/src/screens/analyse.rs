@@ -244,7 +244,11 @@ impl AnalyseScreen {
             GameTree::ROOT
         };
         let prefs = model.read(cx).config.board.prefs();
-        board.update(cx, |board, cx| board.set_prefs(prefs, cx));
+        let flipped = model.read(cx).config.board.flipped;
+        board.update(cx, |board, cx| {
+            board.set_prefs(prefs, cx);
+            board.set_flipped(flipped, cx);
+        });
         let mut this = Self {
             model,
             workspace,
@@ -545,11 +549,16 @@ impl AnalyseScreen {
         self.jump(end, window, cx);
     }
 
+    /// Turns the board around and remembers it for the next game and launch.
     pub fn flip(&mut self, cx: &mut Context<Self>) {
-        self.board.update(cx, |board, cx| {
-            let flipped = board.is_flipped();
-            board.set_flipped(!flipped, cx);
+        let flipped = !self.board.read(cx).is_flipped();
+        self.board
+            .update(cx, |board, cx| board.set_flipped(flipped, cx));
+        self.model.update(cx, |model, cx| {
+            model.config.board.flipped = flipped;
+            model.save_config(cx);
         });
+        cx.notify();
     }
 
     pub fn toggle_engine(&mut self, cx: &mut Context<Self>) {
@@ -967,6 +976,11 @@ impl AnalyseScreen {
                 })
         };
         let fen = self.tree.fen(self.current);
+        let flipped = self.board.read(cx).is_flipped();
+        let flip_tip = match self.model.read(cx).config.shortcuts.get("flip_board") {
+            Some(key) => format!("Flip board ({})", key.to_uppercase()),
+            None => "Flip board".to_owned(),
+        };
         let tool_pad = if compact { 5. } else { 13. };
         v_flex()
             .flex_none()
@@ -1054,10 +1068,18 @@ impl AnalyseScreen {
                     .child(
                         h_flex()
                             .gap(px(6.))
-                            .child(btn("flip", "Flip").pad(tool_pad).on_click({
-                                let this = this.clone();
-                                move |_, cx| this.update(cx, |screen, cx| screen.flip(cx))
-                            }))
+                            .child(
+                                icon_btn("flip", "icons/arrow-down-up.svg")
+                                    .w(nav_width)
+                                    .selected(flipped)
+                                    .tooltip(flip_tip)
+                                    .on_click({
+                                        let this = this.clone();
+                                        move |_, cx| {
+                                            this.update(cx, |screen, cx| screen.flip(cx));
+                                        }
+                                    }),
+                            )
                             .child(btn("setup", "Set up").pad(tool_pad).on_click({
                                 let this = this.clone();
                                 move |window, cx| {
