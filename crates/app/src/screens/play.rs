@@ -1182,47 +1182,24 @@ fn opponent_names(engines: &[EngineConfig]) -> Vec<SharedString> {
 
 impl Render for PlayScreen {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if let Some(recovery) = self.recovery.clone() {
-            let restore = cx.entity();
-            let discard = cx.entity();
-            return v_flex()
-                .p(px(24.))
-                .gap(px(16.))
-                .child(format!(
-                    "Recover engine game saved at Unix time {}",
-                    recovery.saved_at
-                ))
-                .child(recovery.pgn.chars().take(500).collect::<String>())
-                .child(btn("recover-play", "Restore game in Analyse").on_click(
-                    move |window, cx| {
-                        restore.update(cx, |this, cx| {
-                            if let Some(recovery) = this.recovery.take()
-                                && let Some(workspace) = this.workspace.upgrade()
-                            {
-                                workspace.update(cx, |workspace, cx| {
-                                    workspace.open_pgn(&recovery.pgn, 0, window, cx);
-                                });
-                            }
+        // An engine game left unfinished last time opens in Analyse, which keeps it from
+        // then on; the engine is not restarted.
+        if let Some(recovery) = self.recovery.take() {
+            match self.workspace.upgrade() {
+                Some(workspace) => {
+                    let pgn = recovery.pgn;
+                    let path = self.recovery_path.clone();
+                    window.defer(cx, move |window, cx| {
+                        workspace.update(cx, |workspace, cx| {
+                            workspace.open_pgn(&pgn, 0, window, cx);
                         });
-                    },
-                ))
-                .child(
-                    btn("discard-play-recovery", "Discard recovery").on_click(move |_, cx| {
-                        discard.update(cx, |this, cx| {
-                            let path = this.recovery_path.clone();
-                            match crate::recovery::Recovery::discard(&path) {
-                                Ok(()) => {
-                                    this.recovery = None;
-                                    cx.notify();
-                                }
-                                Err(err) => {
-                                    this.toast(format!("Could not discard recovery: {err}"), cx)
-                                }
-                            }
-                        });
-                    }),
-                )
-                .into_any_element();
+                        if let Err(err) = crate::recovery::Recovery::discard(&path) {
+                            log::error!("could not remove the Play autosave: {err}");
+                        }
+                    });
+                }
+                None => self.recovery = Some(recovery),
+            }
         }
         let viewport = window.viewport_size();
         let board_size = ui::board::snap_board_size(

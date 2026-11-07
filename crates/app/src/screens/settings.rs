@@ -1447,13 +1447,6 @@ impl SettingsScreen {
         let mut body = v_flex()
             .gap(px(12.))
             .child(section_label("Storage and backup"))
-            .child(
-                if model.read(cx).unsaved_config || model.read(cx).unsaved_repertoire {
-                    "Unsaved changes — use Retry saving below"
-                } else {
-                    "Settings and repertoire saved"
-                },
-            )
             .child(format!("Settings: {}", paths.config_file.display()))
             .child(format!(
                 "Games, notes, repertoire and history: {}",
@@ -1601,16 +1594,24 @@ impl SettingsScreen {
             .child(page_title("General"))
             .child(self.render_storage(cx))
             .child(self.render_appearance(cx))
-            .child(
-                btn("retry-saves", "Retry saving settings and repertoire").on_click({
-                    let model = self.model.clone();
-                    move |_, cx| {
-                        model.update(cx, |model, cx| {
-                            model.save_config(cx);
-                            model.save_repertoire(cx);
-                        })
-                    }
-                }),
+            .when(
+                {
+                    let model = self.model.read(cx);
+                    model.unsaved_config || model.unsaved_repertoire
+                },
+                |page| {
+                    page.child(
+                        btn("retry-saves", "Retry saving settings and repertoire").on_click({
+                            let model = self.model.clone();
+                            move |_, cx| {
+                                model.update(cx, |model, cx| {
+                                    model.save_config(cx);
+                                    model.save_repertoire(cx);
+                                })
+                            }
+                        }),
+                    )
+                },
             )
             .child(self.render_board_section(cx))
             .child(self.render_shortcut_summary(cx))

@@ -18,7 +18,7 @@ use ui::{
     Arrow, BoardEvent, BoardView, MONO, T,
     scoresheet::{ScoresheetProps, scoresheet_body, scoresheet_inline},
     timeline::{TimelineProps, timeline},
-    widgets::{btn, divider, h_flex, icon_btn, key_cap, mono, panel, section_label, stat, v_flex},
+    widgets::{btn, divider, h_flex, icon_btn, mono, panel, section_label, stat, v_flex},
 };
 
 use crate::{
@@ -197,9 +197,10 @@ type MenuHandler = Box<dyn Fn(&mut Window, &mut gpui::App)>;
 pub struct AnalyseScreen {
     recovery: Option<crate::recovery::Recovery>,
     recovery_path: std::path::PathBuf,
+    /// What the autosave file last received.
     recovery_pgn: String,
-    saved_pgn: String,
-    recovery_error: Option<String>,
+    /// Autosave is failing; reported once until it works again.
+    autosave_failed: bool,
     model: Entity<AppModel>,
     workspace: WeakEntity<Workspace>,
     pub tree: GameTree,
@@ -363,8 +364,7 @@ impl AnalyseScreen {
             recovery: crate::recovery::Recovery::load(&recovery_path),
             recovery_path,
             recovery_pgn: String::new(),
-            saved_pgn: write_pgn(&GameTree::new()),
-            recovery_error: None,
+            autosave_failed: false,
             model,
             workspace,
             tree,
@@ -459,10 +459,35 @@ impl AnalyseScreen {
 
     pub fn checkpoint(&self) -> anyhow::Result<()> {
         let pgn = write_pgn(&self.tree);
-        if pgn != self.saved_pgn && pgn != write_pgn(&GameTree::new()) {
-            crate::recovery::Recovery::save(&self.recovery_path, pgn)?;
+        if pgn == write_pgn(&GameTree::new()) {
+            crate::recovery::Recovery::discard(&self.recovery_path)
+        } else {
+            crate::recovery::Recovery::save(&self.recovery_path, pgn)
         }
-        Ok(())
+    }
+
+    /// Keeps the open game on disk after every change, so it is never lost and comes
+    /// back on the next start. An empty board leaves nothing to restore.
+    fn autosave(&mut self, cx: &mut Context<Self>) {
+        let pgn = write_pgn(&self.tree);
+        if pgn == self.recovery_pgn {
+            return;
+        }
+        match self.checkpoint() {
+            Ok(()) => {
+                self.recovery_pgn = pgn;
+                self.autosave_failed = false;
+            }
+            Err(err) => {
+                log::error!("autosave failed: {err:#}");
+                if !std::mem::replace(&mut self.autosave_failed, true) {
+                    self.toast(
+                        format!("Could not autosave this game: {err}. Check storage permissions."),
+                        cx,
+                    );
+                }
+            }
+        }
     }
 
     fn opening(&self) -> Option<chess_core::Opening> {
@@ -875,7 +900,6 @@ impl AnalyseScreen {
     pub fn save_pgn_as(&mut self, cx: &mut Context<Self>) {
         let pgn = write_pgn(&self.tree);
         let model = self.model.clone();
-        let this = cx.entity().downgrade();
         crate::model::pick_path(
             self.model.clone(),
             "Save game as PGN",
@@ -883,18 +907,6 @@ impl AnalyseScreen {
             cx,
             move |path, cx| {
                 let result = crate::persistence::atomic_write(&path, pgn.as_bytes());
-                if result.is_ok()
-                    && let Some(this) = this.upgrade()
-                {
-                    this.update(cx, |screen, cx| {
-                        screen.saved_pgn = pgn;
-                        if write_pgn(&screen.tree) == screen.saved_pgn {
-                            let path = screen.recovery_path.clone();
-                            let _ = crate::recovery::Recovery::discard(&path);
-                        }
-                        cx.notify();
-                    });
-                }
                 model.update(cx, |model, cx| match result {
                     Ok(()) => model.toast(format!("Saved {}", path.display()), cx),
                     Err(err) => model.toast(format!("Could not save: {err}"), cx),
@@ -1250,8 +1262,6 @@ impl AnalyseScreen {
 
     /// Saves the game to "My games".
     pub fn save_game(&mut self, cx: &mut Context<Self>) {
-        let original_pgn = write_pgn(&self.tree);
-        let this = cx.entity().downgrade();
         let mut tree = self.tree.clone();
         let player = self.model.read(cx).config.player_name.clone();
         if tree.header("White").is_none_or(|white| white == "White") {
@@ -1271,16 +1281,6 @@ impl AnalyseScreen {
                     Ok::<_, db::DbError>(summary)
                 })
                 .await;
-            if saved.as_ref().is_ok_and(|summary| summary.games > 0) {
-                let _ = this.update(cx, |screen, cx| {
-                    screen.saved_pgn = original_pgn;
-                    if write_pgn(&screen.tree) == screen.saved_pgn {
-                        let path = screen.recovery_path.clone();
-                        let _ = crate::recovery::Recovery::discard(&path);
-                    }
-                    cx.notify();
-                });
-            }
             model.update(cx, |model, cx| {
                 match saved {
                     Ok(summary) if summary.games > 0 => model.toast("Saved to My games.", cx),
@@ -2580,56 +2580,11 @@ fn wdl_bar(wdl: Option<Wdl>) -> gpui::AnyElement {
 
 impl Render for AnalyseScreen {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let recovery_path = self.recovery_path.clone();
-        if let Some(recovery) = self.recovery.clone() {
-            return v_flex()
-                .p(px(24.))
-                .gap(px(16.))
-                .child(format!(
-                    "Recover game saved at Unix time {}",
-                    recovery.saved_at
-                ))
-                .child(recovery.pgn.chars().take(500).collect::<String>())
-                .child(btn("restore-recovery", "Restore game").on_click({
-                    let entity = cx.entity();
-                    move |window, cx| {
-                        entity.update(cx, |this, cx| {
-                            if let Some(recovery) = this.recovery.take() {
-                                this.load_text(&recovery.pgn, window, cx);
-                            }
-                        })
-                    }
-                }))
-                .child(btn("discard-recovery", "Discard recovery").on_click({
-                    let entity = cx.entity();
-                    move |_, cx| {
-                        entity.update(cx, |this, cx| {
-                            match crate::recovery::Recovery::discard(&recovery_path) {
-                                Ok(()) => {
-                                    this.recovery = None;
-                                    cx.notify();
-                                }
-                                Err(err) => {
-                                    this.toast(format!("Could not discard recovery: {err}"), cx)
-                                }
-                            }
-                        })
-                    }
-                }))
-                .into_any_element();
+        // The game left open last time comes back as it was.
+        if let Some(recovery) = self.recovery.take() {
+            self.load_text(&recovery.pgn, window, cx);
         }
-        let pgn = write_pgn(&self.tree);
-        if pgn != self.recovery_pgn && pgn != self.saved_pgn && pgn != write_pgn(&GameTree::new()) {
-            self.recovery_pgn = pgn.clone();
-            match crate::recovery::Recovery::save(&recovery_path, pgn) {
-                Ok(()) => self.recovery_error = None,
-                Err(err) => {
-                    self.recovery_error = Some(format!(
-                        "Recovery unavailable: {err}. Save the game and check storage permissions."
-                    ))
-                }
-            }
-        }
+        self.autosave(cx);
         let viewport = window.viewport_size();
         // The side column keeps room for its table, so the board gives way first.
         self.scale = window.scale_factor();
@@ -2640,17 +2595,7 @@ impl Render for AnalyseScreen {
             self.scale,
         );
         self.show_wdl = self.live.read(cx).wdl_engine().is_some();
-        let dirty = write_pgn(&self.tree) != self.saved_pgn;
-        let scoresheet = v_flex()
-            .h_full()
-            .children(self.recovery_error.clone())
-            .children(dirty.then(|| {
-                h_flex()
-                    .gap(px(6.))
-                    .child("Unsaved game")
-                    .child(key_cap("Ctrl/Cmd+S"))
-            }))
-            .child(self.render_scoresheet(cx));
+        let scoresheet = v_flex().h_full().child(self.render_scoresheet(cx));
         let board_column = self.render_board_column(board_size, cx);
         let table = self.render_moves_table(cx);
         let preview = self.render_line_preview(cx);

@@ -134,14 +134,16 @@ needless frames: the board positions pieces proportionally so a resize needs onl
 Profile and PGN replacement stages a file beside its destination, syncs it and atomically
 replaces the destination. A `.previous` sibling retains the preceding version; config and
 repertoire saves preserve only valid previous data and startup falls back to that version.
-Settings exposes storage paths, persistent unsaved status and retry controls. A cancelled
+Settings exposes storage paths, and a retry control only while a save has failed. A cancelled
 PGN dialog does not mutate the game or its saved baseline.
 
 The original Analyse/Play views use `game-recovery.json` and `play-recovery.json`;
 additional document tabs use `recovery/analysis-<id>.json` and `recovery/play-<id>.json`.
-These files are scanned at startup and included in backups. Recovery stores PGN
-including clock metadata. Startup offers a preview and explicit restore/discard. Engine-game
-recovery opens the preserved game in Analyse rather than automatically restarting an engine.
+They are autosaves: Analyse writes its game after every change (an empty board removes the
+file), and Play after every move. They are scanned at startup and included in backups, and
+store PGN including clock metadata. Startup restores Analyse games silently; an unfinished
+engine game opens in Analyse, which keeps it from then on, rather than restarting an engine.
+Saving to My games or a PGN file is a separate, explicit copy.
 Study recovery lives inside `repertoire.json`, alongside cards and append-only review events,
 so queue advancement and scheduling commit together. Evidence records hints, reveals,
 failures, active training time, requested/applied grades and before/after cards. Review IDs
@@ -190,4 +192,4 @@ late engine events and configuration notifications cannot start background analy
 Each Play game already owns its own engine and clock. Open games continue when
 switching tabs; closing suspends them and reopening resets the clock tick origin
 and resumes the search. Dropping a game quits its process. The last ten closed
-entities can be reopened; recovery files retain unsaved documents independently.
+entities can be reopened; autosave files keep every document independently.
