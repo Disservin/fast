@@ -5,6 +5,7 @@ pub mod annotation;
 pub mod eco;
 pub mod notation;
 pub mod pgn;
+pub mod rules;
 pub mod sample;
 pub mod tree;
 
@@ -12,6 +13,7 @@ pub use annotation::{MoveAnnotation, move_times, parse_annotation, strip_command
 pub use eco::{Opening, classify};
 pub use notation::{Notation, display_san, format_pv, nag_symbol, pv_to_san};
 pub use pgn::{PgnError, parse_pgn, write_pgn, write_pgn_from};
+pub use rules::{GameEnd, game_end};
 pub use tree::{GameTree, Node, NodeId, position_hash};
 
 pub use shakmaty::{self, Chess, Color, Move, Position, Role, Square};

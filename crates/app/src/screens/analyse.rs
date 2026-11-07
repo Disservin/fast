@@ -1544,12 +1544,11 @@ impl AnalyseScreen {
         } else {
             "Black"
         };
+        let end = self.live.read(cx).end;
         let status = if self.editor.is_some() {
             "Edit position".to_owned()
-        } else if shown.is_checkmate() {
-            "Checkmate".to_owned()
-        } else if shown.is_stalemate() {
-            "Stalemate".to_owned()
+        } else if let Some(end) = end {
+            end.describe().to_owned()
         } else {
             format!("{turn} to move")
         };
@@ -1572,6 +1571,11 @@ impl AnalyseScreen {
             })
             .filter(|_| self.editor.is_none())
             .unwrap_or_else(|| "–".to_owned());
+        // A finished game shows its result, not an evaluation.
+        let eval_text = match end.filter(|_| self.editor.is_none()) {
+            Some(end) => end.result().replace("1/2", "½"),
+            None => eval_text,
+        };
         let graph = self.render_graph(cx);
         let nav = |id: &'static str,
                    icon: &'static str,
@@ -2223,7 +2227,9 @@ impl AnalyseScreen {
             .as_ref()
             .filter(|_| demo)
             .and_then(|row| crate::demo::explanation(&row.san));
-        let has_row = selected.is_some();
+        // A previewed line counts even where the table is empty, such as after the
+        // mating move, so the whole line can still be played.
+        let has_row = self.action_line().is_some();
         panel()
             .flex_none()
             .p(px(16.))

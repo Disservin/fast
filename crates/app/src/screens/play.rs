@@ -2,9 +2,7 @@
 
 use std::time::{Duration, Instant};
 
-use chess_core::{
-    Chess, Color, GameTree, Move, NodeId, Position, classify, shakmaty::uci::UciMove,
-};
+use chess_core::{Color, GameTree, Move, NodeId, Position, classify, shakmaty::uci::UciMove};
 use engine::{EngineConfig, EngineEvent, EngineHandle, Limits, OptionKind, SearchRequest};
 use gpui::{
     AppContext as _, Context, Entity, FontWeight, IntoElement, Pixels, Render, SharedString,
@@ -476,19 +474,11 @@ impl PlayScreen {
             game.black_ms += game.increment_ms;
         }
         game.current = game.tree.add_move(game.current, mv);
-        let pos: Chess = game.tree.node(game.current).pos.clone();
+        // Repetition and the move-count rules end the game too, as on Lichess.
+        let end = game.tree.game_end(game.current);
         self.sync_board(true, cx);
-        if pos.is_checkmate() {
-            let text = if pos.turn() == Color::White {
-                "Black wins by checkmate"
-            } else {
-                "White wins by checkmate"
-            };
-            self.finish(text.to_owned(), cx);
-        } else if pos.is_stalemate() {
-            self.finish("Stalemate: draw".to_owned(), cx);
-        } else if pos.is_insufficient_material() {
-            self.finish("Draw by insufficient material".to_owned(), cx);
+        if let Some(end) = end {
+            self.finish(end.describe().to_owned(), cx);
         }
     }
 

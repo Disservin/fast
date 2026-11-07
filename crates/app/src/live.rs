@@ -153,6 +153,9 @@ pub struct LiveAnalysis {
     node: Option<NodeId>,
     pos: Option<chess_core::Chess>,
     hash: u64,
+    /// The analysed position ends the game (mate, stalemate, a draw rule): nothing to
+    /// search.
+    pub end: Option<chess_core::GameEnd>,
     pub cache: LineCache,
     /// Replaces the configured search limit, e.g. a fixed time per move while a game
     /// is analysed backwards.
@@ -183,6 +186,7 @@ impl LiveAnalysis {
             node: None,
             pos: None,
             hash: 0,
+            end: None,
             cache: LineCache::default(),
             limit_override: None,
             game: 0,
@@ -502,22 +506,39 @@ impl LiveAnalysis {
             .map(|mv| UciMove::from_standard(mv).to_string())
             .collect();
         let mut pos = tree.node(node).pos.clone();
+        let mut history = tree.history(node);
         for mv in extra {
             pos.play_unchecked(*mv);
+            history.push(position_hash(&pos));
         }
+        self.end = chess_core::game_end(&pos, &history);
         self.node = extra.is_empty().then_some(node);
         self.hash = position_hash(&pos);
         self.pos = Some(pos);
         self.fen = root_fen;
         self.moves = moves;
         let hash = self.hash;
-        let mut known = None;
+        let mut known = self.end.map(|end| {
+            let cp = match end {
+                chess_core::GameEnd::Checkmate { winner } if winner.is_white() => {
+                    chess_core::annotation::MATE_CP
+                }
+                chess_core::GameEnd::Checkmate { .. } => -chess_core::annotation::MATE_CP,
+                _ => 0,
+            };
+            (cp, 0)
+        });
         for engine in &mut self.engines {
-            engine.lines = self
-                .cache
-                .get(engine.config.id, hash)
-                .cloned()
-                .unwrap_or_default();
+            // A drawn repetition may have lines from its earlier visits; they no longer
+            // apply once the game is over.
+            engine.lines = if self.end.is_some() {
+                BTreeMap::new()
+            } else {
+                self.cache
+                    .get(engine.config.id, hash)
+                    .cloned()
+                    .unwrap_or_default()
+            };
             if known.is_none()
                 && let Some(line) = engine.lines.get(&1)
                 && let Some(score) = line.score
@@ -539,7 +560,7 @@ impl LiveAnalysis {
             return;
         }
         let Some(pos) = &self.pos else { return };
-        let terminal = pos.is_game_over();
+        let terminal = self.end.is_some();
         self.search_id += 1;
         let hash = position_hash(pos);
         let limit = self
