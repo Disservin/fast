@@ -171,7 +171,7 @@ pub fn action_for(name: &str) -> Option<(Box<dyn Action>, &'static str)> {
         "show_database" => (Box::new(ShowDatabase), SHORTCUT_CONTEXT),
         "show_train" => (Box::new(ShowTrain), SHORTCUT_CONTEXT),
         "show_play" => (Box::new(ShowPlay), SHORTCUT_CONTEXT),
-        "show_settings" => (Box::new(ShowSettings), SHORTCUT_CONTEXT),
+        "show_settings" => (Box::new(ShowSettings), TAB_CONTEXT),
         "quit" => (Box::new(Quit), SHORTCUT_CONTEXT),
         _ => return None,
     })
