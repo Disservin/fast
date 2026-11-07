@@ -109,6 +109,7 @@ pub struct BoardConfig {
     pub notation: Notation,
     pub show_legal: bool,
     pub highlight_last: bool,
+    pub show_move_badges: bool,
     pub auto_queen: bool,
     pub move_sounds: bool,
     /// Analyse shows Black at the bottom. Kept across games and restarts.
@@ -130,6 +131,7 @@ impl Default for BoardConfig {
             notation: Notation::San,
             show_legal: true,
             highlight_last: true,
+            show_move_badges: true,
             auto_queen: false,
             move_sounds: true,
             flipped: false,

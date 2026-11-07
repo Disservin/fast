@@ -2803,7 +2803,8 @@ impl Render for AnalyseScreen {
                 _ => None,
             }
         });
-        let tag = if self.editor.is_none() && self.pv_view.is_none() && self.pv_hover.is_none() {
+        let tag = if self.model.read(cx).config.board.show_move_badges
+            && self.editor.is_none() && self.pv_view.is_none() && self.pv_hover.is_none() {
             explicit.or(inferred)
         } else {
             None

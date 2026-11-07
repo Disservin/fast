@@ -312,10 +312,10 @@ impl MoveTag {
 
     fn appearance(self) -> (&'static str, &'static str, u32) {
         match self {
-            Self::Brilliant => ("!!", "Brilliant", 0x219c9e),
-            Self::Inaccuracy => ("?!", "Inaccuracy", 0xd6a431),
-            Self::Mistake => ("?", "Mistake", 0xe58a35),
-            Self::Blunder => ("??", "Blunder", 0xd94d59),
+            Self::Brilliant => ("!!", "Brilliant", 0x00bfa5),
+            Self::Inaccuracy => ("?!", "Inaccuracy", 0xf4b400),
+            Self::Mistake => ("?", "Mistake", 0xff8c32),
+            Self::Blunder => ("??", "Blunder", 0xf04464),
         }
     }
 }
@@ -1275,11 +1275,17 @@ impl Render for BoardView {
                     .absolute()
                     .left(cell * (x as f32 + 0.65))
                     .top(cell * y as f32)
-                    .px(px(4.))
+                    .size(cell * 0.36)
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .border_2()
+                    .border_color(rgb(0xffffff))
+                    .shadow_sm()
                     .rounded_full()
                     .bg(rgb(color))
                     .font_weight(FontWeight::BOLD)
-                    .text_size(cell * 0.25)
+                    .text_size(cell * 0.20)
                     .text_color(rgb(0xffffff))
                     .child(glyph)
                     .tooltip(move |window, cx| {

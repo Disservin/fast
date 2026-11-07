@@ -1294,6 +1294,13 @@ impl SettingsScreen {
                 |b, v| b.highlight_last = v,
             ))
             .child(board_check(
+                "move-badges",
+                config.show_move_badges,
+                "Show move quality badges",
+                this.clone(),
+                |b, v| b.show_move_badges = v,
+            ))
+            .child(board_check(
                 "queen",
                 config.auto_queen,
                 "Auto-promote to queen",
