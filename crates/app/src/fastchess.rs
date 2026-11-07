@@ -636,6 +636,12 @@ pub fn summarize(block: &[String]) -> Summary {
 pub struct Process {
     child: Arc<Mutex<Child>>,
     stopping: Arc<AtomicBool>,
+    /// The child is the guard of [`crate::process_guard`], not fastchess itself.
+    guarded: bool,
+    /// The guard's stdin. Closing it, as happens when Fast dies, stops fastchess.
+    _guard_input: Option<std::process::ChildStdin>,
+    #[cfg(windows)]
+    job: Option<Arc<crate::process_guard::Job>>,
     pub lines: smol::channel::Receiver<String>,
 }
 
@@ -643,32 +649,59 @@ pub struct Process {
 pub struct StopHandle {
     child: Arc<Mutex<Child>>,
     stopping: Arc<AtomicBool>,
+    guarded: bool,
+    #[cfg(windows)]
+    job: Option<Arc<crate::process_guard::Job>>,
 }
 
-/// Starts fastchess. Event lines go to `live` instead of `lines` when it is given.
+/// Starts fastchess, set up to stop when Fast does (see [`crate::process_guard`]). Event
+/// lines go to `live` instead of `lines` when it is given.
 pub fn spawn(
     program: &Path,
     args: &[String],
     cwd: &Path,
     live: Option<Arc<Mutex<crate::tournament_live::LiveGames>>>,
 ) -> Result<Process> {
-    let mut command = Command::new(program);
-    command
-        .args(args)
-        .current_dir(cwd)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        // fastchess still gets a (hidden) console, which the engines it starts share.
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        command.creation_flags(CREATE_NO_WINDOW);
-    }
-    let mut child = command
-        .spawn()
+    let start = |guard: bool| {
+        let (mut command, guarded) = if guard {
+            crate::process_guard::command(program)
+        } else {
+            (Command::new(program), false)
+        };
+        command
+            .args(args)
+            .current_dir(cwd)
+            .stdin(if guarded {
+                Stdio::piped()
+            } else {
+                Stdio::null()
+            })
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            // fastchess still gets a (hidden) console, which the engines it starts share.
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+            command.creation_flags(CREATE_NO_WINDOW);
+        }
+        command.spawn().map(|child| (child, guarded))
+    };
+    let (mut child, guarded) = start(true)
+        .or_else(|err| {
+            log::warn!("could not start fastchess under a guard ({err}); starting it directly");
+            start(false)
+        })
         .with_context(|| format!("Starting {}", program.display()))?;
+    let guard_input = child.stdin.take();
+    #[cfg(windows)]
+    let job = match crate::process_guard::Job::attach(&child) {
+        Ok(job) => Some(Arc::new(job)),
+        Err(err) => {
+            log::warn!("fastchess will not stop with Fast: {err}");
+            None
+        }
+    };
     let (sender, lines) = smol::channel::bounded::<String>(4096);
     let stdout = child
         .stdout
@@ -712,6 +745,10 @@ pub fn spawn(
     Ok(Process {
         child: Arc::new(Mutex::new(child)),
         stopping: Arc::new(AtomicBool::new(false)),
+        guarded,
+        _guard_input: guard_input,
+        #[cfg(windows)]
+        job,
         lines,
     })
 }
@@ -721,6 +758,9 @@ impl Process {
         StopHandle {
             child: self.child.clone(),
             stopping: self.stopping.clone(),
+            guarded: self.guarded,
+            #[cfg(windows)]
+            job: self.job.clone(),
         }
     }
 
@@ -750,7 +790,8 @@ pub struct Exit {
 
 impl StopHandle {
     /// Asks fastchess to stop as on Ctrl+C, so it saves the config for resuming. A second
-    /// call, or any call on Windows (which has no signal to send), kills it outright.
+    /// call kills it outright. Windows has no signal to send, so there it is always killed,
+    /// engines included.
     pub fn stop(&self) {
         let again = self.stopping.swap(true, Ordering::Relaxed);
         let Ok(mut child) = self.child.lock() else {
@@ -760,18 +801,32 @@ impl StopHandle {
             return;
         }
         #[cfg(unix)]
-        if !again {
+        {
             let Ok(pid) = i32::try_from(child.id()) else {
                 return;
             };
+            // The guard passes SIGINT on to fastchess and kills it on SIGUSR2; killing the
+            // guard itself would leave fastchess running.
+            let signal = match (again, self.guarded) {
+                (false, _) => libc::SIGINT,
+                (true, true) => libc::SIGUSR2,
+                (true, false) => libc::SIGKILL,
+            };
             // SAFETY: plain signal to a child we own and have not reaped.
             unsafe {
-                libc::kill(pid, libc::SIGINT);
+                libc::kill(pid, signal);
             }
-            return;
         }
-        let _ = again;
-        let _ = child.kill();
+        #[cfg(windows)]
+        {
+            let _ = again;
+            match &self.job {
+                Some(job) => job.terminate(),
+                None => {
+                    let _ = child.kill();
+                }
+            }
+        }
     }
 }
 

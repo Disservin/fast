@@ -87,8 +87,16 @@ SHA-256 like catalog engines, or the user points Fast at their own executable
 pasted `config.json`, and runs in its own folder, `<data>/tournaments/<id>/`, with `games.pgn`
 and `config.json`. Fast reads fastchess's human-readable stdout on two reader threads. Stop
 sends SIGINT on Unix, so fastchess saves its config and Continue resumes with
-`-config file=…`; on Windows it terminates the process and the last autosave counts. Quitting
-Fast stops running tournaments.
+`-config file=…`; on Windows it ends fastchess and its engines, and the last autosave counts.
+
+fastchess must not outlive Fast, even when Fast crashes or is killed (`process_guard.rs`). On
+Unix, Fast starts fastchess through a guard, its own binary run as
+`fast --fastchess-guard <fastchess> …`, and keeps the guard's stdin open. When Fast dies the
+guard reads end-of-file and sends fastchess SIGINT, so it saves its config as on Stop; the
+guard also forwards SIGINT/SIGTERM/SIGHUP, kills fastchess on SIGUSR2 (a second Stop), and
+exits with fastchess's status. On Linux fastchess additionally gets SIGINT if the guard
+itself dies. On Windows fastchess runs in a job object that kills it and its engines once
+Fast's handle closes, which happens however Fast exits.
 
 Live boards come from fastchess's `-events` stream. Fast checks each executable once by
 running `fastchess -events file=- -version`, which builds without the stream reject, and then

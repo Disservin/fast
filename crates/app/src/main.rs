@@ -14,6 +14,7 @@ mod live;
 mod model;
 mod online;
 mod persistence;
+mod process_guard;
 mod recovery;
 mod screens;
 mod shell;
@@ -96,6 +97,10 @@ fn open_main_window(cli: Cli, cx: &mut App) -> anyhow::Result<()> {
 }
 
 fn main() {
+    // Fast also runs as the guard that stops fastchess when Fast dies; see `process_guard`.
+    if let Some(code) = process_guard::run_if_requested() {
+        std::process::exit(code);
+    }
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
     let cli = Cli::parse(std::env::args());
     gpui_platform::application()
