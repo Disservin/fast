@@ -104,7 +104,7 @@ adds `-events file=- info=true`: one JSON object per line for game starts, moves
 engine output and game ends, with fastchess's game numbers, and `[GameId]` tags in the PGN
 that "open this game" uses. The stdout reader thread passes event lines to `LiveGames`
 (`tournament_live.rs`) instead of the UI, and the tab copies a snapshot into its boards at
-most five times a second. Builds without `-events`, including the pinned 1.8.2 download, and
+most five times a second. Builds without `-events`, such as older releases, and
 commands that set their own `-events` run without live boards. fastchess does not save the
 event options into `config.json`. `docs/fastchess-integration.md` lists fastchess changes that
 would replace the output parsing and other workarounds.

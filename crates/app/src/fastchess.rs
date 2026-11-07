@@ -18,7 +18,7 @@ use anyhow::{Context as _, Result, bail, ensure};
 
 use crate::engine_catalog::{Download, Entry, Format};
 
-pub const VERSION: &str = "1.8.2-alpha";
+pub const VERSION: &str = "1.8.3-alpha";
 
 /// The pinned fastchess release, checked against the SHA-256 digests GitHub reports.
 pub fn release() -> Entry {
@@ -57,37 +57,37 @@ pub fn release() -> Entry {
                 "linux",
                 "x86_64",
                 "linux-x86-64",
-                "1003f920bebe841acdab5e6d7871e93171a4586857b3ec91c21ef5777f26ff96",
+                "7ab4879eda78de88f210d87c04c65f9ea274d20e18d4f1745c6a3ddd8ef35d7e",
             ),
             asset(
                 "linux",
                 "aarch64",
                 "linux-arm64",
-                "fe079f8784394488baa199d4196768e46ccab0b31741d67c9cd70db0a237a494",
+                "93a3556493e50b63f8bdab1300135792eff71c0cebb45a1f086dfc57502601af",
             ),
             asset(
                 "macos",
                 "x86_64",
                 "mac-x86-64",
-                "c97c62cdfc52449b901238c7326de5e416434f0f98c979b6e16129c5d41affcc",
+                "2a9553621333133536154d07efa9d143a46c211755e760296493ee8d4f2810af",
             ),
             asset(
                 "macos",
                 "aarch64",
                 "mac-arm64",
-                "a736371b1df3d7c67d4288dee66f6bb4e7e8193a945639c8a1d0aabfa612b551",
+                "f7a812354d5c5944c0c8070c6fc492077589f98560412a977bb077cee4f441d8",
             ),
             asset(
                 "windows",
                 "x86_64",
                 "windows-x86-64",
-                "007ce550dc809510b34622a1aeb43fd443d40284045bef5c1bc39c8941114143",
+                "e4c66cceec4122d0638022da55e6841487a1dd9a4819685893749dbd7c645033",
             ),
             asset(
                 "windows",
                 "aarch64",
                 "windows-arm64",
-                "0349179a2d61343f2516583f8c7b056d254b8bbbda75c71ff9ed740c49676eeb",
+                "76d74706ac47808d3e4d2197434976e86e029f2def7265095c58ae7aa3845333",
             ),
         ],
     }

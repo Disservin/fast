@@ -3,7 +3,7 @@
 //! fastchess builds with `-events` write one JSON object per line: `game_started`, `move`,
 //! throttled `thinking`, and `game_finished`/`game_aborted`. Fast asks for that stream on
 //! fastchess's stdout and keeps the games in progress here. Builds without `-events` (such
-//! as the pinned 1.8.2 release) run without live boards.
+//! such as a custom executable built before 1.8.3) run without live boards.
 
 use std::collections::{BTreeSet, HashMap};
 use std::path::Path;

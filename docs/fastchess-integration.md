@@ -6,7 +6,7 @@ fastchess's human-readable output and on-disk files. This is a list of changes t
 into fastchess itself to make that integration robust, roughly by value. Each item notes what
 Fast does today, so it is clear what could be deleted once fastchess offers the feature.
 
-Tested against fastchess 1.8.2-alpha (the release Fast downloads) and master at `7b16efe8`.
+Tested against fastchess 1.8.3-alpha (the release Fast downloads) and master at `7b16efe8`.
 
 ## 1. Machine-readable event stream
 
@@ -34,7 +34,7 @@ line. Human output can stay the default.
 
 **Status:** implemented on the fastchess `event-outputs` branch (`-events file=…|- info=true
 interval=…`), and Fast's live boards use it. Until a release has it, live boards need a
-build of that branch set as "Own executable"; the pinned 1.8.2 download has none.
+build of that branch set as "Own executable"; the pinned 1.8.3 download is not one.
 
 Remaining note on that branch: the `thinking` throttle sends the first `info` line once the
 interval has passed. A new search usually starts more than the interval after the previous
@@ -122,7 +122,7 @@ starting, and convert a command line into a config in one call.
 - Publish a `SHA256SUMS` file (Fast pins the digests GitHub reports per asset today), and
   ideally a stable `latest` download URL or a small JSON manifest (version → asset → digest),
   so tools can offer updates without hard-coding each release.
-- `--version` prints `fastchess alpha 1.8.2 compiled for … (CI)`; a machine-readable
+- `--version` prints a human-readable line (1.8.2 printed `fastchess alpha 1.8.2 compiled for … (CI)`); a machine-readable
   `--version-json` (version, commit, build date, platform) would let Fast check a user's own
   executable.
 
