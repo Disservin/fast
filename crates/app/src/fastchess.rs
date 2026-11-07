@@ -782,6 +782,7 @@ pub struct Process {
     child: Arc<Mutex<Child>>,
     stopping: Arc<AtomicBool>,
     /// The child is the guard of [`crate::process_guard`], not fastchess itself.
+    #[cfg(unix)]
     guarded: bool,
     /// The guard's stdin. Closing it, as happens when Fast dies, stops fastchess.
     _guard_input: Option<std::process::ChildStdin>,
@@ -794,6 +795,7 @@ pub struct Process {
 pub struct StopHandle {
     child: Arc<Mutex<Child>>,
     stopping: Arc<AtomicBool>,
+    #[cfg(unix)]
     guarded: bool,
     #[cfg(windows)]
     job: Option<Arc<crate::process_guard::Job>>,
@@ -832,7 +834,7 @@ pub fn spawn(
         }
         command.spawn().map(|child| (child, guarded))
     };
-    let (mut child, guarded) = start(true)
+    let (mut child, _guarded) = start(true)
         .or_else(|err| {
             log::warn!("could not start fastchess under a guard ({err}); starting it directly");
             start(false)
@@ -890,7 +892,8 @@ pub fn spawn(
     Ok(Process {
         child: Arc::new(Mutex::new(child)),
         stopping: Arc::new(AtomicBool::new(false)),
-        guarded,
+        #[cfg(unix)]
+        guarded: _guarded,
         _guard_input: guard_input,
         #[cfg(windows)]
         job,
@@ -903,6 +906,7 @@ impl Process {
         StopHandle {
             child: self.child.clone(),
             stopping: self.stopping.clone(),
+            #[cfg(unix)]
             guarded: self.guarded,
             #[cfg(windows)]
             job: self.job.clone(),

@@ -2665,7 +2665,7 @@ fn read_game_files(paths: &[std::path::PathBuf]) -> (Vec<GameTree>, Vec<String>)
     let mut games = Vec::new();
     let mut errors = Vec::new();
     for path in paths {
-        let result = std::fs::read_to_string(&path)
+        let result = std::fs::read_to_string(path)
             .map_err(|err| err.to_string())
             .and_then(|text| {
                 if let Ok(tree) = GameTree::from_fen(text.trim()) {

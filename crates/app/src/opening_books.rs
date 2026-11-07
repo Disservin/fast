@@ -92,7 +92,7 @@ fn extract(archive_file: std::fs::File, destination: &Path, name: &str) -> Resul
     ensure!(copied > 0 && copied <= LIMIT, "Invalid extracted book size");
     output.flush()?;
     output.as_file().sync_all()?;
-    output.persist(&destination)?;
+    output.persist(destination)?;
     Ok(())
 }
 

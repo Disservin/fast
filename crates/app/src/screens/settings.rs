@@ -2819,7 +2819,7 @@ fn parse_nodes(text: &str) -> Option<u64> {
     };
     let value: f64 = digits.parse().ok()?;
     let nodes = (value * scale).round();
-    (value.is_finite() && nodes >= 1. && nodes <= 1e12).then_some(nodes as u64)
+    (value.is_finite() && (1. ..=1e12).contains(&nodes)).then_some(nodes as u64)
 }
 
 impl SettingsScreen {

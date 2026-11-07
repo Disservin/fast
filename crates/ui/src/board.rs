@@ -42,7 +42,7 @@ impl BoardTheme {
             Self::Blue => (0xDEE3E6, 0x8CA2AD),
             Self::Walnut => (0xE9D7B4, 0xA97A50),
             Self::Moss => (0xE6E9D8, 0x7F956B),
-            Self::Graphite => (0xC9CBCE, 0x55595F),
+            Self::Graphite => (0x8C9096, 0x42464C),
             Self::Paper => (0xEAF0F5, 0x91A5BF),
             Self::Plum => (0xE8D8E8, 0x99759E),
         }
