@@ -62,7 +62,9 @@ fn move_cell(tree: &GameTree, id: NodeId, props: &ScoresheetProps) -> impl IntoE
                 .flex()
                 .items_center()
                 .rounded(px(4.))
-                .when(current, |pill| pill.bg(rgb(T.fg)).text_color(rgb(T.bg)))
+                .when(current, |pill| {
+                    pill.bg(rgb(T.accent)).text_color(rgb(T.accent_fg))
+                })
                 .when(!current, |pill| pill.hover(move |style| style.bg(hover)))
                 .child(text),
         )
@@ -98,7 +100,9 @@ fn inline_move(
         .cursor_pointer()
         .px(px(2.))
         .rounded(px(3.))
-        .when(current, |pill| pill.bg(rgb(T.fg)).text_color(rgb(T.bg)))
+        .when(current, |pill| {
+            pill.bg(rgb(T.accent)).text_color(rgb(T.accent_fg))
+        })
         .when(!current, |pill| pill.hover(|style| style.bg(rgb(T.hover))))
         .on_click(move |_, window, cx| select(id, window, cx))
         .on_mouse_down(MouseButton::Right, move |event, window, cx| {

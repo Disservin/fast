@@ -474,7 +474,7 @@ impl TrainScreen {
                                 .top_0()
                                 .bottom_0()
                                 .w(px(3.))
-                                .bg(rgb(T.fg)),
+                                .bg(rgb(T.accent)),
                         )
                     })
                     .child(mono(row.label).text_size(px(14.)).text_color(rgb(T.fg)))
@@ -662,7 +662,7 @@ impl TrainScreen {
                                     .h_full()
                                     .w(gpui::relative(fraction))
                                     .rounded(px(1.))
-                                    .bg(rgb(T.fg)),
+                                    .bg(rgb(T.accent)),
                             ),
                     ),
             )

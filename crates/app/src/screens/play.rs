@@ -722,7 +722,7 @@ impl PlayScreen {
                             .child("Strength")
                             .child(mono(self.strength_value.to_string()).text_color(rgb(T.fg_2))),
                     )
-                    .child(Slider::new(&self.strength).bg(rgb(T.fg))),
+                    .child(Slider::new(&self.strength).bg(rgb(T.accent))),
             )
             .child(field("Time control", grid).mb(px(14.)))
             .when(self.time_index.is_none(), |column| {
@@ -857,8 +857,8 @@ impl PlayScreen {
                             .size(px(10.))
                             .rounded_full()
                             .border_1()
-                            .border_color(rgb(if active { T.fg } else { T.muted }))
-                            .when(active, |dot| dot.bg(rgb(T.fg))),
+                            .border_color(rgb(if active { T.accent } else { T.muted }))
+                            .when(active, |dot| dot.bg(rgb(T.accent))),
                     )
                     .child(
                         div()
@@ -884,7 +884,9 @@ impl PlayScreen {
                     .font_weight(FontWeight::MEDIUM)
                     .px(px(9.))
                     .rounded(px(4.))
-                    .when(active, |time| time.bg(rgb(T.fg)).text_color(rgb(T.bg)))
+                    .when(active, |time| {
+                        time.bg(rgb(T.accent)).text_color(rgb(T.accent_fg))
+                    })
                     .when(!active, |time| time.text_color(rgb(T.muted)))
                     .child(if game.is_some() {
                         format_clock(ms)
@@ -947,8 +949,8 @@ impl PlayScreen {
                             .when(current, |pill| {
                                 pill.px(px(6.))
                                     .rounded(px(4.))
-                                    .bg(rgb(T.fg))
-                                    .text_color(rgb(T.bg))
+                                    .bg(rgb(T.accent))
+                                    .text_color(rgb(T.accent_fg))
                             })
                             .child(san),
                     )

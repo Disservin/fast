@@ -1409,7 +1409,7 @@ impl AnalyseScreen {
                                 .top_0()
                                 .bottom_0()
                                 .w(px(3.))
-                                .bg(rgb(T.fg)),
+                                .bg(rgb(T.accent)),
                         )
                     })
                     .child(

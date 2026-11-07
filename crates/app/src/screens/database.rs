@@ -943,7 +943,7 @@ impl DatabaseScreen {
                         .top_0()
                         .bottom_0()
                         .w(px(3.))
-                        .bg(rgb(T.fg)),
+                        .bg(rgb(T.accent)),
                 )
             });
         let Some(game) = self.rows.get(&id) else {
@@ -1181,8 +1181,8 @@ fn move_snippet(preview: &GameDetails, key: usize) -> impl IntoElement + use<> {
                 .when(is_key, |pill| {
                     pill.px(px(5.))
                         .rounded(px(4.))
-                        .bg(rgb(T.fg))
-                        .text_color(rgb(T.bg))
+                        .bg(rgb(T.accent))
+                        .text_color(rgb(T.accent_fg))
                 })
                 .child(label),
         );

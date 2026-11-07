@@ -586,7 +586,7 @@ impl SettingsScreen {
                                     .top_0()
                                     .bottom_0()
                                     .w(px(3.))
-                                    .bg(rgb(T.fg)),
+                                    .bg(rgb(T.accent)),
                             )
                     })
                     .when(!selected, |item| item.hover(|style| style.bg(rgb(T.hover))))
@@ -779,7 +779,7 @@ impl SettingsScreen {
                     .child(
                         div()
                             .w(px(160.))
-                            .child(Slider::new(&self.animation).bg(rgb(T.fg))),
+                            .child(Slider::new(&self.animation).bg(rgb(T.accent))),
                     )
                     .child(
                         mono(format!("{} ms", config.animation_ms))
@@ -971,7 +971,7 @@ impl SettingsScreen {
                                 .top_0()
                                 .bottom_0()
                                 .w(px(3.))
-                                .bg(rgb(T.fg)),
+                                .bg(rgb(T.accent)),
                         )
                     })
                     .child(

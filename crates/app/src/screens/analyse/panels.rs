@@ -901,7 +901,9 @@ impl AnalyseScreen {
                     .px(px(3.))
                     .cursor_pointer()
                     .rounded(px(3.))
-                    .when(highlighted, |chip| chip.bg(rgb(T.fg)).text_color(rgb(T.bg)))
+                    .when(highlighted, |chip| {
+                        chip.bg(rgb(T.accent)).text_color(rgb(T.accent_fg))
+                    })
                     .when(hovered, |chip| chip.bg(rgb(HOVER_BG)).text_color(rgb(T.fg)))
                     .on_hover(cx.listener(move |this, hovering: &bool, window, cx| {
                         this.hover_pv_move(index, *hovering, &hover_sans, window, cx);

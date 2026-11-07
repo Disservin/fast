@@ -27,28 +27,38 @@ pub struct Theme {
     pub bar: u32,
     pub last_move_light: u32,
     pub last_move_dark: u32,
+    /// What is active or chosen: the current move, the selected row, primary buttons.
+    pub accent: u32,
+    pub accent_hover: u32,
+    /// Text and icons on the accent.
+    pub accent_fg: u32,
 }
 
 /// The active theme.
+/// Slate surfaces with a cool tint, a step lighter than near-black so panels read as
+/// layers, and one blue accent for whatever is active.
 pub const T: Theme = Theme {
-    bg: 0x0E1013,
-    surface: 0x16191E,
-    surface_2: 0x12151A,
-    hover: 0x1B2028,
-    selected: 0x22272E,
-    border: 0x262B33,
-    border_strong: 0x2C323B,
-    divider: 0x1D2127,
-    fg: 0xE8EAED,
-    fg_2: 0xC3C9D1,
-    muted: 0x9AA3AE,
-    faint: 0x7F8893,
-    good: 0x3FB950,
+    bg: 0x14171D,
+    surface: 0x1C2028,
+    surface_2: 0x181C23,
+    hover: 0x252B35,
+    selected: 0x1F3047,
+    border: 0x2A303A,
+    border_strong: 0x353D49,
+    divider: 0x232832,
+    fg: 0xEDF0F4,
+    fg_2: 0xC9D0D9,
+    muted: 0x9DA7B4,
+    faint: 0x818B98,
+    good: 0x46C25A,
     warn: 0xF0A33A,
     arrow: 0xE8892B,
-    bar: 0x6B7480,
+    bar: 0x6F7987,
     last_move_light: 0xF3E3A6,
     last_move_dark: 0xC9B56E,
+    accent: 0x5AA2FF,
+    accent_hover: 0x7AB5FF,
+    accent_fg: 0x0B1626,
 };
 
 fn hsla(color: u32) -> Hsla {
@@ -71,13 +81,13 @@ pub fn apply_component_theme(cx: &mut App) {
     c.foreground = hsla(T.fg);
     c.border = hsla(T.border_strong);
     c.input = hsla(T.border_strong);
-    c.ring = hsla(T.fg);
+    c.ring = hsla(T.accent);
     c.caret = hsla(T.fg);
-    c.selection = hsla(0x3A424D);
-    c.primary = hsla(T.fg);
-    c.primary_hover = hsla(T.fg_2);
-    c.primary_active = hsla(T.fg_2);
-    c.primary_foreground = hsla(T.bg);
+    c.selection = hsla(0x2E4F7C);
+    c.primary = hsla(T.accent);
+    c.primary_hover = hsla(T.accent_hover);
+    c.primary_active = hsla(T.accent_hover);
+    c.primary_foreground = hsla(T.accent_fg);
     c.secondary = hsla(T.surface);
     c.secondary_hover = hsla(T.hover);
     c.secondary_active = hsla(T.selected);
@@ -91,9 +101,9 @@ pub fn apply_component_theme(cx: &mut App) {
     c.list = hsla(T.surface);
     c.list_active = hsla(T.selected);
     c.list_hover = hsla(T.hover);
-    c.list_active_border = hsla(T.fg);
-    c.slider_bar = hsla(T.fg);
-    c.slider_thumb = hsla(T.fg);
+    c.list_active_border = hsla(T.accent);
+    c.slider_bar = hsla(T.accent);
+    c.slider_thumb = hsla(T.accent);
     c.scrollbar = hsla(T.surface);
     c.scrollbar_thumb = hsla(T.border_strong);
     c.scrollbar_thumb_hover = hsla(T.bar);
@@ -105,8 +115,8 @@ pub fn apply_component_theme(cx: &mut App) {
     c.warning_foreground = hsla(T.bg);
     c.danger = hsla(T.warn);
     c.danger_foreground = hsla(T.bg);
-    c.info = hsla(T.fg);
-    c.info_foreground = hsla(T.bg);
+    c.info = hsla(T.accent);
+    c.info_foreground = hsla(T.accent_fg);
     // Components also read this derived copy (tooltips, popups); keep it in step.
     theme.tokens = ThemeTokens::from(theme.colors);
 }

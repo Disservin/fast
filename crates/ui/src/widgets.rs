@@ -215,9 +215,9 @@ impl RenderOnce for Btn {
             .clone();
         let (bg, hover, fg, border): (Option<u32>, u32, u32, Option<u32>) = match self.kind {
             BtnKind::Normal => (Some(T.surface), T.hover, T.fg, Some(T.border_strong)),
-            BtnKind::Primary => (Some(T.fg), T.fg_2, T.bg, None),
-            BtnKind::Selected => (Some(T.selected), T.selected, T.fg, Some(T.fg)),
-            BtnKind::Active => (Some(T.fg), T.fg, T.bg, None),
+            BtnKind::Primary => (Some(T.accent), T.accent_hover, T.accent_fg, None),
+            BtnKind::Selected => (Some(T.selected), T.selected, T.fg, Some(T.accent)),
+            BtnKind::Active => (Some(T.accent), T.accent, T.accent_fg, None),
             BtnKind::Ghost => (None, T.hover, T.fg_2, None),
         };
         let fg = if self.disabled { T.faint } else { fg };
@@ -280,7 +280,7 @@ impl RenderOnce for Btn {
                     }
                 });
         }
-        el = el.focus_visible(|style| style.border_2().border_color(rgb(T.fg)));
+        el = el.focus_visible(|style| style.border_2().border_color(rgb(T.accent)));
         if let Some(color) = self.dot {
             el = el
                 .gap(px(8.))
@@ -377,10 +377,10 @@ impl RenderOnce for Check {
             .mt(px(2.))
             .rounded(px(3.))
             .border_1()
-            .border_color(rgb(if checked { T.fg } else { T.bar }))
-            .bg(rgb(if checked { T.fg } else { T.bg }))
+            .border_color(rgb(if checked { T.accent } else { T.bar }))
+            .bg(rgb(if checked { T.accent } else { T.bg }))
             .when(checked, |mark| {
-                mark.child(icon("icons/check.svg", px(13.), T.bg))
+                mark.child(icon("icons/check.svg", px(13.), T.accent_fg))
             });
         div()
             .id(self.id)
@@ -395,7 +395,7 @@ impl RenderOnce for Check {
             .rounded(px(4.))
             .border_1()
             .border_color(gpui::transparent_black())
-            .focus_visible(|style| style.border_color(rgb(T.fg)))
+            .focus_visible(|style| style.border_color(rgb(T.accent)))
             .text_size(self.text_size)
             .text_color(rgb(T.fg_2))
             .on_mouse_down(MouseButton::Left, |_, window, _| window.prevent_default())
