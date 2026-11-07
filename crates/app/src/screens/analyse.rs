@@ -1972,10 +1972,12 @@ impl AnalyseScreen {
         let white_to_move = pos.turn().is_white();
         // Room for every requested line is kept while the engine runs, so lines
         // arriving one by one early in a search do not move what is below.
+        // A position never has more lines than legal moves, however many are asked for.
+        let legal = pos.legal_moves().len().max(1) as i64;
         let reserved = self
             .shown_lines(cx)
-            .filter(|_| self.live.read(cx).on)
-            .map_or(0., |lines| lines.clamp(1, 64) as f32 * MOVE_ROW_H);
+            .filter(|_| self.live.read(cx).on && self.live.read(cx).end.is_none())
+            .map_or(0., |lines| lines.clamp(1, legal) as f32 * MOVE_ROW_H);
         let mut rows = v_flex().w_full().min_h(px(reserved));
         for (index, row) in self.rows.iter().enumerate() {
             let selected = self.selected_san.as_deref() == Some(row.san.as_str());

@@ -168,23 +168,20 @@ pub enum LinesTarget {
     Step(bool),
     /// The engine's own default.
     Default,
-    /// One line per legal move.
+    /// As many lines as the engine allows, up to [`MAX_LINES`]: every move in every
+    /// position, without changing as the game moves on.
     All,
 }
 
+/// More lines than any position has legal moves (218 at most).
+pub const MAX_LINES: i64 = 256;
+
 /// The MultiPV value for a Lines button, within the engine's range.
-pub fn lines_target(
-    target: LinesTarget,
-    current: i64,
-    default: i64,
-    legal: i64,
-    min: i64,
-    max: i64,
-) -> i64 {
+pub fn lines_target(target: LinesTarget, current: i64, default: i64, min: i64, max: i64) -> i64 {
     match target {
         LinesTarget::Step(up) => step_value("MultiPV", current, up, min, max),
         LinesTarget::Default => default.clamp(min, max),
-        LinesTarget::All => legal.clamp(min, max),
+        LinesTarget::All => MAX_LINES.clamp(min, max),
     }
 }
 
@@ -300,7 +297,7 @@ impl AnalyseScreen {
                     small("lines-max", "Max")
                         .w(40.)
                         .pad(0.)
-                        .tooltip("A line for every legal move, as far as the engine allows")
+                        .tooltip("A line for every legal move in every position (up to 256, as far as the engine allows)")
                         .on_click(move |_, cx| {
                             max_this
                                 .update(cx, |screen, cx| screen.set_lines(LinesTarget::All, cx));
@@ -426,7 +423,6 @@ impl AnalyseScreen {
         let Some(current) = self.shown_lines(cx) else {
             return;
         };
-        let legal = self.analysed_pos().legal_moves().len().max(1) as i64;
         let changes: Vec<(EngineId, i64)> = self
             .live
             .read(cx)
@@ -445,7 +441,7 @@ impl AnalyseScreen {
                     Some(OptionKind::Spin { default, .. }) => *default,
                     _ => 1,
                 };
-                let next = lines_target(target, current, default, legal, min, max);
+                let next = lines_target(target, current, default, min, max);
                 (next != value).then_some((engine.config.id, next))
             })
             .collect();
@@ -1465,12 +1461,13 @@ mod tests {
 
     #[test]
     fn lines_buttons_stay_in_the_engine_range() {
-        assert_eq!(lines_target(LinesTarget::Step(true), 3, 1, 20, 1, 500), 4);
-        assert_eq!(lines_target(LinesTarget::Default, 7, 1, 20, 1, 500), 1);
-        assert_eq!(lines_target(LinesTarget::All, 1, 1, 34, 1, 500), 34);
-        // An engine allowing fewer lines than there are moves gets its maximum.
-        assert_eq!(lines_target(LinesTarget::All, 1, 1, 34, 1, 8), 8);
-        assert_eq!(lines_target(LinesTarget::Default, 4, 0, 34, 1, 8), 1);
+        assert_eq!(lines_target(LinesTarget::Step(true), 3, 1, 1, 500), 4);
+        assert_eq!(lines_target(LinesTarget::Default, 7, 1, 1, 500), 1);
+        // Max stays at the cap, whatever the position, so every move keeps a line.
+        assert_eq!(lines_target(LinesTarget::All, 1, 1, 1, 500), MAX_LINES);
+        // An engine allowing fewer lines gets its own maximum.
+        assert_eq!(lines_target(LinesTarget::All, 1, 1, 1, 8), 8);
+        assert_eq!(lines_target(LinesTarget::Default, 4, 0, 1, 8), 1);
     }
 
     #[test]
