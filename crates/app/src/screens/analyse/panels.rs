@@ -214,7 +214,7 @@ impl AnalyseScreen {
             let mut parts = vec![format!("d{}", stats.depth)];
             parts.extend(stats.nodes.map(engine::format_nodes));
             parts.extend(stats.nps.map(engine::format_speed));
-            Some(parts.join(" · "))
+            Some(parts.join("  "))
         });
         let live = self.live.read(cx);
         let (on, paused) = (live.on, live.paused);
@@ -604,7 +604,7 @@ impl AnalyseScreen {
             LogKind::Sent => (">", T.fg),
             LogKind::Received => ("<", T.fg_2),
             LogKind::Stderr => ("!", T.warn),
-            LogKind::System => ("·", T.muted),
+            LogKind::System => ("*", T.muted),
         };
         let selected = self
             .log_selection
@@ -729,7 +729,7 @@ impl AnalyseScreen {
                         div()
                             .text_size(px(12.))
                             .text_color(rgb(T.warn))
-                            .child("Held while selected · Ctrl+C copies · Esc releases"),
+                            .child("Held while selected. Ctrl+C copies, Esc releases."),
                     )
                 })
                 .child(div().flex_1())

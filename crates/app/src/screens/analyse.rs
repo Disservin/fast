@@ -774,7 +774,7 @@ impl AnalyseScreen {
             .tree
             .header("Opening")
             .map(str::to_owned)
-            .or_else(|| self.opening().map(|o| format!("{} · {}", o.eco, o.name)))
+            .or_else(|| self.opening().map(|o| format!("{} {}", o.eco, o.name)))
             .unwrap_or_else(|| "Starting position".to_owned());
         let name_row = |name: String, rating: String| {
             h_flex()
@@ -1001,11 +1001,7 @@ impl AnalyseScreen {
                     ),
             )
             .child(div().size(board_size).flex_none().child(self.board.clone()))
-            .child(
-                section_label("Game timeline · eval per move")
-                    .mt(px(16.))
-                    .mb(px(6.)),
-            )
+            .child(section_label("Game timeline").mt(px(16.)).mb(px(6.)))
             .child(timeline(TimelineProps {
                 evals,
                 current: current_index,
@@ -1184,7 +1180,7 @@ impl AnalyseScreen {
             let stat_text = |stat: &Option<MoveStat>| {
                 stat.as_ref()
                     .map(|stat| {
-                        format!("{} · {:.0}%", stat.games, stat.score_percent(white_to_move))
+                        format!("{} ({:.0}%)", stat.games, stat.score_percent(white_to_move))
                     })
                     .unwrap_or_else(|| "—".to_owned())
             };
@@ -1326,13 +1322,13 @@ impl AnalyseScreen {
         let meta = selected.as_ref().filter(|row| row.depth > 0).map(|row| {
             let nodes = row
                 .nodes
-                .map(|nodes| format!(" · {}", engine::format_nodes(nodes)))
+                .map(|nodes| format!(", {}", engine::format_nodes(nodes)))
                 .unwrap_or_default();
             let speed = row
                 .nps
-                .map(|nps| format!(" · {}", engine::format_speed(nps)))
+                .map(|nps| format!(", {}", engine::format_speed(nps)))
                 .unwrap_or_default();
-            format!("{} · depth {}{nodes}{speed}", row.engine_name, row.depth)
+            format!("{}, depth {}{nodes}{speed}", row.engine_name, row.depth)
         });
         // Hook for future move explanations; only demo mode has text today.
         let explanation = selected

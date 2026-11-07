@@ -182,7 +182,7 @@ impl PlayScreen {
 
     pub fn breadcrumb(&self) -> SharedString {
         match &self.game {
-            Some(game) => format!("vs {} · {}", game.opponent_name, game.label).into(),
+            Some(game) => format!("vs {}, {}", game.opponent_name, game.label).into(),
             None => "New game".into(),
         }
     }
@@ -925,7 +925,7 @@ impl PlayScreen {
             let ids = game.tree.path_to(game.current);
             let first_ply = ids.first().map_or(1, |&id| game.tree.node(id).ply);
             if let Some(opening) = classify(ids.iter().map(|&id| game.tree.node(id).san.as_str())) {
-                opening_text = format!("{} · {}", opening.eco, opening.name);
+                opening_text = format!("{} {}", opening.eco, opening.name);
             }
             let black_first = first_ply % 2 == 0;
             let mut cells: Vec<Option<NodeId>> = Vec::new();
@@ -1059,7 +1059,7 @@ fn opponent_names(engines: &[EngineConfig]) -> Vec<SharedString> {
             } else {
                 format!(" {}", engine.version)
             };
-            let suffix = if limited { " · limited strength" } else { "" };
+            let suffix = if limited { ", limited strength" } else { "" };
             format!("{}{version}{suffix}", engine.name).into()
         })
         .collect()

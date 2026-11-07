@@ -649,7 +649,7 @@ impl TrainScreen {
                     .h(px(14.))
                     .mt(px(24.))
                     .gap(px(14.))
-                    .child(section_label(format!("Drill · {position} of {total} due")))
+                    .child(section_label(format!("Drill: {position} of {total} due")))
                     .child(
                         div()
                             .flex_1()
@@ -718,21 +718,21 @@ impl TrainScreen {
                     ))
                     .child(recall(
                         "hard",
-                        format!("Hard · {}d", intervals.hard),
+                        format!("Hard ({}d)", intervals.hard),
                         Grade::Hard,
                         BtnKind::Normal,
                         this.clone(),
                     ))
                     .child(recall(
                         "good",
-                        format!("Good · {}d", intervals.good),
+                        format!("Good ({}d)", intervals.good),
                         Grade::Good,
                         BtnKind::Primary,
                         this.clone(),
                     ))
                     .child(recall(
                         "easy",
-                        format!("Easy · {}d", intervals.easy),
+                        format!("Easy ({}d)", intervals.easy),
                         Grade::Easy,
                         BtnKind::Normal,
                         this.clone(),

@@ -290,7 +290,7 @@ impl DatabaseScreen {
         if filter.only_left_repertoire {
             parts.push("left repertoire".to_owned());
         }
-        parts.join(" · ").into()
+        parts.join(", ").into()
     }
 
     /// Counts matches in the background for the "Show N games" button.
@@ -1042,7 +1042,7 @@ impl DatabaseScreen {
                         .text_size(px(12.))
                         .text_color(rgb(T.muted))
                         .mb(px(9.))
-                        .child(meta.join(" · ")),
+                        .child(meta.join(", ")),
                 );
         }
         column
@@ -1078,7 +1078,7 @@ impl DatabaseScreen {
                 .px(px(16.))
                 .py(px(8.))
                 .child(div().text_size(px(14.)).child(format!(
-                    "Importing {} · {} games",
+                    "Importing {}: {} games",
                     importing.file,
                     format_count(importing.progress.games)
                 )))

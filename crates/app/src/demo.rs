@@ -455,7 +455,7 @@ fn reference_db(path: &Path, rng: &mut Rng) {
             );
         }
     }
-    import_named(path, &pgn, "Reference · OTB masters");
+    import_named(path, &pgn, "Reference: OTB masters");
 }
 
 fn small_db(path: &Path, name: &str, count: usize, white: &str, line: &str, rng: &mut Rng) {
@@ -841,7 +841,7 @@ pub fn prepare(paths: &Paths, config: &mut Config) {
     );
     small_db(
         &databases.join("c_opponent.sqlite"),
-        "Opponent · knightowl_42",
+        "Opponent: knightowl_42",
         74,
         "knightowl_42",
         "d4 Nf6 c4 e6",

@@ -298,7 +298,7 @@ impl Workspace {
             Mode::Train => self.model.read(cx).repertoire.name.clone().into(),
             Mode::Play => self.play.read(cx).breadcrumb(),
             Mode::Settings => {
-                format!("Settings · {}", self.settings.read(cx).page().title()).into()
+                format!("Settings › {}", self.settings.read(cx).page().title()).into()
             }
         }
     }
@@ -356,7 +356,7 @@ impl Workspace {
             if names.is_empty() {
                 "No engine".to_owned()
             } else {
-                names.join(" · ")
+                names.join(" + ")
             }
         })
     }
@@ -373,7 +373,7 @@ impl Workspace {
         let label = if names.is_empty() {
             "No engine".to_owned()
         } else {
-            names.join(" · ")
+            names.join(" + ")
         };
         let this = cx.entity();
         Some(
