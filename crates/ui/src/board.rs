@@ -174,28 +174,41 @@ impl Arrow {
 }
 
 /// Whether a point lies on an arrow drawn between two square centres, in board
-/// pixels. The shaft is widened a little so it is easy to hit; the origin square is
-/// left out, since that is where its piece stands.
+/// pixels. See [`arrow_distance`].
 pub fn arrow_hit(point: (f32, f32), from: (f32, f32), to: (f32, f32), cell: f32) -> bool {
+    arrow_distance(point, from, to, cell).is_some()
+}
+
+/// How far a point is from an arrow's centre line, as a share of how far a click may
+/// be and still count, or `None` when it misses. The band is much wider than the drawn
+/// arrow, half a square across along the shaft and wider at the head, and runs a little
+/// past the tip, so a click need not be centred. The origin square is left out, since
+/// that is where its piece stands.
+pub fn arrow_distance(
+    point: (f32, f32),
+    from: (f32, f32),
+    to: (f32, f32),
+    cell: f32,
+) -> Option<f32> {
     let (dx, dy) = (to.0 - from.0, to.1 - from.1);
     let length = (dx * dx + dy * dy).sqrt();
     if length < 1.0 {
-        return false;
+        return None;
     }
     let (ux, uy) = (dx / length, dy / length);
     let (px, py) = (point.0 - from.0, point.1 - from.1);
     let along = px * ux + py * uy;
     let across = (px * -uy + py * ux).abs();
-    if along < cell * 0.5 || along > length + cell * 0.05 {
-        return false;
+    if along < cell * 0.5 || along > length + cell * 0.3 {
+        return None;
     }
     let head_len = cell * 0.56;
     let reach = if along >= length - head_len {
-        cell * 0.3
+        cell * 0.36
     } else {
-        cell * 0.16
+        cell * 0.25
     };
-    across <= reach
+    (across <= reach).then_some(across / reach)
 }
 
 /// The largest board size up to `available` whose squares are whole device pixels,
@@ -620,12 +633,17 @@ impl BoardView {
             )
         };
         let point = (f32::from(position.x), f32::from(position.y));
-        // The last arrow is drawn on top, so it wins.
+        // Where the bands of several arrows overlap, the one whose centre line is
+        // nearest wins; on a tie, the last, since it is drawn on top.
         self.arrows
             .iter()
-            .rev()
-            .find(|arrow| arrow_hit(point, center(arrow.from), center(arrow.to), cell))
-            .map(|arrow| (arrow.from, arrow.to))
+            .enumerate()
+            .filter_map(|(index, arrow)| {
+                arrow_distance(point, center(arrow.from), center(arrow.to), cell)
+                    .map(|distance| (distance, index, arrow))
+            })
+            .min_by(|a, b| a.0.total_cmp(&b.0).then(b.1.cmp(&a.1)))
+            .map(|(_, _, arrow)| (arrow.from, arrow.to))
     }
 
     fn mouse_move(&mut self, event: &MouseMoveEvent, cx: &mut Context<Self>) {
@@ -1377,6 +1395,14 @@ mod tests {
         assert!(arrow_hit((450.0, 450.0), from, to, cell), "head");
         assert!(arrow_hit((470.0, 470.0), from, to, cell), "wide head");
         assert!(arrow_hit((455.0, 550.0), from, to, cell), "shaft");
+        assert!(
+            arrow_hit((472.0, 560.0), from, to, cell),
+            "off-centre shaft"
+        );
+        assert!(
+            arrow_hit((450.0, 425.0), from, to, cell),
+            "just past the tip"
+        );
         assert!(!arrow_hit((450.0, 640.0), from, to, cell), "origin square");
         assert!(
             !arrow_hit((490.0, 550.0), from, to, cell),
@@ -1384,6 +1410,17 @@ mod tests {
         );
         assert!(!arrow_hit((450.0, 300.0), from, to, cell), "past the head");
         assert!(!arrow_hit((0.0, 0.0), from, from, cell), "no length");
+    }
+
+    #[test]
+    fn overlapping_arrows_are_told_apart_by_their_centre_lines() {
+        let cell = 100.0;
+        // e2-e4 and e2-f4 overlap near e3; a click right of e2-e4's line is nearer e2-f4.
+        let (from, straight, diagonal) = ((450.0, 650.0), (450.0, 450.0), (550.0, 450.0));
+        let point = (474.0, 560.0);
+        let a = arrow_distance(point, from, straight, cell).unwrap();
+        let b = arrow_distance(point, from, diagonal, cell).unwrap();
+        assert!(b < a);
     }
 
     #[test]
