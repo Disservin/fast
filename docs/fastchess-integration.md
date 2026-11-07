@@ -32,16 +32,15 @@ line. Human output can stay the default.
 
 ## 2. Live moves for a board view
 
-**Today:** Fast shows live boards by adding
-`-log file=/dev/stdout level=warn engine=true realtime=true` and rebuilding each game from the
-UCI traffic (`crates/app/src/tournament_live.rs`): the logging thread id stands in for a game
-id, `ucinewgame` marks the next game on that thread, `position … moves` carries the moves,
-`go` the clocks and `info` the evaluations. This costs a lot of output (about 4,000 lines per
-game at 1+0.01; 61,706 lines for 16 games), depends on the log line format, cannot be
-matched to the game numbers in `Finished game N`, and does not work on Windows, which has no
-`/dev/stdout`. The log options are also saved into `config.json`, so Fast resets `file` and
-`engine_coms` after each run, or a later `fastchess -config file=config.json` in a terminal
-would print every engine message.
+**Status:** implemented on the fastchess `event-outputs` branch (`-events file=…|- info=true
+interval=…`), and Fast's live boards use it. Until a release has it, live boards need a
+build of that branch set as "Own executable"; the pinned 1.8.2 download has none.
+
+Remaining note on that branch: the `thinking` throttle sends the first `info` line once the
+interval has passed. A new search usually starts more than the interval after the previous
+event, so its depth-1 line goes out, and at short time controls the search ends before the
+next window. Starting the interval at the beginning of each search, or sending the latest
+suppressed line when the interval passes, would show deeper output.
 
 **Wish:** an opt-in per-move event (`-events moves=true`): game id, move (UCI), FEN after the
 move, clocks, and the engine's last score/depth/nodes/PV. With concurrency this is a lot of

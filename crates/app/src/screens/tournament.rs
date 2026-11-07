@@ -77,8 +77,10 @@ struct Run {
     in_block: bool,
     results: Vec<String>,
     log: VecDeque<String>,
-    /// Games in progress, fed by fastchess's engine log; `None` when live view is off.
+    /// Games in progress, fed by fastchess's event stream; `None` when live view is off.
     live: Option<Arc<Mutex<LiveGames>>>,
+    /// Why there are no live boards, when there are none.
+    live_off: Option<&'static str>,
     live_seen: u64,
     _task: Task<()>,
     _live_task: Option<Task<()>>,
@@ -206,6 +208,8 @@ pub struct TournamentScreen {
     focus_board: Entity<BoardView>,
     focus_shown: (u64, usize),
     live_all: bool,
+    /// Whether each fastchess executable offers the `-events` stream.
+    events_support: HashMap<PathBuf, bool>,
 }
 
 impl TournamentScreen {
@@ -298,6 +302,7 @@ impl TournamentScreen {
             focus_board: cx.new(|_| BoardView::new("live-focus-board").read_only()),
             focus_shown: (0, usize::MAX),
             live_all: false,
+            events_support: HashMap::new(),
         }
     }
 
@@ -471,12 +476,24 @@ impl TournamentScreen {
             .map(|text| fastchess::count_games(&text))
             .unwrap_or(0);
         let previous = fastchess::saved_games(&launch.config);
-        let live = (tournament_live::SUPPORTED && !tournament_live::has_own_log(&launch.args))
+        let has_events = *self
+            .events_support
+            .entry(program.clone())
+            .or_insert_with(|| tournament_live::has_events(&program));
+        let live_off = if !has_events {
+            Some("Live boards need a fastchess build with the -events option.")
+        } else if tournament_live::has_own_events(&launch.args) {
+            Some("Live boards are off because this command sets its own -events option.")
+        } else {
+            None
+        };
+        let live = live_off
+            .is_none()
             .then(|| Arc::new(Mutex::new(LiveGames::default())));
-        // The log options are Fast's business: they stay out of the command shown to copy.
+        // The event options are Fast's business: they stay out of the command shown to copy.
         let mut args = launch.args.clone();
         if live.is_some() {
-            args.extend(tournament_live::log_args());
+            args.extend(tournament_live::events_args());
         }
         let process = match fastchess::spawn(&program, &args, &launch.cwd, live.clone()) {
             Ok(process) => process,
@@ -536,6 +553,7 @@ impl TournamentScreen {
                 })
             }),
             live,
+            live_off,
             live_seen: 0,
             _task: task,
         });
@@ -545,7 +563,7 @@ impl TournamentScreen {
         cx.notify();
     }
 
-    /// Copies new moves from the engine log into the boards. Returns false once the
+    /// Copies new moves from the event stream into the boards. Returns false once the
     /// run is over, which ends the refresh loop.
     fn refresh_live(&mut self, cx: &mut Context<Self>) -> bool {
         let Some(run) = self.run.as_mut() else {
@@ -572,16 +590,16 @@ impl TournamentScreen {
                     shown: &mut (u64, usize),
                     game: &LiveGame,
                     cx: &mut Context<Self>| {
-            if *shown == (game.game, game.moves.len()) {
+            if *shown == (game.number, game.moves.len()) {
                 return;
             }
-            let animate = shown.0 == game.game && shown.1 + 1 == game.moves.len();
+            let animate = shown.0 == game.number && shown.1 + 1 == game.moves.len();
             let (pos, last) = game.position();
             board.update(cx, |board, cx| {
                 board.set_prefs(prefs, cx);
                 board.set_position(pos, last, animate, cx);
             });
-            *shown = (game.game, game.moves.len());
+            *shown = (game.number, game.moves.len());
         };
         for game in &games {
             let entry = self.live_boards.entry(game.slot).or_insert_with(|| {
@@ -622,14 +640,6 @@ impl TournamentScreen {
             return;
         };
         run.stop = None;
-        if run.live.is_some()
-            && let Err(err) = tournament_live::reset_saved_log(&run.config)
-        {
-            log::warn!(
-                "could not reset the log options in {}: {err:#}",
-                run.config.display()
-            );
-        }
         let resumable = run.config.is_file();
         run.status = if exit.stopped {
             Status::Finished(if resumable {
@@ -815,11 +825,25 @@ impl TournamentScreen {
         );
     }
 
-    fn open_game(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
+    /// Opens fastchess game `number` in Analyse: by its `GameId` tag when fastchess wrote
+    /// one, otherwise by its place in the file (games are written in finishing order).
+    fn open_game(
+        &mut self,
+        number: u64,
+        index: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let Some(run) = &self.run else { return };
         let game = std::fs::read_to_string(run.pgn_file())
             .ok()
-            .and_then(|text| fastchess::nth_game(&text, index));
+            .and_then(|text| {
+                if text.contains("[GameId ") {
+                    fastchess::game_by_id(&text, number)
+                } else {
+                    fastchess::nth_game(&text, index)
+                }
+            });
         match game {
             Some(pgn) => {
                 if let Some(workspace) = self.workspace.upgrade() {
@@ -1331,7 +1355,7 @@ impl TournamentScreen {
         let open_last = cx.entity();
         let (dir, cwd, config) = (run.dir.clone(), run.cwd.clone(), run.config.clone());
         let can_resume = !run.active() && run.config.is_file();
-        let last_index = run.games.front().map(|game| game.pgn_index);
+        let last_index = run.games.front().map(|game| (game.game, game.pgn_index));
         let tile = |label: &'static str, value: Option<String>| {
             v_flex()
                 .gap(px(2.))
@@ -1347,7 +1371,7 @@ impl TournamentScreen {
         let mut games = v_flex().gap(px(2.));
         for row in run.games.iter().take(200) {
             let this = cx.entity();
-            let index = row.pgn_index;
+            let (number, index) = (row.game, row.pgn_index);
             games = games.child(
                 h_flex()
                     .id(("tournament-game", row.game as usize))
@@ -1359,7 +1383,7 @@ impl TournamentScreen {
                     .hover(|row| row.bg(rgb(T.selected)))
                     .text_size(px(13.))
                     .on_click(move |_, window, cx| {
-                        this.update(cx, |screen, cx| screen.open_game(index, window, cx))
+                        this.update(cx, |screen, cx| screen.open_game(number, index, window, cx))
                     })
                     .child(
                         div()
@@ -1437,11 +1461,12 @@ impl TournamentScreen {
                             },
                         ))
                     })
-                    .when_some(last_index, |row, index| {
+                    .when_some(last_index, |row, (number, index)| {
                         row.child(btn("tournament-open-last", "Open last game").on_click(
                             move |window, cx| {
-                                open_last
-                                    .update(cx, |screen, cx| screen.open_game(index, window, cx))
+                                open_last.update(cx, |screen, cx| {
+                                    screen.open_game(number, index, window, cx)
+                                })
                             },
                         ))
                     })
@@ -1584,12 +1609,7 @@ impl TournamentScreen {
             )
         };
         if run.live.is_none() {
-            return note(if tournament_live::SUPPORTED {
-                "Live boards are off because this command sets its own -log option."
-            } else {
-                "Live boards need fastchess to log to stdout, which is not possible on Windows yet."
-            })
-            .into_any_element();
+            return note(run.live_off.unwrap_or("Live boards are off.")).into_any_element();
         }
         if self.live_games.is_empty() {
             return note(if run.active() {
@@ -1728,7 +1748,8 @@ impl TournamentScreen {
                         )
                         .child(div().text_size(px(12.)).text_color(rgb(T.muted)).child(
                             SharedString::from(format!(
-                                "Move {} · {} plies played · click the board's card again to close",
+                                "Game {} · Move {} · {} plies played · click the board's card again to close",
+                                game.number,
                                 pos.fullmoves(),
                                 game.moves.len()
                             )),

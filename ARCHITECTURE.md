@@ -90,12 +90,15 @@ sends SIGINT on Unix, so fastchess saves its config and Continue resumes with
 `-config file=…`; on Windows it terminates the process and the last autosave counts. Quitting
 Fast stops running tournaments.
 
-Live boards come from fastchess's engine log, sent to its stdout (`-log file=/dev/stdout
-engine=true realtime=true`, Unix only). The stdout reader thread passes engine lines to
-`LiveGames` (`tournament_live.rs`) instead of the UI, which rebuilds one game per fastchess
-thread; the tab copies a snapshot into its boards at most five times a second. Commands that
-set their own `-log` run without live boards, and the log options are removed from the saved
-`config.json` after the run. `docs/fastchess-integration.md` lists fastchess changes that
+Live boards come from fastchess's `-events` stream. Fast checks each executable once by
+running `fastchess -events file=- -version`, which builds without the stream reject, and then
+adds `-events file=- info=true`: one JSON object per line for game starts, moves, throttled
+engine output and game ends, with fastchess's game numbers, and `[GameId]` tags in the PGN
+that "open this game" uses. The stdout reader thread passes event lines to `LiveGames`
+(`tournament_live.rs`) instead of the UI, and the tab copies a snapshot into its boards at
+most five times a second. Builds without `-events`, including the pinned 1.8.2 download, and
+commands that set their own `-events` run without live boards. fastchess does not save the
+event options into `config.json`. `docs/fastchess-integration.md` lists fastchess changes that
 would replace the output parsing and other workarounds.
 
 ## Analysis cache

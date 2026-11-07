@@ -645,7 +645,7 @@ pub struct StopHandle {
     stopping: Arc<AtomicBool>,
 }
 
-/// Starts fastchess. Engine-log lines go to `live` instead of `lines` when it is given.
+/// Starts fastchess. Event lines go to `live` instead of `lines` when it is given.
 pub fn spawn(
     program: &Path,
     args: &[String],
@@ -695,7 +695,7 @@ pub fn spawn(
                 let line = String::from_utf8_lossy(&buffer);
                 let line = line.trim_end_matches(['\n', '\r']);
                 if let Some(live) = &live
-                    && line.starts_with("[Engine]")
+                    && crate::tournament_live::is_event(line)
                 {
                     if let Ok(mut live) = live.lock() {
                         live.feed(line);
@@ -842,6 +842,14 @@ pub fn saved_runs(data: &Path) -> Vec<SavedRun> {
         .collect();
     runs.sort_by_key(|run| std::cmp::Reverse(run.modified));
     runs
+}
+
+/// The game fastchess tagged `[GameId "id"]`, which builds with `-events` write.
+pub fn game_by_id(pgn: &str, id: u64) -> Option<String> {
+    let tag = format!("[GameId \"{id}\"]");
+    (0..count_games(pgn))
+        .filter_map(|index| nth_game(pgn, index))
+        .find(|game| game.lines().any(|line| line.trim() == tag))
 }
 
 /// The `index`-th game (from 0) of a PGN file with several games.
@@ -1144,11 +1152,73 @@ mod tests {
         assert!(exit.stopped && !exit.success);
         let config = dir.join("config.json");
         let saved = &saved_runs(data.path())[0];
-        assert!(saved.games >= 4, "{}", saved.games);
+        // With two games per round, only complete rounds are saved.
+        assert!(
+            saved.games.is_multiple_of(2) && saved.games <= finished,
+            "{}",
+            saved.games
+        );
         let process = spawn(&program, &resume_args(&config), &dir, None).unwrap();
         let (finished, _, _, exit) = collect(&process, Some(2));
         assert!(finished >= 2 && exit.stopped);
         let pgn = std::fs::read_to_string(dir.join("games.pgn")).unwrap();
         assert!(count_games(&pgn) >= 6);
+    }
+
+    /// Runs a fastchess build with `-events` and follows it as the Tournament tab does.
+    #[test]
+    #[ignore = "set FAST_TEST_FASTCHESS to a fastchess build with -events and FAST_TEST_ENGINE"]
+    fn event_stream_drives_live_games() {
+        use crate::tournament_live::{LiveGames, events_args, has_events};
+        let program = PathBuf::from(std::env::var("FAST_TEST_FASTCHESS").expect("fastchess"));
+        let engine = PathBuf::from(std::env::var("FAST_TEST_ENGINE").expect("engine path"));
+        assert!(has_events(&program));
+        let data = tempfile::tempdir().unwrap();
+        let dir = new_run_dir(data.path()).unwrap();
+        let participant = |name: &str| Participant {
+            name: name.into(),
+            cmd: engine.clone(),
+            options: BTreeMap::new(),
+        };
+        let mut setup = setup(vec![participant("a"), participant("b")]);
+        setup.limit_value = "2+0.02".into();
+        setup.rounds = "50".into();
+        setup.concurrency = "2".into();
+        setup.extra = String::new();
+        let mut args = setup.args(&dir).unwrap();
+        args.extend(events_args());
+        let live = Arc::new(Mutex::new(LiveGames::default()));
+        let process = spawn(&program, &args, &dir, Some(live.clone())).unwrap();
+        let mut finished = 0;
+        let mut seen_moves = 0;
+        while let Ok(line) = process.lines.recv_blocking() {
+            assert!(
+                !line.starts_with("{\"event\""),
+                "events must not reach the log"
+            );
+            if let Line::Finished { .. } = parse_line(&line) {
+                finished += 1;
+                let games = live.lock().unwrap().snapshot();
+                seen_moves = seen_moves.max(games.iter().map(|g| g.moves.len()).max().unwrap_or(0));
+                assert!(
+                    games
+                        .iter()
+                        .all(|game| game.number > 0 && game.white.is_some())
+                );
+                if finished == 3 {
+                    process.stop_handle().stop();
+                }
+            }
+        }
+        assert!(process.wait().stopped);
+        assert!(seen_moves > 10, "{seen_moves}");
+        // Interrupted games are aborted, so no board is left behind.
+        assert!(live.lock().unwrap().snapshot().is_empty());
+        let pgn = std::fs::read_to_string(dir.join("games.pgn")).unwrap();
+        let first = game_by_id(&pgn, 1).or_else(|| game_by_id(&pgn, 2)).unwrap();
+        assert!(first.contains("[GameId "));
+        // The event options are not saved for a later resume.
+        let config = std::fs::read_to_string(dir.join("config.json")).unwrap();
+        assert!(!config.contains("events"));
     }
 }

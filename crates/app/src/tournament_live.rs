@@ -1,59 +1,50 @@
-//! Games in progress, rebuilt from fastchess's engine-communication log.
+//! Games in progress, from fastchess's `-events` stream.
 //!
-//! fastchess has no move-by-move output, but it can log every UCI message it exchanges with
-//! engines. Fast points that log at fastchess's own stdout and follows it: each game runs on
-//! one fastchess thread, `ucinewgame` starts the next game on that thread, `position … moves`
-//! carries the moves so far, `go` the clocks and `info` the engines' evaluations.
-//! `docs/fastchess-integration.md` describes a move event that would replace this.
+//! fastchess builds with `-events` write one JSON object per line: `game_started`, `move`,
+//! throttled `thinking`, and `game_finished`/`game_aborted`. Fast asks for that stream on
+//! fastchess's stdout and keeps the games in progress here. Builds without `-events` (such
+//! as the pinned 1.8.2 release) run without live boards.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap};
 use std::path::Path;
+use std::process::{Command, Stdio};
 
 use chess_core::{
     Chess, Position, Square,
     shakmaty::{CastlingMode, fen::Fen, uci::UciMove},
 };
 
-/// Whether the log can be sent to fastchess's stdout. Windows has no `/dev/stdout`.
-pub const SUPPORTED: bool = cfg!(unix);
-
-/// Options that make fastchess log engine traffic to its stdout as it happens.
-pub fn log_args() -> Vec<String> {
-    [
-        "-log",
-        "file=/dev/stdout",
-        "level=warn",
-        "engine=true",
-        "realtime=true",
-    ]
-    .map(String::from)
-    .into()
+/// Options that send the event stream, with engine output while searching, to stdout.
+pub fn events_args() -> Vec<String> {
+    ["-events", "file=-", "info=true"].map(String::from).into()
 }
 
-/// Whether a command already configures logging itself, so Fast should not.
-pub fn has_own_log(args: &[String]) -> bool {
-    args.iter().any(|arg| arg == "-log")
-}
-
-/// fastchess saves the log options in `config.json`; put back its defaults so continuing
-/// the tournament from a terminal does not print every engine message.
-pub fn reset_saved_log(config: &Path) -> anyhow::Result<()> {
-    let Ok(text) = std::fs::read_to_string(config) else {
-        return Ok(());
-    };
-    let mut value: serde_json::Value = serde_json::from_str(&text)?;
-    let Some(log) = value.get_mut("log").and_then(|log| log.as_object_mut()) else {
-        return Ok(());
-    };
-    if log.get("file").and_then(|file| file.as_str()) != Some("/dev/stdout") {
-        return Ok(());
+/// Whether this fastchess build has the `-events` stream. Builds without it reject the
+/// option before `-version` is reached.
+pub fn has_events(program: &Path) -> bool {
+    let mut command = Command::new(program);
+    command
+        .args(["-events", "file=-", "-version"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NO_WINDOW);
     }
-    log.insert("file".into(), "".into());
-    log.insert("engine_coms".into(), false.into());
-    let mut out = serde_json::to_string_pretty(&value)?;
-    out.push('\n');
-    crate::persistence::atomic_write(config, out.as_bytes())?;
-    Ok(())
+    command.status().is_ok_and(|status| status.success())
+}
+
+/// Whether a command already sets up its own event stream, so Fast should not add one.
+pub fn has_own_events(args: &[String]) -> bool {
+    args.iter().any(|arg| arg == "-events")
+}
+
+/// Whether a line of fastchess output is an event rather than text for people.
+pub fn is_event(line: &str) -> bool {
+    line.starts_with("{\"event\":")
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -63,13 +54,6 @@ pub enum Score {
 }
 
 impl Score {
-    fn negate(self) -> Self {
-        match self {
-            Self::Cp(cp) => Self::Cp(-cp),
-            Self::Mate(moves) => Self::Mate(-moves),
-        }
-    }
-
     pub fn format(self) -> String {
         match self {
             Self::Cp(cp) => format!("{:+.2}", cp as f32 / 100.),
@@ -81,7 +65,7 @@ impl Score {
 /// An engine's latest search output in a game.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Search {
-    /// From White's point of view.
+    /// From White's point of view, as fastchess reports it.
     pub score: Option<Score>,
     pub depth: Option<u32>,
     pub nodes: Option<u64>,
@@ -90,16 +74,16 @@ pub struct Search {
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct LiveGame {
-    /// Stable display order: the fastchess thread's first appearance.
+    /// Stable display position, reused by the next game once this one ends.
     pub slot: usize,
-    /// Changes when the thread starts another game.
-    pub game: u64,
+    /// fastchess's game number, as in `Finished game N` and the PGN's `GameId`.
+    pub number: u64,
     pub white: Option<String>,
     pub black: Option<String>,
-    /// `None` for the standard initial position.
     pub start_fen: Option<String>,
+    /// Book moves, then the engines' moves.
     pub moves: Vec<String>,
-    /// Remaining time in milliseconds at the last `go`.
+    /// Remaining time in milliseconds after the last move.
     pub wtime: Option<u64>,
     pub btime: Option<u64>,
     /// The engine searching now.
@@ -109,13 +93,6 @@ pub struct LiveGame {
 }
 
 impl LiveGame {
-    fn white_to_move_at_start(&self) -> bool {
-        self.start_fen
-            .as_deref()
-            .and_then(|fen| fen.split_whitespace().nth(1))
-            .is_none_or(|side| side != "b")
-    }
-
     /// The position after the moves that apply, and the last move's squares.
     pub fn position(&self) -> (Chess, Option<(Square, Square)>) {
         let mut pos: Chess = self
@@ -140,184 +117,137 @@ impl LiveGame {
     }
 }
 
-/// All games in progress, keyed by fastchess thread.
+/// All games in progress, by fastchess game number.
 #[derive(Debug, Default)]
 pub struct LiveGames {
-    games: HashMap<String, LiveGame>,
-    /// Threads that sent `ucinewgame`; their next `position` starts a new game.
-    starting: HashSet<String>,
+    games: HashMap<u64, LiveGame>,
+    /// Slots of finished games, handed to the next games so boards keep their places.
+    free_slots: BTreeSet<usize>,
     next_slot: usize,
-    next_game: u64,
     /// Bumped on every change, so viewers redraw only when something moved.
     pub serial: u64,
 }
 
-/// One engine-log line: thread, engine, direction and UCI message.
-fn split_line(line: &str) -> Option<(&str, &str, bool, &str)> {
-    let rest = line.strip_prefix("[Engine]")?;
-    let rest = &rest[rest.find("] <")? + 3..];
-    let (thread, rest) = rest.split_once('>')?;
-    let rest = rest.trim_start();
-    if rest.starts_with("<stderr> ") {
-        return None;
+fn json_score(value: &serde_json::Value) -> Option<Score> {
+    let as_i32 = |value: &serde_json::Value| value.as_i64().and_then(|v| i32::try_from(v).ok());
+    if let Some(cp) = value.get("cp").and_then(as_i32) {
+        return Some(Score::Cp(cp));
     }
-    if let Some((engine, message)) = rest.split_once(" <--- ") {
-        return Some((thread.trim(), engine, true, message));
-    }
-    let (engine, message) = rest.split_once(" ---> ")?;
-    Some((thread.trim(), engine, false, message))
+    value.get("mate").and_then(as_i32).map(Score::Mate)
 }
 
-fn parse_search(message: &str, white: bool) -> Option<Search> {
-    let mut tokens = message.split_whitespace();
-    let mut search = Search::default();
-    tokens.next().filter(|token| *token == "info")?;
-    while let Some(token) = tokens.next() {
-        match token {
-            "depth" => search.depth = tokens.next().and_then(|value| value.parse().ok()),
-            "nodes" => search.nodes = tokens.next().and_then(|value| value.parse().ok()),
-            "score" => {
-                let kind = tokens.next();
-                let value = tokens.next().and_then(|value| value.parse().ok());
-                search.score = match (kind, value) {
-                    (Some("cp"), Some(cp)) => Some(Score::Cp(cp)),
-                    (Some("mate"), Some(moves)) => Some(Score::Mate(moves)),
-                    _ => None,
-                };
-            }
-            "pv" => {
-                search.pv = tokens.by_ref().map(str::to_owned).collect();
-            }
-            // Free text runs to the end of the line.
-            "string" => return None,
-            _ => {}
-        }
+fn json_moves(value: Option<&serde_json::Value>) -> Vec<String> {
+    value
+        .and_then(|moves| moves.as_array())
+        .map(|moves| {
+            moves
+                .iter()
+                .filter_map(|mv| mv.as_str().map(str::to_owned))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// A `move` or `thinking` event's search output.
+fn json_search(event: &serde_json::Value) -> Search {
+    Search {
+        score: event.get("score").and_then(json_score),
+        depth: event
+            .get("depth")
+            .and_then(|depth| depth.as_u64())
+            .and_then(|depth| u32::try_from(depth).ok()),
+        nodes: event.get("nodes").and_then(|nodes| nodes.as_u64()),
+        pv: json_moves(event.get("pv")),
     }
-    let score = search.score?;
-    search.score = Some(if white { score } else { score.negate() });
-    Some(search)
 }
 
 impl LiveGames {
-    /// Takes a line of fastchess output; returns whether it was engine traffic.
-    pub fn feed(&mut self, line: &str) -> bool {
-        if !line.starts_with("[Engine]") {
-            return false;
+    /// Takes one event line of fastchess output.
+    pub fn feed(&mut self, line: &str) {
+        if let Ok(event) = serde_json::from_str::<serde_json::Value>(line) {
+            self.event(&event);
         }
-        if let Some((thread, engine, to_engine, message)) = split_line(line) {
-            if to_engine {
-                self.sent(thread, engine, message);
-            } else {
-                self.received(thread, engine, message);
-            }
-        }
-        true
     }
 
-    fn sent(&mut self, thread: &str, engine: &str, message: &str) {
-        let command = message.split_whitespace().next().unwrap_or_default();
-        match command {
-            "ucinewgame" => {
-                self.starting.insert(thread.to_owned());
+    fn take_slot(&mut self) -> usize {
+        self.free_slots.pop_first().unwrap_or_else(|| {
+            self.next_slot += 1;
+            self.next_slot - 1
+        })
+    }
+
+    fn event(&mut self, event: &serde_json::Value) {
+        let text = |key: &str| event.get(key).and_then(|value| value.as_str());
+        let time = |key: &str| event.get(key).and_then(|value| value.as_u64());
+        let Some(number) = time("game") else {
+            return;
+        };
+        match text("event").unwrap_or_default() {
+            "game_started" => {
+                let slot = match self.games.get(&number) {
+                    Some(game) => game.slot,
+                    None => self.take_slot(),
+                };
+                self.games.insert(
+                    number,
+                    LiveGame {
+                        slot,
+                        number,
+                        white: text("white").map(str::to_owned),
+                        black: text("black").map(str::to_owned),
+                        start_fen: text("start_fen").map(str::to_owned),
+                        moves: json_moves(event.get("opening")),
+                        wtime: time("wtime"),
+                        btime: time("btime"),
+                        ..Default::default()
+                    },
+                );
             }
-            "position" => self.position(thread, engine, message),
-            "go" => {
-                let Some(game) = self.games.get_mut(thread) else {
+            "move" => {
+                let Some(game) = self.games.get_mut(&number) else {
                     return;
                 };
-                let mut tokens = message.split_whitespace();
-                while let Some(token) = tokens.next() {
-                    match token {
-                        "wtime" => game.wtime = tokens.next().and_then(|value| value.parse().ok()),
-                        "btime" => game.btime = tokens.next().and_then(|value| value.parse().ok()),
-                        _ => {}
+                let legal = event.get("legal").and_then(|legal| legal.as_bool()) != Some(false);
+                if let Some(mv) = text("move").filter(|_| legal) {
+                    if time("ply").is_none_or(|ply| ply == game.moves.len() as u64 + 1) {
+                        game.moves.push(mv.to_owned());
+                    } else if let Some(fen) = text("fen") {
+                        // A gap in the stream: start again from where the game stands.
+                        game.start_fen = Some(fen.to_owned());
+                        game.moves.clear();
                     }
                 }
-                game.thinking = Some(engine.to_owned());
-                self.serial += 1;
-            }
-            _ => {}
-        }
-    }
-
-    fn position(&mut self, thread: &str, engine: &str, message: &str) {
-        let rest = message.strip_prefix("position").unwrap_or_default().trim();
-        let (start, moves) = match rest.split_once(" moves") {
-            Some((start, moves)) => (
-                start.trim(),
-                moves.split_whitespace().map(str::to_owned).collect(),
-            ),
-            None => (rest, Vec::new()),
-        };
-        let start_fen = start.strip_prefix("fen").map(|fen| fen.trim().to_owned());
-        let starting = self.starting.remove(thread);
-        let fresh = match self.games.get(thread) {
-            None => true,
-            Some(game) => starting || game.start_fen != start_fen,
-        };
-        if fresh {
-            let slot = match self.games.get(thread) {
-                Some(game) => game.slot,
-                None => {
-                    self.next_slot += 1;
-                    self.next_slot - 1
+                game.wtime = time("wtime");
+                game.btime = time("btime");
+                let search = json_search(event);
+                if text("side") == Some("white") {
+                    game.white_search = search;
+                    game.thinking = game.black.clone();
+                } else {
+                    game.black_search = search;
+                    game.thinking = game.white.clone();
                 }
-            };
-            self.next_game += 1;
-            self.games.insert(
-                thread.to_owned(),
-                LiveGame {
-                    slot,
-                    game: self.next_game,
-                    start_fen,
-                    ..Default::default()
-                },
-            );
-        }
-        let Some(game) = self.games.get_mut(thread) else {
-            return;
-        };
-        game.moves = moves;
-        // The engine asked to move plays the side to move.
-        let white = game.white_to_move_at_start() == (game.moves.len() % 2 == 0);
-        let side = if white {
-            &mut game.white
-        } else {
-            &mut game.black
-        };
-        if side.is_none() {
-            *side = Some(engine.to_owned());
-        }
-        self.serial += 1;
-    }
-
-    fn received(&mut self, thread: &str, engine: &str, message: &str) {
-        let Some(game) = self.games.get_mut(thread) else {
-            return;
-        };
-        let white = game.white.as_deref() == Some(engine);
-        if !white && game.black.as_deref() != Some(engine) {
-            return;
-        }
-        if message.starts_with("info ") {
-            if let Some(search) = parse_search(message, white) {
-                if white {
+            }
+            "thinking" => {
+                let Some(game) = self.games.get_mut(&number) else {
+                    return;
+                };
+                let search = json_search(event);
+                if text("side") == Some("white") {
                     game.white_search = search;
                 } else {
                     game.black_search = search;
                 }
-                self.serial += 1;
+                game.thinking = text("engine").map(str::to_owned);
             }
-        } else if let Some(rest) = message.strip_prefix("bestmove ") {
-            // Show the move now; the next `position` confirms it.
-            if game.thinking.as_deref() == Some(engine)
-                && let Some(mv) = rest.split_whitespace().next()
-            {
-                game.moves.push(mv.to_owned());
-                game.thinking = None;
-                self.serial += 1;
+            "game_finished" | "game_aborted" => {
+                if let Some(game) = self.games.remove(&number) {
+                    self.free_slots.insert(game.slot);
+                }
             }
+            _ => return,
         }
+        self.serial += 1;
     }
 
     /// The games, in display order.
@@ -341,90 +271,51 @@ pub fn format_clock(ms: u64) -> String {
 mod tests {
     use super::*;
 
-    fn engine(thread: &str, name: &str, to: bool, message: &str) -> String {
-        format!(
-            "[Engine] [19:02:20.553742] <{thread:>20}>  {name} {} {message}",
-            if to { "<---" } else { "--->" }
-        )
-    }
-
-    #[test]
-    fn follows_games_per_thread() {
-        let mut live = LiveGames::default();
-        assert!(!live.feed("Started game 1 of 2 (a vs b c)"));
-        for line in [
-            engine("1", "a", true, "ucinewgame"),
-            engine("1", "b c", true, "ucinewgame"),
-            engine("1", "a", true, "position startpos"),
-            engine("1", "a", true, "go wtime 1010 btime 1010 winc 10 binc 10"),
-            engine(
-                "1",
-                "a",
-                false,
-                "info depth 12 seldepth 15 score cp 31 nodes 5000 pv d2d4 d7d5",
-            ),
-            engine("1", "a", false, "bestmove d2d4 ponder d7d5"),
-            engine(
-                "2",
-                "b c",
-                true,
-                "position fen 4k3/8/8/8/8/8/8/4K2R b K - 0 1",
-            ),
-            engine("1", "b c", true, "position startpos moves d2d4"),
-            engine("1", "b c", true, "go wtime 989 btime 1010 winc 10 binc 10"),
-            engine("1", "b c", false, "info depth 9 score mate -3 pv e7e5"),
-            "[Engine] [19:05:48.069344] <8769744>  <stderr> a ---> exited".to_owned(),
-        ] {
-            assert!(live.feed(&line), "{line}");
-        }
-        let games = live.snapshot();
-        assert_eq!(games.len(), 2);
-        let first = &games[0];
-        assert_eq!(first.white.as_deref(), Some("a"));
-        assert_eq!(first.black.as_deref(), Some("b c"));
-        assert_eq!(first.moves, ["d2d4"]);
-        assert_eq!((first.wtime, first.btime), (Some(989), Some(1010)));
-        assert_eq!(first.white_search.score, Some(Score::Cp(31)));
-        assert_eq!(first.white_search.pv, ["d2d4", "d7d5"]);
-        // Black's mate against itself is a White mate from White's side.
-        assert_eq!(first.black_search.score, Some(Score::Mate(3)));
-        let (pos, last) = first.position();
-        assert_eq!(pos.turn(), chess_core::Color::Black);
-        assert_eq!(last, Some((Square::D2, Square::D4)));
-        let second = &games[1];
-        assert_eq!(second.black.as_deref(), Some("b c"));
-        assert_eq!(second.position().0.turn(), chess_core::Color::Black);
-
-        let before = first.game;
-        live.feed(&engine("1", "a", true, "ucinewgame"));
-        live.feed(&engine("1", "b c", true, "position startpos"));
-        let games = live.snapshot();
-        assert_eq!(games[0].slot, 0);
-        assert_ne!(games[0].game, before);
-        assert_eq!(games[0].white.as_deref(), Some("b c"));
-        assert!(games[0].moves.is_empty());
-    }
-
-    #[test]
-    fn saved_log_options_are_reset() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("config.json");
-        std::fs::write(
-            &path,
-            r#"{"log": {"file": "/dev/stdout", "level": 3, "engine_coms": true}, "rounds": 2}"#,
-        )
-        .unwrap();
-        reset_saved_log(&path).unwrap();
-        let value: serde_json::Value =
-            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
-        assert_eq!(value["log"]["file"], "");
-        assert_eq!(value["log"]["engine_coms"], false);
-        assert_eq!(value["rounds"], 2);
-    }
-
     #[test]
     fn clocks_show_tenths_in_the_last_minute() {
         assert_eq!(format_clock(989), "0.9");
         assert_eq!(format_clock(61_500), "1:01");
+    }
+
+    #[test]
+    fn follows_the_event_stream() {
+        let mut live = LiveGames::default();
+        assert!(!is_event("Started game 1 of 2 (a vs b)"));
+        for line in [
+            r#"{"event":"tournament_started","schema":1,"engines":["a","b"]}"#,
+            r#"{"event":"game_started","game":1,"white":"a","black":"b","start_fen":"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1","opening":["e2e4"],"wtime":1010,"btime":1010}"#,
+            r#"{"event":"game_started","game":2,"white":"b","black":"a","start_fen":"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1","opening":[],"wtime":1010,"btime":1010}"#,
+            r#"{"event":"thinking","game":1,"side":"black","engine":"b","score":{"cp":-20},"depth":9,"pv":["c7c5"]}"#,
+            r#"{"event":"move","game":1,"ply":2,"side":"black","engine":"b","move":"c7c5","legal":true,"wtime":1010,"btime":990,"score":{"mate":-4},"depth":12,"nodes":900,"pv":["c7c5","g1f3"]}"#,
+        ] {
+            assert!(is_event(line));
+            live.feed(line);
+        }
+        let games = live.snapshot();
+        assert_eq!(games.len(), 2);
+        let first = &games[0];
+        assert_eq!(first.number, 1);
+        assert_eq!(first.moves, ["e2e4", "c7c5"]);
+        assert_eq!((first.wtime, first.btime), (Some(1010), Some(990)));
+        // Event scores are already from White's side.
+        assert_eq!(first.black_search.score, Some(Score::Mate(-4)));
+        assert_eq!(first.black_search.nodes, Some(900));
+        assert_eq!(first.thinking.as_deref(), Some("a"));
+        assert_eq!(first.position().1, Some((Square::C7, Square::C5)));
+
+        // A gap in the plies starts over from the reported position.
+        live.feed(
+            r#"{"event":"move","game":2,"ply":5,"side":"white","engine":"b","move":"d2d4","fen":"4k3/8/8/8/3P4/8/8/4K3 b - - 0 3","wtime":900,"btime":900}"#,
+        );
+        let second = &live.snapshot()[1];
+        assert!(second.moves.is_empty());
+        assert_eq!(second.position().0.turn(), chess_core::Color::Black);
+
+        live.feed(r#"{"event":"game_finished","game":1,"result":"1-0"}"#);
+        live.feed(r#"{"event":"game_aborted","game":2}"#);
+        assert!(live.snapshot().is_empty());
+        live.feed(r#"{"event":"game_started","game":3,"white":"a","black":"b","start_fen":"8/8/8/8/8/8/8/K1k5 b - - 0 1","opening":[]}"#);
+        // The first free board position is reused.
+        assert_eq!(live.snapshot()[0].slot, 0);
     }
 }
