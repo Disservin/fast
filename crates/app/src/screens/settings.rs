@@ -878,12 +878,40 @@ impl SettingsScreen {
                     .child(tile_label(theme.name())),
             );
         }
-        let mut pieces = h_flex().gap(px(8.));
-        let sets: [(SavedPieces, &str, gpui::AnyElement); 3] = [
+        let mut pieces = h_flex().flex_wrap().gap(px(8.));
+        let knight = |set: ui::PieceSet| {
+            img(set.asset(chess_core::shakmaty::Piece {
+                color: chess_core::Color::Black,
+                role: chess_core::Role::Knight,
+            }))
+            .size(px(44.))
+            .into_any_element()
+        };
+        let sets: [(SavedPieces, &str, gpui::AnyElement); 7] = [
             (
                 SavedPieces::Classic,
                 "Classic",
-                img("pieces/merida/bN.svg").size(px(44.)).into_any_element(),
+                knight(ui::PieceSet::Classic),
+            ),
+            (
+                SavedPieces::Cburnett,
+                "Cburnett",
+                knight(ui::PieceSet::Cburnett),
+            ),
+            (
+                SavedPieces::Chessnut,
+                "Chessnut",
+                knight(ui::PieceSet::Chessnut),
+            ),
+            (
+                SavedPieces::MpChess,
+                "MPChess",
+                knight(ui::PieceSet::MpChess),
+            ),
+            (
+                SavedPieces::Fantasy,
+                "Fantasy",
+                knight(ui::PieceSet::Fantasy),
             ),
             (
                 SavedPieces::Letters,

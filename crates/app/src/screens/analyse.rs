@@ -985,6 +985,7 @@ impl AnalyseScreen {
         let board = self.board.read(cx);
         let (light, dark) = board.prefs().theme.colors();
         let look = crate::snapshot::BoardLook {
+            pieces: board.prefs().pieces,
             light,
             dark,
             flipped: board.is_flipped(),

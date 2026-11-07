@@ -49,10 +49,55 @@ impl BoardTheme {
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum PieceSet {
+    /// Merida.
     #[default]
     Classic,
+    Cburnett,
+    Chessnut,
+    MpChess,
+    Fantasy,
     Letters,
     Flat,
+}
+
+impl PieceSet {
+    /// Sets drawn from their own SVG artwork, in the order Settings offers them.
+    pub const IMAGES: [Self; 5] = [
+        Self::Classic,
+        Self::Cburnett,
+        Self::Chessnut,
+        Self::MpChess,
+        Self::Fantasy,
+    ];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Classic => "Classic",
+            Self::Cburnett => "Cburnett",
+            Self::Chessnut => "Chessnut",
+            Self::MpChess => "MPChess",
+            Self::Fantasy => "Fantasy",
+            Self::Letters => "Letters",
+            Self::Flat => "Flat",
+        }
+    }
+
+    /// The asset folder with this set's artwork. Letters and Flat have none of their
+    /// own; Flat draws Merida's outlines in one colour.
+    pub fn folder(self) -> &'static str {
+        match self {
+            Self::Cburnett => "cburnett",
+            Self::Chessnut => "chessnut",
+            Self::MpChess => "mpchess",
+            Self::Fantasy => "fantasy",
+            Self::Classic | Self::Letters | Self::Flat => "merida",
+        }
+    }
+
+    /// The asset path of a piece's picture in this set.
+    pub fn asset(self, piece: Piece) -> SharedString {
+        format!("pieces/{}/{}.svg", self.folder(), piece_file(piece)).into()
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -554,15 +599,18 @@ impl BoardView {
         cell: Pixels,
         id: impl Into<ElementId>,
     ) -> gpui::AnyElement {
-        let name = piece_file(piece);
         match self.prefs.pieces {
-            PieceSet::Classic => img(SharedString::from(format!("pieces/merida/{name}.svg")))
+            PieceSet::Classic
+            | PieceSet::Cburnett
+            | PieceSet::Chessnut
+            | PieceSet::MpChess
+            | PieceSet::Fantasy => img(self.prefs.pieces.asset(piece))
                 .id(id)
                 .size(relative(0.74))
                 .m(relative(0.13))
                 .into_any_element(),
             PieceSet::Flat => svg()
-                .path(SharedString::from(format!("pieces/merida/{name}.svg")))
+                .path(PieceSet::Flat.asset(piece))
                 .size(relative(0.86))
                 .m(relative(0.07))
                 .text_color(rgb(if piece.color == Color::White {
@@ -1125,6 +1173,21 @@ mod tests {
         let targets = view.legal_targets(Square::E1);
         assert!(targets.contains(&Square::G1) && targets.contains(&Square::H1));
         assert!(targets.contains(&Square::C1) && targets.contains(&Square::A1));
+    }
+
+    #[test]
+    fn every_piece_set_has_all_twelve_pictures() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets");
+        for set in PieceSet::IMAGES {
+            for color in [Color::White, Color::Black] {
+                for role in Role::ALL {
+                    let path = root.join(set.asset(Piece { color, role }).as_ref());
+                    let text = std::fs::read_to_string(&path)
+                        .unwrap_or_else(|err| panic!("{}: {err}", path.display()));
+                    assert!(text.contains("<svg"), "{}", path.display());
+                }
+            }
+        }
     }
 
     #[test]

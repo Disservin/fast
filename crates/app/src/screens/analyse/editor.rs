@@ -101,9 +101,14 @@ impl PositionEditor {
     }
 }
 
-fn piece_path(piece: Piece) -> SharedString {
-    let side = if piece.color.is_white() { 'w' } else { 'b' };
-    format!("pieces/merida/{side}{}.svg", piece.role.upper_char()).into()
+/// The palette shows the board's own piece set; Letters and Flat use Classic's.
+fn piece_path(set: ui::PieceSet, piece: Piece) -> SharedString {
+    let set = if ui::PieceSet::IMAGES.contains(&set) {
+        set
+    } else {
+        ui::PieceSet::Classic
+    };
+    set.asset(piece)
 }
 
 impl AnalyseScreen {
@@ -167,6 +172,7 @@ impl AnalyseScreen {
         let cell = 40.;
         // Light squares keep both colours of piece readable, as on the board.
         let (light, _) = self.board.read(cx).prefs().theme.colors();
+        let set = self.board.read(cx).prefs().pieces;
         let swatch = |id: (&'static str, u32), selected: bool| {
             div()
                 .id(id)
@@ -204,7 +210,7 @@ impl AnalyseScreen {
                             screen.edit_position(cx, |editor| editor.brush = Some(piece));
                         });
                     })
-                    .child(img(piece_path(piece)).size(px(cell * 0.8))),
+                    .child(img(piece_path(set, piece)).size(px(cell * 0.8))),
                 );
             }
             row

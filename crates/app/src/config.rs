@@ -76,6 +76,11 @@ pub enum SavedTheme {
 #[serde(rename_all = "snake_case")]
 pub enum SavedPieces {
     Classic,
+    Cburnett,
+    Chessnut,
+    #[serde(rename = "mpchess")]
+    MpChess,
+    Fantasy,
     Letters,
     Flat,
 }
@@ -135,6 +140,10 @@ impl BoardConfig {
             },
             pieces: match self.pieces {
                 SavedPieces::Classic => PieceSet::Classic,
+                SavedPieces::Cburnett => PieceSet::Cburnett,
+                SavedPieces::Chessnut => PieceSet::Chessnut,
+                SavedPieces::MpChess => PieceSet::MpChess,
+                SavedPieces::Fantasy => PieceSet::Fantasy,
                 SavedPieces::Letters => PieceSet::Letters,
                 SavedPieces::Flat => PieceSet::Flat,
             },

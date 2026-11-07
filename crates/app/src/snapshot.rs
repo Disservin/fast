@@ -19,6 +19,7 @@ const PIECE_SCALE: f32 = 0.74;
 
 /// How the board looks in the image.
 pub struct BoardLook {
+    pub pieces: ui::PieceSet,
     pub light: u32,
     pub dark: u32,
     pub flipped: bool,
@@ -57,34 +58,71 @@ pub fn board_svg(pos: &Chess, look: &BoardLook) -> Result<String> {
             };
             let side = if piece.color.is_white() { 'w' } else { 'b' };
             let name = format!("{side}{}", piece.role.upper_char());
-            let path = format!("pieces/merida/{name}.svg");
+            let path = ui::PieceSet::IMAGES
+                .iter()
+                .find(|set| **set == look.pieces)
+                .copied()
+                .unwrap_or(ui::PieceSet::Classic)
+                .asset(piece);
             let bytes = Assets
                 .load(&path)?
                 .with_context(|| format!("missing {path}"))?;
             let source = std::str::from_utf8(&bytes).context("piece is not UTF-8")?;
-            // Every piece file names its gradients `a`, `b`, …: keep each copy's own.
+            // Piece files reuse short ids (`a`, `b`, …): keep each copy's own.
             let prefix = format!("{name}{square}");
-            let nested = source
+            let renamed = source
                 .replace(r#"id=""#, &format!(r#"id="{prefix}"#))
                 .replace("url(#", &format!("url(#{prefix}"))
-                .replace(r##"href="#"##, &format!(r##"href="#{prefix}"##))
-                .replace(r#"height="50mm""#, &format!(r#"height="{piece_size}""#))
-                .replace(r#"width="50mm""#, &format!(r#"width="{piece_size}""#))
-                .replacen(
-                    "<svg ",
-                    &format!(
-                        r#"<svg x="{}" y="{}" "#,
-                        left as f32 + inset,
-                        top as f32 + inset
-                    ),
-                    1,
-                );
+                .replace(r##"href="#"##, &format!(r##"href="#{prefix}"##));
+            let nested = place_svg(
+                &renamed,
+                left as f32 + inset,
+                top as f32 + inset,
+                piece_size,
+            );
             pieces.push_str(&nested);
         }
     }
     svg.push_str(&pieces);
     svg.push_str("</svg>");
     Ok(svg)
+}
+
+/// Puts a standalone SVG at a position and size inside another: its own `width`
+/// and `height` (in mm, units or absent, depending on the set) give way to ours,
+/// and its `viewBox` scales the artwork.
+fn place_svg(source: &str, x: f32, y: f32, size: f32) -> String {
+    let Some(start) = source.find("<svg") else {
+        return String::new();
+    };
+    let Some(len) = source[start..].find('>') else {
+        return String::new();
+    };
+    let tag = &source[start..start + len];
+    let mut kept = String::new();
+    let mut rest = &tag[4..];
+    // Copy attributes except the outer size.
+    while let Some(eq) = rest.find('=') {
+        let name_start = rest[..eq]
+            .trim_end()
+            .rfind(char::is_whitespace)
+            .map_or(0, |i| i + 1);
+        let name = rest[name_start..eq].trim();
+        let after = &rest[eq + 1..];
+        let quote = after.chars().next().unwrap_or('"');
+        let Some(close) = after[1..].find(quote) else {
+            break;
+        };
+        let value = &after[..close + 2];
+        if name != "width" && name != "height" {
+            kept.push_str(&format!(" {name}={value}"));
+        }
+        rest = &after[close + 2..];
+    }
+    format!(
+        r#"<svg x="{x}" y="{y}" width="{size}" height="{size}"{kept}{}"#,
+        &source[start + len..]
+    )
 }
 
 /// The position as PNG bytes.
@@ -110,8 +148,41 @@ mod tests {
     use super::*;
 
     #[test]
+    fn every_set_renders_at_the_square_size() {
+        for pieces in ui::PieceSet::IMAGES {
+            let look = BoardLook {
+                pieces,
+                light: 0xDEE3E6,
+                dark: 0x8CA2AD,
+                flipped: false,
+                last_move: None,
+            };
+            let svg = board_svg(&Chess::default(), &look).unwrap();
+            assert!(!svg.contains("mm\""), "{pieces:?} kept a mm size");
+            board_png(&Chess::default(), &look).unwrap();
+        }
+    }
+
+    #[test]
+    fn placed_svgs_take_our_size_and_keep_the_view_box() {
+        let placed = place_svg(
+            r#"<svg xmlns="x" width="45" height="45" viewBox="0 0 45 45"><g/></svg>"#,
+            1.0,
+            2.0,
+            30.0,
+        );
+        assert!(
+            placed.starts_with(
+                r#"<svg x="1" y="2" width="30" height="30" xmlns="x" viewBox="0 0 45 45"><g/>"#
+            ),
+            "{placed}"
+        );
+    }
+
+    #[test]
     fn draws_every_piece_once_with_its_own_gradients() {
         let look = BoardLook {
+            pieces: ui::PieceSet::Classic,
             light: 0xDEE3E6,
             dark: 0x8CA2AD,
             flipped: true,
