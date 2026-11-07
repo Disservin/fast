@@ -1159,8 +1159,7 @@ impl TournamentScreen {
                     )
                     .child(
                         btn(("selfplay-copy", id as usize), "Add selfplay copy")
-                            .h(26.)
-                            .text(12.)
+                            .compact()
                             .tooltip(ui::i18n::t(
                                 "Run another process of this engine as an opponent",
                             ))
@@ -2101,9 +2100,7 @@ impl TournamentScreen {
                     format!("Show all {}", self.live_games.len())
                 },
             )
-            .h(24.)
-            .pad(7.)
-            .text(12.)
+            .mini()
             .on_click(move |_, cx| {
                 this.update(cx, |screen, cx| {
                     screen.live_all = !screen.live_all;

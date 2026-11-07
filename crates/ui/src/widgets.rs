@@ -189,6 +189,23 @@ impl Btn {
         self
     }
 
+    /// The size for toolbar and panel controls: smaller than a form button, but
+    /// with text still at body size so short labels stay legible.
+    pub fn compact(mut self) -> Self {
+        self.height = px(28.);
+        self.padding = px(10.);
+        self.text_size = px(13.);
+        self
+    }
+
+    /// The smallest readable button, for tab strips inside a panel header.
+    pub fn mini(mut self) -> Self {
+        self.height = px(24.);
+        self.padding = px(8.);
+        self.text_size = px(12.);
+        self
+    }
+
     pub fn mono(mut self) -> Self {
         self.mono = true;
         self

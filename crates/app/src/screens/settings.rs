@@ -2474,7 +2474,7 @@ impl SettingsScreen {
                             .child(ui::i18n::t("Sends debug on and shows the raw engine output in its own window")),
                     )
                     .when(debug, |row| {
-                        row.child(btn("debug-window", "Open output window").h(26.).pad(8.).text(12.).on_click(move |_, cx| {
+                        row.child(btn("debug-window", "Open output window").compact().on_click(move |_, cx| {
                             window_this.update(cx, |screen, cx| screen.open_debug_window(cx));
                         }))
                     }),

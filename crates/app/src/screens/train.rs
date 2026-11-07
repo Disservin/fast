@@ -1120,9 +1120,7 @@ impl Render for TrainScreen {
                 )
                 .child(
                     btn("restart-study", "Start fresh")
-                        .h(26.)
-                        .pad(8.)
-                        .text(12.)
+                        .compact()
                         .tooltip(ui::i18n::t(
                             "Discard this session and start the queue again",
                         ))

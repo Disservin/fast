@@ -163,9 +163,7 @@ impl Render for DebugWindow {
                             .gap(px(6.))
                             .child(
                                 btn("debug-info", "Info lines")
-                                    .h(28.)
-                                    .pad(8.)
-                                    .text(12.)
+                                    .compact()
                                     .selected(self.show_info)
                                     .on_click(move |_, cx| {
                                         info_this.update(cx, |this, cx| {
@@ -177,9 +175,7 @@ impl Render for DebugWindow {
                             )
                             .child(
                                 btn("debug-follow", "Follow")
-                                    .h(28.)
-                                    .pad(8.)
-                                    .text(12.)
+                                    .compact()
                                     .selected(self.follow)
                                     .on_click(move |_, cx| {
                                         follow_this.update(cx, |this, cx| {
@@ -189,27 +185,21 @@ impl Render for DebugWindow {
                                         });
                                     }),
                             )
-                            .child(
-                                btn("debug-copy", "Copy all")
-                                    .h(28.)
-                                    .pad(8.)
-                                    .text(12.)
-                                    .on_click(move |_, cx| {
-                                        let text = copy_this
-                                            .read(cx)
-                                            .lines
-                                            .iter()
-                                            .map(|line| line.text.as_str())
-                                            .collect::<Vec<_>>()
-                                            .join("\n");
-                                        cx.write_to_clipboard(ClipboardItem::new_string(text));
-                                    }),
-                            )
+                            .child(btn("debug-copy", "Copy all").compact().on_click(
+                                move |_, cx| {
+                                    let text = copy_this
+                                        .read(cx)
+                                        .lines
+                                        .iter()
+                                        .map(|line| line.text.as_str())
+                                        .collect::<Vec<_>>()
+                                        .join("\n");
+                                    cx.write_to_clipboard(ClipboardItem::new_string(text));
+                                },
+                            ))
                             .child(
                                 btn("debug-clear", "Clear")
-                                    .h(28.)
-                                    .pad(8.)
-                                    .text(12.)
+                                    .compact()
                                     .on_click(move |_, cx| {
                                         clear_this.update(cx, |this, cx| {
                                             this.log.clear();

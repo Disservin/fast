@@ -1372,7 +1372,7 @@ impl DatabaseScreen {
                     column = column.child(
                         btn(("review-finding", ply), finding.text)
                             .full()
-                            .text(11.)
+                            .text(12.)
                             .tooltip(ui::i18n::t(
                                 "Open this move and its engine continuation in Analyse",
                             ))

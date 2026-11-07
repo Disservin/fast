@@ -245,7 +245,7 @@ impl AnalyseScreen {
         let view = self.model.read(cx).config.view.clone();
         let all_this = this.clone();
         let arrows_this = this.clone();
-        let small = |id: &'static str, label: &'static str| btn(id, label).h(26.).pad(8.).text(12.);
+        let small = |id: &'static str, label: &'static str| btn(id, label).compact();
         let lines = self.shown_lines(cx);
         let lines_stepper = lines.map(|value| {
             let (down_this, up_this) = (this.clone(), this.clone());
@@ -256,13 +256,13 @@ impl AnalyseScreen {
                 .child(
                     div()
                         .mr(px(2.))
-                        .text_size(px(12.))
+                        .text_size(px(13.))
                         .text_color(rgb(T.muted))
                         .child(ui::i18n::t("Lines")),
                 )
                 .child(
                     small("lines-down", "−")
-                        .w(24.)
+                        .w(28.)
                         .pad(0.)
                         .disabled(value <= 1)
                         .tooltip(ui::i18n::t("Search one fewer engine line"))
@@ -279,7 +279,7 @@ impl AnalyseScreen {
                 )
                 .child(
                     small("lines-up", "+")
-                        .w(24.)
+                        .w(28.)
                         .pad(0.)
                         .tooltip(ui::i18n::t("MultiPV: lines each engine searches, saved in its options"))
                         .on_click(move |_, cx| {
@@ -288,8 +288,6 @@ impl AnalyseScreen {
                 )
                 .child(
                     small("lines-reset", ui::i18n::t("Reset"))
-                        .w(48.)
-                        .pad(0.)
                         .tooltip(ui::i18n::t("Back to each engine's default number of lines"))
                         .on_click(move |_, cx| {
                             reset_this.update(cx, |screen, cx| {
@@ -299,8 +297,6 @@ impl AnalyseScreen {
                 )
                 .child(
                     small("lines-max", "Max")
-                        .w(40.)
-                        .pad(0.)
                         .tooltip(ui::i18n::t("A line for every legal move in every position (up to 256, as far as the engine allows)"))
                         .on_click(move |_, cx| {
                             max_this
@@ -356,9 +352,7 @@ impl AnalyseScreen {
                         },
                     )
                     .w(28.)
-                    .h(26.)
-                    .pad(8.)
-                    .text(12.)
+                    .compact()
                     .selected(paused)
                     .tooltip(if paused {
                         "Resume search (P)"
@@ -372,9 +366,7 @@ impl AnalyseScreen {
             })
             .child(
                 btn("engine-panel", ui::i18n::t("Engine"))
-                    .h(26.)
-                    .pad(8.)
-                    .text(12.)
+                    .compact()
                     .selected(self.engine_panel_open)
                     .tooltip(ui::i18n::t("Choose an engine and adjust its search settings"))
                     .on_click(move |_, cx| {
@@ -386,9 +378,7 @@ impl AnalyseScreen {
             )
             .child(
                 btn("log-panel", "Log")
-                    .h(26.)
-                    .pad(8.)
-                    .text(12.)
+                    .compact()
                     .selected(self.log_panel_open)
                     .tooltip(ui::i18n::t("Show or hide engine output"))
                     .on_click(move |_, cx| {
@@ -400,9 +390,7 @@ impl AnalyseScreen {
             )
             .child(
                 btn("online-panel", "Online")
-                    .h(26.)
-                    .pad(8.)
-                    .text(12.)
+                    .compact()
                     .selected(self.online.open)
                     .tooltip(
                         "Add the ChessTB Explorer tablebase and chessdb.cn to Moves from here. \
@@ -508,8 +496,8 @@ impl AnalyseScreen {
             |up: bool, this: gpui::Entity<Self>| {
                 let (id_text, text) = if up { ("up", "+") } else { ("down", "−") };
                 btn(SharedString::from(format!("{name}-{id_text}")), text)
-                    .w(26.)
-                    .h(26.)
+                    .w(28.)
+                    .h(28.)
                     .pad(0.)
                     .disabled(spin.is_none_or(|(value, min, max)| {
                         step_value(name, value, up, min, max) == value
@@ -532,7 +520,7 @@ impl AnalyseScreen {
             let text = spin.map_or_else(|| "—".to_owned(), |(value, ..)| format!("{value}{unit}"));
             btn(SharedString::from(format!("{name}-value")), text)
                 .w(88.)
-                .h(26.)
+                .h(28.)
                 .pad(0.)
                 .disabled(spin.is_none())
                 .on_click(move |window, cx| {
@@ -701,8 +689,7 @@ impl AnalyseScreen {
                 .child(section_label(ui::i18n::t("Engine")))
                 .child(
                     btn("reset-panel-sizes", "Reset panel sizes")
-                        .h(26.)
-                        .text(12.)
+                        .compact()
                         .on_click(move |_, cx| {
                             reset_layout.update(cx, |screen, cx| {
                                 screen.model.update(cx, |model, cx| {
@@ -722,9 +709,7 @@ impl AnalyseScreen {
                             "Start analysis"
                         },
                     )
-                    .h(26.)
-                    .pad(8.)
-                    .text(12.)
+                    .compact()
                     .on_click({
                         let this = this.clone();
                         move |_, cx| this.update(cx, |screen, cx| screen.toggle_engine(cx))
@@ -765,7 +750,7 @@ impl AnalyseScreen {
                         }))
                         .child(
                             btn("search-all-moves", ui::i18n::t("All moves"))
-                                .h(26.)
+                                .compact()
                                 .disabled(restricted.is_empty())
                                 .on_click(move |_, cx| {
                                     reset.update(cx, |screen, cx| {
@@ -820,9 +805,7 @@ impl AnalyseScreen {
             limits = limits.child(
                 btn(("limit", index), label)
                     .mono()
-                    .h(26.)
-                    .pad(7.)
-                    .text(12.)
+                    .compact()
                     .selected(limit == value)
                     .on_click(move |_, cx| {
                         this.update(cx, |screen, cx| {
@@ -869,9 +852,7 @@ impl AnalyseScreen {
                 )
                 .child(
                     btn("all-options", "All options")
-                        .h(26.)
-                        .pad(8.)
-                        .text(12.)
+                        .compact()
                         .tooltip(ui::i18n::t(
                             "Every option this engine offers, in Settings › Engines",
                         ))
@@ -1085,9 +1066,9 @@ impl AnalyseScreen {
             })
             .child(div().flex_1())
             .child(
-                div().flex_none().w(px(58.)).child(
+                div().flex_none().w(px(64.)).child(
                     check("log-info", self.log_show_info, "Info")
-                        .text(12.)
+                        .text(13.)
                         .on_change(move |value, _, cx| {
                             info_this.update(cx, |screen, cx| {
                                 screen.log_selection = None;
@@ -1098,9 +1079,9 @@ impl AnalyseScreen {
                 ),
             )
             .child(
-                div().flex_none().w(px(72.)).child(
+                div().flex_none().w(px(80.)).child(
                     check("log-follow", self.log_follow, "Follow")
-                        .text(12.)
+                        .text(13.)
                         .on_change(move |value, _, cx| {
                             follow_this.update(cx, |screen, cx| {
                                 screen.log_follow = value;
@@ -1111,9 +1092,7 @@ impl AnalyseScreen {
             )
             .child(
                 btn("log-copy", ui::i18n::t("Copy"))
-                    .h(26.)
-                    .pad(8.)
-                    .text(12.)
+                    .compact()
                     .on_click(move |_, cx| {
                         copy_this.update(cx, |screen, cx| {
                             // The selection if there is one, else the whole log.
@@ -1138,9 +1117,7 @@ impl AnalyseScreen {
             )
             .child(
                 btn("log-window", ui::i18n::t("Window"))
-                    .h(26.)
-                    .pad(8.)
-                    .text(12.)
+                    .compact()
                     .tooltip(ui::i18n::t(
                         "Follow this engine's raw output in its own window",
                     ))
@@ -1151,9 +1128,7 @@ impl AnalyseScreen {
             )
             .child(
                 btn("log-clear", ui::i18n::t("Clear"))
-                    .h(26.)
-                    .pad(8.)
-                    .text(12.)
+                    .compact()
                     .on_click(move |_, cx| {
                         clear_this.update(cx, |screen, cx| {
                             screen.log_selection = None;
@@ -1358,9 +1333,7 @@ impl AnalyseScreen {
                         )
                         .child(
                             btn("pv-back", "Back to game")
-                                .h(26.)
-                                .pad(8.)
-                                .text(12.)
+                                .compact()
                                 .on_click(move |_, cx| {
                                     back_this.update(cx, |screen, cx| screen.exit_pv_preview(cx));
                                 }),

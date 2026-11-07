@@ -1551,9 +1551,7 @@ impl AnalyseScreen {
                 ),
             };
             btn("sheet-style", label)
-                .h(22.)
-                .pad(7.)
-                .text(11.)
+                .mini()
                 .tooltip(tip)
                 .on_click(move |_, cx| {
                     this.update(cx, |screen, cx| {
@@ -2074,9 +2072,7 @@ impl AnalyseScreen {
                                     "analyse-backward",
                                     if running { ui::i18n::t("Stop") } else { ui::i18n::t("Analyse backwards") },
                                 )
-                                .h(22.)
-                                .pad(7.)
-                                .text(11.)
+                                .mini()
                                 .selected(running)
                                 .tooltip(format!(
                                     "Search every position from the last move to the first, {} each (Settings › Analysis)",
