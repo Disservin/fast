@@ -340,8 +340,8 @@ impl PlayScreen {
                 options.push(("UCI_LimitStrength".to_owned(), "true".to_owned()));
                 options.push(("UCI_Elo".to_owned(), self.strength_value.to_string()));
             }
+            // Its first search sends `ucinewgame`: each game gets its own process.
             let handle = EngineHandle::spawn(config.path.clone(), Vec::new(), options);
-            handle.new_game();
             game._engine_reader = Some(self.spawn_reader(&handle, cx));
             game.engine = Some(handle);
         }
@@ -548,6 +548,7 @@ impl PlayScreen {
                 ..Default::default()
             }),
             search_id: game.search_id,
+            game: 0,
         });
     }
 

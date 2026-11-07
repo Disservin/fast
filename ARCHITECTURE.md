@@ -49,6 +49,19 @@ double-click to maximize, snapping and Snap Layouts. Everything clickable in the
 only set while idle always holds. Each handle also keeps a bounded `EngineLog` of stdin, stdout
 and stderr, which outlives the process so a crash can still be read.
 
+## UCI protocol
+
+- `uci`, then the saved options once `uciok` arrives.
+- Before a search, whenever options or `ucinewgame` were sent since the last `readyok`
+  (always, before the first one), the supervisor sends `isready` and holds `position`/`go`
+  until `readyok`, so an engine loading a network or resizing its hash can finish first.
+- Each `SearchRequest` names its game. A search from a different game is preceded by
+  `ucinewgame` (and so by `isready`). Analyse bumps the game when it loads another one, Play
+  starts a process per game, and batch review uses the database game id.
+- The standard initial position is sent as `position startpos`, other starts as
+  `position fen`, with the moves after `moves`.
+- Analysis engines that offer `UCI_AnalyseMode` get it set to `true`.
+
 ## Analysis cache
 
 `LiveAnalysis` keeps a `LineCache` of each engine's lines per position hash (Zobrist), so lines

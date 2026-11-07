@@ -1948,6 +1948,8 @@ fn benchmark(config: &EngineConfig) -> String {
                 ..Default::default()
             }),
             search_id,
+            // Unrelated positions: each is its own game.
+            game: search_id,
         });
         let mut speed = None;
         loop {

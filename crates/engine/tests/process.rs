@@ -28,7 +28,93 @@ fn request(search_id: u64, limits: Option<Limits>) -> SearchRequest {
         moves: Vec::new(),
         limits,
         search_id,
+        game: 1,
     }
+}
+
+/// What the app wrote to the engine so far.
+fn sent(engine: &EngineHandle) -> Vec<String> {
+    engine
+        .log()
+        .snapshot(true)
+        .into_iter()
+        .filter(|line| line.kind == engine::LogKind::Sent)
+        .map(|line| line.text)
+        .collect()
+}
+
+/// Waits until the app has written `text`, returning everything written by then.
+fn wait_for_sent(engine: &EngineHandle, text: &str) -> Vec<String> {
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    loop {
+        let lines = sent(engine);
+        if lines.iter().any(|line| line == text) {
+            return lines;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "never sent {text}: {lines:?}"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+#[test]
+fn first_search_waits_for_readyok_and_uses_startpos() {
+    let engine = EngineHandle::spawn(
+        fixture(),
+        Vec::new(),
+        vec![("Hash".to_owned(), "64".to_owned())],
+    );
+    // Asked for before the handshake: must still come after uci, options and isready.
+    engine.search(request(1, None));
+    let events = engine.events();
+    assert!(matches!(next(&events), EngineEvent::Ready(_)));
+    assert!(matches!(next(&events), EngineEvent::Analysis { .. }));
+    let lines = wait_for_sent(&engine, "go infinite");
+    let at = |text: &str| {
+        lines
+            .iter()
+            .position(|line| line == text)
+            .unwrap_or_else(|| panic!("{text} missing from {lines:?}"))
+    };
+    assert!(at("uci") < at("setoption name Hash value 64"));
+    assert!(at("setoption name Hash value 64") < at("ucinewgame"));
+    assert!(at("ucinewgame") < at("isready"));
+    assert!(at("isready") < at("position startpos"));
+    assert!(at("position startpos") < at("go infinite"));
+    engine.quit();
+}
+
+#[test]
+fn a_new_game_sends_ucinewgame_and_synchronises_again() {
+    let engine = EngineHandle::spawn(fixture(), Vec::new(), Vec::new());
+    let events = engine.events();
+    assert!(matches!(next(&events), EngineEvent::Ready(_)));
+    let depth = Some(Limits {
+        depth: Some(1),
+        ..Default::default()
+    });
+    engine.search(request(1, depth));
+    assert!(matches!(next(&events), EngineEvent::Analysis { .. }));
+    assert!(matches!(next(&events), EngineEvent::BestMove { .. }));
+    // The same game again: no further ucinewgame or isready.
+    engine.search(request(2, depth));
+    assert!(matches!(next(&events), EngineEvent::Analysis { .. }));
+    assert!(matches!(next(&events), EngineEvent::BestMove { .. }));
+    let count = |lines: &[String], text: &str| lines.iter().filter(|line| *line == text).count();
+    let lines = sent(&engine);
+    assert_eq!(count(&lines, "ucinewgame"), 1, "{lines:?}");
+    assert_eq!(count(&lines, "isready"), 1, "{lines:?}");
+    let mut other = request(3, depth);
+    other.game = 2;
+    other.fen = "8/8/8/8/8/8/k7/K7 w - - 0 1".to_owned();
+    engine.search(other);
+    assert!(matches!(next(&events), EngineEvent::Analysis { .. }));
+    let lines = wait_for_sent(&engine, "position fen 8/8/8/8/8/8/k7/K7 w - - 0 1");
+    assert_eq!(count(&lines, "ucinewgame"), 2, "{lines:?}");
+    assert_eq!(count(&lines, "isready"), 2, "{lines:?}");
+    engine.quit();
 }
 
 #[test]

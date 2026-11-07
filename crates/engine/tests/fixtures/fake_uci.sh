@@ -35,6 +35,9 @@ while IFS= read -r line; do
         searching=
       fi
       ;;
+    isready)
+      echo "readyok"
+      ;;
     quit)
       exit 0
       ;;

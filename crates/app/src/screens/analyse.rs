@@ -743,6 +743,8 @@ impl AnalyseScreen {
 
     pub fn load_tree(&mut self, tree: GameTree, window: &mut Window, cx: &mut Context<Self>) {
         self.tree = tree;
+        // A different game: engines hear `ucinewgame` before its first search.
+        self.live.update(cx, |live, _| live.game += 1);
         self.current = GameTree::ROOT;
         self.evals.clear();
         self.depths.clear();

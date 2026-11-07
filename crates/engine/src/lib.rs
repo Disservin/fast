@@ -10,7 +10,9 @@ pub mod manager;
 pub mod quality;
 pub mod uci;
 
-pub use handle::{EngineEvent, EngineHandle, EngineId, Limits, SearchRequest};
+pub use handle::{
+    EngineEvent, EngineHandle, EngineId, Limits, START_FEN, SearchRequest, position_command,
+};
 pub use log::{EngineLog, LogKind, LogLine};
 pub use manager::{EngineConfig, EngineManager, EngineProfile, EngineStatus};
 pub use quality::{Quality, classify as classify_move};

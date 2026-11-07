@@ -1258,6 +1258,7 @@ pub fn review_games(
                     ..Default::default()
                 }),
                 search_id,
+                game: id as u64,
             });
             let mut eval = 0;
             loop {

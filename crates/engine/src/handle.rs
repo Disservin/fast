@@ -61,6 +61,9 @@ pub struct SearchRequest {
     pub limits: Option<Limits>,
     /// Caller-chosen token echoed in every event from this search.
     pub search_id: u64,
+    /// Which game the position belongs to. A change sends `ucinewgame` first, so the
+    /// engine does not carry assumptions from one game into another.
+    pub game: u64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -266,6 +269,150 @@ fn start_process(
     })
 }
 
+/// The standard initial position, sent as `position startpos` rather than as a FEN.
+pub const START_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+
+/// The `position` command for a start FEN and moves, using `startpos` for the
+/// standard position as the protocol intends.
+pub fn position_command(fen: &str, moves: &[String]) -> String {
+    let base = if fen.trim() == START_FEN {
+        "position startpos".to_owned()
+    } else {
+        format!("position fen {}", fen.trim())
+    };
+    if moves.is_empty() {
+        base
+    } else {
+        format!("{base} moves {}", moves.join(" "))
+    }
+}
+
+/// Search bookkeeping of the supervisor.
+#[derive(Default)]
+struct Session {
+    /// Search in flight: told `go` and not yet answered `bestmove`.
+    running: Option<u64>,
+    stop_sent: bool,
+    /// Latest search waiting for the current one to finish; older ones are dropped.
+    pending: Option<SearchRequest>,
+    /// The search in flight, so it can resume after an option change.
+    current: Option<SearchRequest>,
+    /// Options wait for the engine to go idle, as UCI requires.
+    pending_options: Vec<(String, Option<String>)>,
+    /// Options or `ucinewgame` were sent since the last `readyok`: the next search
+    /// waits for `isready` to be answered, so the engine can finish initialising.
+    needs_sync: bool,
+    /// `isready` sent, `readyok` not yet received.
+    awaiting_ready: bool,
+    /// The search to start once `readyok` arrives.
+    after_ready: Option<SearchRequest>,
+    /// The game the last search belonged to, to send `ucinewgame` on a change.
+    last_game: Option<u64>,
+}
+
+impl Session {
+    /// Starts a search on an idle engine: a new game first gets `ucinewgame`, and any
+    /// unsynchronised change gets `isready` before `go`.
+    fn launch(&mut self, process: &mut Process, request: SearchRequest) -> std::io::Result<()> {
+        if self.last_game != Some(request.game) {
+            process.send("ucinewgame")?;
+            self.last_game = Some(request.game);
+            self.needs_sync = true;
+        }
+        if self.awaiting_ready {
+            self.after_ready = Some(request);
+            return Ok(());
+        }
+        if self.needs_sync {
+            process.send("isready")?;
+            self.needs_sync = false;
+            self.awaiting_ready = true;
+            self.after_ready = Some(request);
+            return Ok(());
+        }
+        process.send(&position_command(&request.fen, &request.moves))?;
+        match request.limits {
+            Some(limits) => process.send(&limits.go_command())?,
+            None => process.send("go infinite")?,
+        }
+        self.running = Some(request.search_id);
+        self.current = Some(request);
+        Ok(())
+    }
+
+    /// Asks for a search: started now if idle, otherwise after the running one stops.
+    fn request(&mut self, process: &mut Process, request: SearchRequest) -> std::io::Result<()> {
+        if self.running.is_some() {
+            self.pending = Some(request);
+            if self.stop_sent {
+                Ok(())
+            } else {
+                self.stop_sent = true;
+                process.send("stop")
+            }
+        } else {
+            self.launch(process, request)
+        }
+    }
+
+    fn set_option(
+        &mut self,
+        process: &mut Process,
+        name: String,
+        value: Option<String>,
+    ) -> std::io::Result<()> {
+        if self.running.is_some() {
+            // Stop, apply when idle, then carry on with the same search.
+            self.pending_options.push((name, value));
+            if self.pending.is_none() {
+                self.pending = self.current.clone();
+            }
+            if self.stop_sent {
+                return Ok(());
+            }
+            self.stop_sent = true;
+            return process.send("stop");
+        }
+        self.needs_sync = true;
+        process.send(&set_option_line(&name, value.as_deref()))
+    }
+
+    fn ready_ok(&mut self, process: &mut Process) -> std::io::Result<()> {
+        self.awaiting_ready = false;
+        let Some(request) = self.after_ready.take() else {
+            return Ok(());
+        };
+        // Something changed while waiting: synchronise again first.
+        self.launch(process, request)
+    }
+
+    fn best_move(&mut self, process: &mut Process) -> std::io::Result<Option<u64>> {
+        let finished = self.running.take().filter(|_| !self.stop_sent);
+        self.stop_sent = false;
+        let mut result = Ok(());
+        for (name, value) in std::mem::take(&mut self.pending_options) {
+            result = result.and(process.send(&set_option_line(&name, value.as_deref())));
+            self.needs_sync = true;
+        }
+        self.current = None;
+        if let Some(next) = self.pending.take() {
+            result = result.and(self.launch(process, next));
+        }
+        result.map(|()| finished)
+    }
+
+    fn stop(&mut self, process: &mut Process) -> std::io::Result<()> {
+        self.pending = None;
+        self.after_ready = None;
+        if self.running.is_some() && !self.stop_sent {
+            self.stop_sent = true;
+            process.send("stop")
+        } else {
+            Ok(())
+        }
+    }
+}
+
 fn supervise(
     path: PathBuf,
     args: Vec<String>,
@@ -301,33 +448,28 @@ fn supervise(
 
     let mut info = EngineInfo::default();
     let mut handshake_done = false;
-    // Search in flight (engine has been told `go` and not yet answered `bestmove`).
-    let mut running: Option<u64> = None;
-    let mut stop_sent = false;
-    // Latest search awaiting the current one to finish; older ones are dropped.
-    let mut pending: Option<SearchRequest> = None;
-    // The search in flight, so it can resume after an option change.
-    let mut current: Option<SearchRequest> = None;
-    // Options wait for the engine to go idle, as UCI requires.
-    let mut pending_options: Vec<(String, Option<String>)> = Vec::new();
-    // Writes arriving before the handshake finishes, replayed in order.
+    let mut session = Session {
+        // The protocol requires `isready` once before the first search.
+        needs_sync: true,
+        ..Default::default()
+    };
+    // Requests arriving before the handshake finishes, replayed in order.
     let mut deferred: VecDeque<Request> = VecDeque::new();
 
-    fn begin(process: &mut Process, request: &SearchRequest) -> std::io::Result<()> {
-        let moves = if request.moves.is_empty() {
-            String::new()
-        } else {
-            format!(" moves {}", request.moves.join(" "))
-        };
-        process.send(&format!("position fen {}{moves}", request.fen))?;
-        match request.limits {
-            Some(limits) => process.send(&limits.go_command()),
-            None => process.send("go infinite"),
-        }
-    }
-
     while let Ok(command) = commands.recv() {
-        let result = match command {
+        let command = match command {
+            Request::Search(_)
+            | Request::SetOption { .. }
+            | Request::NewGame
+            | Request::Debug(_)
+                if !handshake_done =>
+            {
+                deferred.push_back(command);
+                continue;
+            }
+            other => other,
+        };
+        let mut result = match command {
             Request::Line(line) => match line {
                 UciLine::Id { key, value } => {
                     match key.as_str() {
@@ -353,91 +495,28 @@ fn supervise(
                 UciLine::Info(update) => {
                     // Output after `stop` belongs to a cancelled search: drop it so a
                     // stale line can never overwrite the new position's analysis.
-                    if let Some(search_id) = running.filter(|_| !stop_sent) {
+                    if let Some(search_id) = session.running.filter(|_| !session.stop_sent) {
                         emit(EngineEvent::Analysis { search_id, update });
                     }
                     Ok(())
                 }
-                UciLine::BestMove { best, .. } => {
-                    if let Some(search_id) = running.take()
-                        && !stop_sent
-                    {
+                UciLine::BestMove { best, .. } => match session.best_move(&mut process) {
+                    Ok(Some(search_id)) => {
                         emit(EngineEvent::BestMove { search_id, best });
-                    }
-                    stop_sent = false;
-                    let mut result = Ok(());
-                    for (name, value) in pending_options.drain(..) {
-                        result =
-                            result.and(process.send(&set_option_line(&name, value.as_deref())));
-                    }
-                    if let Some(next) = pending.take() {
-                        result = result.and(begin(&mut process, &next));
-                        running = Some(next.search_id);
-                        current = Some(next);
-                    } else {
-                        current = None;
-                    }
-                    result
-                }
-                UciLine::ReadyOk | UciLine::Other => Ok(()),
-            },
-            Request::Search(request) if !handshake_done => {
-                deferred.push_back(Request::Search(request));
-                Ok(())
-            }
-            Request::SetOption { name, value } if !handshake_done => {
-                deferred.push_back(Request::SetOption { name, value });
-                Ok(())
-            }
-            Request::Search(request) => {
-                if running.is_some() {
-                    pending = Some(request);
-                    if stop_sent {
                         Ok(())
-                    } else {
-                        stop_sent = true;
-                        process.send("stop")
                     }
-                } else {
-                    let result = begin(&mut process, &request);
-                    running = Some(request.search_id);
-                    current = Some(request);
-                    result
-                }
-            }
-            Request::Stop => {
-                pending = None;
-                if running.is_some() && !stop_sent {
-                    stop_sent = true;
-                    process.send("stop")
-                } else {
-                    Ok(())
-                }
-            }
-            Request::SetOption { name, value } if running.is_some() => {
-                // Stop, apply when idle, then carry on with the same search.
-                pending_options.push((name, value));
-                if pending.is_none() {
-                    pending = current.clone();
-                }
-                if stop_sent {
-                    Ok(())
-                } else {
-                    stop_sent = true;
-                    process.send("stop")
-                }
-            }
-            Request::SetOption { name, value } => {
-                process.send(&set_option_line(&name, value.as_deref()))
-            }
-            Request::NewGame if !handshake_done => {
-                deferred.push_back(Request::NewGame);
-                Ok(())
-            }
-            Request::NewGame => process.send("ucinewgame"),
-            Request::Debug(on) if !handshake_done => {
-                deferred.push_back(Request::Debug(on));
-                Ok(())
+                    Ok(None) => Ok(()),
+                    Err(err) => Err(err),
+                },
+                UciLine::ReadyOk => session.ready_ok(&mut process),
+                UciLine::Other => Ok(()),
+            },
+            Request::Search(request) => session.request(&mut process, request),
+            Request::Stop => session.stop(&mut process),
+            Request::SetOption { name, value } => session.set_option(&mut process, name, value),
+            Request::NewGame => {
+                session.needs_sync = true;
+                process.send("ucinewgame")
             }
             Request::Debug(on) => process.send(if on { "debug on" } else { "debug off" }),
             Request::Eof(reason) => {
@@ -446,38 +525,27 @@ fn supervise(
             }
             Request::Quit => return,
         };
+        if handshake_done {
+            while result.is_ok()
+                && let Some(command) = deferred.pop_front()
+            {
+                result = match command {
+                    Request::Search(request) => session.request(&mut process, request),
+                    Request::SetOption { name, value } => {
+                        session.set_option(&mut process, name, value)
+                    }
+                    Request::NewGame => {
+                        session.needs_sync = true;
+                        process.send("ucinewgame")
+                    }
+                    Request::Debug(on) => process.send(if on { "debug on" } else { "debug off" }),
+                    _ => Ok(()),
+                };
+            }
+        }
         if let Err(err) = result {
             emit(EngineEvent::Crashed(format!("engine write failed: {err}")));
             return;
-        }
-        if handshake_done {
-            while let Some(command) = deferred.pop_front() {
-                match command {
-                    Request::Search(request) => {
-                        if running.is_some() {
-                            pending = Some(request);
-                            if !stop_sent {
-                                stop_sent = true;
-                                let _ = process.send("stop");
-                            }
-                        } else {
-                            let _ = begin(&mut process, &request);
-                            running = Some(request.search_id);
-                            current = Some(request);
-                        }
-                    }
-                    Request::SetOption { name, value } => {
-                        let _ = process.send(&set_option_line(&name, value.as_deref()));
-                    }
-                    Request::NewGame => {
-                        let _ = process.send("ucinewgame");
-                    }
-                    Request::Debug(on) => {
-                        let _ = process.send(if on { "debug on" } else { "debug off" });
-                    }
-                    _ => {}
-                }
-            }
         }
     }
 }
@@ -486,5 +554,21 @@ fn set_option_line(name: &str, value: Option<&str>) -> String {
     match value {
         Some(value) => format!("setoption name {name} value {value}"),
         None => format!("setoption name {name}"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_start_position_is_sent_as_startpos() {
+        assert_eq!(position_command(START_FEN, &[]), "position startpos");
+        assert_eq!(
+            position_command(START_FEN, &["e2e4".to_owned(), "e7e5".to_owned()]),
+            "position startpos moves e2e4 e7e5"
+        );
+        let fen = "8/8/8/8/8/8/k7/K7 w - - 0 1";
+        assert_eq!(position_command(fen, &[]), format!("position fen {fen}"));
     }
 }

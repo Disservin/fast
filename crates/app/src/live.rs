@@ -78,6 +78,23 @@ impl LineCache {
     }
 }
 
+/// The options an engine is started with for analysis: UCI asks the GUI to set
+/// `UCI_AnalyseMode` when the engine is analysing rather than playing.
+pub fn analysis_config(config: &EngineConfig) -> EngineConfig {
+    let mut config = config.clone();
+    if config
+        .info
+        .options
+        .iter()
+        .any(|option| option.name == "UCI_AnalyseMode")
+    {
+        config
+            .options
+            .insert("UCI_AnalyseMode".to_owned(), "true".to_owned());
+    }
+    config
+}
+
 /// A White-relative score as centipawns for graphs, mates at the edge.
 pub fn score_cp(score: Score) -> i32 {
     match score {
@@ -140,6 +157,8 @@ pub struct LiveAnalysis {
     /// Replaces the configured search limit, e.g. a fixed time per move while a game
     /// is analysed backwards.
     pub limit_override: Option<AnalysisLimit>,
+    /// Bumped when Analyse loads a different game, so engines get `ucinewgame`.
+    pub game: u64,
     fen: String,
     moves: Vec<String>,
     _model_sub: gpui::Subscription,
@@ -166,6 +185,7 @@ impl LiveAnalysis {
             hash: 0,
             cache: LineCache::default(),
             limit_override: None,
+            game: 0,
             fen: String::new(),
             moves: Vec::new(),
             _model_sub: sub,
@@ -206,7 +226,7 @@ impl LiveAnalysis {
                     if existing.is_none() {
                         model.manager.shutdown(config.id);
                     }
-                    model.manager.ensure_running(&config)
+                    model.manager.ensure_running(&analysis_config(&config))
                 });
                 live._reader = Some(self.spawn_reader(config.id, &handle, cx));
                 live.log = handle.log();
@@ -614,6 +634,7 @@ impl LiveAnalysis {
                 moves: self.moves.clone(),
                 limits,
                 search_id: self.search_id,
+                game: self.game,
             });
         }
     }
@@ -698,6 +719,29 @@ mod tests {
         cache.forget_engine(1);
         assert!(cache.get(1, 42).is_none());
         assert!(cache.get(2, 42).is_some());
+    }
+
+    #[test]
+    fn analysis_mode_is_set_only_where_offered() {
+        let mut config = EngineConfig::default();
+        assert!(
+            !analysis_config(&config)
+                .options
+                .contains_key("UCI_AnalyseMode")
+        );
+        config.info.options.push(engine::UciOption {
+            name: "UCI_AnalyseMode".to_owned(),
+            kind: engine::OptionKind::Check { default: false },
+        });
+        assert_eq!(
+            analysis_config(&config)
+                .options
+                .get("UCI_AnalyseMode")
+                .map(String::as_str),
+            Some("true")
+        );
+        // The saved configuration is left alone.
+        assert!(config.options.is_empty());
     }
 
     #[test]
