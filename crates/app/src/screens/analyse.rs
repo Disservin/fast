@@ -120,7 +120,7 @@ pub fn merge_rows(
 
 mod panels;
 
-use panels::PvView;
+use panels::{LOG_POLL, PvView};
 
 type MenuHandler = Box<dyn Fn(&mut Window, &mut gpui::App)>;
 
@@ -156,6 +156,10 @@ pub struct AnalyseScreen {
     log_show_info: bool,
     log_follow: bool,
     log_lines: Vec<LogLine>,
+    /// What `log_lines` was taken from: engine, log revision and the Info filter.
+    log_key: Option<(EngineId, u64, bool)>,
+    /// Redraws the Log panel when its engine writes, since not every line is an event.
+    _log_poll: Task<()>,
     log_scroll: UniformListScrollHandle,
     /// The highlighted part of the selected row's line, with the line held still.
     pv_view: Option<PvView>,
@@ -264,9 +268,23 @@ impl AnalyseScreen {
             engine_panel_open: false,
             log_panel_open: false,
             panel_engine: None,
-            log_show_info: false,
+            log_show_info: true,
             log_follow: true,
             log_lines: Vec::new(),
+            log_key: None,
+            _log_poll: cx.spawn(async move |this: WeakEntity<Self>, cx| {
+                loop {
+                    cx.background_executor().timer(LOG_POLL).await;
+                    let alive = this.update(cx, |this, cx| {
+                        if this.log_panel_open && this.log_key != this.current_log_key(cx) {
+                            cx.notify();
+                        }
+                    });
+                    if alive.is_err() {
+                        return;
+                    }
+                }
+            }),
             log_scroll: UniformListScrollHandle::new(),
             pv_view: None,
             pv_dragging: false,
@@ -529,6 +547,14 @@ impl AnalyseScreen {
 
     pub fn toggle_engine(&mut self, cx: &mut Context<Self>) {
         self.live.update(cx, |live, cx| live.toggle(cx));
+    }
+
+    /// Holds or resumes the engine search without unloading the engines.
+    pub fn toggle_pause(&mut self, cx: &mut Context<Self>) {
+        self.live.update(cx, |live, cx| {
+            let paused = live.paused;
+            live.set_paused(!paused, cx);
+        });
     }
 
     pub fn load_tree(&mut self, tree: GameTree, window: &mut Window, cx: &mut Context<Self>) {

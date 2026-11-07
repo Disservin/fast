@@ -55,6 +55,9 @@ pub struct LiveAnalysis {
     model: Entity<AppModel>,
     pub engines: Vec<LiveEngine>,
     pub on: bool,
+    /// Searching is held: engines stay loaded and keep their last lines, but no
+    /// search runs, even when the position changes, until resumed.
+    pub paused: bool,
     search_id: u64,
     node: Option<NodeId>,
     pos: Option<chess_core::Chess>,
@@ -77,6 +80,7 @@ impl LiveAnalysis {
             model,
             engines: Vec::new(),
             on,
+            paused: false,
             search_id: 0,
             node: None,
             pos: None,
@@ -257,6 +261,7 @@ impl LiveAnalysis {
 
     pub fn toggle(&mut self, cx: &mut Context<Self>) {
         self.on = !self.on;
+        self.paused = false;
         self.model.update(cx, |model, cx| {
             model.config.engine_on = self.on;
             model.save_config(cx);
@@ -291,7 +296,7 @@ impl LiveAnalysis {
             live.lines.clear();
             if let Some(handle) = &live.handle {
                 handle.set_option(name, Some(value));
-                live.running = true;
+                live.running = !self.paused;
             }
         }
         if self.model.read(cx).demo {
@@ -308,6 +313,26 @@ impl LiveAnalysis {
             model.save_config(cx);
         });
         self.search(cx);
+        cx.emit(LiveEvent::Updated);
+        cx.notify();
+    }
+
+    /// Holds or resumes searching. Resuming searches the current position afresh.
+    pub fn set_paused(&mut self, paused: bool, cx: &mut Context<Self>) {
+        if self.paused == paused {
+            return;
+        }
+        self.paused = paused;
+        if paused {
+            for engine in &mut self.engines {
+                if let Some(handle) = &engine.handle {
+                    handle.stop();
+                }
+                engine.running = false;
+            }
+        } else {
+            self.search(cx);
+        }
         cx.emit(LiveEvent::Updated);
         cx.notify();
     }
@@ -361,7 +386,7 @@ impl LiveAnalysis {
 
     /// Starts `go infinite` on every engine for the current position.
     pub fn search(&mut self, cx: &mut App) {
-        if !self.on {
+        if !self.on || self.paused {
             return;
         }
         let Some(pos) = &self.pos else { return };

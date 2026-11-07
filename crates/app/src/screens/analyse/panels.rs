@@ -5,9 +5,9 @@ use std::ops::Range;
 use chess_core::{Chess, Move, Position, format_pv, shakmaty::san::San};
 use engine::{EngineConfig, EngineId, LogKind, LogLine, OptionKind};
 use gpui::{
-    AnyElement, ClipboardItem, Context, Div, FontWeight, IntoElement, KeyDownEvent, MouseButton,
-    MouseMoveEvent, ScrollStrategy, SharedString, Window, anchored, deferred, div, point,
-    prelude::*, px, rgb, uniform_list,
+    AnyElement, ClipboardItem, Context, Div, FontWeight, IntoElement, KeyDownEvent,
+    ListHorizontalSizingBehavior, MouseButton, MouseMoveEvent, ScrollStrategy, SharedString,
+    Window, anchored, deferred, div, point, prelude::*, px, rgb, uniform_list,
 };
 use ui::{
     Arrow, CoordinateStyle, MONO, T,
@@ -18,6 +18,8 @@ use super::{AnalyseScreen, MoveRow};
 use crate::config::AnalysisLimit;
 
 const LOG_ROW_H: f32 = 19.;
+/// How often an open Log panel checks its engine for new lines.
+pub(super) const LOG_POLL: std::time::Duration = std::time::Duration::from_millis(200);
 /// A hovered PV move has to stand out against the panel surface.
 const HOVER_BG: u32 = 0x3F4753;
 /// Side of the board that follows the cursor over a hovered PV move.
@@ -153,6 +155,9 @@ impl AnalyseScreen {
             parts.extend(stats.nps.map(engine::format_speed));
             Some(parts.join(" · "))
         });
+        let live = self.live.read(cx);
+        let (on, paused) = (live.on, live.paused);
+        let pause_this = this.clone();
         let engine_this = this.clone();
         let log_this = this;
         h_flex()
@@ -163,6 +168,23 @@ impl AnalyseScreen {
                         .mr(px(4.))
                         .text_size(px(12.))
                         .text_color(rgb(T.muted)),
+                )
+            })
+            .when(on, |row| {
+                row.child(
+                    btn("engine-pause", if paused { "Resume" } else { "Pause" })
+                        .h(26.)
+                        .pad(8.)
+                        .text(12.)
+                        .selected(paused)
+                        .tooltip(if paused {
+                            "Search this position again"
+                        } else {
+                            "Hold the search and keep the current lines"
+                        })
+                        .on_click(move |_, cx| {
+                            pause_this.update(cx, |screen, cx| screen.toggle_pause(cx));
+                        }),
                 )
             })
             .child(
@@ -469,15 +491,32 @@ impl AnalyseScreen {
         .into_any_element()
     }
 
-    fn refresh_log(&mut self, cx: &gpui::App) {
-        let chosen = self.panel_engine_config(cx).map(|config| config.id);
-        self.log_lines = self
-            .live
+    /// The log of the engine the panels show, if it is in analysis.
+    fn panel_log(&self, cx: &gpui::App) -> Option<(EngineId, engine::EngineLog)> {
+        let chosen = self.panel_engine_config(cx)?.id;
+        self.live
             .read(cx)
             .engines
             .iter()
-            .find(|engine| Some(engine.config.id) == chosen)
-            .map(|engine| engine.log.snapshot(self.log_show_info))
+            .find(|engine| engine.config.id == chosen)
+            .map(|engine| (chosen, engine.log.clone()))
+    }
+
+    pub(super) fn current_log_key(&self, cx: &gpui::App) -> Option<(EngineId, u64, bool)> {
+        self.panel_log(cx)
+            .map(|(id, log)| (id, log.revision(), self.log_show_info))
+    }
+
+    /// Takes a new snapshot only when the log or the filter changed.
+    fn refresh_log(&mut self, cx: &gpui::App) {
+        let key = self.current_log_key(cx);
+        if key.is_some() && key == self.log_key {
+            return;
+        }
+        self.log_key = key;
+        self.log_lines = self
+            .panel_log(cx)
+            .map(|(_, log)| log.snapshot(self.log_show_info))
             .unwrap_or_default();
     }
 
@@ -488,13 +527,13 @@ impl AnalyseScreen {
             LogKind::Stderr => ("!", T.warn),
             LogKind::System => ("·", T.muted),
         };
+        // Rows take their text's width; the list scrolls sideways to the longest.
         h_flex()
             .id(("log-line", index))
-            .w_full()
+            .min_w_full()
             .h(px(LOG_ROW_H))
             .px(px(12.))
             .gap(px(8.))
-            .overflow_hidden()
             .whitespace_nowrap()
             .font_family(MONO)
             .text_size(px(12.))
@@ -591,6 +630,12 @@ impl AnalyseScreen {
                         });
                     },
                 ));
+        let longest = self
+            .log_lines
+            .iter()
+            .enumerate()
+            .max_by_key(|(_, line)| line.text.len())
+            .map(|(index, _)| index);
         let body: AnyElement = if count == 0 {
             div()
                 .p(px(16.))
@@ -611,6 +656,8 @@ impl AnalyseScreen {
                 }),
             )
             .track_scroll(&self.log_scroll)
+            .with_horizontal_sizing_behavior(ListHorizontalSizingBehavior::Unconstrained)
+            .with_width_from_item(longest)
             .h(px(LOG_ROW_H * 12.))
             .into_any_element()
         };
