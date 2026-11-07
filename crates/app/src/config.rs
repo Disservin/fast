@@ -316,6 +316,7 @@ pub struct Config {
     pub player_name: String,
     pub player_rating: Option<u32>,
     pub language: String,
+    pub ui_theme: ui::UiTheme,
     pub board: BoardConfig,
     pub shortcuts: BTreeMap<String, String>,
     pub engines: Vec<EngineConfig>,
@@ -331,6 +332,7 @@ impl Default for Config {
             player_name: "me".to_owned(),
             player_rating: None,
             language: "English".to_owned(),
+            ui_theme: ui::UiTheme::default(),
             board: BoardConfig::default(),
             shortcuts: default_shortcuts(),
             engines: Vec::new(),
@@ -394,6 +396,7 @@ mod tests {
             player_name: "someone".to_owned(),
             ..Default::default()
         };
+        config.ui_theme = ui::UiTheme::Sand;
         config.board.theme = SavedTheme::Moss;
         config.board.notation = Notation::Figurine;
         config.analysis_limit = AnalysisLimit::Depth(30);
@@ -442,6 +445,22 @@ mod tests {
             .unwrap(),
             original
         );
+    }
+
+    #[test]
+    fn every_ui_theme_round_trips_and_old_configs_default_to_slate() {
+        assert_eq!(
+            toml::from_str::<Config>("").unwrap().ui_theme,
+            ui::UiTheme::Slate
+        );
+        for ui_theme in ui::UiTheme::ALL {
+            let config = Config {
+                ui_theme,
+                ..Default::default()
+            };
+            let saved = toml::to_string(&config).unwrap();
+            assert_eq!(toml::from_str::<Config>(&saved).unwrap(), config);
+        }
     }
 
     #[test]

@@ -1,4 +1,4 @@
-//! Design tokens. Dark only for v1; every colour lives in this one struct.
+//! Application palettes shared by custom views and library components.
 
 use gpui::{App, Hsla, rgb};
 use gpui_component::{Theme as ComponentTheme, ThemeTokens};
@@ -40,10 +40,7 @@ pub struct Theme {
     pub q_blunder: u32,
 }
 
-/// The active theme.
-/// Slate surfaces with a cool tint, a step lighter than near-black so panels read as
-/// layers, and one blue accent for whatever is active.
-pub const T: Theme = Theme {
+const SLATE: Theme = Theme {
     bg: 0x14171D,
     surface: 0x1C2028,
     surface_2: 0x181C23,
@@ -72,6 +69,184 @@ pub const T: Theme = Theme {
     q_blunder: 0xE5534B,
 };
 
+/// Persisted application appearance, independent of the chessboard palette.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[repr(usize)]
+pub enum UiTheme {
+    #[default]
+    Slate,
+    Paper,
+    Sand,
+    Forest,
+    Plum,
+}
+
+impl UiTheme {
+    pub const ALL: [Self; 5] = [
+        Self::Slate,
+        Self::Paper,
+        Self::Sand,
+        Self::Forest,
+        Self::Plum,
+    ];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Slate => "Slate",
+            Self::Paper => "Paper",
+            Self::Sand => "Sand",
+            Self::Forest => "Forest",
+            Self::Plum => "Plum",
+        }
+    }
+
+    pub fn palette(self) -> &'static Theme {
+        &PALETTES[self as usize]
+    }
+
+    pub fn is_light(self) -> bool {
+        matches!(self, Self::Paper | Self::Sand)
+    }
+}
+
+// Every palette changes the full surface hierarchy, typography, and accent.
+const PALETTES: [Theme; 5] = [
+    SLATE,
+    Theme {
+        bg: 0xF3F5F8,
+        surface: 0xFFFFFF,
+        surface_2: 0xEAF0F5,
+        hover: 0xE1E8F1,
+        selected: 0xDCE8FC,
+        border: 0xD3DBE6,
+        border_strong: 0xA6B4C7,
+        divider: 0xE1E6EE,
+        fg: 0x172339,
+        fg_2: 0x34455F,
+        muted: 0x53657E,
+        faint: 0x61718A,
+        accent: 0x245DC1,
+        accent_hover: 0x184A9F,
+        accent_fg: 0xFFFFFF,
+        good: 0x237C42,
+        warn: 0x9A580C,
+        arrow: 0xBD5C16,
+        bar: 0x74849B,
+        q_best: 0x245DC1,
+        q_good: 0x237C42,
+        q_inaccuracy: 0x8F7100,
+        q_mistake: 0xBD5C16,
+        q_blunder: 0xC02C3B,
+        ..SLATE
+    },
+    Theme {
+        bg: 0xF3EBDD,
+        surface: 0xFFFAEF,
+        surface_2: 0xEDE2CF,
+        hover: 0xE7D8BF,
+        selected: 0xEAD5BD,
+        border: 0xD6C5A9,
+        border_strong: 0xB09A7C,
+        divider: 0xE3D5BF,
+        fg: 0x382B22,
+        fg_2: 0x594537,
+        muted: 0x74604D,
+        faint: 0x7E6A56,
+        accent: 0x994A2C,
+        accent_hover: 0x7D3821,
+        accent_fg: 0xFFFFFF,
+        good: 0x477039,
+        warn: 0x925C0C,
+        arrow: 0xAD551B,
+        bar: 0x9A8266,
+        q_best: 0x994A2C,
+        q_good: 0x477039,
+        q_inaccuracy: 0x8A710F,
+        q_mistake: 0xAD551B,
+        q_blunder: 0xB32E41,
+        ..SLATE
+    },
+    Theme {
+        bg: 0x101E1B,
+        surface: 0x192C26,
+        surface_2: 0x14241F,
+        hover: 0x284238,
+        selected: 0x2C4C3B,
+        border: 0x304A3F,
+        border_strong: 0x496657,
+        divider: 0x263D33,
+        fg: 0xEAF3E8,
+        fg_2: 0xCDDECD,
+        muted: 0xA1B9A6,
+        faint: 0x8FA994,
+        accent: 0xA6D488,
+        accent_hover: 0xBDE89F,
+        accent_fg: 0x172812,
+        good: 0x80D5AA,
+        warn: 0xE9BA70,
+        arrow: 0xEDA25D,
+        bar: 0x789784,
+        q_best: 0xA6D488,
+        q_good: 0x80D5AA,
+        ..SLATE
+    },
+    Theme {
+        bg: 0x211627,
+        surface: 0x302037,
+        surface_2: 0x281B2E,
+        hover: 0x47304F,
+        selected: 0x55345D,
+        border: 0x503757,
+        border_strong: 0x6B4B73,
+        divider: 0x402B47,
+        fg: 0xF7ECF6,
+        fg_2: 0xE3CDE3,
+        muted: 0xC3A4C5,
+        faint: 0xAE8EB2,
+        accent: 0xE4A1CD,
+        accent_hover: 0xF3BCDF,
+        accent_fg: 0x30172B,
+        good: 0x85D0AF,
+        warn: 0xF1BE7A,
+        arrow: 0xEEA16F,
+        bar: 0xA184AA,
+        q_best: 0xE4A1CD,
+        q_good: 0x85D0AF,
+        ..SLATE
+    },
+];
+
+static ACTIVE: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// Shared palette accessor. Dereferencing always reads the current immutable palette.
+/// This keeps paint callbacks and every custom widget in sync without cached colors.
+pub struct ActiveTheme;
+pub static T: ActiveTheme = ActiveTheme;
+
+impl std::ops::Deref for ActiveTheme {
+    type Target = Theme;
+
+    fn deref(&self) -> &'static Theme {
+        &PALETTES[ACTIVE.load(std::sync::atomic::Ordering::Relaxed)]
+    }
+}
+
+pub fn set_theme(choice: UiTheme, cx: &mut App) {
+    ACTIVE.store(choice as usize, std::sync::atomic::Ordering::Relaxed);
+    ComponentTheme::change(
+        if choice.is_light() {
+            gpui_component::ThemeMode::Light
+        } else {
+            gpui_component::ThemeMode::Dark
+        },
+        None,
+        cx,
+    );
+    apply_component_theme(cx);
+    cx.refresh_windows();
+}
+
 fn hsla(color: u32) -> Hsla {
     rgb(color).into()
 }
@@ -79,55 +254,124 @@ fn hsla(color: u32) -> Hsla {
 /// Maps Fast's tokens onto the component library so inputs, selects, sliders
 /// and checkboxes read as part of one design.
 pub fn apply_component_theme(cx: &mut App) {
-    let theme = ComponentTheme::global_mut(cx);
-    theme.font_family = SANS.into();
-    theme.mono_font_family = MONO.into();
-    theme.font_size = gpui::px(14.);
-    theme.mono_font_size = gpui::px(13.);
-    theme.radius = gpui::px(4.);
-    theme.radius_lg = gpui::px(6.);
-    theme.shadow = false;
-    let c = &mut theme.colors;
-    c.background = hsla(T.bg);
-    c.foreground = hsla(T.fg);
-    c.border = hsla(T.border_strong);
-    c.input = hsla(T.border_strong);
-    c.ring = hsla(T.accent);
-    c.caret = hsla(T.fg);
-    c.selection = hsla(0x2E4F7C);
-    c.primary = hsla(T.accent);
-    c.primary_hover = hsla(T.accent_hover);
-    c.primary_active = hsla(T.accent_hover);
-    c.primary_foreground = hsla(T.accent_fg);
-    c.secondary = hsla(T.surface);
-    c.secondary_hover = hsla(T.hover);
-    c.secondary_active = hsla(T.selected);
-    c.secondary_foreground = hsla(T.fg);
-    c.muted = hsla(T.surface_2);
-    c.muted_foreground = hsla(T.muted);
-    c.accent = hsla(T.hover);
-    c.accent_foreground = hsla(T.fg);
-    c.popover = hsla(T.surface);
-    c.popover_foreground = hsla(T.fg);
-    c.list = hsla(T.surface);
-    c.list_active = hsla(T.selected);
-    c.list_hover = hsla(T.hover);
-    c.list_active_border = hsla(T.accent);
-    c.slider_bar = hsla(T.accent);
-    c.slider_thumb = hsla(T.accent);
-    c.scrollbar = hsla(T.surface);
-    c.scrollbar_thumb = hsla(T.border_strong);
-    c.scrollbar_thumb_hover = hsla(T.bar);
-    c.overlay = gpui::hsla(0., 0., 0., 0.5);
-    c.window_border = hsla(T.border);
-    c.success = hsla(T.good);
-    c.success_foreground = hsla(T.bg);
-    c.warning = hsla(T.warn);
-    c.warning_foreground = hsla(T.bg);
-    c.danger = hsla(T.warn);
-    c.danger_foreground = hsla(T.bg);
-    c.info = hsla(T.accent);
-    c.info_foreground = hsla(T.accent_fg);
-    // Components also read this derived copy (tooltips, popups); keep it in step.
-    theme.tokens = ThemeTokens::from(theme.colors);
+    ComponentTheme::update(cx, |theme| {
+        theme.font_family = SANS.into();
+        theme.mono_font_family = MONO.into();
+        theme.font_size = gpui::px(14.);
+        theme.mono_font_size = gpui::px(13.);
+        theme.radius = gpui::px(4.);
+        theme.radius_lg = gpui::px(6.);
+        theme.shadow = false;
+        let c = &mut theme.colors;
+        c.background = hsla(T.bg);
+        c.foreground = hsla(T.fg);
+        c.border = hsla(T.border_strong);
+        c.input = hsla(T.border_strong);
+        c.ring = hsla(T.accent);
+        c.caret = hsla(T.fg);
+        c.selection = hsla(T.selected);
+        c.primary = hsla(T.accent);
+        c.primary_hover = hsla(T.accent_hover);
+        c.primary_active = hsla(T.accent_hover);
+        c.primary_foreground = hsla(T.accent_fg);
+        c.secondary = hsla(T.surface);
+        c.secondary_hover = hsla(T.hover);
+        c.secondary_active = hsla(T.selected);
+        c.secondary_foreground = hsla(T.fg);
+        c.muted = hsla(T.surface_2);
+        c.muted_foreground = hsla(T.muted);
+        c.accent = hsla(T.hover);
+        c.accent_foreground = hsla(T.fg);
+        c.popover = hsla(T.surface);
+        c.popover_foreground = hsla(T.fg);
+        c.list = hsla(T.surface);
+        c.list_active = hsla(T.selected);
+        c.list_hover = hsla(T.hover);
+        c.list_active_border = hsla(T.accent);
+        c.slider_bar = hsla(T.accent);
+        c.slider_thumb = hsla(T.accent);
+        c.scrollbar = hsla(T.surface);
+        c.scrollbar_thumb = hsla(T.border_strong);
+        c.scrollbar_thumb_hover = hsla(T.bar);
+        c.overlay = gpui::hsla(0., 0., 0., 0.5);
+        c.window_border = hsla(T.border);
+        c.success = hsla(T.good);
+        c.success_foreground = hsla(T.bg);
+        c.warning = hsla(T.warn);
+        c.warning_foreground = hsla(T.bg);
+        c.danger = hsla(T.q_blunder);
+        c.danger_foreground = hsla(T.bg);
+        c.info = hsla(T.accent);
+        c.info_foreground = hsla(T.accent_fg);
+        c.accordion = hsla(T.surface);
+        c.button = hsla(T.surface);
+        c.group_box = hsla(T.surface);
+        c.list_head = hsla(T.surface);
+        c.sidebar = hsla(T.surface);
+        c.tab = hsla(T.surface);
+        c.table = hsla(T.surface);
+        c.table_head = hsla(T.surface);
+        c.table_foot = hsla(T.surface);
+        c.title_bar = hsla(T.surface);
+        c.status_bar = hsla(T.surface);
+        c.list_even = hsla(T.surface_2);
+        c.skeleton = hsla(T.surface_2);
+        c.tab_bar = hsla(T.surface_2);
+        c.tab_bar_segmented = hsla(T.surface_2);
+        c.table_even = hsla(T.surface_2);
+        c.button_hover = hsla(T.hover);
+        c.button_active = hsla(T.selected);
+        c.drop_target = hsla(T.selected);
+        c.sidebar_accent = hsla(T.selected);
+        c.tab_active = hsla(T.selected);
+        c.table_active = hsla(T.selected);
+        c.table_hover = hsla(T.selected);
+        c.button_foreground = hsla(T.fg);
+        c.group_box_foreground = hsla(T.fg);
+        c.sidebar_foreground = hsla(T.fg);
+        c.tab_active_foreground = hsla(T.fg);
+        c.table_head_foreground = hsla(T.fg);
+        c.table_foot_foreground = hsla(T.fg);
+        c.tab_foreground = hsla(T.fg_2);
+        c.sidebar_border = hsla(T.border);
+        c.table_row_border = hsla(T.border);
+        c.title_bar_border = hsla(T.border);
+        c.status_bar_border = hsla(T.border);
+        c.drag_border = hsla(T.accent);
+        c.link = hsla(T.accent);
+        c.link_active = hsla(T.accent);
+        c.sidebar_primary = hsla(T.accent);
+        c.progress_bar = hsla(T.accent);
+        c.table_active_border = hsla(T.accent);
+        c.link_hover = hsla(T.accent_hover);
+        c.sidebar_primary_foreground = hsla(T.accent_fg);
+        c.switch_thumb = hsla(T.bg);
+        c.switch = hsla(T.border_strong);
+        c.button_primary = hsla(T.accent);
+        c.button_primary_hover = hsla(T.accent_hover);
+        c.button_primary_active = hsla(T.accent);
+        c.button_primary_foreground = hsla(T.accent_fg);
+        c.button_secondary = hsla(T.surface);
+        c.button_secondary_hover = hsla(T.surface);
+        c.button_secondary_active = hsla(T.surface);
+        c.button_secondary_foreground = hsla(T.fg);
+        c.button_danger = hsla(T.q_blunder);
+        c.button_danger_hover = hsla(T.q_blunder);
+        c.button_danger_active = hsla(T.q_blunder);
+        c.button_danger_foreground = hsla(T.bg);
+        c.button_info = hsla(T.accent);
+        c.button_info_hover = hsla(T.accent_hover);
+        c.button_info_active = hsla(T.accent);
+        c.button_info_foreground = hsla(T.accent_fg);
+        c.button_success = hsla(T.good);
+        c.button_success_hover = hsla(T.good);
+        c.button_success_active = hsla(T.good);
+        c.button_success_foreground = hsla(T.bg);
+        c.button_warning = hsla(T.warn);
+        c.button_warning_hover = hsla(T.warn);
+        c.button_warning_active = hsla(T.warn);
+        c.button_warning_foreground = hsla(T.bg);
+        // Components also read this derived copy (tooltips, popups); keep it in step.
+        theme.tokens = ThemeTokens::from(theme.colors);
+    });
 }

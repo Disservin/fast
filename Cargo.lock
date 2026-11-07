@@ -7158,6 +7158,7 @@ dependencies = [
  "chess_core",
  "gpui-component",
  "gpui-pre",
+ "serde",
 ]
 
 [[package]]

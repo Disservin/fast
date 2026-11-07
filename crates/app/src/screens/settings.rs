@@ -965,28 +965,36 @@ impl SettingsScreen {
             .child(nav)
     }
 
-    fn render_appearance(&mut self) -> Div {
+    fn render_appearance(&mut self, cx: &mut Context<Self>) -> Div {
+        let selected = self.model.read(cx).config.ui_theme;
+        let mut choices = h_flex().flex_wrap().gap(px(8.));
+        for (index, choice) in ui::UiTheme::ALL.into_iter().enumerate() {
+            let palette = choice.palette();
+            choices = choices.child(
+                tile(("ui-theme", index), selected == choice)
+                    .child(tile_label(choice.name()))
+                    .child(
+                        h_flex().gap(px(3.)).children(
+                            [palette.bg, palette.surface, palette.accent, palette.fg]
+                                .into_iter()
+                                .map(|color| div().size(px(10.)).rounded(px(2.)).bg(rgb(color))),
+                        ),
+                    )
+                    .on_click(cx.listener(move |screen, _, _, cx| {
+                        ui::set_theme(choice, cx);
+                        screen.model.update(cx, |model, cx| {
+                            model.config.ui_theme = choice;
+                            model.save_config(cx);
+                        });
+                        cx.notify();
+                    })),
+            );
+        }
         section("Appearance")
             .child(option_row(
                 "Theme",
-                None,
-                h_flex()
-                    .gap(px(6.))
-                    .child(btn("theme-dark", "Dark").pad(10.).h(30.).selected(true))
-                    .child(
-                        btn("theme-light", "Light")
-                            .pad(10.)
-                            .h(30.)
-                            .disabled(true)
-                            .tooltip("Light theme is not available yet"),
-                    )
-                    .child(
-                        btn("theme-system", "Match system")
-                            .pad(10.)
-                            .h(30.)
-                            .disabled(true)
-                            .tooltip("Light theme is not available yet"),
-                    ),
+                Some("Applies to the entire interface"),
+                choices,
             ))
             .child(option_row(
                 "Language",
@@ -1444,7 +1452,7 @@ impl SettingsScreen {
             .gap(px(16.))
             .child(page_title("General"))
             .child(self.render_storage(cx))
-            .child(self.render_appearance())
+            .child(self.render_appearance(cx))
             .child(
                 btn("retry-saves", "Retry saving settings and repertoire").on_click({
                     let model = self.model.clone();

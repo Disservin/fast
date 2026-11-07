@@ -69,6 +69,7 @@ fn open_main_window(cli: Cli, cx: &mut App) -> anyhow::Result<()> {
     };
     cx.open_window(options, move |window, cx| {
         let model = cx.new(|_| AppModel::load(cli.demo));
+        ui::set_theme(model.read(cx).config.ui_theme, cx);
         let workspace = cx.new(|cx| {
             let mut workspace = Workspace::new(model, cli.screen.as_deref(), window, cx);
             workspace.force_window_controls = cli.client_decorations;

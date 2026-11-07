@@ -283,13 +283,12 @@ fn has_text(comment: &str) -> bool {
 }
 
 /// Colours for variation depths in the inline view: main line, then each nesting level.
-const DEPTH_COLORS: [u32; 5] = [T.fg, 0x7AB5FF, 0x6FCF7F, 0xE6C229, 0xD38BE8];
-
 pub fn depth_color(depth: usize) -> u32 {
+    let colors = [T.fg, T.accent, T.good, T.warn, T.q_blunder];
     if depth == 0 {
-        DEPTH_COLORS[0]
+        colors[0]
     } else {
-        DEPTH_COLORS[1 + (depth - 1) % (DEPTH_COLORS.len() - 1)]
+        colors[1 + (depth - 1) % 4]
     }
 }
 

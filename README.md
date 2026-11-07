@@ -16,6 +16,10 @@ is scripted, so no engine needs to be installed. A first start generates its dat
 takes a few seconds. `--screen analyse|database|train|play|settings[:engines|board|databases|shortcuts]`
 picks the opening screen.
 
+Choose a full interface palette under **Settings › General › Appearance**: Slate, Paper, Sand,
+Forest, or Plum. Themes apply immediately and are remembered across restarts; chessboard colors
+remain a separate choice under **Settings › Board & pieces**.
+
 In normal mode, add a UCI engine under **Settings › Engines › Add from file**, and import PGNs
 with **Database › Import**. Set your name under **Settings › Databases** so Fast can tell which
 games are yours.

@@ -8,4 +8,4 @@ pub mod timeline;
 pub mod widgets;
 
 pub use board::{Arrow, BoardEvent, BoardPrefs, BoardTheme, BoardView, CoordinateStyle, PieceSet};
-pub use theme::{MONO, SANS, T, Theme, apply_component_theme};
+pub use theme::{MONO, SANS, T, Theme, UiTheme, apply_component_theme, set_theme};
