@@ -197,6 +197,21 @@ impl LiveAnalysis {
                     update,
                 } if from == search_id => {
                     let Some(pos) = &pos else { continue };
+                    // A fail-high/low line's move is only the one being tried: keep the
+                    // last real line and its score, and take just the search progress.
+                    if update.bound
+                        && let Some(line) = live.lines.get_mut(&update.multipv)
+                    {
+                        let kept = &mut line.update;
+                        kept.depth = kept.depth.max(update.depth);
+                        kept.seldepth = update.seldepth.or(kept.seldepth);
+                        kept.nodes = update.nodes.or(kept.nodes);
+                        kept.nps = update.nps.or(kept.nps);
+                        kept.tbhits = update.tbhits.or(kept.tbhits);
+                        kept.hashfull = update.hashfull.or(kept.hashfull);
+                        kept.time_ms = update.time_ms.or(kept.time_ms);
+                        continue;
+                    }
                     let white_to_move = pos.turn().is_white();
                     let score = update
                         .score
@@ -205,6 +220,7 @@ impl LiveAnalysis {
                         .wdl
                         .map(|wdl| if white_to_move { wdl } else { wdl.flip() });
                     if update.multipv == 1
+                        && !update.bound
                         && let Some(score) = score
                     {
                         newest_eval = Some(match score {

@@ -1,6 +1,6 @@
 //! Analyse: scoresheet, board with timeline, and the merged "Moves from here" table.
 
-use std::{collections::HashMap, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use chess_core::{
     GameTree, Move, NodeId, Position, classify, display_san, parse_pgn, position_hash, write_pgn,
@@ -10,7 +10,7 @@ use db::{Database, ImportControl, MoveStat, import_games};
 use engine::{EngineId, LogLine, Score, Wdl};
 use gpui::{
     AppContext as _, ClipboardItem, Context, Entity, FocusHandle, FontWeight, IntoElement,
-    MouseButton, Pixels, Point, Render, ScrollHandle, SharedString, Subscription, Task,
+    MouseButton, Pixels, Point, Render, ScrollHandle, SharedString, Subscription, Task, TextLayout,
     UniformListScrollHandle, WeakEntity, Window, anchored, deferred, div, prelude::*, px, rgb,
 };
 use gpui_component::input::{InputEvent, InputState, TextareaState};
@@ -120,7 +120,7 @@ pub fn merge_rows(
 
 mod panels;
 
-use panels::{LOG_POLL, PvView};
+use panels::{LOG_POLL, LogSelection, PvView};
 
 type MenuHandler = Box<dyn Fn(&mut Window, &mut gpui::App)>;
 
@@ -158,6 +158,10 @@ pub struct AnalyseScreen {
     log_lines: Vec<LogLine>,
     /// What `log_lines` was taken from: engine, log revision and the Info filter.
     log_key: Option<(EngineId, u64, bool)>,
+    log_selection: Option<LogSelection>,
+    log_selecting: bool,
+    /// Text layouts of the visible log rows, for finding the character under the pointer.
+    log_layouts: Rc<RefCell<HashMap<usize, TextLayout>>>,
     /// Redraws the Log panel when its engine writes, since not every line is an event.
     _log_poll: Task<()>,
     log_scroll: UniformListScrollHandle,
@@ -272,6 +276,9 @@ impl AnalyseScreen {
             log_follow: true,
             log_lines: Vec::new(),
             log_key: None,
+            log_selection: None,
+            log_selecting: false,
+            log_layouts: Rc::default(),
             _log_poll: cx.spawn(async move |this: WeakEntity<Self>, cx| {
                 loop {
                     cx.background_executor().timer(LOG_POLL).await;

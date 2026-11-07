@@ -890,6 +890,7 @@ pub fn scripted_lines(hash: u64) -> HashMap<&'static str, Vec<AnalysisUpdate>> {
         tbhits: None,
         hashfull: Some(214),
         time_ms: Some(21_000),
+        bound: false,
         pv: pv.split(' ').map(str::to_owned).collect(),
     };
     let f4 = "f3f4 a6a5 f4f5 e6c4 c1b1 a5a4 b3c1 c4e2 f1e2 a4a3 b2b3";

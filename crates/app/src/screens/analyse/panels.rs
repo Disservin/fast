@@ -5,9 +5,10 @@ use std::ops::Range;
 use chess_core::{Chess, Move, Position, format_pv, shakmaty::san::San};
 use engine::{EngineConfig, EngineId, LogKind, LogLine, OptionKind};
 use gpui::{
-    AnyElement, ClipboardItem, Context, Div, FontWeight, IntoElement, KeyDownEvent,
-    ListHorizontalSizingBehavior, MouseButton, MouseMoveEvent, ScrollStrategy, SharedString,
-    Window, anchored, deferred, div, point, prelude::*, px, rgb, uniform_list,
+    AnyElement, ClipboardItem, Context, CursorStyle, Div, FontWeight, HighlightStyle, IntoElement,
+    KeyDownEvent, ListHorizontalSizingBehavior, MouseButton, MouseMoveEvent, Pixels, Point,
+    ScrollStrategy, SharedString, StyledText, Window, anchored, deferred, div, point, prelude::*,
+    px, rgb, uniform_list,
 };
 use ui::{
     Arrow, CoordinateStyle, MONO, T,
@@ -18,6 +19,8 @@ use super::{AnalyseScreen, MoveRow};
 use crate::config::AnalysisLimit;
 
 const LOG_ROW_H: f32 = 19.;
+/// Selected log text, which has to read clearly under every line colour.
+const LOG_SELECTION_BG: u32 = 0x34507A;
 /// How often an open Log panel checks its engine for new lines.
 pub(super) const LOG_POLL: std::time::Duration = std::time::Duration::from_millis(200);
 /// A hovered PV move has to stand out against the panel surface.
@@ -33,6 +36,64 @@ const LIMITS: [(AnalysisLimit, &str); 5] = [
     (AnalysisLimit::Seconds(10), "10s"),
     (AnalysisLimit::Seconds(60), "60s"),
 ];
+
+/// Text selected in the Log panel, as (line, byte) positions in `log_lines`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LogSelection {
+    pub anchor: (usize, usize),
+    pub head: (usize, usize),
+}
+
+impl LogSelection {
+    fn at(position: (usize, usize)) -> Self {
+        Self {
+            anchor: position,
+            head: position,
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.anchor == self.head
+    }
+
+    fn ordered(&self) -> ((usize, usize), (usize, usize)) {
+        (self.anchor.min(self.head), self.anchor.max(self.head))
+    }
+
+    /// The selected bytes of one line, if any of it is selected.
+    fn range_in(&self, line: usize, text: &str) -> Option<Range<usize>> {
+        let (start, end) = self.ordered();
+        if line < start.0 || line > end.0 {
+            return None;
+        }
+        let from = if line == start.0 { start.1 } else { 0 };
+        let to = if line == end.0 { end.1 } else { text.len() };
+        let range = floor_char(text, from)..floor_char(text, to);
+        (range.start < range.end).then_some(range)
+    }
+
+    /// The selected text, one log line per text line.
+    pub fn text(&self, lines: &[LogLine]) -> String {
+        let (start, end) = self.ordered();
+        (start.0..=end.0.min(lines.len().saturating_sub(1)))
+            .filter_map(|index| {
+                let text = &lines.get(index)?.text;
+                let range = self.range_in(index, text).unwrap_or(0..0);
+                Some(&text[range])
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+}
+
+/// The nearest char boundary at or before `index`, clamped to the text.
+fn floor_char(text: &str, index: usize) -> usize {
+    let mut index = index.min(text.len());
+    while !text.is_char_boundary(index) {
+        index -= 1;
+    }
+    index
+}
 
 /// A highlighted run of moves in the selected line. The line is copied so engine
 /// updates cannot move it while it is being read.
@@ -507,9 +568,15 @@ impl AnalyseScreen {
             .map(|(id, log)| (id, log.revision(), self.log_show_info))
     }
 
-    /// Takes a new snapshot only when the log or the filter changed.
+    /// Takes a new snapshot only when the log or the filter changed. A selection holds
+    /// the log still, so the text under it cannot move, until it is cleared.
     fn refresh_log(&mut self, cx: &gpui::App) {
         let key = self.current_log_key(cx);
+        let same_engine = key.map(|key| key.0) == self.log_key.map(|key| key.0);
+        if self.log_selection.is_some() && same_engine {
+            return;
+        }
+        self.log_selection = None;
         if key.is_some() && key == self.log_key {
             return;
         }
@@ -520,13 +587,42 @@ impl AnalyseScreen {
             .unwrap_or_default();
     }
 
-    fn render_log_row(line: &LogLine, index: usize) -> impl IntoElement + use<> {
+    /// The byte under the pointer in a visible log line.
+    fn log_index_at(&self, line: usize, position: Point<Pixels>) -> usize {
+        self.log_layouts.borrow().get(&line).map_or(0, |layout| {
+            match layout.index_for_position(position) {
+                Ok(index) | Err(index) => index,
+            }
+        })
+    }
+
+    fn render_log_row(&self, index: usize, cx: &mut Context<Self>) -> AnyElement {
+        let Some(line) = self.log_lines.get(index) else {
+            return div().into_any_element();
+        };
         let (mark, color) = match line.kind {
             LogKind::Sent => (">", T.fg),
             LogKind::Received => ("<", T.fg_2),
             LogKind::Stderr => ("!", T.warn),
             LogKind::System => ("·", T.muted),
         };
+        let selected = self
+            .log_selection
+            .and_then(|selection| selection.range_in(index, &line.text));
+        let text = StyledText::new(SharedString::from(line.text.clone())).with_highlights(
+            selected.map(|range| {
+                (
+                    range,
+                    HighlightStyle {
+                        background_color: Some(rgb(LOG_SELECTION_BG).into()),
+                        ..Default::default()
+                    },
+                )
+            }),
+        );
+        self.log_layouts
+            .borrow_mut()
+            .insert(index, text.layout().clone());
         // Rows take their text's width; the list scrolls sideways to the longest.
         h_flex()
             .id(("log-line", index))
@@ -538,15 +634,72 @@ impl AnalyseScreen {
             .font_family(MONO)
             .text_size(px(12.))
             .text_color(rgb(color))
+            .cursor(CursorStyle::IBeam)
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |this, event: &gpui::MouseDownEvent, _, cx| {
+                    let at = (index, this.log_index_at(index, event.position));
+                    this.log_selection = Some(LogSelection::at(at));
+                    this.log_selecting = true;
+                    cx.notify();
+                }),
+            )
+            .on_mouse_move(cx.listener(move |this, event: &MouseMoveEvent, _, cx| {
+                if !this.log_selecting || !event.dragging() {
+                    return;
+                }
+                let head = (index, this.log_index_at(index, event.position));
+                if let Some(selection) = &mut this.log_selection
+                    && selection.head != head
+                {
+                    selection.head = head;
+                    cx.notify();
+                }
+            }))
             .child(div().flex_none().text_color(rgb(T.faint)).child(mark))
-            .child(SharedString::from(line.text.clone()))
+            .child(text)
+            .into_any_element()
+    }
+
+    /// Ends a drag. A click without a drag clears the selection and lets the log move.
+    fn end_log_selection(&mut self, cx: &mut Context<Self>) {
+        if !std::mem::take(&mut self.log_selecting) {
+            return;
+        }
+        if self
+            .log_selection
+            .is_some_and(|selection| selection.is_empty())
+        {
+            self.log_selection = None;
+        }
+        cx.notify();
+    }
+
+    /// Esc clears the log selection and Ctrl+C copies it. Returns whether the key was used.
+    fn handle_log_key(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) -> bool {
+        let Some(selection) = self.log_selection.filter(|_| self.log_panel_open) else {
+            return false;
+        };
+        let keystroke = &event.keystroke;
+        if keystroke.key == "escape" {
+            self.log_selection = None;
+            cx.notify();
+            true
+        } else if keystroke.key == "c" && keystroke.modifiers.secondary(cx) {
+            cx.write_to_clipboard(ClipboardItem::new_string(selection.text(&self.log_lines)));
+            self.toast("Selection copied.", cx);
+            true
+        } else {
+            false
+        }
     }
 
     pub(super) fn render_log_panel(&mut self, cx: &mut Context<Self>) -> AnyElement {
         self.refresh_log(cx);
         let this = cx.entity();
         let count = self.log_lines.len();
-        if self.log_follow && count > 0 {
+        let holding = self.log_selection.is_some();
+        if self.log_follow && count > 0 && !holding {
             self.log_scroll
                 .scroll_to_item(count - 1, ScrollStrategy::Bottom);
         }
@@ -571,6 +724,14 @@ impl AnalyseScreen {
                         .text_color(rgb(T.muted))
                         .child(name),
                 )
+                .when(holding, |row| {
+                    row.child(
+                        div()
+                            .text_size(px(12.))
+                            .text_color(rgb(T.warn))
+                            .child("Held while selected · Ctrl+C copies · Esc releases"),
+                    )
+                })
                 .child(div().flex_1())
                 .child(
                     div().flex_none().w(px(58.)).child(
@@ -578,6 +739,7 @@ impl AnalyseScreen {
                             .text(12.)
                             .on_change(move |value, _, cx| {
                                 info_this.update(cx, |screen, cx| {
+                                    screen.log_selection = None;
                                     screen.log_show_info = value;
                                     cx.notify();
                                 });
@@ -603,19 +765,30 @@ impl AnalyseScreen {
                         .text(12.)
                         .on_click(move |_, cx| {
                             copy_this.update(cx, |screen, cx| {
-                                let text: Vec<&str> = screen
-                                    .log_lines
-                                    .iter()
-                                    .map(|line| line.text.as_str())
-                                    .collect();
-                                cx.write_to_clipboard(ClipboardItem::new_string(text.join("\n")));
-                                screen.toast("Log copied.", cx);
+                                // The selection if there is one, else the whole log.
+                                let (text, message) = match screen.log_selection {
+                                    Some(selection) => {
+                                        (selection.text(&screen.log_lines), "Selection copied.")
+                                    }
+                                    None => (
+                                        screen
+                                            .log_lines
+                                            .iter()
+                                            .map(|line| line.text.as_str())
+                                            .collect::<Vec<_>>()
+                                            .join("\n"),
+                                        "Log copied.",
+                                    ),
+                                };
+                                cx.write_to_clipboard(ClipboardItem::new_string(text));
+                                screen.toast(message, cx);
                             });
                         }),
                 )
                 .child(btn("log-clear", "Clear").h(26.).pad(8.).text(12.).on_click(
                     move |_, cx| {
                         clear_this.update(cx, |screen, cx| {
+                            screen.log_selection = None;
                             let chosen = screen.panel_engine_config(cx).map(|config| config.id);
                             if let Some(engine) = screen
                                 .live
@@ -647,11 +820,11 @@ impl AnalyseScreen {
             uniform_list(
                 "engine-log",
                 count,
-                cx.processor(|this, range: Range<usize>, _, _| {
+                cx.processor(|this, range: Range<usize>, _, cx| {
+                    // Only the rows just built can be hit-tested.
+                    this.log_layouts.borrow_mut().clear();
                     range
-                        .map(|index| {
-                            Self::render_log_row(&this.log_lines[index], index).into_any_element()
-                        })
+                        .map(|index| this.render_log_row(index, cx))
                         .collect::<Vec<_>>()
                 }),
             )
@@ -659,6 +832,14 @@ impl AnalyseScreen {
             .with_horizontal_sizing_behavior(ListHorizontalSizingBehavior::Unconstrained)
             .with_width_from_item(longest)
             .h(px(LOG_ROW_H * 12.))
+            .on_mouse_up(
+                MouseButton::Left,
+                cx.listener(|this, _, _, cx| this.end_log_selection(cx)),
+            )
+            .on_mouse_up_out(
+                MouseButton::Left,
+                cx.listener(|this, _, _, cx| this.end_log_selection(cx)),
+            )
             .into_any_element()
         };
         panel()
@@ -997,9 +1178,12 @@ impl AnalyseScreen {
         cx.notify();
     }
 
-    /// Esc leaves a preview and Ctrl+C copies a highlight, wherever focus has gone.
-    /// Returns whether the key was used.
+    /// Esc leaves a preview or a log selection and Ctrl+C copies it, wherever focus has
+    /// gone. A log selection comes first. Returns whether the key was used.
     pub fn handle_pv_key(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) -> bool {
+        if self.handle_log_key(event, cx) {
+            return true;
+        }
         if self.pv_view.is_none() {
             return false;
         }
@@ -1112,5 +1296,38 @@ mod tests {
         };
         assert!(!single.is_range());
         assert_eq!(single.played(), 4);
+    }
+}
+
+#[cfg(test)]
+mod log_tests {
+    use super::*;
+
+    fn line(text: &str) -> LogLine {
+        LogLine {
+            kind: LogKind::Received,
+            text: text.to_owned(),
+        }
+    }
+
+    #[test]
+    fn log_selection_spans_lines_in_either_direction() {
+        let lines = [line("uciok"), line("readyok"), line("bestmove e2e4")];
+        let forward = LogSelection {
+            anchor: (0, 3),
+            head: (2, 8),
+        };
+        assert_eq!(forward.text(&lines), "ok\nreadyok\nbestmove");
+        let backward = LogSelection {
+            anchor: forward.head,
+            head: forward.anchor,
+        };
+        assert_eq!(backward.text(&lines), forward.text(&lines));
+        let within = LogSelection {
+            anchor: (2, 9),
+            head: (2, 40),
+        };
+        assert_eq!(within.text(&lines), "e2e4");
+        assert!(LogSelection::at((1, 2)).is_empty());
     }
 }
