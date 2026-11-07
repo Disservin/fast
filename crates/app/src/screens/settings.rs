@@ -9,7 +9,8 @@ use engine::{
 };
 use gpui::{
     AppContext as _, Context, Div, Entity, FocusHandle, FontWeight, IntoElement, KeyDownEvent,
-    Render, SharedString, Subscription, Window, div, img, prelude::*, px, rgb, svg,
+    Render, SharedString, Subscription, UniformListScrollHandle, Window, div, img, prelude::*, px,
+    rgb, svg, uniform_list,
 };
 use gpui_component::{
     input::{InputEvent, InputState},
@@ -37,16 +38,18 @@ pub enum SettingsPage {
     Databases,
     Shortcuts,
     Accounts,
+    Licenses,
 }
 
 impl SettingsPage {
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 7] = [
         Self::General,
         Self::Board,
         Self::Engines,
         Self::Databases,
         Self::Shortcuts,
         Self::Accounts,
+        Self::Licenses,
     ];
 
     pub fn title(self) -> &'static str {
@@ -57,6 +60,7 @@ impl SettingsPage {
             Self::Databases => "Databases",
             Self::Shortcuts => "Keyboard shortcuts",
             Self::Accounts => "Accounts",
+            Self::Licenses => "Licenses",
         }
     }
 }
@@ -212,6 +216,8 @@ pub struct SettingsScreen {
     path_input: Entity<InputState>,
     name_input: Entity<InputState>,
     profile_input: Entity<InputState>,
+    license_filter: Entity<InputState>,
+    license_scroll: UniformListScrollHandle,
     option_inputs: HashMap<String, Entity<InputState>>,
     option_selects: HashMap<String, TextSelect>,
     language: TextSelect,
@@ -250,7 +256,14 @@ impl SettingsScreen {
         let name_input = cx.new(|cx| InputState::new(window, cx));
         let profile_input =
             cx.new(|cx| InputState::new(window, cx).placeholder("Profile name, e.g. BT2"));
+        let license_filter =
+            cx.new(|cx| InputState::new(window, cx).placeholder("Filter by name or licence"));
         let subscriptions = vec![
+            cx.subscribe(&license_filter, |_, _, event: &InputEvent, cx| {
+                if matches!(event, InputEvent::Change) {
+                    cx.notify();
+                }
+            }),
             cx.subscribe_in(&name_input, window, |this, state, event, _, cx| {
                 if matches!(event, InputEvent::Blur | InputEvent::PressEnter { .. }) {
                     let name = state.read(cx).value().trim().to_owned();
@@ -306,6 +319,8 @@ impl SettingsScreen {
             path_input,
             name_input,
             profile_input,
+            license_filter,
+            license_scroll: UniformListScrollHandle::new(),
             option_inputs: HashMap::new(),
             option_selects: HashMap::new(),
             language,
@@ -1957,6 +1972,167 @@ impl SettingsScreen {
         page
     }
 
+    /// Fast's licence, the bundled assets and every library, filterable.
+    fn render_licenses(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        use crate::licenses::{ASSETS, FAST_LICENSE, libraries, license_counts};
+        let all = libraries();
+        let query = self.license_filter.read(cx).value().to_string();
+        let shown: Vec<usize> = all
+            .iter()
+            .enumerate()
+            .filter(|(_, library)| library.matches(&query))
+            .map(|(index, _)| index)
+            .collect();
+        let col_name = gpui::relative(0.36);
+        let col_version = gpui::relative(0.14);
+        let col_license = gpui::relative(0.38);
+        let header = |cells: [&'static str; 4]| {
+            h_flex()
+                .h(px(30.))
+                .px(px(12.))
+                .bg(rgb(T.surface_2))
+                .border_b_1()
+                .border_color(rgb(T.border))
+                .child(div().w(col_name).child(section_label(cells[0])))
+                .child(div().w(col_version).child(section_label(cells[1])))
+                .child(div().w(col_license).child(section_label(cells[2])))
+                .child(section_label(cells[3]))
+        };
+        let mut assets = panel()
+            .overflow_hidden()
+            .child(header(["Asset", "", "Licence", "By"]));
+        for (name, author, license) in ASSETS {
+            assets = assets.child(
+                h_flex()
+                    .h(px(34.))
+                    .px(px(12.))
+                    .border_b_1()
+                    .border_color(rgb(T.divider))
+                    .text_size(px(13.))
+                    .child(
+                        div()
+                            .w(col_name)
+                            .font_weight(FontWeight::MEDIUM)
+                            .child(name),
+                    )
+                    .child(div().w(col_version))
+                    .child(
+                        mono(license)
+                            .w(col_license)
+                            .text_size(px(12.))
+                            .text_color(rgb(T.fg_2)),
+                    )
+                    .child(div().text_color(rgb(T.muted)).child(author)),
+            );
+        }
+        let summary = license_counts(all)
+            .into_iter()
+            .take(6)
+            .map(|(license, count)| format!("{count} {license}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let count = shown.len();
+        let list = uniform_list(
+            "license-rows",
+            count,
+            cx.processor(move |_, range: std::ops::Range<usize>, _, _| {
+                range
+                    .filter_map(|row| {
+                        let library = &all[*shown.get(row)?];
+                        let repository = library.repository.clone();
+                        Some(
+                            h_flex()
+                                .id(("library", row))
+                                .h(px(32.))
+                                .px(px(12.))
+                                .border_b_1()
+                                .border_color(rgb(T.divider))
+                                .text_size(px(13.))
+                                .child(
+                                    div()
+                                        .w(col_name)
+                                        .overflow_hidden()
+                                        .whitespace_nowrap()
+                                        .font_weight(FontWeight::MEDIUM)
+                                        .child(library.name.clone()),
+                                )
+                                .child(
+                                    mono(library.version.clone())
+                                        .w(col_version)
+                                        .text_size(px(12.))
+                                        .text_color(rgb(T.muted)),
+                                )
+                                .child(
+                                    mono(library.license.clone())
+                                        .w(col_license)
+                                        .overflow_hidden()
+                                        .whitespace_nowrap()
+                                        .text_size(px(12.))
+                                        .text_color(rgb(T.fg_2)),
+                                )
+                                .children(repository.map(|url| {
+                                    div()
+                                        .id(("library-source", row))
+                                        .cursor_pointer()
+                                        .text_color(rgb(T.accent))
+                                        .hover(|style| style.underline())
+                                        .on_click(move |_, _, cx| cx.open_url(&url))
+                                        .child("Source")
+                                })),
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            }),
+        )
+        .track_scroll(&self.license_scroll)
+        .h(px(460.));
+        v_flex()
+            .gap(px(16.))
+            .child(page_title("Licenses"))
+            .child(
+                section("Fast").child(
+                    div()
+                        .text_size(px(14.))
+                        .text_color(rgb(T.fg_2))
+                        .child(format!(
+                            "Fast is free software under {FAST_LICENSE}. The libraries and assets below keep their own licences."
+                        )),
+                ),
+            )
+            .child(section("Bundled assets").child(assets))
+            .child(
+                section("Libraries")
+                    .child(
+                        div()
+                            .mb(px(10.))
+                            .text_size(px(13.))
+                            .text_color(rgb(T.muted))
+                            .child(format!(
+                                "{} Rust crates from Cargo.lock, including ones only built on other platforms. Most common: {summary}.",
+                                all.len()
+                            )),
+                    )
+                    .child(
+                        h_flex()
+                            .gap(px(12.))
+                            .mb(px(10.))
+                            .child(div().w(px(320.)).child(text_input(&self.license_filter)))
+                            .child(
+                                div()
+                                    .text_size(px(13.))
+                                    .text_color(rgb(T.muted))
+                                    .child(format!("{count} shown")),
+                            ),
+                    )
+                    .child(
+                        panel()
+                            .overflow_hidden()
+                            .child(header(["Crate", "Version", "Licence", ""]))
+                            .child(list),
+                    ),
+            )
+    }
+
     fn render_accounts(&mut self) -> impl IntoElement + use<> {
         v_flex().gap(px(16.)).child(page_title("Accounts")).child(
             section("Offline by design").child(
@@ -2190,6 +2366,7 @@ impl Render for SettingsScreen {
             SettingsPage::Databases => self.render_databases(cx).into_any_element(),
             SettingsPage::Shortcuts => self.render_shortcuts(cx).into_any_element(),
             SettingsPage::Accounts => self.render_accounts().into_any_element(),
+            SettingsPage::Licenses => self.render_licenses(cx).into_any_element(),
         };
         h_flex().items_start().size_full().child(nav).child(
             div()

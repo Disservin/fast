@@ -122,7 +122,12 @@ in Analyse while no text field has focus.
 ```sh
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
+python3 scripts/third_party.py   # after changing dependencies
 ```
+
+**Settings › Licenses** lists every crate and bundled asset with its licence. The crate list is
+`crates/app/third_party.json`, generated from `cargo metadata`; a test fails when it no longer
+matches `Cargo.lock`.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md). Package installers with
 [cargo-bundle](https://github.com/burtonageo/cargo-bundle): `cargo bundle --release -p fast`.

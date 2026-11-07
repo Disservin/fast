@@ -5,6 +5,7 @@ mod config;
 mod controls;
 mod debug_window;
 mod demo;
+mod licenses;
 mod live;
 mod model;
 mod screens;

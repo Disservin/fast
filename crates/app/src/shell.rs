@@ -280,6 +280,7 @@ impl Workspace {
             "settings:board" => (Mode::Settings, Some(SettingsPage::Board)),
             "settings:databases" => (Mode::Settings, Some(SettingsPage::Databases)),
             "settings:shortcuts" => (Mode::Settings, Some(SettingsPage::Shortcuts)),
+            "settings:licenses" => (Mode::Settings, Some(SettingsPage::Licenses)),
             _ => (Mode::Analyse, None),
         };
         if let Some(page) = settings_page {
