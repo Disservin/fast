@@ -139,12 +139,12 @@ impl Noise {
 /// rather than a note.
 const WOOD_MODES: [(f32, f32, f32); 4] = [
     (1.0, 1.0, 1.0),
-    (2.57, 0.5, 0.55),
-    (4.68, 0.28, 0.35),
-    (7.2, 0.12, 0.22),
+    (2.57, 0.35, 0.45),
+    (4.68, 0.14, 0.25),
+    (7.2, 0.05, 0.15),
 ];
 
-/// One knock: a very short, bright strike that sets the wood's modes ringing.
+/// One knock: a short, rounded strike that sets the wood's modes ringing.
 /// `pitch` is the fundamental in Hz and `ring` its decay time in seconds.
 fn knock(out: &mut [f32], at: usize, loudness: f32, pitch: f32, ring: f32, seed: u32) {
     let mut noise = Noise(seed);
@@ -152,10 +152,9 @@ fn knock(out: &mut [f32], at: usize, loudness: f32, pitch: f32, ring: f32, seed:
     let start = at.min(out.len());
     for (index, sample) in out[start..].iter_mut().enumerate() {
         let t = index as f32 / RATE as f32;
-        // The strike: high-passed noise lasting about a millisecond.
-        let raw = noise.next();
-        let strike = (raw - previous) * 0.5 * (-t / 0.0007).exp();
-        previous = raw;
+        // Round off the noisy impact so it adds contact without a sharp hiss.
+        previous += 0.18 * (noise.next() - previous);
+        let strike = previous * (-t / 0.0015).exp();
         // A 0.3 ms rise keeps the start from popping.
         let attack = (t / 0.0003).min(1.0);
         let mut body = 0.0;
@@ -189,17 +188,17 @@ pub fn synthesise(sound: Sound) -> Vec<f32> {
     };
     let mut out = vec![0.0f32; length];
     match sound {
-        // A light, crisp tok.
-        Sound::Move => knock(&mut out, 0, 1.0, 1150.0, 0.016, 0x9E37_79B9),
+        // A low wooden clank with a short, solid body.
+        Sound::Move => knock(&mut out, 0, 1.0, 460.0, 0.022, 0x9E37_79B9),
         // A heavier, lower knock, then the taken piece's lighter click.
         Sound::Capture => {
-            knock(&mut out, 0, 1.15, 780.0, 0.022, 0x85EB_CA6B);
-            knock(&mut out, ms(30), 0.5, 1500.0, 0.010, 0xC2B2_AE35);
+            knock(&mut out, 0, 1.15, 340.0, 0.026, 0x85EB_CA6B);
+            knock(&mut out, ms(30), 0.5, 620.0, 0.014, 0xC2B2_AE35);
         }
         // King, then rook.
         Sound::Castle => {
-            knock(&mut out, 0, 0.9, 1100.0, 0.015, 0x27D4_EB2F);
-            knock(&mut out, ms(80), 0.85, 960.0, 0.016, 0x1656_67B1);
+            knock(&mut out, 0, 0.9, 440.0, 0.022, 0x27D4_EB2F);
+            knock(&mut out, ms(80), 0.85, 390.0, 0.024, 0x1656_67B1);
         }
         Sound::Check => {
             tone(&mut out, 0, 1318.5, 0.22, 0.05);
@@ -292,17 +291,17 @@ mod tests {
     }
 
     #[test]
-    fn a_move_is_a_crisp_click_not_a_thud() {
+    fn moves_have_a_low_body_and_a_short_decay() {
         let samples = synthesise(Sound::Move);
-        // Bright: most energy well above a low thump.
+        // Keep the body in the wooden clank range, below the old bright click.
         assert!(
-            median_frequency(&samples) > 900.0,
+            (300.0..650.0).contains(&median_frequency(&samples)),
             "{}",
             median_frequency(&samples)
         );
-        // Short: nearly all its energy within the first 30 ms.
+        // Short: nearly all its energy within the first 40 ms.
         let energy = |part: &[f32]| part.iter().map(|s| s * s).sum::<f32>();
-        assert!(energy(&samples[..ms(30)]) > 0.95 * energy(&samples));
+        assert!(energy(&samples[..ms(40)]) > 0.95 * energy(&samples));
         // A capture sits lower than a move.
         assert!(median_frequency(&synthesise(Sound::Capture)) < median_frequency(&samples));
     }
