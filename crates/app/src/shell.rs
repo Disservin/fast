@@ -9,6 +9,7 @@ use gpui::{
     WindowControlArea, actions, deferred, div, prelude::*, px, rgb,
 };
 use gpui_component::input::{InputEvent, InputState, TextareaState};
+use gpui_component::menu::{ContextMenuExt, PopupMenuItem};
 use ui::{
     SANS, T,
     widgets::{Btn, BtnKind, btn, h_flex, icon_btn, v_flex},
@@ -841,13 +842,18 @@ impl Workspace {
             let id = tab.id;
             let select = cx.entity();
             let close = select.clone();
+            let duplicate = select.clone();
+            let analysis = matches!(tab.content, TabContent::Analyse(_));
             tabs = tabs.child(
                 h_flex()
                     .id(("tab", id as usize))
-                    .on_mouse_up(MouseButton::Middle, cx.listener(move |this, _, window, cx| {
-                        cx.stop_propagation();
-                        this.close_tab(id, window, cx);
-                    }))
+                    .on_mouse_up(
+                        MouseButton::Middle,
+                        cx.listener(move |this, _, window, cx| {
+                            cx.stop_propagation();
+                            this.close_tab(id, window, cx);
+                        }),
+                    )
                     .on_drag(
                         DraggedTab {
                             id,
@@ -915,7 +921,32 @@ impl Workspace {
                             .on_click(move |window, cx| {
                                 close.update(cx, |this, cx| this.close_tab(id, window, cx))
                             }),
-                    ),
+                    )
+                    .context_menu(move |menu, _, _| {
+                        if !analysis {
+                            return menu;
+                        }
+                        let duplicate = duplicate.clone();
+                        menu.item(PopupMenuItem::new("Duplicate analysis tab").on_click(
+                            move |_, window, cx| {
+                                duplicate.update(cx, |this, cx| {
+                                    let Some(TabContent::Analyse(source)) = this
+                                        .tabs
+                                        .iter()
+                                        .find(|tab| tab.id == id)
+                                        .map(|tab| tab.content.clone())
+                                    else {
+                                        return;
+                                    };
+                                    let tree = source.read(cx).tree.clone();
+                                    let current = source.read(cx).current;
+                                    this.open_analysis(tree, window, cx);
+                                    this.analyse
+                                        .update(cx, |screen, cx| screen.jump(current, window, cx));
+                                });
+                            },
+                        ))
+                    }),
             );
         }
         let add = cx.entity();
