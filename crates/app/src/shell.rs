@@ -659,6 +659,106 @@ impl Workspace {
         }
     }
 
+    /// Covers the content area when the + button is open: one card per kind of tab.
+    fn new_tab_picker(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        const CHOICES: [(Mode, &str, &str); 4] = [
+            (
+                Mode::Analyse,
+                "Analyse",
+                "A board, engine analysis and the move list for a new position or game.",
+            ),
+            (
+                Mode::Play,
+                "Play",
+                "Play a game against an engine, with clocks.",
+            ),
+            (
+                Mode::Database,
+                "Database",
+                "Browse, search and import your game collections.",
+            ),
+            (
+                Mode::Tournament,
+                "Tournament",
+                "Engine-vs-engine matches run with fastchess.",
+            ),
+        ];
+        let mut cards = h_flex().flex_wrap().justify_center().gap(px(16.));
+        for (index, (mode, title, description)) in CHOICES.into_iter().enumerate() {
+            let pick = cx.entity();
+            cards = cards.child(
+                v_flex()
+                    .id(("new-tab-card", index))
+                    .w(px(240.))
+                    .p(px(18.))
+                    .gap(px(8.))
+                    .rounded(px(10.))
+                    .bg(rgb(T.surface))
+                    .border_1()
+                    .border_color(rgb(T.border))
+                    .cursor_pointer()
+                    .hover(|card| card.border_color(rgb(T.border_strong)).bg(rgb(T.selected)))
+                    .child(
+                        div()
+                            .text_size(px(16.))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(rgb(T.fg))
+                            .child(title),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(13.))
+                            .text_color(rgb(T.muted))
+                            .child(description),
+                    )
+                    .on_click(move |_, window, cx| {
+                        pick.update(cx, |this, cx| {
+                            this.new_tab_menu_open = false;
+                            this.new_tab(mode, window, cx)
+                        })
+                    }),
+            );
+        }
+        let close = cx.entity();
+        v_flex()
+            .id("new-tab-picker")
+            .absolute()
+            .inset_0()
+            .occlude()
+            .items_center()
+            .justify_center()
+            .gap(px(20.))
+            .p(px(16.))
+            .bg(rgb(T.bg))
+            .child(
+                h_flex()
+                    .w_full()
+                    .max_w(px(760.))
+                    .justify_between()
+                    .child(
+                        div()
+                            .text_size(px(18.))
+                            .font_weight(FontWeight::BOLD)
+                            .text_color(rgb(T.fg))
+                            .child("New tab"),
+                    )
+                    .child(
+                        btn("new-tab-picker-close", "×")
+                            .h(28.)
+                            .w(28.)
+                            .pad(4.)
+                            .tooltip("Close")
+                            .on_click(move |_, cx| {
+                                close.update(cx, |this, cx| {
+                                    this.new_tab_menu_open = false;
+                                    cx.notify();
+                                })
+                            }),
+                    ),
+            )
+            .child(cards)
+    }
+
     fn tab_bar(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let mut tabs = h_flex().gap(px(4.));
         for tab in &self.tabs {
@@ -739,76 +839,19 @@ impl Workspace {
                     .child(tabs),
             )
             .child(
-                h_flex()
-                    .gap(px(4.))
-                    .child(
-                        btn("new-tab", "+")
-                            .h(26.)
-                            .w(28.)
-                            .pad(4.)
-                            .tooltip("Add a tab")
-                            .on_click(move |_, cx| {
-                                add.update(cx, |this, cx| {
-                                    this.new_tab_menu_open = !this.new_tab_menu_open;
-                                    cx.notify();
-                                })
-                            }),
-                    )
-                    .when(self.new_tab_menu_open, |row| {
-                        let analyse = cx.entity();
-                        let play = analyse.clone();
-                        let database = analyse.clone();
-                        let tournament = analyse.clone();
-                        row.child(
-                            btn("new-analysis-tab", "Analyse")
-                                .h(26.)
-                                .pad(7.)
-                                .text(12.)
-                                .on_click(move |window, cx| {
-                                    analyse.update(cx, |this, cx| {
-                                        this.new_tab_menu_open = false;
-                                        this.new_tab(Mode::Analyse, window, cx)
-                                    })
-                                }),
-                        )
-                        .child(
-                            btn("new-play-tab", "Play")
-                                .h(26.)
-                                .pad(7.)
-                                .text(12.)
-                                .on_click(move |window, cx| {
-                                    play.update(cx, |this, cx| {
-                                        this.new_tab_menu_open = false;
-                                        this.new_tab(Mode::Play, window, cx)
-                                    })
-                                }),
-                        )
-                        .child(
-                            btn("new-database-tab", "Database")
-                                .h(26.)
-                                .pad(7.)
-                                .text(12.)
-                                .on_click(move |window, cx| {
-                                    database.update(cx, |this, cx| {
-                                        this.new_tab_menu_open = false;
-                                        this.new_tab(Mode::Database, window, cx)
-                                    })
-                                }),
-                        )
-                        .child(
-                            btn("new-tournament-tab", "Tournament")
-                                .h(26.)
-                                .pad(7.)
-                                .text(12.)
-                                .tooltip("Engine-vs-engine matches with fastchess")
-                                .on_click(move |window, cx| {
-                                    tournament.update(cx, |this, cx| {
-                                        this.new_tab_menu_open = false;
-                                        this.new_tab(Mode::Tournament, window, cx)
-                                    })
-                                }),
-                        )
-                    }),
+                h_flex().gap(px(4.)).child(
+                    btn("new-tab", "+")
+                        .h(26.)
+                        .w(28.)
+                        .pad(4.)
+                        .tooltip("Add a tab")
+                        .on_click(move |_, cx| {
+                            add.update(cx, |this, cx| {
+                                this.new_tab_menu_open = !this.new_tab_menu_open;
+                                cx.notify();
+                            })
+                        }),
+                ),
             )
             .child(
                 btn("reopen-tab", "Reopen")
@@ -1283,7 +1326,17 @@ impl Render for Workspace {
                     .child(self.top_bar(viewport_w, controls, window, cx))
                     .child(self.tab_bar(cx))
                     .children(path_bar)
-                    .child(div().flex_1().min_h_0().w_full().child(body)),
+                    .child(
+                        div()
+                            .relative()
+                            .flex_1()
+                            .min_h_0()
+                            .w_full()
+                            .child(body)
+                            .when(self.new_tab_menu_open, |area| {
+                                area.child(self.new_tab_picker(cx))
+                            }),
+                    ),
             )
             .size_full()
             // Clicks on nothing focusable would drop keyboard focus and with it every shortcut.

@@ -6,8 +6,8 @@ playing against engines. Offline and single-user. Built with Rust and
 
 ## Workspace tabs
 
-Use **+ Analyse**, **+ Play** or **+ Database** below the top bar to open independent
-views. Opening a database game or analysing an engine game creates a new analysis
+Click **+** in the tab bar to open a picker with a card for each kind of view (Analyse, Play,
+Database, Tournament). Each opens an independent view. Opening a database game or analysing an engine game creates a new analysis
 tab. Each tab keeps its own position and game state. Analysis runs only in the
 selected tab; games in other open Play tabs keep their clocks running.
 
