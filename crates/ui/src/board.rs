@@ -374,7 +374,13 @@ impl BoardView {
             .legal_moves()
             .iter()
             .filter(|mv| mv.from() == Some(from))
-            .map(board_target)
+            .flat_map(|mv| {
+                let rook = match mv {
+                    Move::Castle { rook, .. } => Some(*rook),
+                    _ => None,
+                };
+                std::iter::once(board_target(mv)).chain(rook)
+            })
             .collect()
     }
 
@@ -383,7 +389,7 @@ impl BoardView {
             .pos
             .legal_moves()
             .iter()
-            .filter(|mv| mv.from() == Some(from) && board_target(mv) == to)
+            .filter(|mv| mv.from() == Some(from) && makes_move(mv, to))
             .cloned()
             .collect();
         match candidates.as_slice() {
@@ -582,6 +588,12 @@ impl BoardView {
                 .into_any_element(),
         }
     }
+}
+
+/// Whether dropping a piece on `to` makes this move. Castling is entered either by
+/// moving the king two squares or by dropping it on its rook, as on Lichess.
+fn makes_move(mv: &Move, to: Square) -> bool {
+    board_target(mv) == to || matches!(mv, Move::Castle { rook, .. } if *rook == to)
 }
 
 fn board_target(mv: &Move) -> Square {
@@ -1076,6 +1088,43 @@ mod tests {
         }
         assert_eq!(snap_board_size(px(562.), 1.0), px(562.));
         assert_eq!(snap_board_size(px(249.), 1.0), px(242.));
+    }
+
+    #[test]
+    fn castling_takes_the_king_square_or_the_rook() {
+        let pos: Chess = "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1"
+            .parse::<chess_core::shakmaty::fen::Fen>()
+            .unwrap()
+            .into_position(chess_core::shakmaty::CastlingMode::Standard)
+            .unwrap();
+        let castles: Vec<Move> = pos
+            .legal_moves()
+            .into_iter()
+            .filter(|mv| matches!(mv, Move::Castle { .. }))
+            .collect();
+        assert_eq!(castles.len(), 2);
+        let short = castles
+            .iter()
+            .find(|mv| matches!(mv, Move::Castle { rook, .. } if *rook == Square::H1))
+            .unwrap();
+        assert!(makes_move(short, Square::G1));
+        assert!(makes_move(short, Square::H1));
+        assert!(!makes_move(short, Square::A1));
+        assert!(!makes_move(short, Square::F1));
+        // A normal rook move to h1 is not mistaken for castling.
+        let quiet = Move::Normal {
+            role: Role::King,
+            from: Square::E1,
+            capture: None,
+            to: Square::F1,
+            promotion: None,
+        };
+        assert!(!makes_move(&quiet, Square::H1));
+        let mut view = BoardView::new("test");
+        view.pos = pos;
+        let targets = view.legal_targets(Square::E1);
+        assert!(targets.contains(&Square::G1) && targets.contains(&Square::H1));
+        assert!(targets.contains(&Square::C1) && targets.contains(&Square::A1));
     }
 
     #[test]
