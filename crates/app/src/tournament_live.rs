@@ -83,6 +83,9 @@ pub struct LiveGame {
     pub start_fen: Option<String>,
     /// Book moves, then the engines' moves.
     pub moves: Vec<String>,
+    /// The mover's score after each move, from White's point of view; `None` for book
+    /// moves and moves reported without one. Parallel to `moves`.
+    pub evals: Vec<Option<Score>>,
     /// Remaining time in milliseconds after the last move.
     pub wtime: Option<u64>,
     pub btime: Option<u64>,
@@ -184,6 +187,7 @@ impl LiveGames {
         };
         match text("event").unwrap_or_default() {
             "game_started" => {
+                let opening = json_moves(event.get("opening"));
                 let slot = match self.games.get(&number) {
                     Some(game) => game.slot,
                     None => self.take_slot(),
@@ -196,7 +200,8 @@ impl LiveGames {
                         white: text("white").map(str::to_owned),
                         black: text("black").map(str::to_owned),
                         start_fen: text("start_fen").map(str::to_owned),
-                        moves: json_moves(event.get("opening")),
+                        evals: vec![None; opening.len()],
+                        moves: opening,
                         wtime: time("wtime"),
                         btime: time("btime"),
                         ..Default::default()
@@ -208,18 +213,21 @@ impl LiveGames {
                     return;
                 };
                 let legal = event.get("legal").and_then(|legal| legal.as_bool()) != Some(false);
+                let search = json_search(event);
                 if let Some(mv) = text("move").filter(|_| legal) {
                     if time("ply").is_none_or(|ply| ply == game.moves.len() as u64 + 1) {
                         game.moves.push(mv.to_owned());
+                        game.evals.resize(game.moves.len() - 1, None);
+                        game.evals.push(search.score);
                     } else if let Some(fen) = text("fen") {
                         // A gap in the stream: start again from where the game stands.
                         game.start_fen = Some(fen.to_owned());
                         game.moves.clear();
+                        game.evals.clear();
                     }
                 }
                 game.wtime = time("wtime");
                 game.btime = time("btime");
-                let search = json_search(event);
                 if text("side") == Some("white") {
                     game.white_search = search;
                     game.thinking = game.black.clone();
@@ -296,6 +304,8 @@ mod tests {
         let first = &games[0];
         assert_eq!(first.number, 1);
         assert_eq!(first.moves, ["e2e4", "c7c5"]);
+        // The book move has no eval; the engine move keeps the score it was played with.
+        assert_eq!(first.evals, [None, Some(Score::Mate(-4))]);
         assert_eq!((first.wtime, first.btime), (Some(1010), Some(990)));
         // Event scores are already from White's side.
         assert_eq!(first.black_search.score, Some(Score::Mate(-4)));
@@ -309,6 +319,7 @@ mod tests {
         );
         let second = &live.snapshot()[1];
         assert!(second.moves.is_empty());
+        assert!(second.evals.is_empty());
         assert_eq!(second.position().0.turn(), chess_core::Color::Black);
 
         live.feed(r#"{"event":"game_finished","game":1,"result":"1-0"}"#);

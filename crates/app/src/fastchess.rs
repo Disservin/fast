@@ -115,6 +115,63 @@ pub fn tournaments_dir(data: &Path) -> PathBuf {
     data.join("tournaments")
 }
 
+/// Bytes used by the files under `path`, without following symlinks.
+pub fn dir_size(path: &Path) -> u64 {
+    let Ok(entries) = std::fs::read_dir(path) else {
+        return 0;
+    };
+    entries
+        .flatten()
+        .map(|entry| match entry.file_type() {
+            Ok(kind) if kind.is_dir() => dir_size(&entry.path()),
+            Ok(kind) if kind.is_file() => entry.metadata().map_or(0, |meta| meta.len()),
+            _ => 0,
+        })
+        .sum()
+}
+
+/// Sizes like 512 B, 3.4 MB or 1.2 GB.
+pub fn format_bytes(bytes: u64) -> String {
+    const UNITS: [&str; 4] = ["KB", "MB", "GB", "TB"];
+    if bytes < 1000 {
+        return format!("{bytes} B");
+    }
+    let mut value = bytes as f64 / 1000.;
+    let mut unit = 0;
+    while value >= 1000. && unit + 1 < UNITS.len() {
+        value /= 1000.;
+        unit += 1;
+    }
+    format!("{value:.1} {}", UNITS[unit])
+}
+
+/// Deletes every tournament folder except `keep`, and returns how many went and the bytes
+/// freed. Stops at the first folder it cannot delete.
+pub fn clear_tournaments(data: &Path, keep: Option<&Path>) -> Result<(usize, u64)> {
+    let root = tournaments_dir(data);
+    let Ok(entries) = std::fs::read_dir(&root) else {
+        return Ok((0, 0));
+    };
+    let (mut count, mut freed) = (0, 0);
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if Some(path.as_path()) == keep {
+            continue;
+        }
+        let size;
+        if entry.file_type()?.is_dir() {
+            size = dir_size(&path);
+            std::fs::remove_dir_all(&path)?;
+        } else {
+            size = entry.metadata().map_or(0, |meta| meta.len());
+            std::fs::remove_file(&path)?;
+        }
+        count += 1;
+        freed += size;
+    }
+    Ok((count, freed))
+}
+
 /// A new, empty folder for one tournament.
 pub fn new_run_dir(data: &Path) -> Result<PathBuf> {
     let root = tournaments_dir(data);
@@ -1078,6 +1135,23 @@ pub fn count_games(pgn: &str) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn clears_tournament_folders_but_the_kept_one() {
+        let data = tempfile::tempdir().unwrap();
+        let root = tournaments_dir(data.path());
+        for name in ["a", "b"] {
+            std::fs::create_dir_all(root.join(name)).unwrap();
+            std::fs::write(root.join(name).join("games.pgn"), "1234").unwrap();
+        }
+        assert_eq!(dir_size(&root), 8);
+        let kept = root.join("b");
+        assert_eq!(clear_tournaments(data.path(), Some(&kept)).unwrap(), (1, 4));
+        assert!(!root.join("a").exists());
+        assert!(kept.join("games.pgn").exists());
+        assert_eq!(format_bytes(999), "999 B");
+        assert_eq!(format_bytes(1_300_000), "1.3 MB");
+    }
 
     fn setup(participants: Vec<Participant>) -> Setup {
         Setup {

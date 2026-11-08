@@ -16,7 +16,10 @@ use gpui::{
     Pixels, Render, SharedString, Subscription, Task, WeakEntity, Window, deferred, div,
     prelude::*, px, relative, rgb,
 };
-use gpui_component::input::{InputState, Textarea, TextareaState};
+use gpui_component::{
+    input::{InputState, Textarea, TextareaState},
+    scroll::ScrollableElement as _,
+};
 use ui::{
     BoardView, MONO, T,
     widgets::{btn, check, divider, h_flex, mono, panel, section_label, segmented, v_flex},
@@ -90,6 +93,8 @@ impl GameFilter {
 
 /// Live boards are this many pixels square in the tournament tab.
 const LIVE_BOARD: f32 = 280.;
+/// The finished games table scrolls past this height.
+const GAMES_TABLE_H: f32 = 520.;
 
 struct GameRow {
     game: u64,
@@ -267,6 +272,10 @@ pub struct TournamentScreen {
     install_task: Option<Task<()>>,
     pending: Option<Launch>,
     saved: Vec<fastchess::SavedRun>,
+    /// Bytes in the tournaments folder, once measured.
+    folder_size: Option<u64>,
+    /// Free up space was clicked once and waits for the confirming click.
+    clear_armed: bool,
     run: Option<Run>,
     live_games: Vec<LiveGame>,
     /// One board per fastchess thread, with the game and move count it shows.
@@ -337,7 +346,7 @@ impl TournamentScreen {
             async {}
         })
         .detach();
-        Self {
+        let mut screen = Self {
             model,
             workspace,
             source: Source::Form,
@@ -406,6 +415,8 @@ impl TournamentScreen {
             install_task: None,
             pending: None,
             saved,
+            folder_size: None,
+            clear_armed: false,
             run: None,
             live_games: Vec::new(),
             live_boards: HashMap::new(),
@@ -419,7 +430,64 @@ impl TournamentScreen {
             advanced_open: false,
             events_support: HashMap::new(),
             _prefs: prefs,
+        };
+        screen.measure_folder(cx);
+        screen
+    }
+
+    /// Measures the tournaments folder in the background.
+    fn measure_folder(&mut self, cx: &mut Context<Self>) {
+        let root = fastchess::tournaments_dir(&self.data_dir(cx));
+        cx.spawn(async move |this: WeakEntity<Self>, cx| {
+            let size = cx
+                .background_executor()
+                .spawn(async move { fastchess::dir_size(&root) })
+                .await;
+            this.update(cx, |screen, cx| {
+                screen.folder_size = Some(size);
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// Deletes the saved tournaments, keeping the one loaded in the tab.
+    fn clear_folder(&mut self, cx: &mut Context<Self>) {
+        self.clear_armed = false;
+        if self.run.as_ref().is_some_and(Run::active) {
+            return;
         }
+        let data = self.data_dir(cx);
+        let keep = self.run.as_ref().map(|run| run.dir.clone());
+        let model = self.model.clone();
+        cx.spawn(async move |this: WeakEntity<Self>, cx| {
+            let (result, data) = cx
+                .background_executor()
+                .spawn(async move {
+                    let result = fastchess::clear_tournaments(&data, keep.as_deref());
+                    (result, data)
+                })
+                .await;
+            this.update(cx, |screen, cx| {
+                match result {
+                    Ok((count, freed)) => model.toast(
+                        format!(
+                            "Deleted {count} tournament folder{}, freed {}",
+                            if count == 1 { "" } else { "s" },
+                            fastchess::format_bytes(freed)
+                        ),
+                        cx,
+                    ),
+                    Err(err) => model.toast(format!("Could not clear the folder: {err:#}"), cx),
+                }
+                screen.saved = fastchess::saved_runs(&data);
+                screen.measure_folder(cx);
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
     }
 
     /// What the tab shows beside its name: progress, or that the run is over.
@@ -837,6 +905,7 @@ impl TournamentScreen {
         self.live_games.clear();
         self.live_focus = None;
         self.saved = fastchess::saved_runs(&self.data_dir(cx));
+        self.measure_folder(cx);
         cx.notify();
     }
 
@@ -2132,7 +2201,7 @@ impl TournamentScreen {
         let focus = self
             .live_focus
             .and_then(|slot| self.live_games.iter().find(|game| game.slot == slot))
-            .map(|game| self.render_focus(game));
+            .map(|game| self.render_focus(game, &run.names));
         card()
             .child(head(toggle.map(IntoElement::into_any_element)))
             .children(focus)
@@ -2252,7 +2321,8 @@ impl TournamentScreen {
             }
             div()
                 .id("tournament-games-table")
-                .overflow_x_scroll()
+                .max_h(px(GAMES_TABLE_H))
+                .overflow_scrollbar()
                 .child(table)
                 .into_any_element()
         };
@@ -2269,7 +2339,7 @@ impl TournamentScreen {
             .child(body)
     }
 
-    fn render_focus(&self, game: &LiveGame) -> impl IntoElement + use<> {
+    fn render_focus(&self, game: &LiveGame, names: &[String]) -> impl IntoElement + use<> {
         let (pos, _) = game.position();
         let start_ply = (pos.fullmoves().get() - 1) * 2 + u32::from(pos.turn().is_black());
         // The line of whoever searches now, from the current position.
@@ -2329,9 +2399,10 @@ impl TournamentScreen {
                                     .child(SharedString::from(pv)),
                             ),
                         )
+                        .child(eval_graph(game, names, 110.))
                         .child(div().text_size(px(12.)).text_color(rgb(T.muted)).child(
                             SharedString::from(format!(
-                                "Game {} · Move {} · {} plies played · click the board's card again to close",
+                                "Game {}, move {}, {} plies played. Click the board's card again to close.",
                                 game.number,
                                 pos.fullmoves(),
                                 game.moves.len()
@@ -2339,6 +2410,70 @@ impl TournamentScreen {
                         )),
                 ),
         )
+    }
+
+    /// The tournaments folder with its disk usage, and a button that deletes what is in it.
+    fn render_folder(&self, folder: PathBuf, cx: &mut Context<Self>) -> Div {
+        let size = match self.folder_size {
+            Some(size) => fastchess::format_bytes(size),
+            None => "measuring…".to_owned(),
+        };
+        let busy = self.run.as_ref().is_some_and(Run::active);
+        let has_data = self.folder_size.is_some_and(|size| size > 0);
+        let this = cx.entity();
+        let actions = if self.clear_armed {
+            let cancel = this.clone();
+            h_flex()
+                .gap(px(6.))
+                .items_center()
+                .child(
+                    div()
+                        .text_size(px(12.))
+                        .text_color(rgb(T.warn))
+                        .child(SharedString::from(format!(
+                            "Delete {} of saved games and configs?",
+                            size
+                        ))),
+                )
+                .child(
+                    btn("tournament-clear-confirm", "Delete")
+                        .compact()
+                        .on_click(move |_, cx| {
+                            this.update(cx, |screen, cx| screen.clear_folder(cx))
+                        }),
+                )
+                .child(
+                    btn("tournament-clear-cancel", "Cancel")
+                        .compact()
+                        .on_click(move |_, cx| {
+                            cancel.update(cx, |screen, cx| {
+                                screen.clear_armed = false;
+                                cx.notify();
+                            })
+                        }),
+                )
+        } else {
+            h_flex()
+                .child(
+                    btn("tournament-clear", "Free up space")
+                        .compact()
+                        .disabled(busy || !has_data)
+                        .on_click(move |_, cx| {
+                            this.update(cx, |screen, cx| {
+                                screen.clear_armed = true;
+                                cx.notify();
+                            })
+                        }),
+                )
+        };
+        v_flex()
+            .gap(px(6.))
+            .child(
+                mono(format!("Folder: {} ({size})", folder.display()))
+                    .text_size(px(12.))
+                    .text_color(rgb(T.muted)),
+            )
+            .child(actions)
     }
 
     fn render_empty(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
@@ -2364,11 +2499,7 @@ impl TournamentScreen {
                 "Each tournament gets its own folder with games.pgn and config.json, so it can \
                  be stopped and continued later, here or with fastchess -config file=config.json.",
             ))
-            .child(
-                mono(format!("Folder: {}", folder.display()))
-                    .text_size(px(12.))
-                    .text_color(rgb(T.muted)),
-            )
+            .child(self.render_folder(folder, cx))
             .child(
                 div().mt(px(6.)).child(
                     btn("tournament-new-empty", ui::i18n::t("New tournament"))
@@ -2639,6 +2770,8 @@ fn player_row(game: &LiveGame, white: bool, names: &[String], to_move: bool) -> 
         .map(tournament_live::format_clock)
         .unwrap_or_else(|| "–".into());
     h_flex()
+        .h(px(26.))
+        .flex_none()
         .gap(px(8.))
         .items_center()
         .text_size(px(13.))
@@ -2714,12 +2847,86 @@ pub(crate) fn game_card(
         .child(player_row(game, true, names, !black_to_move))
         .child(
             h_flex()
+                .h(px(18.))
+                .flex_none()
+                .items_center()
                 .justify_between()
                 .text_size(px(12.))
                 .text_color(rgb(T.muted))
                 .child(SharedString::from(format!("Game #{}", game.number)))
                 .child(SharedString::from(format!("{eval}{depth}"))),
         )
+}
+
+/// The game's eval after each move, one line per engine in its tournament colour.
+/// Shown only for the game being watched on its own.
+pub(crate) fn eval_graph(game: &LiveGame, names: &[String], height: f32) -> Div {
+    let cp = |score: Score| match score {
+        Score::Cp(cp) => cp as f32,
+        Score::Mate(moves) => {
+            chess_core::annotation::MATE_CP as f32 * if moves > 0 { 1. } else { -1. }
+        }
+    };
+    // Ply 1 is White's move, so even indices are White's engine and odd ones Black's.
+    let side = |white: bool| {
+        let name = if white { &game.white } else { &game.black };
+        let colour = name
+            .as_deref()
+            .map_or(T.muted, |name| engine_colour(names, name));
+        let values = game
+            .evals
+            .iter()
+            .enumerate()
+            .map(|(index, score)| score.filter(|_| (index % 2 == 0) == white).map(cp))
+            .collect();
+        (name.clone().unwrap_or_else(|| "?".into()), colour, values)
+    };
+    let sides = [side(true), side(false)];
+    let legend = h_flex()
+        .gap(px(14.))
+        .text_size(px(12.))
+        .text_color(rgb(T.fg_2))
+        .children(sides.iter().map(|(name, colour, _)| {
+            h_flex()
+                .gap(px(6.))
+                .items_center()
+                .min_w_0()
+                .child(swatch(*colour))
+                .child(SharedString::from(name.clone()))
+        }));
+    let count = game.moves.len();
+    let graph = ui::graph::graph(ui::graph::GraphProps {
+        series: sides
+            .into_iter()
+            .map(|(_, color, values)| ui::graph::Series {
+                values,
+                color,
+                fill: false,
+                connect: true,
+            })
+            .collect(),
+        count,
+        current: count.checked_sub(1),
+        scale: ui::graph::Scale::SymLog {
+            max: chess_core::annotation::MATE_CP as f32,
+            unit: 100.0,
+        },
+        ticks: ui::graph::eval_ticks(),
+        height,
+        on_scrub: std::rc::Rc::new(|_, _, _| {}),
+        empty: "No evaluations yet. Each engine's score appears after its move.",
+    });
+    v_flex()
+        .gap(px(6.))
+        .child(
+            h_flex()
+                .justify_between()
+                .items_center()
+                .gap(px(10.))
+                .child(section_label("Eval"))
+                .child(legend),
+        )
+        .child(graph)
 }
 
 /// Result chip colours: draws grey, engine A's wins blue, engine B's wins orange.
@@ -3163,10 +3370,10 @@ pub(crate) fn search_text(search: &Search, long: bool) -> String {
     }
     let nodes = search
         .nodes
-        .map(|nodes| format!(" · {nodes} nodes"))
+        .map(|nodes| format!("  {nodes} nodes"))
         .unwrap_or_default();
     format!(
-        "{} · depth {}{nodes}",
+        "{}  depth {}{nodes}",
         score.format(),
         search.depth.unwrap_or(0)
     )

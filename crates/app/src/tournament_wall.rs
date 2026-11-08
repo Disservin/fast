@@ -22,7 +22,7 @@ use ui::{
 
 use crate::{
     model::{AppModel, ModelEvent},
-    screens::tournament::{game_card, search_text},
+    screens::tournament::{eval_graph, game_card, search_text},
     tournament_live::{LiveGame, LiveGames, Search},
 };
 
@@ -32,10 +32,11 @@ const GAP: Pixels = px(20.);
 const PAD: Pixels = px(24.);
 /// The title row above the grid.
 const HEADER_H: Pixels = px(32.);
-/// What a game card adds to its board: across, the padding and eval bar; down, the padding,
-/// the two player rows and the footer.
+/// What a game card adds to its board: across, the padding and eval bar; down, the border,
+/// padding and gaps (2 + 24 + 24), the two player rows (2 × 26) and the footer (18). Must
+/// match `game_card`, or the grid is taller than the window.
 const CARD_EXTRA_W: Pixels = px(40.);
-const CARD_EXTRA_H: Pixels = px(96.);
+const CARD_EXTRA_H: Pixels = px(120.);
 const MIN_EDGE: Pixels = px(96.);
 /// The side column of the single-game view.
 const DETAIL_W: Pixels = px(420.);
@@ -105,7 +106,7 @@ impl LiveWall {
         cx: &mut App,
     ) {
         let title: SharedString = match names.as_slice() {
-            [a, b, ..] => format!("{a} vs {b} · live games"),
+            [a, b, ..] => format!("{a} vs {b}, live games"),
             _ => "Live games".to_owned(),
         }
         .into();
@@ -254,12 +255,20 @@ impl LiveWall {
                         .child(game_card(game, board, edge, &self.names, false)),
                 )
             }));
-        h_flex()
+        // Centred while it fits; if it is ever taller it scrolls rather than spilling over
+        // the header.
+        div()
+            .id("wall-grid")
             .flex_1()
             .min_h_0()
-            .justify_center()
-            .items_center()
-            .child(grid)
+            .overflow_y_scroll()
+            .child(
+                h_flex()
+                    .min_h_full()
+                    .justify_center()
+                    .items_center()
+                    .child(grid),
+            )
             .into_any_element()
     }
 
@@ -302,7 +311,7 @@ impl LiveWall {
             v_flex()
                 .gap(px(4.))
                 .child(section_label(if searching {
-                    format!("{side} · thinking")
+                    format!("{side}, thinking")
                 } else {
                     side.to_owned()
                 }))
@@ -348,6 +357,7 @@ impl LiveWall {
             .child(engine("White", &game.white, &game.white_search))
             .child(engine("Black", &game.black, &game.black_search))
             .child(text_block("Line", line))
+            .child(eval_graph(game, &self.names, 140.))
             .child(
                 div()
                     .id("wall-moves")
@@ -355,7 +365,7 @@ impl LiveWall {
                     .min_h_0()
                     .overflow_y_scroll()
                     .child(text_block(
-                        &format!("Moves · {} plies", game.moves.len()),
+                        &format!("Moves ({} plies)", game.moves.len()),
                         if moves.is_empty() {
                             "–".into()
                         } else {
@@ -387,11 +397,11 @@ impl Render for LiveWall {
         };
         let status = match focused {
             Some(game) => format!(
-                "Game #{} · Esc or Back for all games · ← → for the others",
+                "Game #{}. Esc or Back for all games, ← → for the others",
                 game.number
             ),
             None if count == 0 => "No games in progress".to_owned(),
-            None => format!("{count} in progress · click a game to watch it"),
+            None => format!("{count} in progress. Click a game to watch it."),
         };
         let back = focused.map(|_| {
             let this = cx.entity().downgrade();
