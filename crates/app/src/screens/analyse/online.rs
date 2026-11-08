@@ -152,33 +152,17 @@ impl AnalyseScreen {
         if self.online.fen.as_ref() != Some(&fen) {
             return;
         }
-        fn clean(san: &str) -> &str {
-            san.trim_end_matches(['+', '#'])
-        }
-        let row_for = |rows: &mut Vec<MoveRow>, san: &str| -> Option<usize> {
-            match rows.iter().position(|row| clean(&row.san) == clean(san)) {
-                Some(index) => Some(index),
-                None if all_moves => {
-                    rows.push(MoveRow {
-                        san: san.to_owned(),
-                        ..Default::default()
-                    });
-                    Some(rows.len() - 1)
-                }
-                None => None,
-            }
-        };
         if let Lookup::Ready(Some(probe)) = &self.online.tablebase {
             for tb in probe.rows() {
-                if let Some(index) = row_for(rows, &tb.san) {
-                    rows[index].tb = Some(tb);
+                for row in super::rows_for(rows, &tb.san, all_moves) {
+                    row.tb = Some(tb.clone());
                 }
             }
         }
         if let Lookup::Ready(CloudReply::Moves(moves)) = &self.online.cloud {
             for cloud in moves {
-                if let Some(index) = row_for(rows, &cloud.san) {
-                    rows[index].cloud = Some(cloud.clone());
+                for row in super::rows_for(rows, &cloud.san, all_moves) {
+                    row.cloud = Some(cloud.clone());
                 }
             }
         }

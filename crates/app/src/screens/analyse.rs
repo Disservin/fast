@@ -63,20 +63,17 @@ struct BackwardRun {
     _poll: Task<()>,
 }
 
-/// One candidate move merged from engines, databases and the repertoire.
+/// One candidate move: an engine's line for it, or a move only databases, online
+/// sources or the repertoire know. With several engines a move can have a row each.
 #[derive(Clone, Debug, Default)]
 pub struct MoveRow {
     pub san: String,
-    /// The score the table sorts by: the primary engine's, else another engine's.
+    /// The score of this row's engine line.
     pub score: Option<Score>,
-    /// Each analysis engine's score for this move, in `LiveAnalysis::engines` order.
-    pub scores: Vec<Option<Score>>,
     pub wdl: Option<Wdl>,
     pub pv: Vec<String>,
     pub depth: u32,
-    pub nodes: Option<u64>,
-    pub nps: Option<u64>,
-    /// The engine whose line this row previews.
+    /// The engine whose line this row is.
     pub engine_id: Option<EngineId>,
     pub reference: Option<MoveStat>,
     pub mine: Option<MoveStat>,
@@ -87,6 +84,26 @@ pub struct MoveRow {
     pub rep: RepTag,
     /// How this line compares with the best one, for its arrow and label colour.
     pub quality: Option<Quality>,
+}
+
+/// Which table row is picked: the move, and the engine whose line it is.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RowKey {
+    pub san: String,
+    pub engine_id: Option<EngineId>,
+}
+
+impl RowKey {
+    pub fn of(row: &MoveRow) -> Self {
+        Self {
+            san: row.san.clone(),
+            engine_id: row.engine_id,
+        }
+    }
+
+    pub fn matches(&self, row: &MoveRow) -> bool {
+        row.san == self.san && row.engine_id == self.engine_id
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -122,36 +139,25 @@ pub fn merge_rows(
         user_to_move,
         sort,
     } = options;
-    fn clean(san: &str) -> &str {
-        san.trim_end_matches(['+', '#'])
-    }
     let mut rows = engine_lines;
-    let upsert = |rows: &mut Vec<MoveRow>, san: &str| -> usize {
-        match rows.iter().position(|row| clean(&row.san) == clean(san)) {
-            Some(index) => index,
-            None => {
-                rows.push(MoveRow {
-                    san: san.to_owned(),
-                    ..Default::default()
-                });
-                rows.len() - 1
-            }
-        }
-    };
     for stat in reference {
-        let index = upsert(&mut rows, &stat.san);
-        rows[index].reference = Some(stat);
+        for row in rows_for(&mut rows, &stat.san, true) {
+            row.reference = Some(stat.clone());
+        }
     }
     for stat in mine {
-        let index = upsert(&mut rows, &stat.san);
-        rows[index].mine = Some(stat);
+        for row in rows_for(&mut rows, &stat.san, true) {
+            row.mine = Some(stat.clone());
+        }
     }
     for (san, main) in rep_moves {
-        let index = upsert(&mut rows, san);
-        rows[index].rep = if *main { RepTag::Main } else { RepTag::Side };
+        for row in rows_for(&mut rows, san, true) {
+            row.rep = if *main { RepTag::Main } else { RepTag::Side };
+        }
     }
     for san in legal {
-        upsert(&mut rows, san);
+        // Adding the row is the point; there is nothing to set on it.
+        let _ = rows_for(&mut rows, san, true);
     }
     // The user played something the repertoire does not cover, when it has an answer.
     if user_to_move && !rep_moves.is_empty() {
@@ -206,6 +212,26 @@ pub fn merge_rows(
     rows
 }
 
+/// Every row for `san` (one per engine that found it), ignoring check marks. When
+/// there is none and `add` is set, a new row for the move is added and returned.
+pub(crate) fn rows_for<'a>(
+    rows: &'a mut Vec<MoveRow>,
+    san: &str,
+    add: bool,
+) -> impl Iterator<Item = &'a mut MoveRow> {
+    fn clean(san: &str) -> &str {
+        san.trim_end_matches(['+', '#'])
+    }
+    if add && !rows.iter().any(|row| clean(&row.san) == clean(san)) {
+        rows.push(MoveRow {
+            san: san.to_owned(),
+            ..Default::default()
+        });
+    }
+    rows.iter_mut()
+        .filter(move |row| clean(&row.san) == clean(san))
+}
+
 /// The colour for a move's quality.
 pub fn quality_color(quality: Quality) -> u32 {
     match quality {
@@ -240,7 +266,8 @@ pub struct AnalyseScreen {
     board: Entity<BoardView>,
     live: Entity<LiveAnalysis>,
     rows: Vec<MoveRow>,
-    selected_san: Option<String>,
+    /// The table row shown in Line preview.
+    selected: Option<RowKey>,
     row_chosen: bool,
     reference: Vec<MoveStat>,
     mine: Vec<MoveStat>,
@@ -410,7 +437,7 @@ impl AnalyseScreen {
             rows: Vec::new(),
             depths: HashMap::new(),
             last_child: HashMap::new(),
-            selected_san: None,
+            selected: None,
             row_chosen: false,
             reference: Vec::new(),
             mine: Vec::new(),
@@ -569,7 +596,7 @@ impl AnalyseScreen {
         }
         self.board
             .update(cx, |board, cx| board.set_position(pos, last, animate, cx));
-        self.selected_san = None;
+        self.selected = None;
         self.row_chosen = false;
         self.board
             .update(cx, |board, cx| board.set_arrows(Vec::new(), cx));
@@ -587,7 +614,6 @@ impl AnalyseScreen {
     }
 
     fn query_databases(&mut self, cx: &mut Context<Self>) {
-        self.selected_san = self.selected_san.take();
         let hash = position_hash(&self.analysed_pos());
         let model = self.model.read(cx);
         let reference = model.reference_db().map(|entry| entry.path.clone());
@@ -627,47 +653,26 @@ impl AnalyseScreen {
         let model = self.model.read(cx);
         let live = self.live.read(cx);
         let mut lines: Vec<MoveRow> = Vec::new();
-        // Every engine's lines, merged by move. The primary engine goes first, so its
-        // line is the one a row previews and its score the one the table sorts by.
-        let count = live.engines.len();
+        // A row per engine line, so engines can be compared move by move in one
+        // column. The primary engine goes first, so on equal scores its row leads.
         let primary_id = live.primary().map(|engine| engine.config.id);
-        let mut order: Vec<usize> = (0..count).collect();
-        order.sort_by_key(|&index| Some(live.engines[index].config.id) != primary_id);
-        for index in order {
-            let engine = &live.engines[index];
+        let mut engines: Vec<&crate::live::LiveEngine> = live.engines.iter().collect();
+        engines.sort_by_key(|engine| Some(engine.config.id) != primary_id);
+        for engine in engines {
+            let show_wdl = crate::live::wdl_visible(&engine.config, true);
             for line in engine.lines.values() {
                 let Some(san) = line.sans.first() else {
                     continue;
                 };
-                let row = match lines.iter().position(|row| &row.san == san) {
-                    Some(found) => &mut lines[found],
-                    None => {
-                        lines.push(MoveRow {
-                            san: san.clone(),
-                            scores: vec![None; count],
-                            wdl: None,
-                            pv: line.sans.clone(),
-                            depth: line.update.depth,
-                            nodes: line.update.nodes,
-                            nps: line.update.nps,
-                            engine_id: Some(engine.config.id),
-                            ..Default::default()
-                        });
-                        lines.last_mut().expect("just pushed")
-                    }
-                };
-                row.scores[index] = line.score;
-                row.score = row.score.or(line.score);
-            }
-        }
-        if let Some(wdl_engine) = live.wdl_engine() {
-            for line in wdl_engine.lines.values() {
-                let Some(san) = line.sans.first() else {
-                    continue;
-                };
-                if let Some(row) = lines.iter_mut().find(|row| &row.san == san) {
-                    row.wdl = line.wdl;
-                }
+                lines.push(MoveRow {
+                    san: san.clone(),
+                    score: line.score,
+                    wdl: line.wdl.filter(|_| show_wdl),
+                    pv: line.sans.clone(),
+                    depth: line.update.depth,
+                    engine_id: Some(engine.config.id),
+                    ..Default::default()
+                });
             }
         }
         let path = self.analysed_san_path();
@@ -715,7 +720,7 @@ impl AnalyseScreen {
         if !self.row_chosen
             && let Some(first) = self.rows.iter().find(|row| !row.pv.is_empty())
         {
-            self.selected_san = Some(first.san.clone());
+            self.selected = Some(RowKey::of(first));
         }
         self.update_arrows(cx);
         cx.notify();
@@ -759,9 +764,17 @@ impl AnalyseScreen {
                 .filter(|row| !row.pv.is_empty())
                 .filter_map(|row| Some((row, row.quality?)))
                 .collect();
+            // Several engines on one move share its arrow: the best-ranked row's.
+            let mut seen: Vec<&str> = Vec::new();
+            graded.retain(|(row, _)| {
+                let first = !seen.contains(&row.san.as_str());
+                seen.push(&row.san);
+                first
+            });
             graded.sort_by_key(|(_, quality)| std::cmp::Reverse(*quality));
+            let selected_san = self.selected.as_ref().map(|key| key.san.as_str());
             for (row, quality) in graded {
-                if self.selected_san.as_deref() == Some(row.san.as_str()) {
+                if selected_san == Some(row.san.as_str()) {
                     continue;
                 }
                 if let Some(arrow) = arrow_for(&row.san) {
@@ -779,8 +792,8 @@ impl AnalyseScreen {
                 }
             }
         }
-        if let Some(san) = &self.selected_san
-            && let Some(arrow) = arrow_for(san)
+        if let Some(key) = &self.selected
+            && let Some(arrow) = arrow_for(&key.san)
         {
             let quality = self
                 .selected_row()
@@ -1393,17 +1406,20 @@ impl AnalyseScreen {
     }
 
     fn selected_row(&self) -> Option<&MoveRow> {
-        self.selected_san
-            .as_ref()
-            .and_then(|san| self.rows.iter().find(|row| &row.san == san))
+        let key = self.selected.as_ref()?;
+        self.rows
+            .iter()
+            .find(|row| key.matches(row))
+            // The chosen engine may have dropped the move; another row for it will do.
+            .or_else(|| self.rows.iter().find(|row| row.san == key.san))
     }
 
-    fn select_row(&mut self, san: String, cx: &mut Context<Self>) {
-        if self.continue_pv_with(&san, cx) {
+    fn select_row(&mut self, key: RowKey, cx: &mut Context<Self>) {
+        if self.continue_pv_with(&key, cx) {
             return;
         }
         self.row_chosen = true;
-        self.selected_san = Some(san);
+        self.selected = Some(key);
         self.update_arrows(cx);
         cx.notify();
     }
@@ -2095,37 +2111,23 @@ impl AnalyseScreen {
         let model = self.model.read(cx);
         let notation = model.config.board.notation;
         let live = self.live.read(cx);
-        let wdl_engine = live.wdl_engine();
-        // One eval column per analysis engine, so engines can be compared move by move.
-        let mut eval_titles: Vec<String> = live
+        // With several engines each row names the engine whose line it is.
+        let engine_badges = live.engines.len() > 1;
+        let engine_configs: HashMap<EngineId, engine::EngineConfig> = live
             .engines
             .iter()
-            .map(|engine| {
-                let short = short_engine(&engine.config.name);
-                // Long development version strings would not fit the column.
-                let version = &engine.config.version;
-                if version.len() <= 5 {
-                    format!("{short} {version}").trim().to_owned()
-                } else {
-                    short
-                }
-            })
+            .map(|engine| (engine.config.id, engine.config.clone()))
             .collect();
-        if eval_titles.is_empty() {
-            eval_titles.push(ui::i18n::t("Eval").to_owned());
-        }
-        let eval_columns = eval_titles.len();
-        let wdl_title = wdl_engine
-            .map(|engine| format!("{} W / D / L", short_engine(&engine.config.name)))
-            .unwrap_or_else(|| "W / D / L".to_owned());
         let reference_title = model
             .reference_db()
             .map(|entry| reference_column_title(&entry.name))
             .unwrap_or_else(|| "Reference".to_owned());
         let show_wdl = self.show_wdl;
         let quality_arrows = model.config.view.quality_arrows;
+        const COL_BADGE: f32 = 96.;
         const COL_MOVE: f32 = 64.;
         const COL_SF: f32 = 66.;
+        let col_lead = if engine_badges { COL_BADGE } else { 0. };
         const COL_WDL: f32 = 112.;
         const COL_REF: f32 = 84.;
         const COL_MY: f32 = 80.;
@@ -2138,26 +2140,32 @@ impl AnalyseScreen {
             .bg(rgb(T.surface_2))
             .border_b_1()
             .border_color(rgb(T.border))
+            .when(engine_badges, |header| {
+                header.child(
+                    div()
+                        .w(px(COL_BADGE))
+                        .flex_none()
+                        .child(section_label(ui::i18n::t("Engine"))),
+                )
+            })
             .child(
                 div()
                     .w(px(COL_MOVE))
                     .flex_none()
                     .child(section_label(ui::i18n::t("Move"))),
             )
-            .children(eval_titles.iter().map(|title| {
+            .child(
                 div()
                     .w(px(COL_SF))
                     .flex_none()
-                    .pr(px(6.))
-                    .overflow_hidden()
-                    .child(section_label(title))
-            }))
+                    .child(section_label(ui::i18n::t("Eval"))),
+            )
             .when(show_wdl, |header| {
                 header.child(
                     div()
                         .w(px(COL_WDL))
                         .flex_none()
-                        .child(section_label(&wdl_title)),
+                        .child(section_label("W / D / L")),
                 )
             })
             .when(online, |header| {
@@ -2207,8 +2215,8 @@ impl AnalyseScreen {
             .map_or(0., |lines| lines.clamp(1, legal) as f32 * MOVE_ROW_H);
         let mut rows = v_flex().w_full().min_h(px(reserved));
         for (index, row) in self.rows.iter().enumerate() {
-            let selected = self.selected_san.as_deref() == Some(row.san.as_str());
-            let san = row.san.clone();
+            let selected = self.selected.as_ref().is_some_and(|key| key.matches(row));
+            let key = RowKey::of(row);
             let mv = row
                 .san
                 .parse::<chess_core::shakmaty::san::San>()
@@ -2221,16 +2229,14 @@ impl AnalyseScreen {
                 .filter(|_| quality_arrows)
                 .map_or(T.fg, quality_color);
             let select_this = this.clone();
-            let scores: Vec<String> = (0..eval_columns)
-                .map(|column| {
-                    row.scores
-                        .get(column)
-                        .copied()
-                        .flatten()
-                        .map(Score::display)
-                        .unwrap_or_else(|| "—".to_owned())
-                })
-                .collect();
+            let score = row
+                .score
+                .map(Score::display)
+                .unwrap_or_else(|| "—".to_owned());
+            let badge = engine_badges.then(|| {
+                let config = row.engine_id.and_then(|id| engine_configs.get(&id));
+                engine_badge(config, index, COL_BADGE)
+            });
             let stat_text = |stat: &Option<MoveStat>| {
                 stat.as_ref()
                     .map(|stat| {
@@ -2266,8 +2272,8 @@ impl AnalyseScreen {
                         row_el.hover(|style| style.bg(rgb(T.hover)))
                     })
                     .on_click(move |_, _, cx| {
-                        let san = san.clone();
-                        select_this.update(cx, |screen, cx| screen.select_row(san, cx));
+                        let key = key.clone();
+                        select_this.update(cx, |screen, cx| screen.select_row(key, cx));
                     })
                     .when(selected, |row_el| {
                         row_el.child(
@@ -2280,6 +2286,7 @@ impl AnalyseScreen {
                                 .bg(rgb(T.accent)),
                         )
                     })
+                    .children(badge)
                     .child(
                         div()
                             .w(px(COL_MOVE))
@@ -2288,14 +2295,14 @@ impl AnalyseScreen {
                             .text_color(rgb(label_color))
                             .child(ui::i18n::t(&label).to_owned()),
                     )
-                    .children(scores.into_iter().map(|score| {
+                    .child(
                         div()
                             .w(px(COL_SF))
                             .flex_none()
                             .text_size(px(13.))
                             .text_color(rgb(T.fg_2))
-                            .child(score)
-                    }))
+                            .child(score),
+                    )
                     .when(show_wdl, |row_el| {
                         row_el.child(
                             div().w(px(COL_WDL)).flex_none().pr(px(12.)).child(
@@ -2410,8 +2417,9 @@ impl AnalyseScreen {
                     .overflow_x_scroll()
                     .child(
                         v_flex()
-                            .min_w(px(COL_MOVE
-                                + COL_SF * eval_columns as f32
+                            .min_w(px(col_lead
+                                + COL_MOVE
+                                + COL_SF
                                 + if show_wdl { COL_WDL } else { 0. }
                                 + if online { COL_TB + COL_CLOUD } else { 0. }
                                 + COL_REF
@@ -2423,63 +2431,35 @@ impl AnalyseScreen {
             )
     }
 
-    /// Who found the selected line and how hard it searched: the engine, then small
-    /// labelled figures. Depth is the line's own; the rest describe the whole search.
-    fn render_search_stats(&self, row: &MoveRow, cx: &gpui::App) -> gpui::AnyElement {
+    /// Who found the selected line and how deep: the engine's icon and name, then the
+    /// line's depth. The search's other figures live in the Engine panel's rows.
+    fn render_line_source(&self, row: &MoveRow, cx: &gpui::App) -> gpui::AnyElement {
         let live = self.live.read(cx);
         let engine = row
             .engine_id
             .and_then(|id| live.engines.iter().find(|engine| engine.config.id == id));
-        let stats = engine.and_then(|engine| engine.stats());
-        let depth = match stats.and_then(|stats| stats.seldepth) {
-            Some(sel) if sel > row.depth => format!("{}/{sel}", row.depth),
-            _ => row.depth.to_string(),
+        let depth = match engine
+            .and_then(|engine| engine.stats())
+            .and_then(|stats| stats.seldepth)
+        {
+            Some(sel) if sel > row.depth => format!("d{}/{sel}", row.depth),
+            _ => format!("d{}", row.depth),
         };
-        let mut figures: Vec<(&'static str, String)> = vec![("Depth", depth)];
-        let nodes = stats.and_then(|stats| stats.nodes).or(row.nodes);
-        figures.extend(nodes.map(|nodes| ("Nodes", engine::format_nodes(nodes))));
-        let nps = stats.and_then(|stats| stats.nps).or(row.nps);
-        figures.extend(nps.map(|nps| ("Speed", engine::format_speed(nps))));
-        if let Some(stats) = stats {
-            figures.extend(stats.time_ms.map(|ms| ("Time", search_time(ms))));
-            figures.extend(
-                stats
-                    .hashfull
-                    .filter(|full| *full > 0)
-                    .map(|full| ("Hash", format!("{:.0}%", f64::from(full) / 10.))),
-            );
-            figures.extend(
-                stats
-                    .tbhits
-                    .filter(|hits| *hits > 0)
-                    .map(|hits| ("TB", engine::format_nodes(hits).replace(" n", ""))),
-            );
-        }
-        // Fixed widths, so changing figures never push each other around.
-        let width = |label: &str| match label {
-            "Depth" => 46.,
-            "Nodes" | "Speed" => 74.,
-            "Time" => 52.,
-            _ => 40.,
-        };
-        let figure = |(label, value): (&'static str, String)| {
-            v_flex()
-                .w(px(width(label)))
-                .flex_none()
-                .gap(px(1.))
-                .child(
-                    div()
-                        .text_size(px(9.5))
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .text_color(rgb(T.faint))
-                        .child(ui::i18n::t(label).to_uppercase()),
-                )
-                .child(mono(value).text_size(px(12.)).text_color(rgb(T.fg_2)))
-        };
+        let name = engine.map(|engine| {
+            let config = &engine.config;
+            format!("{} {}", config.name, config.version)
+                .trim()
+                .to_owned()
+        });
         h_flex()
-            .gap(px(8.))
+            .gap(px(6.))
             .items_center()
-            .children(figures.into_iter().map(figure))
+            .text_size(px(12.))
+            .text_color(rgb(T.muted))
+            .children(engine.map(|engine| crate::controls::engine_icon(&engine.config, 14.)))
+            .children(name.map(|name| div().text_color(rgb(T.fg_2)).child(name)))
+            .when(engine.is_some(), |row| row.child("·"))
+            .child(mono(depth).text_size(px(12.)))
             .into_any_element()
     }
 
@@ -2505,7 +2485,7 @@ impl AnalyseScreen {
         let meta = selected
             .as_ref()
             .filter(|row| row.depth > 0)
-            .map(|row| self.render_search_stats(row, cx));
+            .map(|row| self.render_line_source(row, cx));
         // The move itself, large, with its score and how it compares with the best line.
         let headline = selected.as_ref().map(|row| {
             let score = row.score.map(|score| {
@@ -2862,6 +2842,44 @@ fn search_time(ms: u64) -> String {
         1_000..60_000 => format!("{:.1} s", ms as f64 / 1000.),
         _ => format!("{}:{:02}", ms / 60_000, (ms / 1000) % 60),
     }
+}
+
+/// The engine a table row's line comes from: its icon and short name, cut to fit
+/// `width`, with the full name on hover. Rows without an engine line keep the space.
+fn engine_badge(
+    config: Option<&engine::EngineConfig>,
+    index: usize,
+    width: f32,
+) -> gpui::AnyElement {
+    let Some(config) = config else {
+        return div().w(px(width)).flex_none().into_any_element();
+    };
+    let full = format!("{} {}", config.name, config.version)
+        .trim()
+        .to_owned();
+    h_flex()
+        .id(("move-engine", index))
+        .w(px(width))
+        .flex_none()
+        .pr(px(8.))
+        .gap(px(6.))
+        .tooltip(move |window, cx| {
+            gpui_component::tooltip::Tooltip::new(full.clone()).build(window, cx)
+        })
+        .child(crate::controls::engine_icon(config, 14.))
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .overflow_hidden()
+                .text_ellipsis()
+                .font_family(ui::SANS)
+                .text_size(px(12.))
+                .font_weight(FontWeight::MEDIUM)
+                .text_color(rgb(T.fg_2))
+                .child(short_engine(&config.name)),
+        )
+        .into_any_element()
 }
 
 fn short_engine(name: &str) -> String {
@@ -3241,6 +3259,41 @@ mod tests {
         assert_eq!(rows[2].rep, RepTag::None);
         assert_eq!(rows[3].rep, RepTag::Side);
         assert_eq!(rows[0].reference.as_ref().unwrap().games, 412);
+    }
+
+    #[test]
+    fn each_engine_line_keeps_its_own_row_and_shares_the_move_data() {
+        let engine_line = |san: &str, cp: i32, id: EngineId| MoveRow {
+            engine_id: Some(id),
+            ..line(san, cp)
+        };
+        let rows = merge_rows(
+            vec![
+                engine_line("d4", 24, 1),
+                engine_line("d4", 31, 2),
+                engine_line("e4", 19, 2),
+            ],
+            vec![stat("d4", 95), stat("c4", 7)],
+            vec![],
+            &[],
+            &[],
+            opts(true, true),
+        );
+        let order: Vec<(&str, Option<EngineId>)> = rows
+            .iter()
+            .map(|row| (row.san.as_str(), row.engine_id))
+            .collect();
+        assert_eq!(
+            order,
+            vec![
+                ("d4", Some(2)),
+                ("d4", Some(1)),
+                ("e4", Some(2)),
+                ("c4", None),
+            ]
+        );
+        assert_eq!(rows[0].reference.as_ref().unwrap().games, 95);
+        assert_eq!(rows[1].reference.as_ref().unwrap().games, 95);
     }
 
     #[test]

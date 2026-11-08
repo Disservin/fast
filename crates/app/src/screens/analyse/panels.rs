@@ -19,7 +19,7 @@ use ui::{
     widgets::{btn, check, h_flex, icon_btn, mono, panel, section_label, v_flex},
 };
 
-use super::{AnalyseScreen, MoveRow};
+use super::{AnalyseScreen, MoveRow, RowKey};
 use crate::config::AnalysisLimit;
 use crate::debug_window::LOG_ROW_H;
 use crate::model::ToastExt as _;
@@ -34,6 +34,19 @@ const HOVER_BG: u32 = 0x3F4753;
 const PEEK_SIZE: f32 = 200.;
 /// How far the peek board sits below and right of the cursor, so it never covers the move.
 const PEEK_OFFSET: f32 = 14.;
+/// How far a search is toward the limit, from 0 to 1; an infinite search has no end.
+fn limit_progress(stats: &engine::AnalysisUpdate, limit: AnalysisLimit) -> Option<f32> {
+    let fraction = match limit {
+        AnalysisLimit::Infinite => return None,
+        AnalysisLimit::Depth(depth) => stats.depth as f64 / f64::from(depth.max(1)),
+        AnalysisLimit::Seconds(seconds) => {
+            stats.time_ms? as f64 / (f64::from(seconds.max(1)) * 1000.)
+        }
+        AnalysisLimit::Nodes(nodes) => stats.nodes? as f64 / nodes.max(1) as f64,
+    };
+    Some(fraction.clamp(0., 1.) as f32)
+}
+
 const LIMITS: [(AnalysisLimit, &str); 5] = [
     (AnalysisLimit::Infinite, "∞"),
     (AnalysisLimit::Depth(20), "d20"),
@@ -569,8 +582,15 @@ impl AnalyseScreen {
             )
     }
 
-    /// One engine: an on/off check and what its search is doing right now.
-    fn engine_row(&self, config: &EngineConfig, chosen: bool, cx: &mut Context<Self>) -> Div {
+    /// One engine: an on/off check, what its search is doing right now, and a thin bar
+    /// along the bottom for how far it is toward the search limit.
+    fn engine_row(
+        &self,
+        config: &EngineConfig,
+        chosen: bool,
+        limit: AnalysisLimit,
+        cx: &mut Context<Self>,
+    ) -> Div {
         let this = cx.entity();
         let id = config.id;
         let select_this = this.clone();
@@ -615,18 +635,26 @@ impl AnalyseScreen {
         let speed = stats
             .and_then(|stats| stats.nps)
             .map_or_else(dash, engine::format_speed);
+        let time = stats
+            .and_then(|stats| stats.time_ms)
+            .map_or_else(dash, super::search_time);
+        let hash = stats
+            .and_then(|stats| stats.hashfull)
+            .map_or_else(dash, |full| format!("{:.0}%", f64::from(full) / 10.));
+        let tb = stats
+            .and_then(|stats| stats.tbhits)
+            .filter(|hits| *hits > 0)
+            .map(|hits| engine::format_nodes(hits).replace(" n", ""));
+        let progress = stats.and_then(|stats| limit_progress(stats, limit));
         let name = if config.version.is_empty() || config.version.len() > 8 {
             config.name.clone()
         } else {
             format!("{} {}", config.name, config.version)
         };
-        h_flex()
+        let row = h_flex()
             .h(px(42.))
             .px(px(16.))
             .gap(px(6.))
-            .border_b_1()
-            .border_color(rgb(T.divider))
-            .when(chosen, |row| row.bg(rgb(T.selected)))
             .child(
                 div().flex_none().w(px(20.)).child(
                     check(
@@ -658,102 +686,15 @@ impl AnalyseScreen {
                     })
                     .child(name),
             )
-            .child(cell(depth, 44., "DEPTH"))
+            .child(cell(depth, 56., "DEPTH"))
             .child(cell(nodes, 62., "NODES"))
             .child(cell(speed, 72., "SPEED"))
-    }
-
-    /// The chosen engine's search in large figures, with progress toward the search limit.
-    fn engine_stats_strip(&self, id: EngineId, limit: AnalysisLimit, cx: &gpui::App) -> Div {
-        let live = self.live.read(cx);
-        let stats = live
-            .engines
-            .iter()
-            .find(|engine| engine.config.id == id)
-            .and_then(|engine| engine.stats());
-        let dash = || "—".to_owned();
-        let mut figures: Vec<(&'static str, String)> = vec![
-            (
-                "Depth",
-                stats.map_or_else(dash, |stats| match stats.seldepth {
-                    Some(sel) => format!("{}/{sel}", stats.depth),
-                    None => stats.depth.to_string(),
-                }),
-            ),
-            (
-                "Nodes",
-                stats
-                    .and_then(|stats| stats.nodes)
-                    .map_or_else(dash, engine::format_nodes),
-            ),
-            (
-                "Speed",
-                stats
-                    .and_then(|stats| stats.nps)
-                    .map_or_else(dash, engine::format_speed),
-            ),
-            (
-                "Time",
-                stats
-                    .and_then(|stats| stats.time_ms)
-                    .map_or_else(dash, super::search_time),
-            ),
-            (
-                "Hash",
-                stats
-                    .and_then(|stats| stats.hashfull)
-                    .map_or_else(dash, |full| format!("{:.0}%", f64::from(full) / 10.)),
-            ),
-        ];
-        if let Some(hits) = stats
-            .and_then(|stats| stats.tbhits)
-            .filter(|hits| *hits > 0)
-        {
-            figures.push(("TB", engine::format_nodes(hits).replace(" n", "")));
-        }
-        // How far the search is toward the limit; an infinite search has no end to show.
-        let progress = stats.and_then(|stats| {
-            let fraction = match limit {
-                AnalysisLimit::Infinite => return None,
-                AnalysisLimit::Depth(depth) => stats.depth as f64 / f64::from(depth.max(1)),
-                AnalysisLimit::Seconds(seconds) => {
-                    stats.time_ms? as f64 / (f64::from(seconds.max(1)) * 1000.)
-                }
-                AnalysisLimit::Nodes(nodes) => stats.nodes? as f64 / nodes.max(1) as f64,
-            };
-            Some(fraction.clamp(0., 1.) as f32)
-        });
+            .child(cell(time, 52., "TIME"))
+            .child(cell(hash, 40., "HASH"))
+            .children(tb.map(|tb| cell(tb, 48., "TB")));
         v_flex()
-            .border_b_1()
-            .border_color(rgb(T.divider))
-            .child(
-                div()
-                    .flex()
-                    .flex_row()
-                    .flex_wrap()
-                    .gap_x(px(24.))
-                    .gap_y(px(10.))
-                    .px(px(16.))
-                    .py(px(12.))
-                    .children(figures.into_iter().map(|(label, value)| {
-                        v_flex()
-                            .min_w(px(64.))
-                            .gap(px(2.))
-                            .child(
-                                div()
-                                    .text_size(px(10.))
-                                    .font_weight(FontWeight::SEMIBOLD)
-                                    .text_color(rgb(T.faint))
-                                    .child(ui::i18n::t(label).to_uppercase()),
-                            )
-                            .child(
-                                mono(value)
-                                    .text_size(px(16.))
-                                    .font_weight(FontWeight::SEMIBOLD)
-                                    .text_color(rgb(T.fg)),
-                            )
-                    })),
-            )
+            .when(chosen, |el| el.bg(rgb(T.selected)))
+            .child(row)
             .child(
                 div().h(px(2.)).w_full().bg(rgb(T.divider)).children(
                     progress.map(|fraction| {
@@ -823,10 +764,7 @@ impl AnalyseScreen {
         }
         for config in &engines {
             let is_chosen = chosen.as_ref().is_some_and(|chosen| chosen.id == config.id);
-            body = body.child(self.engine_row(config, is_chosen, cx));
-        }
-        if let Some(config) = &chosen {
-            body = body.child(self.engine_stats_strip(config.id, limit, cx));
+            body = body.child(self.engine_row(config, is_chosen, limit, cx));
         }
         let mut limits = h_flex().gap(px(4.));
         for (index, (value, label)) in LIMITS.into_iter().enumerate() {
@@ -1593,7 +1531,7 @@ impl AnalyseScreen {
         // A new position needs a new search, and a new best line in the table.
         if self.pv_played != Some(played) {
             self.pv_played = Some(played);
-            self.selected_san = None;
+            self.selected = None;
             self.row_chosen = false;
             let extra: Vec<Move> = moves.into_iter().take(played).collect();
             let (tree, current) = (self.tree.clone(), self.current);
@@ -1606,7 +1544,7 @@ impl AnalyseScreen {
 
     /// Picking a table row during a preview continues the line with that row. Returns
     /// false when there is no preview to continue.
-    pub(super) fn continue_pv_with(&mut self, san: &str, cx: &mut Context<Self>) -> bool {
+    pub(super) fn continue_pv_with(&mut self, key: &RowKey, cx: &mut Context<Self>) -> bool {
         let Some(played) = self.pv_view.as_ref().map(PvView::played) else {
             return false;
         };
@@ -1617,7 +1555,7 @@ impl AnalyseScreen {
         let continuation = self
             .rows
             .iter()
-            .find(|row| row.san == san)
+            .find(|row| key.matches(row))
             .map(|row| {
                 if row.pv.is_empty() {
                     vec![row.san.clone()]
@@ -1633,7 +1571,7 @@ impl AnalyseScreen {
             view.head = played - 1;
         }
         self.row_chosen = true;
-        self.selected_san = Some(san.to_owned());
+        self.selected = Some(key.clone());
         self.update_arrows(cx);
         cx.notify();
         true
@@ -1647,7 +1585,7 @@ impl AnalyseScreen {
         self.pv_dragging = false;
         self.pv_played = None;
         self.pv_hover = None;
-        self.selected_san = None;
+        self.selected = None;
         self.row_chosen = false;
         let node = self.tree.node(self.current);
         let pos = node.pos.clone();
