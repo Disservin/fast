@@ -319,6 +319,35 @@ impl Database {
         Ok(rows.collect::<rusqlite::Result<_>>()?)
     }
 
+    /// Player names containing `query`, for suggestions while typing a player filter.
+    /// Names starting with it come first, then the names with the most games. Each name
+    /// comes with its game count.
+    pub fn player_names(&self, query: &str, limit: usize) -> Result<Vec<(String, u64)>> {
+        let query = query.trim();
+        if query.is_empty() || limit == 0 {
+            return Ok(Vec::new());
+        }
+        let escaped = query
+            .replace('\\', "\\\\")
+            .replace('%', "\\%")
+            .replace('_', "\\_");
+        let mut statement = self.conn.prepare(
+            "SELECT name, COUNT(*) AS games FROM (
+                SELECT white AS name FROM games WHERE white LIKE ?1 ESCAPE '\\'
+                UNION ALL
+                SELECT black FROM games WHERE black LIKE ?1 ESCAPE '\\'
+             )
+             GROUP BY name COLLATE NOCASE
+             ORDER BY name LIKE ?2 ESCAPE '\\' DESC, games DESC, name
+             LIMIT ?3",
+        )?;
+        let rows = statement.query_map(
+            params![format!("%{escaped}%"), format!("{escaped}%"), limit as i64],
+            |row| Ok((row.get(0)?, row.get::<_, i64>(1)? as u64)),
+        )?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
     /// Finds a small set of games by player, event or opening code for global search.
     pub fn search_games(&self, query: &str, limit: usize) -> Result<Vec<GameRow>> {
         if query.trim().is_empty() || limit == 0 {
@@ -826,6 +855,21 @@ mod tests {
         assert_eq!(tree.header("White"), Some("bob"));
         assert_eq!(tree.mainline().len(), 4);
         assert!(db.game(9_999).unwrap().is_none());
+    }
+
+    #[test]
+    fn player_names_suggest_prefixes_first_with_counts() {
+        let (_dir, db) = database();
+        let names = db.player_names("a", 10).unwrap();
+        assert_eq!(names[0], ("alice".to_owned(), 1));
+        assert!(names.contains(&("carol".to_owned(), 1)));
+        assert!(!names.iter().any(|(name, _)| name == "bob"));
+        assert_eq!(
+            db.player_names("ME", 10).unwrap(),
+            vec![("me".to_owned(), 3)]
+        );
+        assert!(db.player_names("%", 10).unwrap().is_empty());
+        assert!(db.player_names("  ", 10).unwrap().is_empty());
     }
 
     #[test]

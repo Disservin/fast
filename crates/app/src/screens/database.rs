@@ -204,6 +204,14 @@ pub struct DatabaseScreen {
     editing: Option<GameEditor>,
     /// Games waiting for the user to confirm that they should be deleted.
     confirm_delete: Option<Vec<i64>>,
+    /// Player names from the selected database matching what is typed in Player, with
+    /// their game counts.
+    player_suggestions: Vec<(String, u64)>,
+    /// The suggestion chosen with the arrow keys.
+    player_highlight: Option<usize>,
+    /// The name just picked, so filling it in does not suggest it again.
+    player_picked: Option<String>,
+    suggest_task: Option<Task<()>>,
     query_task: Option<Task<()>>,
     count_task: Option<Task<()>>,
     preview_task: Option<Task<()>>,
@@ -279,7 +287,23 @@ impl DatabaseScreen {
             )
         });
         let mut subscriptions = Vec::new();
-        for input in [&player, &eco, &opp_rating] {
+        subscriptions.push(cx.subscribe_in(
+            &player,
+            window,
+            |this, _, event, window, cx| match event {
+                InputEvent::Change => {
+                    this.update_pending_count(cx);
+                    this.suggest_players(cx);
+                }
+                InputEvent::PressEnter { .. } => match this.player_highlight {
+                    Some(index) => this.pick_player(index, window, cx),
+                    None => this.apply_filter(cx),
+                },
+                InputEvent::Blur => this.close_suggestions(cx),
+                _ => {}
+            },
+        ));
+        for input in [&eco, &opp_rating] {
             subscriptions.push(cx.subscribe_in(
                 input,
                 window,
@@ -357,6 +381,10 @@ impl DatabaseScreen {
             _rename_sub: None,
             editing: None,
             confirm_delete: None,
+            player_suggestions: Vec::new(),
+            player_highlight: None,
+            player_picked: None,
+            suggest_task: None,
             query_task: None,
             count_task: None,
             preview_task: None,
@@ -453,6 +481,7 @@ impl DatabaseScreen {
     }
 
     pub fn apply_filter(&mut self, cx: &mut Context<Self>) {
+        self.close_suggestions(cx);
         let entries = self.model.read(cx).databases.clone();
         if self
             .selected_db
@@ -601,6 +630,7 @@ impl DatabaseScreen {
 
     pub fn search_player(&mut self, query: &str, window: &mut Window, cx: &mut Context<Self>) {
         let text = query.to_owned();
+        self.player_picked = Some(text.trim().to_owned());
         self.player
             .update(cx, |player, cx| player.set_value(text, window, cx));
         self.apply_filter(cx);
@@ -796,8 +826,127 @@ impl DatabaseScreen {
         cx.notify();
     }
 
+    /// Looks up player names in the selected database that match what is typed in
+    /// Player, replacing any lookup still running.
+    fn suggest_players(&mut self, cx: &mut Context<Self>) {
+        let text = self.player.read(cx).value().trim().to_owned();
+        let picked = self.player_picked.take();
+        if text.is_empty() || picked.as_deref() == Some(text.as_str()) {
+            return self.close_suggestions(cx);
+        }
+        let Some(path) = self.selected_db.clone() else {
+            return;
+        };
+        let task = cx.background_spawn(async move {
+            Database::open(path).and_then(|db| db.player_names(&text, 8))
+        });
+        self.suggest_task = Some(cx.spawn(async move |this, cx| {
+            let names = task.await.unwrap_or_default();
+            let _ = this.update(cx, |this, cx| {
+                this.player_suggestions = names;
+                this.player_highlight = None;
+                cx.notify();
+            });
+        }));
+    }
+
+    fn close_suggestions(&mut self, cx: &mut Context<Self>) {
+        self.suggest_task = None;
+        if !self.player_suggestions.is_empty() {
+            self.player_suggestions.clear();
+            self.player_highlight = None;
+            cx.notify();
+        }
+    }
+
+    /// Moves the highlighted suggestion up or down, wrapping at the ends.
+    fn step_suggestion(&mut self, down: bool, cx: &mut Context<Self>) {
+        let count = self.player_suggestions.len();
+        if count == 0 {
+            return;
+        }
+        self.player_highlight = Some(match (self.player_highlight, down) {
+            (None, true) => 0,
+            (None, false) => count - 1,
+            (Some(index), true) => (index + 1) % count,
+            (Some(index), false) => (index + count - 1) % count,
+        });
+        cx.notify();
+    }
+
+    /// Fills Player with a suggested name and shows that player's games.
+    fn pick_player(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
+        let Some((name, _)) = self.player_suggestions.get(index).cloned() else {
+            return;
+        };
+        self.player_picked = Some(name.clone());
+        self.player
+            .update(cx, |input, cx| input.set_value(name, window, cx));
+        self.close_suggestions(cx);
+        self.apply_filter(cx);
+    }
+
+    /// The suggestions under the Player field, the highlighted one in `selected`.
+    fn render_player_suggestions(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        if self.player_suggestions.is_empty() {
+            return None;
+        }
+        let mut list = v_flex()
+            .id("player-suggestions")
+            .w(px(245.))
+            .py(px(4.))
+            .rounded(px(6.))
+            .bg(rgb(T.surface))
+            .border_1()
+            .border_color(rgb(T.border_strong));
+        for (index, (name, games)) in self.player_suggestions.iter().enumerate() {
+            let this = cx.entity();
+            let highlighted = self.player_highlight == Some(index);
+            list = list.child(
+                h_flex()
+                    .id(("player-suggestion", index))
+                    .h(px(28.))
+                    .px(px(10.))
+                    .gap(px(8.))
+                    .justify_between()
+                    .cursor_pointer()
+                    .text_size(px(13.))
+                    .when(highlighted, |row| row.bg(rgb(T.selected)))
+                    .when(!highlighted, |row| {
+                        row.hover(|style| style.bg(rgb(T.hover)))
+                    })
+                    // Mouse down, so the name is taken before the field can lose focus.
+                    .on_mouse_down(MouseButton::Left, move |_, window, cx| {
+                        cx.stop_propagation();
+                        this.update(cx, |screen, cx| screen.pick_player(index, window, cx));
+                    })
+                    .child(
+                        div()
+                            .min_w_0()
+                            .truncate()
+                            .child(SharedString::from(name.clone())),
+                    )
+                    .child(
+                        mono(format_count(*games))
+                            .flex_none()
+                            .text_size(px(12.))
+                            .text_color(rgb(T.muted)),
+                    ),
+            );
+        }
+        Some(
+            gpui::deferred(gpui::anchored().child(div().mt(px(2.)).occlude().child(list)))
+                .with_priority(1)
+                .into_any_element(),
+        )
+    }
+
     /// Escape closes an open dialog. Returns whether one was open.
     pub fn escape(&mut self, cx: &mut Context<Self>) -> bool {
+        if !self.player_suggestions.is_empty() {
+            self.close_suggestions(cx);
+            return true;
+        }
         if self.editing.take().is_some() || self.confirm_delete.take().is_some() {
             cx.notify();
             return true;
@@ -1383,7 +1532,23 @@ impl DatabaseScreen {
             )
             .child(list)
             .child(section_label("Filter").mb(px(8.)))
-            .child(field("Player", text_input(&self.player)).mb(px(7.)))
+            .child({
+                let (keys_this, suggestions) = (this.clone(), self.render_player_suggestions(cx));
+                let open = suggestions.is_some();
+                div()
+                    .mb(px(7.))
+                    // Arrow keys move through the suggestions instead of the text cursor.
+                    .capture_key_down(move |event: &gpui::KeyDownEvent, _, cx| {
+                        let key = event.keystroke.key.as_str();
+                        if open && (key == "down" || key == "up") {
+                            cx.stop_propagation();
+                            keys_this
+                                .update(cx, |screen, cx| screen.step_suggestion(key == "down", cx));
+                        }
+                    })
+                    .child(field("Player", text_input(&self.player)))
+                    .children(suggestions)
+            })
             .child(
                 div()
                     .grid()
