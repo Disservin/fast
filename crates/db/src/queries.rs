@@ -213,6 +213,9 @@ pub struct Filter {
     pub time_classes: Vec<TimeClass>,
     /// Only games reaching this position.
     pub position: Option<u64>,
+    /// Exact pawn arrangement and material counts, independent of side to move.
+    pub pawn_structure: Option<u64>,
+    pub material: Option<u64>,
     pub only_left_repertoire: bool,
     /// Only games with comments, NAGs or variations.
     pub only_annotated: bool,
@@ -252,6 +255,22 @@ impl Filter {
     fn sql(&self) -> (String, Vec<Box<dyn ToSql>>) {
         let mut clauses: Vec<String> = Vec::new();
         let mut values: Vec<Box<dyn ToSql>> = Vec::new();
+        let mut pattern_clauses = Vec::new();
+        for (column, value) in [
+            ("pawn_hash", self.pawn_structure),
+            ("material", self.material),
+        ] {
+            if let Some(value) = value {
+                pattern_clauses.push(format!("{column} = ?"));
+                values.push(Box::new(value as i64));
+            }
+        }
+        if !pattern_clauses.is_empty() {
+            clauses.push(format!(
+                "id IN (SELECT game_id FROM structure_positions WHERE {})",
+                pattern_clauses.join(" AND ")
+            ));
+        }
         let names = self.player_names();
         let push_names = |values: &mut Vec<Box<dyn ToSql>>| {
             for name in &names {
@@ -458,6 +477,8 @@ pub struct GameDetails {
     /// Empty means the standard initial position for databases created before custom
     /// starting positions were retained.
     pub start_fen: String,
+    /// Whether engine searches and PGN export use Chess960 castling rules.
+    pub chess960: bool,
     pub sans: Vec<String>,
     /// The movetext with comments, variations and NAGs, without the result. Set when
     /// the game was imported with them or saved from Analyse; plain games keep `None`.
@@ -513,6 +534,9 @@ impl GameDetails {
         tag("White", &row.white);
         tag("Black", &row.black);
         tag("Result", &row.result);
+        if self.chess960 {
+            tag("Variant", "Chess960");
+        }
         if !self.start_fen.is_empty() {
             tag("SetUp", "1");
             tag("FEN", &self.start_fen);
@@ -666,7 +690,7 @@ impl Database {
             .conn
             .query_row(
                 &format!(
-                    "SELECT {ROW_COLUMNS}, moves, start_fen, annotated FROM games WHERE id = ?1"
+                    "SELECT {ROW_COLUMNS}, moves, start_fen, annotated, chess960 FROM games WHERE id = ?1"
                 ),
                 params![id],
                 |row| {
@@ -676,6 +700,7 @@ impl Database {
                     Ok(GameDetails {
                         row: GameRow::from_row(row)?,
                         start_fen,
+                        chess960: row.get(18)?,
                         annotated,
                         sans: moves.split_ascii_whitespace().map(str::to_owned).collect(),
                         review_summary: None,

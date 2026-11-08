@@ -340,6 +340,7 @@ impl Worker {
         // Anything left from an earlier search or the handshake.
         while events.try_recv().is_ok() {}
         handle.search(SearchRequest {
+            chess960: chess_core::fen_variant(&record.fen) == Some(chess_core::Variant::Chess960),
             fen: record.fen.clone(),
             moves: Vec::new(),
             search_moves: Vec::new(),

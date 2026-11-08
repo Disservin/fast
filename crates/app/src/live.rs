@@ -419,6 +419,7 @@ impl LiveAnalysis {
         let mut crash = None;
         let mut newest_eval = None;
         let mut analysed = false;
+        let mut ready = false;
         let search_id = self.search_id;
         let node = self.node;
         let pos = self.pos.clone();
@@ -434,6 +435,7 @@ impl LiveAnalysis {
         for event in batch {
             match event {
                 EngineEvent::Ready(info) => {
+                    ready = true;
                     let name = info.name.clone();
                     let model = self.model.clone();
                     model.update(cx, |model, cx| {
@@ -542,6 +544,9 @@ impl LiveAnalysis {
             && let (Some(node), Some((cp, depth))) = (node, newest_eval)
         {
             cx.emit(LiveEvent::Eval(node, cp, depth));
+        }
+        if ready {
+            self.search(cx);
         }
         cx.emit(LiveEvent::Updated);
         cx.notify();
@@ -700,7 +705,7 @@ impl LiveAnalysis {
             .iter()
             .filter_map(|&id| tree.node(id).mv)
             .chain(extra.iter().copied())
-            .map(|mv| UciMove::from_standard(mv).to_string())
+            .map(|mv| tree.uci(mv))
             .collect();
         let mut pos = tree.node(node).pos.clone();
         let mut history = tree.history(node);
@@ -805,7 +810,15 @@ impl LiveAnalysis {
         if !self.pos.as_ref().is_some_and(|pos| pos.is_legal(mv)) {
             return;
         }
-        let uci = UciMove::from_standard(mv).to_string();
+        let uci = UciMove::from_move(
+            mv,
+            self.pos
+                .as_ref()
+                .map_or(chess_core::shakmaty::CastlingMode::Standard, |pos| {
+                    pos.castles().mode()
+                }),
+        )
+        .to_string();
         if let Some(index) = self.search_moves.iter().position(|known| known == &uci) {
             self.search_moves.remove(index);
         } else {
@@ -924,6 +937,25 @@ impl LiveAnalysis {
                 });
                 continue;
             }
+            if self.pos.as_ref().is_some_and(|pos| {
+                pos.castles().mode() == chess_core::shakmaty::CastlingMode::Chess960
+            }) && !self
+                .model
+                .read(cx)
+                .engine(engine.config.id)
+                .is_some_and(|config| {
+                    config
+                        .info
+                        .options
+                        .iter()
+                        .any(|option| option.name == "UCI_Chess960")
+                })
+            {
+                handle.stop();
+                engine.running = false;
+                engine.lines.clear();
+                continue;
+            }
             // A remembered line already reaches the depth limit: nothing to search.
             if let Some(limit) = depth_limit
                 && engine
@@ -943,6 +975,9 @@ impl LiveAnalysis {
                 model.set_engine_status(engine.config.id, EngineStatus::Searching, cx);
             });
             handle.search(SearchRequest {
+                chess960: self.pos.as_ref().is_some_and(|pos| {
+                    pos.castles().mode() == chess_core::shakmaty::CastlingMode::Chess960
+                }),
                 search_moves: self.search_moves.clone(),
                 fen: self.fen.clone(),
                 moves: self.moves.clone(),

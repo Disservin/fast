@@ -134,7 +134,7 @@ pub fn tree_position_key(tree: &chess_core::GameTree, node: chess_core::NodeId) 
         .path_to(node)
         .iter()
         .filter_map(|&id| tree.node(id).mv)
-        .map(|mv| chess_core::shakmaty::uci::UciMove::from_standard(mv).to_string())
+        .map(|mv| tree.uci(mv))
         .collect();
     position_key(&tree.fen(chess_core::GameTree::ROOT), &moves)
 }

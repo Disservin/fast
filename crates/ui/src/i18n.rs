@@ -39,6 +39,22 @@ pub fn set_language(language: Language) {
 pub fn translate(language: Language, text: &str) -> &str {
     if language == Language::German {
         match text {
+            "Enter a valid starting position." => "Eine gültige Startstellung eingeben.",
+            "Reference FEN" => "Referenz-FEN",
+            "Position patterns" => "Stellungsmuster",
+            "Same pawn structure" => "Gleiche Bauernstruktur",
+            "Same material" => "Gleiches Material",
+            "Build structure index" => "Strukturindex erstellen",
+            "Build the structure index to search" => "Zum Suchen den Strukturindex erstellen",
+            "Enter a valid reference FEN" => "Eine gültige Referenz-FEN eingeben",
+            "Exact matches, either side to move" => "Exakte Treffer, beide Zugfarben",
+            "Structure index ready" => "Strukturindex bereit",
+            "Structure indexing cancelled" => "Strukturindizierung abgebrochen",
+
+            "Chess960" => "Chess960",
+            "New Chess960 game…" => "Neue Chess960-Partie…",
+            "No Chess960 support" => "Keine Chess960-Unterstützung",
+            "Enter a number from 0 to 959" => "Eine Zahl von 0 bis 959 eingeben",
             "Searching…" => "Suche…",
             "Some databases could not be searched" => {
                 "Einige Datenbanken konnten nicht durchsucht werden"

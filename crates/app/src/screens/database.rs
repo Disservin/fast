@@ -218,6 +218,14 @@ pub struct DatabaseScreen {
     min_moves: Entity<InputState>,
     max_moves: Entity<InputState>,
     only_annotated: bool,
+    /// A reference position for exact pawn and material matches.
+    pattern_fen: Entity<InputState>,
+    pattern_pawns: bool,
+    pattern_material: bool,
+    pattern_indexed: bool,
+    pattern_control: Option<ImportControl>,
+    pattern_progress: (u64, u64),
+    pattern_task: Option<Task<()>>,
     /// Whether the "More filters" section is unfolded.
     more_filters: bool,
     /// The name field shown while saving the current search.
@@ -310,6 +318,15 @@ fn result_text(result: &str) -> String {
     match result {
         "1/2-1/2" => "½–½".to_owned(),
         other => other.replace('-', "–"),
+    }
+}
+
+impl Drop for DatabaseScreen {
+    /// Stops optional indexing when its tab closes.
+    fn drop(&mut self) {
+        if let Some(control) = &self.pattern_control {
+            control.cancel();
+        }
     }
 }
 
@@ -437,6 +454,19 @@ impl DatabaseScreen {
                 ModelEvent::Engines | ModelEvent::Restored => {}
             }),
         );
+        let pattern_fen = new_input(
+            if model.read(cx).demo {
+                "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2"
+            } else {
+                ""
+            },
+            "Reference FEN",
+            window,
+            cx,
+        );
+        let pattern_sub = cx.subscribe(&pattern_fen, |this, _, _: &InputEvent, cx| {
+            this.schedule_filter(cx)
+        });
         let selected_db = model
             .read(cx)
             .databases
@@ -481,6 +511,13 @@ impl DatabaseScreen {
             min_moves,
             max_moves,
             only_annotated: false,
+            pattern_fen,
+            pattern_pawns: false,
+            pattern_material: false,
+            pattern_indexed: false,
+            pattern_control: None,
+            pattern_progress: (0, 0),
+            pattern_task: None,
             more_filters: false,
             saving_search: None,
             _saving_sub: None,
@@ -538,7 +575,11 @@ impl DatabaseScreen {
             suggest_task: None,
             query_task: None,
             preview_task: None,
-            _subscriptions: subscriptions,
+            _subscriptions: {
+                let mut subscriptions = subscriptions;
+                subscriptions.push(pattern_sub);
+                subscriptions
+            },
         };
         this.sync_result_labels(window, cx);
         this.apply_filter(cx);
@@ -574,7 +615,20 @@ impl DatabaseScreen {
         } else {
             Vec::new()
         };
+        let pattern = GameTree::from_fen(self.pattern_fen.read(cx).value().trim())
+            .ok()
+            .map(|tree| chess_core::PositionPattern::of(&tree.node(GameTree::ROOT).pos));
         Filter {
+            pawn_structure: self
+                .pattern_pawns
+                .then_some(pattern)
+                .flatten()
+                .map(|p| p.pawn_hash),
+            material: self
+                .pattern_material
+                .then_some(pattern)
+                .flatten()
+                .map(|p| p.material),
             player,
             player_aliases,
             side: match colour {
@@ -623,6 +677,12 @@ impl DatabaseScreen {
 
     fn summary_for(&self, filter: &Filter, cx: &gpui::App) -> SharedString {
         let mut parts = Vec::new();
+        if filter.pawn_structure.is_some() {
+            parts.push(ui::i18n::t("Same pawn structure").to_owned());
+        }
+        if filter.material.is_some() {
+            parts.push(ui::i18n::t("Same material").to_owned());
+        }
         if let Some((_, label)) = self.reached_position.as_ref().filter(|_| self.reached) {
             parts.push(label.clone());
         } else if !filter.eco_min.is_empty() {
@@ -774,6 +834,7 @@ impl DatabaseScreen {
             typed(&self.min_moves) || typed(&self.max_moves),
             typed(&self.event),
             self.only_annotated,
+            self.pattern_pawns || self.pattern_material,
             self.only_left_rep,
         ]
         .into_iter()
@@ -831,6 +892,9 @@ impl DatabaseScreen {
             max_moves: text(&self.max_moves),
             event: text(&self.event),
             only_annotated: self.only_annotated,
+            pattern_fen: text(&self.pattern_fen),
+            pattern_pawns: self.pattern_pawns,
+            pattern_material: self.pattern_material,
             only_left_repertoire: self.only_left_rep,
         }
     }
@@ -868,6 +932,11 @@ impl DatabaseScreen {
             });
         }
         self.only_annotated = saved.only_annotated;
+        self.pattern_fen.update(cx, |input, cx| {
+            input.set_value(saved.pattern_fen, window, cx)
+        });
+        self.pattern_pawns = saved.pattern_pawns;
+        self.pattern_material = saved.pattern_material;
         self.only_left_rep = saved.only_left_repertoire;
         self.more_filters |= self.hidden_filters_set(cx) > 0;
         self.apply_filter(cx);
@@ -942,20 +1011,22 @@ impl DatabaseScreen {
         self.querying = true;
         let task = cx.background_spawn(async move {
             let db = Database::open(path)?;
+            let indexed = db.has_structure_index()?;
             let ids = db.filtered_ids(&filter)?;
             let stats = db.stats(&filter)?;
             let leak = stats.top_leak.as_ref().and_then(|(left, _)| {
                 let sans = db.sample_with_left_rep(left).ok()??;
                 Some(leak_context(left, &sans))
             });
-            Ok::<_, db::DbError>((ids, stats, leak))
+            Ok::<_, db::DbError>((ids, stats, leak, indexed))
         });
         self.query_task = Some(cx.spawn(async move |this, cx| {
             let result = task.await;
             let _ = this.update(cx, |this, cx| {
                 this.querying = false;
                 match result {
-                    Ok((ids, stats, leak)) => {
+                    Ok((ids, stats, leak, indexed)) => {
+                        this.pattern_indexed = indexed;
                         this.ids = ids;
                         this.stats = stats;
                         this.leak_text = leak;
@@ -1034,7 +1105,32 @@ impl DatabaseScreen {
             let found = task.await.ok().flatten();
             let _ = this.update(cx, |this, cx| {
                 let Some(details) = found else { return };
-                let key = key_moment(&details);
+                let key =
+                    if this.applied.pawn_structure.is_some() || this.applied.material.is_some() {
+                        chess_core::parse_pgn(&details.to_pgn())
+                            .ok()
+                            .and_then(|trees| trees.into_iter().next())
+                            .and_then(|tree| {
+                                std::iter::once(GameTree::ROOT)
+                                    .chain(tree.mainline())
+                                    .enumerate()
+                                    .find_map(|(ply, node)| {
+                                        let pattern =
+                                            chess_core::PositionPattern::of(&tree.node(node).pos);
+                                        (this
+                                            .applied
+                                            .pawn_structure
+                                            .is_none_or(|hash| hash == pattern.pawn_hash)
+                                            && this.applied.material.is_none_or(|material| {
+                                                material == pattern.material
+                                            }))
+                                        .then_some(ply)
+                                    })
+                            })
+                            .unwrap_or_else(|| key_moment(&details))
+                    } else {
+                        key_moment(&details)
+                    };
                 this.show_preview(&details, key, cx);
                 this.preview_key = key;
                 this.preview_notes = move_notes(&details);
@@ -1046,7 +1142,14 @@ impl DatabaseScreen {
     }
 
     fn show_preview(&self, details: &GameDetails, key: usize, cx: &mut Context<Self>) {
-        let mut tree = GameTree::new();
+        let mut tree = if details.start_fen.is_empty() {
+            GameTree::new()
+        } else if details.chess960 {
+            GameTree::from_fen_variant(&details.start_fen, chess_core::Variant::Chess960)
+                .unwrap_or_default()
+        } else {
+            GameTree::from_fen(&details.start_fen).unwrap_or_default()
+        };
         let mut node = GameTree::ROOT;
         for san in details.sans.iter().take(key) {
             match tree.add_san(node, san) {
@@ -1101,6 +1204,10 @@ impl DatabaseScreen {
             input.update(cx, |input, cx| input.set_value("", window, cx));
         }
         self.only_annotated = false;
+        self.pattern_pawns = false;
+        self.pattern_material = false;
+        self.pattern_fen
+            .update(cx, |input, cx| input.set_value("", window, cx));
         for select in [&self.colour, &self.time_control, &self.result] {
             select.update(cx, |select, cx| {
                 select.set_selected_index(Some(gpui_component::IndexPath::new(0)), window, cx)
@@ -1488,6 +1595,7 @@ impl DatabaseScreen {
         let control = ImportControl::default();
         let options = ImportOptions {
             keep_annotations: self.model.read(cx).config.import_keep_annotations,
+            build_structure_index: self.model.read(cx).config.import_structure_index,
             ..Default::default()
         };
         self.importing = Some(Importing {
@@ -2593,7 +2701,149 @@ impl DatabaseScreen {
                     )
                     .when(hidden > 0, |row| row.child(badge(hidden.to_string()))),
             )
-            .when(self.more_filters, |column| column.child(more))
+            .when(self.more_filters, |column| {
+                column.child(more).child(self.render_pattern_filter(cx))
+            })
+    }
+
+    /// Runs a cancellable index build on a worker, leaving queries on the complete old index.
+    fn build_pattern_index(&mut self, cx: &mut Context<Self>) {
+        if self.pattern_control.is_some() || self.importing.is_some() || self.downloading.is_some()
+        {
+            return;
+        }
+        let Some(path) = self.selected_db.clone() else {
+            return;
+        };
+        let control = ImportControl::default();
+        self.pattern_control = Some(control.clone());
+        self.pattern_progress = (0, 0);
+        let (send, receive) = smol::channel::unbounded();
+        let worker = cx.background_spawn(async move {
+            Database::open(&path)?.build_structure_index(&control, |done, total| {
+                let _ = send.try_send((done, total));
+            })
+        });
+        self.pattern_task = Some(cx.spawn(async move |this, cx| {
+            while let Ok(progress) = receive.recv().await {
+                let _ = this.update(cx, |screen, cx| {
+                    screen.pattern_progress = progress;
+                    cx.notify();
+                });
+            }
+            let result = worker.await;
+            let _ = this.update(cx, |screen, cx| {
+                screen.pattern_control = None;
+                match result {
+                    Ok(true) => screen.model.toast("Structure index ready", cx),
+                    Ok(false) => screen.model.toast("Structure indexing cancelled", cx),
+                    Err(err) => screen
+                        .model
+                        .toast(format!("Could not build structure index: {err}"), cx),
+                }
+                screen.apply_filter(cx);
+            });
+        }));
+        cx.notify();
+    }
+
+    /// Exact pattern controls use a reference FEN and the optional database index.
+    fn render_pattern_filter(&self, cx: &mut Context<Self>) -> AnyElement {
+        let this = cx.entity();
+        let build = this.clone();
+        let cancel = this.clone();
+        let valid = GameTree::from_fen(self.pattern_fen.read(cx).value().trim()).is_ok();
+        let mut body = v_flex()
+            .gap(px(8.))
+            .mt(px(12.))
+            .child(section_label("Position patterns"))
+            .child(text_input(&self.pattern_fen).mono())
+            .when(
+                !valid && !self.pattern_fen.read(cx).value().is_empty(),
+                |body| {
+                    body.child(
+                        div()
+                            .text_color(rgb(T.warn))
+                            .text_size(px(13.))
+                            .child(ui::i18n::t("Enter a valid reference FEN")),
+                    )
+                },
+            )
+            .child({
+                let this = this.clone();
+                check("pattern-pawns", self.pattern_pawns, "Same pawn structure").on_change(
+                    move |value, _, cx| {
+                        this.update(cx, |screen, cx| {
+                            screen.pattern_pawns = value;
+                            screen.schedule_filter(cx);
+                        })
+                    },
+                )
+            })
+            .child({
+                let this = this.clone();
+                check("pattern-material", self.pattern_material, "Same material").on_change(
+                    move |value, _, cx| {
+                        this.update(cx, |screen, cx| {
+                            screen.pattern_material = value;
+                            screen.schedule_filter(cx);
+                        })
+                    },
+                )
+            })
+            .child(
+                div()
+                    .text_size(px(13.))
+                    .text_color(rgb(T.muted))
+                    .child(ui::i18n::t("Exact matches, either side to move")),
+            );
+        if self.pattern_control.is_some() {
+            let (done, total) = self.pattern_progress;
+            body = body
+                .child(
+                    h_flex()
+                        .gap(px(8.))
+                        .child(mono(format!("{done} / {total}")))
+                        .child(btn("cancel-structure-index", "Cancel").compact().on_click(
+                            move |_, cx| {
+                                cancel.update(cx, |screen, cx| {
+                                    if let Some(control) = &screen.pattern_control {
+                                        control.cancel();
+                                    }
+                                    cx.notify();
+                                })
+                            },
+                        )),
+                )
+                .child(
+                    div().h(px(2.)).w_full().bg(rgb(T.divider)).child(
+                        div()
+                            .h_full()
+                            .w(gpui::relative(if total == 0 {
+                                0.
+                            } else {
+                                done as f32 / total as f32
+                            }))
+                            .bg(rgb(T.accent)),
+                    ),
+                );
+        } else if !self.pattern_indexed {
+            body = body
+                .child(
+                    div()
+                        .text_size(px(13.))
+                        .text_color(rgb(T.warn))
+                        .child(ui::i18n::t("Build the structure index to search")),
+                )
+                .child(
+                    btn("build-structure-index", "Build structure index")
+                        .compact()
+                        .on_click(move |_, cx| {
+                            build.update(cx, |screen, cx| screen.build_pattern_index(cx))
+                        }),
+                );
+        }
+        body.into_any_element()
     }
 
     fn toggle_reached(&mut self, value: bool, cx: &mut Context<Self>) {
@@ -3617,6 +3867,20 @@ impl DatabaseScreen {
                         ),
                     )
                     .child(keep_check)
+                    .child({
+                        let model = self.model.clone();
+                        check(
+                            "import-structure-index",
+                            model.read(cx).config.import_structure_index,
+                            "Build structure index",
+                        )
+                        .on_change(move |value, _, cx| {
+                            model.update(cx, |model, cx| {
+                                model.config.import_structure_index = value;
+                                model.save_config(cx);
+                            })
+                        })
+                    })
                     .child(
                         div()
                             .text_size(px(13.))
@@ -4580,7 +4844,11 @@ fn review_games(
         } else {
             &game.start_fen
         };
-        let Ok(start_tree) = chess_core::GameTree::from_fen(start_fen) else {
+        let Ok(start_tree) = (if game.chess960 {
+            chess_core::GameTree::from_fen_variant(start_fen, chess_core::Variant::Chess960)
+        } else {
+            chess_core::GameTree::from_fen(start_fen)
+        }) else {
             continue;
         };
         let mut moves: Vec<String> = Vec::new();
@@ -4632,6 +4900,7 @@ fn review_games(
                     }
                     search_id += 1;
                     handle.search(SearchRequest {
+                        chess960: start_tree.variant == chess_core::Variant::Chess960,
                         search_moves: Vec::new(),
                         fen: start_fen.to_owned(),
                         moves: moves.clone(),
@@ -4718,7 +4987,7 @@ fn review_games(
             };
             let parsed: chess_core::shakmaty::san::San = san.parse()?;
             let mv = parsed.to_move(&pos)?;
-            moves.push(chess_core::shakmaty::uci::UciMove::from_standard(mv).to_string());
+            moves.push(start_tree.uci(mv));
             pos.play_unchecked(mv);
             history.push(pos.clone());
         }

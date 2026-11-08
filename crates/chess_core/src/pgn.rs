@@ -58,8 +58,19 @@ impl Visitor for TreeVisitor {
             .iter()
             .find(|(key, _)| key == "FEN")
             .map(|(_, value)| value.clone());
-        let mut tree = match fen {
-            Some(fen) => match GameTree::from_fen(&fen) {
+        let tagged_960 = tags
+            .iter()
+            .find(|(key, _)| key == "Variant")
+            .is_some_and(|(_, value)| crate::Variant::from_tag(value) == crate::Variant::Chess960);
+        let parsed = fen.map(|fen| {
+            if tagged_960 {
+                GameTree::from_fen_variant(&fen, crate::Variant::Chess960)
+            } else {
+                GameTree::from_fen(&fen)
+            }
+        });
+        let mut tree = match parsed {
+            Some(parsed) => match parsed {
                 Ok(tree) => tree,
                 Err(reason) => {
                     return ControlFlow::Break(Err(PgnError::Fen {
@@ -68,9 +79,20 @@ impl Visitor for TreeVisitor {
                     }));
                 }
             },
+            None if tagged_960 => GameTree::chess960(518),
             None => GameTree::new(),
         };
+        let variant_header = tree.header("Variant").map(str::to_owned);
         tree.headers = tags;
+        // Chess960 games always say so, whichever name the file used.
+        if let Some(variant) = variant_header {
+            tree.set_header("Variant", &variant);
+        }
+        if tree.variant == crate::Variant::Chess960 {
+            tree.set_header("SetUp", "1");
+            let fen = tree.fen(GameTree::ROOT);
+            tree.set_header("FEN", &fen);
+        }
         ControlFlow::Continue(Movetext {
             tree,
             current: GameTree::ROOT,
@@ -349,6 +371,23 @@ mod tests {
             write_pgn_from(&game, e4),
             "1. e4 e5 (1... c5 2. Nf3) 2. Nf3"
         );
+    }
+
+    #[test]
+    fn chess960_round_trips_with_its_variant_tag() {
+        let text = "[Variant \"Fischerandom\"]\n[FEN \"bqnbrkrn/pppppppp/8/8/8/8/PPPPPPPP/BQNBRKRN w KQkq - 0 1\"]\n\n1. Ng3 Ng6 2. O-O O-O *\n";
+        let game = parse_pgn(text).unwrap().remove(0);
+        assert_eq!(game.variant, crate::Variant::Chess960);
+        let written = write_pgn(&game);
+        assert!(written.contains("[Variant \"Chess960\"]"), "{written}");
+        assert!(written.contains("[SetUp \"1\"]"));
+        let again = parse_pgn(&written).unwrap().remove(0);
+        assert_eq!(again.variant, crate::Variant::Chess960);
+        assert_eq!(again.mainline().len(), 4);
+        assert_eq!(write_pgn(&again), written);
+        // A new Chess960 game carries its tags from the start.
+        let fresh = GameTree::chess960(734);
+        assert!(write_pgn(&fresh).contains("[Variant \"Chess960\"]"));
     }
 
     #[test]

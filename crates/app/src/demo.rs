@@ -437,7 +437,10 @@ fn my_games(path: &Path, rng: &mut Rng) {
     let imported = import_games(
         path,
         pgn.as_bytes(),
-        &ImportOptions::default(),
+        &ImportOptions {
+            build_structure_index: true,
+            ..Default::default()
+        },
         &ImportControl::default(),
         |_| {},
     );
@@ -545,7 +548,10 @@ fn import_named(path: &Path, pgn: &str, name: &str) {
     match import_games(
         path,
         pgn.as_bytes(),
-        &ImportOptions::default(),
+        &ImportOptions {
+            build_structure_index: true,
+            ..Default::default()
+        },
         &ImportControl::default(),
         |_| {},
     ) {
@@ -786,7 +792,7 @@ fn demo_engine(
     uses: (bool, bool, bool),
     options: &[(&str, &str)],
 ) -> EngineConfig {
-    let schema = vec![
+    let mut schema = vec![
         spin("Threads", 16, 1, 1024),
         spin("Hash", 4096, 1, 1_048_576),
         spin("MultiPV", 3, 1, 256),
@@ -801,6 +807,12 @@ fn demo_engine(
             kind: OptionKind::Check { default: true },
         },
     ];
+    if name == "Stockfish" {
+        schema.push(UciOption {
+            name: "UCI_Chess960".to_owned(),
+            kind: OptionKind::Check { default: false },
+        });
+    }
     EngineConfig {
         id,
         name: name.to_owned(),
@@ -904,7 +916,7 @@ pub fn prepare(paths: &Paths, config: &mut Config) {
     config.next_engine_id = 5;
 
     let databases = paths.databases_dir();
-    let stamp = databases.join(".generated-v3");
+    let stamp = databases.join(".generated-v4");
     if stamp.exists() {
         return;
     }

@@ -3828,6 +3828,7 @@ fn benchmark(config: &EngineConfig) -> String {
     for (index, fen) in SUITE.iter().enumerate() {
         let search_id = index as u64 + 1;
         handle.search(SearchRequest {
+            chess960: false,
             search_moves: Vec::new(),
             fen: (*fen).to_owned(),
             moves: Vec::new(),

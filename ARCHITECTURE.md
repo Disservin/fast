@@ -369,3 +369,38 @@ clears it. There is no backend, account state or database access. Vite emits rel
 paths so the build works under the GitHub Pages `/fast/` project path or a custom domain.
 `.github/workflows/pages.yml` tests and builds the site on relevant pull requests and deploys
 `website/dist` to GitHub Pages on pushes to `master` or manual runs.
+
+## Chess960 and exact position patterns
+
+`chess_core::Variant` belongs to each `GameTree`; its positions use the matching Shakmaty
+castling mode. FEN import detects X-FEN and Shredder-FEN castling rights. PGN import also
+honours the Variant tag, including when castling rights have disappeared. Chess960 PGNs
+always carry Variant, SetUp and FEN. Standard numbering and its inverse live in
+`chess_core::chess960`; the last chosen number is saved in config.
+
+Analyse, Play, Test positions and database review set `SearchRequest::chess960`. The engine
+supervisor checks the advertised option, sets UCI_Chess960 before searching, synchronises
+with isready, and resets the option before a subsequent standard game. Move histories and
+root restrictions use the game's castling notation; returned moves are resolved against
+its positions. The board favours an ordinary king step when a castling destination is
+ambiguous; dropping the king on its rook always selects castling. Board animations move both
+king and rook to their final squares, including when either piece stays put. The position
+editor retains the variant and original rook squares. Databases migrate a
+`games.chess960` flag so export and review preserve the variant even without castling rights.
+
+`chess_core::PositionPattern` contains a pawn-only Zobrist hash and a 60-bit signature of
+piece counts by colour (six bits for each non-king role). These ignore turn, castling and
+move counters. The optional `structure_positions` table stores game id, ply and both
+signatures; consecutive unchanged patterns share their first ply. Two secondary indexes
+cover pawn and material searches. Both enabled criteria must match the same indexed row.
+Normal databases leave this table empty. This keeps the existing positions table and
+ordinary import costs unchanged apart from the empty schema.
+
+File import can enable the index, and indexed databases maintain it during later imports,
+including account updates. Replacing or deleting games updates the index in the same
+transaction. Building it for an existing database runs on `background_spawn`, reports
+progress through a channel, and checks cancellation for every position. One transaction
+publishes a complete index or rolls back; readers retain the previous complete index under
+WAL. Closing the tab cancels the build. Exact-search fields persist in saved searches;
+matching games preview and open at the first matching ply. Approximate structure matching
+and model-game ranking remain roadmap work.

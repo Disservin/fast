@@ -30,6 +30,7 @@ fn request(search_id: u64, limits: Option<Limits>) -> SearchRequest {
         limits,
         search_id,
         game: 1,
+        chess960: false,
     }
 }
 
@@ -58,6 +59,56 @@ fn wait_for_sent(engine: &EngineHandle, text: &str) -> Vec<String> {
         );
         std::thread::sleep(Duration::from_millis(20));
     }
+}
+
+#[test]
+fn chess960_is_switched_on_before_its_search_and_off_for_a_standard_game() {
+    let engine = EngineHandle::spawn(fixture(), Vec::new(), Vec::new());
+    let mut fischer = request(
+        1,
+        Some(Limits {
+            depth: Some(4),
+            ..Default::default()
+        }),
+    );
+    fischer.chess960 = true;
+    fischer.fen = "bqnbrkrn/pppppppp/8/8/8/8/PPPPPPPP/BQNBRKRN w GEge - 0 1".to_owned();
+    fischer.moves = vec!["f1g1".to_owned()];
+    fischer.game = 7;
+    engine.search(fischer);
+    let lines = wait_for_sent(&engine, "go depth 4");
+    let option = lines
+        .iter()
+        .position(|line| line == "setoption name UCI_Chess960 value true")
+        .expect("Chess960 turned on");
+    let position = lines
+        .iter()
+        .position(|line| line.starts_with("position fen bqnbrkrn"))
+        .expect("position sent");
+    assert!(option < position, "{lines:?}");
+    assert!(lines[position].ends_with("moves f1g1"));
+    let mut standard = request(
+        2,
+        Some(Limits {
+            depth: Some(5),
+            ..Default::default()
+        }),
+    );
+    standard.game = 8;
+    engine.search(standard);
+    let lines = wait_for_sent(&engine, "go depth 5");
+    assert!(lines.contains(&"setoption name UCI_Chess960 value false".to_owned()));
+    // A standard game never sends the option to an engine that was not switched.
+    let plain = EngineHandle::spawn(fixture(), Vec::new(), Vec::new());
+    plain.search(request(
+        3,
+        Some(Limits {
+            depth: Some(6),
+            ..Default::default()
+        }),
+    ));
+    let lines = wait_for_sent(&plain, "go depth 6");
+    assert!(!lines.iter().any(|line| line.contains("UCI_Chess960")));
 }
 
 #[test]
@@ -146,6 +197,34 @@ fn a_new_game_sends_ucinewgame_and_synchronises_again() {
     engine.quit();
 }
 
+/// Unsupported engines are never sent a Chess960 position or search.
+#[test]
+fn chess960_is_rejected_when_the_engine_has_no_option() {
+    let engine = EngineHandle::spawn(fixture(), vec!["no960".to_owned()], Vec::new());
+    let events = engine.events();
+    let mut search = request(
+        1,
+        Some(Limits {
+            depth: Some(1),
+            ..Default::default()
+        }),
+    );
+    search.chess960 = true;
+    engine.search(search);
+    loop {
+        if let EngineEvent::Crashed(reason) = next(&events) {
+            assert!(reason.contains("No Chess960 support"));
+            break;
+        }
+    }
+    assert!(
+        !sent(&engine)
+            .iter()
+            .any(|line| line.starts_with("go ") || line.starts_with("position "))
+    );
+    engine.quit();
+}
+
 #[test]
 fn handshake_reports_identity_and_option_schema() {
     let engine = EngineHandle::spawn(fixture(), Vec::new(), Vec::new());
@@ -153,7 +232,7 @@ fn handshake_reports_identity_and_option_schema() {
         panic!("expected Ready");
     };
     assert_eq!(info.name, "FakeFish 1.0");
-    assert_eq!(info.options.len(), 2);
+    assert_eq!(info.options.len(), 3);
     engine.quit();
 }
 
@@ -317,4 +396,85 @@ fn missing_binary_is_reported() {
         panic!("expected Crashed");
     };
     assert!(reason.contains("could not start"), "{reason}");
+}
+
+/// Checks both castling directions against a real engine without adding a CI dependency.
+#[test]
+#[ignore = "set FAST_STOCKFISH to a local Stockfish executable"]
+fn stockfish_chess960_castles_and_returns_to_standard_chess() {
+    use chess_core::{GameTree, Move, Position, shakmaty::uci::UciMove};
+    let path = std::env::var_os("FAST_STOCKFISH").expect("set FAST_STOCKFISH");
+    let engine = EngineHandle::spawn(
+        PathBuf::from(path),
+        Vec::new(),
+        vec![("Threads".into(), "1".into()), ("Hash".into(), "16".into())],
+    );
+    let events = engine.events();
+    let cases = [
+        ("4k3/8/8/8/8/8/8/R4K1R w HA - 0 1", "f1h1"),
+        ("4k3/8/8/8/8/8/8/R4K1R w HA - 0 1", "f1a1"),
+        ("4k3/8/8/8/8/8/8/R5KR w HA - 0 1", "g1h1"),
+        ("4k3/8/8/8/8/8/8/R1K4R w HA - 0 1", "c1a1"),
+    ];
+    for (index, (fen, castle)) in cases.iter().enumerate() {
+        let tree = GameTree::from_fen(fen).unwrap();
+        let pos = &tree.node(GameTree::ROOT).pos;
+        let expected = castle.parse::<UciMove>().unwrap().to_move(pos).unwrap();
+        assert!(matches!(expected, Move::Castle { .. }));
+        assert!(pos.is_legal(expected));
+        let id = index as u64 + 1;
+        engine.search(SearchRequest {
+            fen: (*fen).into(),
+            moves: Vec::new(),
+            search_moves: vec![(*castle).into()],
+            limits: Some(Limits {
+                depth: Some(2),
+                ..Default::default()
+            }),
+            search_id: id,
+            game: id,
+            chess960: true,
+        });
+        loop {
+            match next(&events) {
+                EngineEvent::BestMove { search_id, best } if search_id == id => {
+                    let answer = best
+                        .unwrap()
+                        .parse::<UciMove>()
+                        .unwrap()
+                        .to_move(pos)
+                        .unwrap();
+                    assert_eq!(answer, expected);
+                    break;
+                }
+                EngineEvent::Crashed(reason) => panic!("{reason}"),
+                _ => {}
+            }
+        }
+    }
+    let mut standard = request(
+        10,
+        Some(Limits {
+            depth: Some(2),
+            ..Default::default()
+        }),
+    );
+    standard.game = 10;
+    standard.search_moves = vec!["e2e4".into()];
+    engine.search(standard);
+    loop {
+        match next(&events) {
+            EngineEvent::BestMove {
+                search_id: 10,
+                best,
+            } => {
+                assert_eq!(best.as_deref(), Some("e2e4"));
+                break;
+            }
+            EngineEvent::Crashed(reason) => panic!("{reason}"),
+            _ => {}
+        }
+    }
+    assert!(sent(&engine).contains(&"setoption name UCI_Chess960 value false".into()));
+    engine.quit();
 }

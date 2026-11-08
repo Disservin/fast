@@ -4,6 +4,7 @@ mod edit;
 mod import;
 mod notes;
 mod queries;
+mod structure;
 
 pub use edit::GameInfo;
 pub use import::{ImportControl, ImportOptions, ImportProgress, ImportSummary, import_games};
@@ -52,6 +53,7 @@ CREATE TABLE IF NOT EXISTS games (
     event TEXT NOT NULL,
     round TEXT NOT NULL,
     start_fen TEXT NOT NULL DEFAULT '',
+    chess960 INTEGER NOT NULL DEFAULT 0,
     annotated TEXT,
     site TEXT NOT NULL DEFAULT '',
     source TEXT NOT NULL,
@@ -71,6 +73,15 @@ CREATE TABLE IF NOT EXISTS positions (
     next_san TEXT,
     PRIMARY KEY (hash, game_id, ply)
 ) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS structure_positions (
+    game_id INTEGER NOT NULL,
+    ply INTEGER NOT NULL,
+    pawn_hash INTEGER NOT NULL,
+    material INTEGER NOT NULL,
+    PRIMARY KEY (game_id, ply)
+) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS structure_pawns ON structure_positions (pawn_hash, material, game_id);
+CREATE INDEX IF NOT EXISTS structure_material ON structure_positions (material, game_id);
 CREATE TABLE IF NOT EXISTS review_positions (
     game_id INTEGER NOT NULL,
     job_key TEXT NOT NULL,
@@ -105,6 +116,19 @@ impl Database {
         let path = path.as_ref().to_path_buf();
         let conn = open_sqlite(&path)?;
         conn.execute_batch(SCHEMA)?;
+        let has_chess960 = {
+            let mut stmt = conn.prepare("PRAGMA table_info(games)")?;
+            stmt.query_map([], |row| row.get::<_, String>(1))?
+                .collect::<rusqlite::Result<Vec<_>>>()?
+                .iter()
+                .any(|column| column == "chess960")
+        };
+        if !has_chess960 {
+            conn.execute(
+                "ALTER TABLE games ADD COLUMN chess960 INTEGER NOT NULL DEFAULT 0",
+                [],
+            )?;
+        }
         let has_start_fen = {
             let mut columns = conn.prepare("PRAGMA table_info(games)")?;
             columns
@@ -220,7 +244,7 @@ impl Database {
     pub fn clear_games(&mut self) -> Result<()> {
         let tx = self.conn.transaction()?;
         tx.execute_batch(
-            "DELETE FROM positions; DELETE FROM review_positions;
+            "DELETE FROM structure_positions; DELETE FROM positions; DELETE FROM review_positions;
              DELETE FROM review_summaries; DELETE FROM games;",
         )?;
         tx.commit()?;

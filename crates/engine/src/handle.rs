@@ -75,6 +75,9 @@ pub struct SearchRequest {
     /// Which game the position belongs to. A change sends `ucinewgame` first, so the
     /// engine does not carry assumptions from one game into another.
     pub game: u64,
+    /// The game is Chess960: `UCI_Chess960` is turned on first, and castling moves are
+    /// written king-takes-rook.
+    pub chess960: bool,
 }
 
 impl SearchRequest {
@@ -332,12 +335,30 @@ struct Session {
     after_ready: Option<SearchRequest>,
     /// The game the last search belonged to, to send `ucinewgame` on a change.
     last_game: Option<u64>,
+    /// What `UCI_Chess960` was last set to; `None` while it has its default (off).
+    chess960: Option<bool>,
+    /// Whether the engine advertised support during its handshake.
+    supports_chess960: bool,
 }
 
 impl Session {
     /// Starts a search on an idle engine: a new game first gets `ucinewgame`, and any
     /// unsynchronised change gets `isready` before `go`.
     fn launch(&mut self, process: &mut Process, request: SearchRequest) -> std::io::Result<()> {
+        if request.chess960 && !self.supports_chess960 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Unsupported,
+                "No Chess960 support",
+            ));
+        }
+        // Chess960 is switched on for its games and back off for the next standard one;
+        // an engine never asked for Chess960 is never sent the option.
+        if self.chess960.unwrap_or(false) != request.chess960 {
+            let value = if request.chess960 { "true" } else { "false" };
+            process.send(&set_option_line("UCI_Chess960", Some(value)))?;
+            self.chess960 = Some(request.chess960);
+            self.needs_sync = true;
+        }
         if self.last_game != Some(request.game) {
             process.send("ucinewgame")?;
             self.last_game = Some(request.game);
@@ -395,6 +416,9 @@ impl Session {
             return process.send("stop");
         }
         self.needs_sync = true;
+        if name == "UCI_Chess960" {
+            self.chess960 = Some(value.as_deref() == Some("true"));
+        }
         process.send(&set_option_line(&name, value.as_deref()))
     }
 
@@ -412,6 +436,9 @@ impl Session {
         self.stop_sent = false;
         let mut result = Ok(());
         for (name, value) in std::mem::take(&mut self.pending_options) {
+            if name == "UCI_Chess960" {
+                self.chess960 = Some(value.as_deref() == Some("true"));
+            }
             result = result.and(process.send(&set_option_line(&name, value.as_deref())));
             self.needs_sync = true;
         }
@@ -509,6 +536,27 @@ fn supervise(
                     for (name, value) in &options {
                         result = result.and(process.send(&set_option_line(name, Some(value))));
                     }
+                    session.supports_chess960 = info
+                        .options
+                        .iter()
+                        .any(|option| option.name == "UCI_Chess960");
+                    session.chess960 = Some(
+                        options
+                            .iter()
+                            .find(|(name, _)| name == "UCI_Chess960")
+                            .map_or_else(
+                                || {
+                                    info.options.iter().any(|option| {
+                                        option.name == "UCI_Chess960"
+                                            && matches!(
+                                                option.kind,
+                                                crate::OptionKind::Check { default: true }
+                                            )
+                                    })
+                                },
+                                |(_, value)| value == "true",
+                            ),
+                    );
                     handshake_done = true;
                     emit(EngineEvent::Ready(info.clone()));
                     result

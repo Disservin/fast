@@ -488,6 +488,8 @@ impl Default for TestPositionSettings {
 pub struct Config {
     /// The user's player name in game headers, for "My games" and leak detection.
     pub player_name: String,
+    /// The last Chess960 starting position chosen in Analyse or Play.
+    pub chess960_number: u16,
     /// The user's other names, such as Lichess and Chess.com accounts, counted as the
     /// same player wherever `player_name` is.
     pub player_aliases: Vec<String>,
@@ -519,6 +521,8 @@ pub struct Config {
     pub session: Option<SavedSession>,
     /// Keep comments, NAGs and variations when importing a PGN into a database.
     pub import_keep_annotations: bool,
+    /// Build the optional exact pawn/material index during file imports.
+    pub import_structure_index: bool,
     /// The database last picked for the opening tree, used by tabs that have not chosen.
     pub explorer_default: Option<PathBuf>,
     /// The games table's sort for each database, by the database file's path.
@@ -548,6 +552,9 @@ pub struct SavedFilter {
     pub max_moves: String,
     pub event: String,
     pub only_annotated: bool,
+    pub pattern_fen: String,
+    pub pattern_pawns: bool,
+    pub pattern_material: bool,
     pub only_left_repertoire: bool,
 }
 
@@ -613,6 +620,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             player_name: "me".to_owned(),
+            chess960_number: 518,
             player_aliases: Vec::new(),
             player_rating: None,
             language: Language::default(),
@@ -633,6 +641,7 @@ impl Default for Config {
             review_engines: 1,
             session: None,
             import_keep_annotations: true,
+            import_structure_index: false,
             explorer_default: None,
             database_sorts: BTreeMap::new(),
             accounts: Vec::new(),

@@ -1,5 +1,6 @@
 //! The window shell: top bar, mode routing, global shortcuts, toasts.
 
+use crate::model::ToastExt;
 use std::collections::BTreeMap;
 
 use engine::EngineStatus;
@@ -377,6 +378,8 @@ pub struct Workspace {
     search_failed: bool,
     search_task: Option<gpui::Task<()>>,
     path_input: Entity<InputState>,
+    /// The starting position for a new Chess960 analysis tab.
+    chess960_number: Entity<InputState>,
     paths_input: Entity<TextareaState>,
     menu_bar: Option<Entity<gpui_component::menu::AppMenuBar>>,
     focus: FocusHandle,
@@ -406,8 +409,15 @@ impl Workspace {
             InputState::new(window, cx)
                 .placeholder(ui::i18n::t("Search positions, games, openings"))
         });
+        let chess960_number = crate::controls::new_input(
+            model.read(cx).config.chess960_number.min(959).to_string(),
+            "0–959",
+            window,
+            cx,
+        );
         let path_input = cx.new(|cx| InputState::new(window, cx).placeholder("/path/to/file"));
         let paths_input = cx.new(|cx| TextareaState::new(window, cx));
+        let chess960_sub = cx.subscribe(&chess960_number, |_, _, _: &InputEvent, cx| cx.notify());
         let path_sub = cx.subscribe_in(&path_input, window, |this, _, event, window, cx| {
             if matches!(event, InputEvent::PressEnter { .. }) {
                 this.submit_path(window, cx);
@@ -524,12 +534,13 @@ impl Workspace {
             search_failed: false,
             search_task: None,
             path_input,
+            chess960_number,
             paths_input,
             menu_bar: draws_own_menus().then(|| gpui_component::menu::AppMenuBar::new(cx)),
             focus,
             first_frame: true,
             force_window_controls: false,
-            _subscriptions: vec![search_sub, path_sub, model_sub],
+            _subscriptions: vec![search_sub, chess960_sub, path_sub, model_sub],
         };
         // `--screen` asks for one screen, so the saved tabs only come back without it.
         let session = (screen.is_none())
@@ -566,6 +577,14 @@ impl Workspace {
         }
         if screen == Some("test-positions") {
             workspace.new_tab(Mode::TestPositions, window, cx);
+        }
+        if workspace.model.read(cx).demo && !workspace.tabs.iter().any(|tab| matches!(&tab.content, TabContent::Analyse(screen) if screen.read(cx).tree.variant == chess_core::Variant::Chess960)) {
+            let active = workspace.active_tab;
+            workspace.new_tab(Mode::Analyse, window, cx);
+            workspace.analyse.update(cx, |screen, cx| {
+                screen.load_tree(chess_core::GameTree::chess960(734), window, cx)
+            });
+            workspace.activate_tab(active, cx);
         }
         workspace
     }
@@ -1226,7 +1245,80 @@ impl Workspace {
                                     }),
                             ),
                     )
-                    .child(cards),
+                    .child(cards)
+                    .child({
+                        let random = cx.entity();
+                        let create = cx.entity();
+                        h_flex()
+                            .gap(px(8.))
+                            .child(
+                                div().w(px(80.)).child(
+                                    crate::controls::text_input(&self.chess960_number).mono(),
+                                ),
+                            )
+                            .child(
+                                btn("new-960-random", "Random")
+                                    .icon("icons/dices.svg")
+                                    .compact()
+                                    .on_click(move |window, cx| {
+                                        random.update(cx, |this, cx| {
+                                            let n = std::time::SystemTime::now()
+                                                .duration_since(std::time::UNIX_EPOCH)
+                                                .map_or(518, |time| {
+                                                    (time.subsec_nanos() % 960) as u16
+                                                });
+                                            this.chess960_number.update(cx, |input, cx| {
+                                                input.set_value(n.to_string(), window, cx)
+                                            });
+                                            cx.notify();
+                                        });
+                                    }),
+                            )
+                            .child(ui::widgets::mono(
+                                self.chess960_number
+                                    .read(cx)
+                                    .value()
+                                    .trim()
+                                    .parse::<u16>()
+                                    .ok()
+                                    .filter(|n| *n < 960)
+                                    .map_or_else(
+                                        || ui::i18n::t("Enter a number from 0 to 959").to_owned(),
+                                        |n| format!("#{n} {}", chess_core::chess960::back_rank(n)),
+                                    ),
+                            ))
+                            .child(btn("new-960", "New Chess960 game…").compact().on_click(
+                                move |window, cx| {
+                                    create.update(cx, |this, cx| {
+                                        let Some(n) = this
+                                            .chess960_number
+                                            .read(cx)
+                                            .value()
+                                            .trim()
+                                            .parse::<u16>()
+                                            .ok()
+                                            .filter(|n| *n < 960)
+                                        else {
+                                            this.model.toast("Enter a number from 0 to 959", cx);
+                                            return;
+                                        };
+                                        this.model.update(cx, |model, cx| {
+                                            model.config.chess960_number = n;
+                                            model.save_config(cx);
+                                        });
+                                        this.new_tab_menu_open = false;
+                                        this.new_tab(Mode::Analyse, window, cx);
+                                        this.analyse.update(cx, |screen, cx| {
+                                            screen.load_tree(
+                                                chess_core::GameTree::chess960(n),
+                                                window,
+                                                cx,
+                                            )
+                                        });
+                                    });
+                                },
+                            ))
+                    }),
             )
     }
 

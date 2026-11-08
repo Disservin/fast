@@ -62,6 +62,8 @@ pub struct ImportOptions {
     /// Skip games whose URL (Site or Link tag) is already stored, as when downloading
     /// an account's games again.
     pub skip_known_urls: bool,
+    /// Build and maintain the optional exact pawn/material index.
+    pub build_structure_index: bool,
 }
 
 impl Default for ImportOptions {
@@ -70,6 +72,7 @@ impl Default for ImportOptions {
             source: String::new(),
             keep_annotations: true,
             skip_known_urls: false,
+            build_structure_index: false,
         }
     }
 }
@@ -107,6 +110,7 @@ pub(crate) struct Tags {
     utc_time: String,
     pub(crate) time_control: String,
     fen: String,
+    pub(crate) variant: String,
 }
 
 impl Tags {
@@ -255,16 +259,28 @@ impl Visitor for ImportVisitor {
             b"UTCTime" => tags.utc_time = text(),
             b"TimeControl" => tags.time_control = text(),
             b"FEN" => tags.fen = text(),
+            b"Variant" => tags.variant = text(),
             _ => {}
         }
         ControlFlow::Continue(())
     }
 
-    fn begin_movetext(&mut self, tags: Self::Tags) -> ControlFlow<Self::Output, Self::Movetext> {
+    fn begin_movetext(
+        &mut self,
+        mut tags: Self::Tags,
+    ) -> ControlFlow<Self::Output, Self::Movetext> {
+        let variant = chess_core::Variant::from_tag(&tags.variant);
+        if variant == chess_core::Variant::Chess960 && tags.fen.is_empty() {
+            tags.fen = chess_core::chess960::start_fen(518);
+        }
         let (start_fen, pos) = if tags.fen.is_empty() {
             (String::new(), Chess::default())
         } else {
-            let Ok(tree) = chess_core::GameTree::from_fen(&tags.fen) else {
+            let Ok(tree) = (if variant == chess_core::Variant::Chess960 {
+                chess_core::GameTree::from_fen_variant(&tags.fen, variant)
+            } else {
+                chess_core::GameTree::from_fen(&tags.fen)
+            }) else {
                 return ControlFlow::Break(None);
             };
             (
@@ -486,8 +502,8 @@ fn insert_game(tx: &Transaction<'_>, game: &Game, source: &str) -> Result<()> {
     let eco = game_eco(game);
     let mut insert_game = tx.prepare_cached(
         "INSERT INTO games (white, black, white_elo, black_elo, result, date, eco, event, round,
-            start_fen, source, time_class, plies, moves, annotated, site)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
+            start_fen, source, time_class, plies, moves, annotated, site, chess960)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
     )?;
     let source = if source.is_empty() {
         guess_source(&tags.site)
@@ -515,6 +531,8 @@ fn insert_game(tx: &Transaction<'_>, game: &Game, source: &str) -> Result<()> {
         game.sans.join(" "),
         game.annotated,
         tags.url(),
+        chess_core::Variant::from_tag(&tags.variant) == chess_core::Variant::Chess960
+            || chess_core::fen_variant(&game.start_fen) == Some(chess_core::Variant::Chess960),
     ])?;
     let game_id = tx.last_insert_rowid();
     let mut insert_position = tx.prepare_cached(
@@ -561,6 +579,10 @@ pub fn import_games(
     mut on_progress: impl FnMut(ImportProgress),
 ) -> Result<ImportSummary> {
     let mut database = Database::open(path)?;
+    let mut indexed = database.has_structure_index()?;
+    if options.build_structure_index && !indexed {
+        indexed = database.build_structure_index(control, |_, _| {})?;
+    }
     let counting = CountingReader {
         inner: reader,
         bytes: 0,
@@ -602,6 +624,18 @@ pub fn import_games(
                 }
                 Some(game) => {
                     insert_game(&tx, &game, &options.source)?;
+                    if indexed {
+                        // Finish this game atomically; cancellation is checked before the next game.
+                        crate::structure::index_game(
+                            &tx,
+                            tx.last_insert_rowid(),
+                            &game.start_fen,
+                            &game.sans.join(" "),
+                            chess_core::Variant::from_tag(&game.tags.variant)
+                                == chess_core::Variant::Chess960,
+                            &ImportControl::default(),
+                        )?;
+                    }
                     progress.games += 1;
                     progress.annotated += u64::from(game.annotated.is_some());
                     if game.variations_dropped > 0 {
@@ -680,6 +714,22 @@ mod tests {
         assert_eq!(summary.games, 2);
         assert_eq!(summary.skipped, 1);
         assert_eq!(Database::open(&path).unwrap().game_count().unwrap(), 2);
+    }
+
+    #[test]
+    fn chess960_import_keeps_variant_without_castling_rights() {
+        for keep in [false, true] {
+            let (_dir, database, summary) = import(
+                "[Variant \"Chess960\"]\n[FEN \"4k3/8/8/8/8/8/8/5K2 w - - 0 1\"]\n\n1. Kg1 Kf7 *\n",
+                keep,
+            );
+            assert_eq!(summary.games, 1);
+            let stored = database.game(1).unwrap().unwrap();
+            assert!(stored.chess960);
+            let tree = chess_core::parse_pgn(&stored.to_pgn()).unwrap().remove(0);
+            assert_eq!(tree.variant, chess_core::Variant::Chess960);
+            assert_eq!(tree.mainline().len(), 2);
+        }
     }
 
     fn import(text: &str, keep: bool) -> (tempfile::TempDir, Database, ImportSummary) {

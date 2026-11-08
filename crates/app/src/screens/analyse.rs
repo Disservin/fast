@@ -2058,6 +2058,9 @@ impl AnalyseScreen {
                             .justify_between()
                             .mb(px(9.))
                             .child(section_label("Scoresheet"))
+                            .when(self.tree.variant == chess_core::Variant::Chess960, |row| {
+                                row.child(ui::widgets::badge("Chess960"))
+                            })
                             .child(h_flex().gap(px(4.)).child(style_toggle).child({
                                 let this = this.clone();
                                 icon_btn("sheet-collapse", "icons/chevron-left.svg")

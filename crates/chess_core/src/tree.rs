@@ -32,6 +32,8 @@ pub struct Node {
 pub struct GameTree {
     nodes: Vec<Node>,
     pub headers: Vec<(String, String)>,
+    /// Standard chess or Chess960; every position follows its castling rules.
+    pub variant: crate::Variant,
 }
 
 impl Default for GameTree {
@@ -48,6 +50,11 @@ impl GameTree {
     }
 
     pub fn from_position(pos: Chess) -> Self {
+        let variant = if pos.castles().mode() == CastlingMode::Chess960 {
+            crate::Variant::Chess960
+        } else {
+            crate::Variant::Standard
+        };
         let root = Node {
             parent: None,
             children: Vec::new(),
@@ -58,25 +65,58 @@ impl GameTree {
             comment: String::new(),
             nags: Vec::new(),
         };
-        Self {
+        let mut tree = Self {
             nodes: vec![root],
             headers: Vec::new(),
+            variant,
+        };
+        if variant == crate::Variant::Chess960 {
+            tree.set_header("Variant", "Chess960");
         }
+        if variant == crate::Variant::Chess960 || tree.node(Self::ROOT).pos != Chess::default() {
+            tree.set_header("SetUp", "1");
+            let fen = tree.fen(Self::ROOT);
+            tree.set_header("FEN", &fen);
+        }
+        tree
     }
 
-    /// Builds a tree rooted at the given FEN. A FEN not starting from the initial
-    /// position is preserved in the `SetUp`/`FEN` headers when written back to PGN.
+    /// Builds a tree rooted at the given FEN, read as Chess960 when its castling
+    /// rights only make sense there (X-FEN or Shredder-FEN). A FEN not starting from the
+    /// initial position is preserved in the `SetUp`/`FEN` headers when written back to PGN.
     pub fn from_fen(fen: &str) -> Result<Self, String> {
+        let variant = crate::fen_variant(fen).unwrap_or_default();
+        Self::from_fen_variant(fen, variant)
+    }
+
+    /// Builds a tree rooted at the given FEN with the castling rules of `variant`.
+    pub fn from_fen_variant(fen: &str, variant: crate::Variant) -> Result<Self, String> {
         let parsed: Fen = fen.parse().map_err(|err| format!("{err}"))?;
         let pos: Chess = parsed
-            .into_position(CastlingMode::Standard)
+            .into_position(variant.castling_mode())
             .map_err(|err| format!("{err}"))?;
         let mut tree = Self::from_position(pos);
-        if fen != Self::fen_of(&Chess::default()) {
+        if fen != Self::fen_of(&Chess::default()) || variant == crate::Variant::Chess960 {
             tree.set_header("SetUp", "1");
             tree.set_header("FEN", fen);
         }
         Ok(tree)
+    }
+
+    /// A new game from Chess960 position `number` (0–959).
+    pub fn chess960(number: u16) -> Self {
+        let pos = crate::chess960_position(number);
+        let fen = Self::fen_of(&pos);
+        let mut tree = Self::from_position(pos);
+        tree.set_header("SetUp", "1");
+        tree.set_header("FEN", &fen);
+        tree
+    }
+
+    /// A move in UCI notation for this game: castling is king-takes-rook in Chess960
+    /// and the king's two-square step otherwise.
+    pub fn uci(&self, mv: Move) -> String {
+        shakmaty::uci::UciMove::from_move(mv, self.variant.castling_mode()).to_string()
     }
 
     pub fn fen_of(pos: &Chess) -> String {
@@ -273,6 +313,64 @@ mod tests {
             ids.push(current);
         }
         (tree, ids)
+    }
+
+    #[test]
+    fn chess960_castling_with_king_and_rook_side_by_side() {
+        // King on f1 next to its rook on g1 (and on e1 for the long side).
+        let fen = "bqnbrkrn/pppppppp/8/8/8/8/PPPPPPPP/BQNBRKRN w GEge - 0 1";
+        let mut game = GameTree::from_fen(fen).unwrap();
+        assert_eq!(game.variant, crate::Variant::Chess960);
+        assert_eq!(game.header("Variant"), Some("Chess960"));
+        // Clear the squares between: knight away, then short castling.
+        let n = game.add_san(GameTree::ROOT, "Ng3").unwrap();
+        let reply = game.add_san(n, "Ng6").unwrap();
+        let castle = game.add_san(reply, "O-O").unwrap();
+        let mv = game.node(castle).mv.unwrap();
+        assert_eq!(game.uci(mv), "f1g1");
+        let pos = &game.node(castle).pos;
+        assert_eq!(
+            pos.board().piece_at(shakmaty::Square::G1).map(|p| p.role),
+            Some(shakmaty::Role::King)
+        );
+        assert_eq!(
+            pos.board().piece_at(shakmaty::Square::F1).map(|p| p.role),
+            Some(shakmaty::Role::Rook)
+        );
+        // Engines answer castling as king-takes-rook.
+        let parsed = "f1g1"
+            .parse::<shakmaty::uci::UciMove>()
+            .unwrap()
+            .to_move(&game.node(reply).pos)
+            .unwrap();
+        assert_eq!(parsed, mv);
+    }
+
+    #[test]
+    fn chess960_castling_with_the_king_already_on_its_castled_square() {
+        // King on g1 with the rook on h1: castling short moves only the rook.
+        let fen = "4k3/8/8/8/8/8/8/R5KR w HA - 0 1";
+        let mut game = GameTree::from_fen(fen).unwrap();
+        assert_eq!(game.variant, crate::Variant::Chess960);
+        let castle = game.add_san(GameTree::ROOT, "O-O").unwrap();
+        let pos = &game.node(castle).pos;
+        assert_eq!(
+            pos.board().piece_at(shakmaty::Square::G1).map(|p| p.role),
+            Some(shakmaty::Role::King)
+        );
+        assert_eq!(
+            pos.board().piece_at(shakmaty::Square::F1).map(|p| p.role),
+            Some(shakmaty::Role::Rook)
+        );
+        assert_eq!(game.uci(game.node(castle).mv.unwrap()), "g1h1");
+    }
+
+    #[test]
+    fn standard_games_keep_the_two_square_castling_step() {
+        let (game, ids) = tree(&["e4", "e5", "Nf3", "Nc6", "Bc4", "Bc5", "O-O"]);
+        assert_eq!(game.variant, crate::Variant::Standard);
+        assert_eq!(game.uci(game.node(ids[6]).mv.unwrap()), "e1g1");
+        assert!(game.header("Variant").is_none());
     }
 
     #[test]

@@ -46,3 +46,20 @@ which is their order in the PGN file, so a book's games keep the numbers you kno
 
 - **Analyse all** reviews the filtered games with the engine. **Review settings** sets the limits.
 - **Export PGN** saves the filtered games.
+
+## Find exact pawn structures or material
+
+Open **More filters**, then paste a **Reference FEN** under **Position patterns**. Choose
+**Same pawn structure**, **Same material**, or both. Pawn structure compares the squares
+occupied by each colour's pawns. Material compares each colour's piece counts, including
+pawns and promoted pieces. Side to move and castling rights do not matter. When both
+options are checked, both must match in the same position.
+
+Click **Build structure index** once for an existing database, or enable it in the PGN import
+dialog. The index uses extra disk space and is optional. Building it shows progress and can
+be cancelled; cancellation keeps the previous complete index. Future imports and game edits
+maintain an enabled index automatically. Search results preview and open in Analyse at the
+first matching position. You can save these criteria with other filters.
+
+These are exact matches. Similar pawn structures and representative-game ranking are planned
+separately. Chess960 PGNs keep their variant during import, export and engine review.

@@ -340,7 +340,7 @@ pub struct BoardView {
     promotion: Option<Promotion>,
     bounds: Bounds<Pixels>,
     animate_serial: u64,
-    animate: Option<(Square, Square)>,
+    animate: Vec<(Square, Square)>,
     /// A board being edited, shown instead of the position. It need not be legal.
     edit: Option<Board>,
     /// The player may queue a move while the opponent is to move.
@@ -371,7 +371,7 @@ impl BoardView {
             promotion: None,
             bounds: Bounds::default(),
             animate_serial: 0,
-            animate: None,
+            animate: Vec::new(),
             edit: None,
             premoves: false,
             premove: None,
@@ -497,8 +497,9 @@ impl BoardView {
         animate: bool,
         cx: &mut Context<Self>,
     ) {
+        let transitions = move_transitions(&self.pos, &pos, last_move);
         self.pos = pos;
-        self.last_move = last_move;
+        self.last_move = transitions.first().copied().or(last_move);
         self.move_tag = None;
         self.selected = None;
         self.drag = None;
@@ -506,10 +507,10 @@ impl BoardView {
         self.user_arrows.clear();
         self.circles.clear();
         if animate && self.prefs.animation_ms > 0 {
-            self.animate = last_move;
+            self.animate = transitions;
             self.animate_serial += 1;
         } else {
-            self.animate = None;
+            self.animate.clear();
         }
         cx.notify();
     }
@@ -555,7 +556,7 @@ impl BoardView {
             .pos
             .legal_moves()
             .iter()
-            .filter(|mv| mv.from() == Some(from) && makes_move(mv, to))
+            .filter(|mv| mv.from() == Some(from) && unambiguous_target(&self.pos, mv, to))
             .cloned()
             .collect();
         match candidates.as_slice() {
@@ -913,13 +914,57 @@ pub fn premove_move(pos: &Chess, from: Square, to: Square) -> Option<Move> {
     let candidates: Vec<Move> = pos
         .legal_moves()
         .into_iter()
-        .filter(|mv| mv.from() == Some(from) && makes_move(mv, to))
+        .filter(|mv| mv.from() == Some(from) && unambiguous_target(pos, mv, to))
         .collect();
     candidates
         .iter()
         .find(|mv| mv.promotion() == Some(Role::Queen))
         .or_else(|| candidates.first())
         .copied()
+}
+
+/// Animates both castling pieces to their final squares, including a stationary king.
+fn move_transitions(
+    before: &Chess,
+    after: &Chess,
+    last: Option<(Square, Square)>,
+) -> Vec<(Square, Square)> {
+    if let Some((from, to)) = last {
+        for mv in before.legal_moves() {
+            let Move::Castle { king, rook } = mv else {
+                continue;
+            };
+            if king != from || (rook != to && board_target(&mv) != to) {
+                continue;
+            }
+            let mut played = before.clone();
+            played.play_unchecked(mv);
+            if played.board() == after.board() && played.turn() == after.turn() {
+                let king_to = board_target(&mv);
+                let rook_to = Square::from_coords(
+                    if rook.file() > king.file() {
+                        File::F
+                    } else {
+                        File::D
+                    },
+                    king.rank(),
+                );
+                return vec![(king, king_to), (rook, rook_to)];
+            }
+        }
+    }
+    last.into_iter().collect()
+}
+
+/// Prefers an ordinary king step when its destination could also mean castling.
+fn unambiguous_target(pos: &Chess, mv: &Move, to: Square) -> bool {
+    makes_move(mv, to)
+        && (!matches!(mv, Move::Castle { rook, .. } if *rook != to)
+            || !pos.legal_moves().iter().any(|other| {
+                other.from() == mv.from()
+                    && !matches!(other, Move::Castle { .. })
+                    && other.to() == to
+            }))
 }
 
 /// Whether dropping a piece on `to` makes this move. Castling is entered either by
@@ -1138,12 +1183,12 @@ impl Render for BoardView {
                 .left(relative(x as f32 * CELL))
                 .top(relative(y as f32 * CELL))
                 .child(self.piece_element(piece, cell, ("piece", u32::from(square))));
-            match self.animate.filter(|(_, to)| *to == square) {
+            match self.animate.iter().find(|(_, to)| *to == square).copied() {
                 Some((from, _)) => {
                     let (from_x, from_y) = self.grid(from);
                     let duration = Duration::from_millis(u64::from(self.prefs.animation_ms));
                     pieces_el = pieces_el.child(wrapper.with_animation(
-                        ElementId::Name(format!("move-{}", self.animate_serial).into()),
+                        ElementId::Name(format!("move-{}-{square}", self.animate_serial).into()),
                         Animation::new(duration).with_easing(gpui::ease_out_quint()),
                         move |el, delta| {
                             let lerp = |start: u32, end: u32| {
@@ -1530,6 +1575,44 @@ mod tests {
             .unwrap()
             .into_position(chess_core::shakmaty::CastlingMode::Standard)
             .unwrap()
+    }
+
+    #[test]
+    fn chess960_castling_animates_both_pieces_to_their_final_squares() {
+        for (fen, targets) in [
+            (
+                "4k3/8/8/8/8/8/8/R4KR1 w GA - 0 1",
+                vec![(Square::F1, Square::G1), (Square::G1, Square::F1)],
+            ),
+            (
+                "4k3/8/8/8/8/8/8/R5KR w HA - 0 1",
+                vec![(Square::G1, Square::G1), (Square::H1, Square::F1)],
+            ),
+        ] {
+            let mut tree = chess_core::GameTree::from_fen(fen).unwrap();
+            let next = tree.add_san(chess_core::GameTree::ROOT, "O-O").unwrap();
+            let mv = tree.node(next).mv.unwrap();
+            assert_eq!(
+                move_transitions(
+                    &tree.node(chess_core::GameTree::ROOT).pos,
+                    &tree.node(next).pos,
+                    Some((mv.from().unwrap(), mv.to()))
+                ),
+                targets
+            );
+        }
+    }
+
+    #[test]
+    fn chess960_king_step_and_castling_have_distinct_targets() {
+        let tree = chess_core::GameTree::from_fen("4k3/8/8/8/8/8/8/R4K1R w HA - 0 1").unwrap();
+        let pos = &tree.node(chess_core::GameTree::ROOT).pos;
+        let step = premove_move(pos, Square::F1, Square::G1).unwrap();
+        let castle = premove_move(pos, Square::F1, Square::H1).unwrap();
+        assert!(!matches!(step, Move::Castle { .. }));
+        assert!(matches!(castle, Move::Castle { .. }));
+        assert!(!unambiguous_target(pos, &castle, Square::G1));
+        assert!(unambiguous_target(pos, &castle, Square::H1));
     }
 
     #[test]

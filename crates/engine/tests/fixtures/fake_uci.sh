@@ -8,7 +8,8 @@ while IFS= read -r line; do
       echo "id author Tests"
       echo "option name Hash type spin default 16 min 1 max 1024"
       echo "option name Marker type string default <empty>"
-      echo "uciok"
+      [ "$crash_on_go" = no960 ] || echo "option name UCI_Chess960 type check default false"
+            echo "uciok"
       ;;
     "setoption name Marker value "*)
       marker=${line#setoption name Marker value }

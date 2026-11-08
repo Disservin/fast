@@ -630,7 +630,15 @@ impl AnalyseScreen {
             Some(sel) => format!("{}/{sel}", stats.depth),
             None => stats.depth.to_string(),
         });
-        let state = if stale {
+        let unsupported = self.tree.variant == chess_core::Variant::Chess960
+            && !config
+                .info
+                .options
+                .iter()
+                .any(|option| option.name == "UCI_Chess960");
+        let state = if unsupported {
+            Some("No Chess960 support")
+        } else if stale {
             Some("stale")
         } else if cached {
             Some("cached")
@@ -698,15 +706,17 @@ impl AnalyseScreen {
                 div()
                     .flex_none()
                     .text_size(px(11.))
-                    .text_color(rgb(T.faint))
+                    .text_color(rgb(if unsupported { T.warn } else { T.faint }))
                     .child(ui::i18n::t(state).to_owned())
             }))
-            .child(cell(depth, 68., "DEPTH"))
-            .child(cell(nodes, 78., "NODES"))
-            .child(cell(speed, 90., "SPEED"))
-            .child(cell(time, 64., "TIME"))
-            .child(cell(hash, 50., "HASH"))
-            .children(tb.map(|tb| cell(tb, 60., "TB")));
+            .when(!unsupported, |row| {
+                row.child(cell(depth, 68., "DEPTH"))
+                    .child(cell(nodes, 78., "NODES"))
+                    .child(cell(speed, 90., "SPEED"))
+                    .child(cell(time, 64., "TIME"))
+                    .child(cell(hash, 50., "HASH"))
+                    .children(tb.map(|tb| cell(tb, 60., "TB")))
+            });
         v_flex()
             .when(chosen, |el| el.bg(rgb(T.selected)))
             .child(row)
@@ -951,8 +961,11 @@ impl AnalyseScreen {
                         legal.into_iter().enumerate().map(|(index, mv)| {
                             let san =
                                 chess_core::shakmaty::san::San::from_move(&pos, mv).to_string();
-                            let uci =
-                                chess_core::shakmaty::uci::UciMove::from_standard(mv).to_string();
+                            let uci = chess_core::shakmaty::uci::UciMove::from_move(
+                                mv,
+                                pos.castles().mode(),
+                            )
+                            .to_string();
                             let this = this.clone();
                             btn(("search-move", index), san)
                                 .h(26.)

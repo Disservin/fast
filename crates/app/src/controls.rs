@@ -21,6 +21,7 @@ pub struct TextField {
     icon: Option<&'static str>,
     hint: Option<AnyElement>,
     invalid: bool,
+    mono: bool,
 }
 
 pub fn text_input(state: &Entity<InputState>) -> TextField {
@@ -31,10 +32,17 @@ pub fn text_input(state: &Entity<InputState>) -> TextField {
         icon: None,
         hint: None,
         invalid: false,
+        mono: false,
     }
 }
 
 impl TextField {
+    /// Uses aligned data typography for numbers and FENs.
+    pub fn mono(mut self) -> Self {
+        self.mono = true;
+        self
+    }
+
     pub fn height(mut self, height: f32) -> Self {
         self.height = height;
         self
@@ -76,15 +84,17 @@ impl RenderOnce for TextField {
             .rounded(px(4.))
             .bg(rgb(T.bg))
             .border_1()
+            .when(focused, |field| field.border_2())
             .border_color(rgb(if self.invalid {
                 T.warn
             } else if focused {
-                T.fg
+                T.accent
             } else {
                 T.border_strong
             }))
             .child(
                 Input::new(&self.state)
+                    .when(self.mono, |input| input.font_family(ui::MONO))
                     .appearance(false)
                     .text_size(px(13.))
                     .when_some(self.icon, |input, path| {

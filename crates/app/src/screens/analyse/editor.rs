@@ -37,6 +37,9 @@ pub struct PositionEditor {
     pub board: Board,
     pub turn: Color,
     pub castling: [bool; 4],
+    /// The game’s castling rules and original rook squares.
+    mode: CastlingMode,
+    rook_squares: [Square; 4],
     /// The piece a click places; `None` erases.
     pub brush: Option<Piece>,
 }
@@ -44,10 +47,30 @@ pub struct PositionEditor {
 impl PositionEditor {
     pub fn from_position(pos: &Chess) -> Self {
         let rights = pos.castles().castling_rights();
+        let rook_squares = [
+            (Color::White, chess_core::shakmaty::CastlingSide::KingSide),
+            (Color::White, chess_core::shakmaty::CastlingSide::QueenSide),
+            (Color::Black, chess_core::shakmaty::CastlingSide::KingSide),
+            (Color::Black, chess_core::shakmaty::CastlingSide::QueenSide),
+        ]
+        .map(|(color, side)| {
+            pos.castles().rook(color, side).unwrap_or_else(|| {
+                Square::from_coords(
+                    if side.is_king_side() {
+                        chess_core::shakmaty::File::H
+                    } else {
+                        chess_core::shakmaty::File::A
+                    },
+                    color.backrank(),
+                )
+            })
+        });
         Self {
             board: pos.board().clone(),
             turn: pos.turn(),
-            castling: CASTLING.map(|(rook, _)| rights.contains(rook)),
+            castling: rook_squares.map(|rook| rights.contains(rook)),
+            rook_squares,
+            mode: pos.castles().mode(),
             brush: Some(Piece {
                 color: Color::White,
                 role: Role::Pawn,
@@ -71,11 +94,12 @@ impl PositionEditor {
         let mut setup = Setup::empty();
         setup.board = self.board.clone();
         setup.turn = self.turn;
-        setup.castling_rights = CASTLING
+        setup.castling_rights = self
+            .rook_squares
             .iter()
             .zip(self.castling)
             .filter(|(_, on)| *on)
-            .fold(Bitboard::EMPTY, |rights, ((rook, _), _)| {
+            .fold(Bitboard::EMPTY, |rights, (rook, _)| {
                 rights | Bitboard::from(*rook)
             });
         setup
@@ -84,7 +108,7 @@ impl PositionEditor {
     /// The legal position, or why there is none. Castling that the pieces no longer
     /// allow is dropped rather than refused.
     pub fn position(&self) -> Result<Chess, String> {
-        let checked = match Chess::from_setup(self.setup(), CastlingMode::Standard) {
+        let checked = match Chess::from_setup(self.setup(), self.mode) {
             Ok(pos) => Ok(pos),
             Err(err) => err.ignore_invalid_castling_rights(),
         };
@@ -157,9 +181,8 @@ impl AnalyseScreen {
         };
         match editor.position() {
             Ok(pos) => {
-                let fen = GameTree::fen_of(&pos);
                 self.close_editor(cx);
-                self.load_fen(&fen, window, cx);
+                self.load_tree(GameTree::from_position(pos), window, cx);
             }
             Err(reason) => self
                 .model
@@ -381,6 +404,22 @@ impl AnalyseScreen {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn editing_chess960_keeps_its_rook_squares_and_variant() {
+        let pos = chess_core::chess960_position(734);
+        let editor = PositionEditor::from_position(&pos);
+        let edited = editor.position().unwrap();
+        assert_eq!(edited.castles().mode(), CastlingMode::Chess960);
+        assert_eq!(
+            edited.castles().castling_rights(),
+            pos.castles().castling_rights()
+        );
+        assert_eq!(
+            GameTree::from_position(edited).variant,
+            chess_core::Variant::Chess960
+        );
+    }
 
     #[test]
     fn edits_and_validates() {

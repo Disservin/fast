@@ -108,6 +108,8 @@ pub struct PlayScreen {
     custom_time: Entity<gpui_component::input::InputState>,
     colour: ColourChoice,
     start_from: TextSelect,
+    /// The Chess960 starting position number.
+    chess960_number: Entity<gpui_component::input::InputState>,
     /// The position typed or pasted when the game starts from a FEN.
     start_fen: Entity<gpui_component::input::InputState>,
     hide_eval: bool,
@@ -149,6 +151,7 @@ impl PlayScreen {
                 "Current Analyse position",
                 "Repertoire line",
                 "FEN",
+                "Chess960",
             ]
             .map(SharedString::from)
             .to_vec(),
@@ -164,8 +167,18 @@ impl PlayScreen {
                 .default_value(1800.)
         });
         let custom_time = new_input("", "12+3", window, cx);
+        let chess960_number = new_input(
+            model.read(cx).config.chess960_number.min(959).to_string(),
+            "0–959",
+            window,
+            cx,
+        );
         let start_fen = new_input("", "Paste a FEN", window, cx);
         let subscriptions = vec![
+            cx.subscribe(
+                &chess960_number,
+                |_, _, _: &gpui_component::input::InputEvent, cx| cx.notify(),
+            ),
             cx.subscribe_in(&board, window, |this, _, event, _, cx| match event {
                 BoardEvent::Moved(mv) => this.user_move(*mv, cx),
                 BoardEvent::Premove(premove) => {
@@ -222,6 +235,7 @@ impl PlayScreen {
             custom_time,
             colour: ColourChoice::White,
             start_from,
+            chess960_number,
             start_fen,
             hide_eval: true,
             allow_takebacks: false,
@@ -345,9 +359,9 @@ impl PlayScreen {
             1 => self
                 .workspace
                 .upgrade()
-                .and_then(|workspace| {
+                .map(|workspace| {
                     let analyse = workspace.read(cx).analyse.read(cx);
-                    GameTree::from_fen(&analyse.tree.fen(analyse.current)).ok()
+                    GameTree::from_position(analyse.tree.node(analyse.current).pos.clone())
                 })
                 .unwrap_or_default(),
             2 => {
@@ -365,6 +379,15 @@ impl PlayScreen {
                 }
                 tree
             }
+            4 => GameTree::chess960(
+                self.chess960_number
+                    .read(cx)
+                    .value()
+                    .trim()
+                    .parse::<u16>()
+                    .ok()
+                    .filter(|n| *n < 960)?,
+            ),
             3 => GameTree::from_fen(self.start_fen.read(cx).value().trim()).ok()?,
             _ => GameTree::new(),
         })
@@ -383,9 +406,27 @@ impl PlayScreen {
             return;
         };
         let Some(tree) = self.start_tree(window, cx) else {
-            self.model.toast("Paste a valid FEN to start from.", cx);
+            self.model.toast("Enter a valid starting position.", cx);
             return;
         };
+        if tree.variant == chess_core::Variant::Chess960 {
+            if !demo
+                && !config
+                    .info
+                    .options
+                    .iter()
+                    .any(|option| option.name == "UCI_Chess960")
+            {
+                self.model.toast("No Chess960 support", cx);
+                return;
+            }
+            if let Some(number) = chess_core::chess960_number(&tree.node(GameTree::ROOT).pos) {
+                self.model.update(cx, |model, cx| {
+                    model.config.chess960_number = number;
+                    model.save_config(cx);
+                });
+            }
+        }
         let current = tree
             .line_from(GameTree::ROOT)
             .last()
@@ -672,9 +713,10 @@ impl PlayScreen {
             .path_to(game.current)
             .iter()
             .filter_map(|&id| game.tree.node(id).mv)
-            .map(|mv| UciMove::from_standard(mv).to_string())
+            .map(|mv| game.tree.uci(mv))
             .collect();
         engine.search(SearchRequest {
+            chess960: game.tree.variant == chess_core::Variant::Chess960,
             search_moves: Vec::new(),
             fen: game.tree.fen(GameTree::ROOT),
             moves,
@@ -852,6 +894,20 @@ impl PlayScreen {
             .read(cx)
             .selected_index(cx)
             .is_some_and(|index| index.row == 3);
+        let from_960 = self
+            .start_from
+            .read(cx)
+            .selected_index(cx)
+            .is_some_and(|index| index.row == 4);
+        let number = self
+            .chess960_number
+            .read(cx)
+            .value()
+            .trim()
+            .parse::<u16>()
+            .ok()
+            .filter(|n| *n < 960);
+        let random_this = this.clone();
         let mode_this = this.clone();
         let mode = segmented(
             "play-mode",
@@ -941,6 +997,39 @@ impl PlayScreen {
             )
             .when(from_fen, |column| {
                 column.child(div().mb(px(20.)).child(text_input(&self.start_fen)))
+            })
+            .when(from_960, |column| {
+                column.child(
+                    h_flex()
+                        .flex_wrap()
+                        .gap(px(8.))
+                        .mb(px(16.))
+                        .child(
+                            div()
+                                .w(px(80.))
+                                .child(text_input(&self.chess960_number).mono()),
+                        )
+                        .child(
+                            btn("random-chess960", "Random")
+                                .icon("icons/dices.svg")
+                                .compact()
+                                .on_click(move |window, cx| {
+                                    random_this.update(cx, |screen, cx| {
+                                        let number = std::time::SystemTime::now()
+                                            .duration_since(std::time::UNIX_EPOCH)
+                                            .map_or(518, |time| (time.subsec_nanos() % 960) as u16);
+                                        screen.chess960_number.update(cx, |input, cx| {
+                                            input.set_value(number.to_string(), window, cx)
+                                        });
+                                        cx.notify();
+                                    });
+                                }),
+                        )
+                        .child(mono(number.map_or_else(
+                            || ui::i18n::t("Enter a number from 0 to 959").to_owned(),
+                            |n| format!("#{n} {}", chess_core::chess960::back_rank(n)),
+                        ))),
+                )
             })
             .when(!self_play, |column| {
                 column
@@ -1197,7 +1286,14 @@ impl PlayScreen {
             .child(
                 panel()
                     .p(px(16.))
-                    .child(section_label(ui::i18n::t("Moves")))
+                    .child(
+                        h_flex().gap(px(8.)).child(section_label("Moves")).when(
+                            self.game.as_ref().is_some_and(|game| {
+                                game.tree.variant == chess_core::Variant::Chess960
+                            }),
+                            |row| row.child(ui::widgets::badge("Chess960")),
+                        ),
+                    )
                     .child(list)
                     .child(
                         div()

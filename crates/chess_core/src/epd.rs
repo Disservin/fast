@@ -3,7 +3,7 @@
 //! `dm` (direct mate in N) and `id`.
 
 use shakmaty::{
-    CastlingMode, Chess, EnPassantMode, Move, PositionError,
+    Chess, EnPassantMode, Move, PositionError,
     fen::Fen,
     san::{San, SanPlus},
     uci::UciMove,
@@ -164,7 +164,7 @@ pub fn parse_record(line: &str) -> Result<EpdPosition, String> {
     // and fortresses may have more material or checks than a game could reach; engines
     // search them all the same.
     let pos: Chess = parsed
-        .into_position(CastlingMode::Standard)
+        .into_position(crate::fen_variant(&fen).unwrap_or_default().castling_mode())
         .or_else(PositionError::ignore_invalid_ep_square)
         .or_else(PositionError::ignore_too_much_material)
         .or_else(PositionError::ignore_impossible_check)

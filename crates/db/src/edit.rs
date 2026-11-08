@@ -161,6 +161,10 @@ impl Database {
             for &id in ids {
                 db.unindex_game(id)?;
                 db.conn.execute(
+                    "DELETE FROM structure_positions WHERE game_id = ?1",
+                    params![id],
+                )?;
+                db.conn.execute(
                     "DELETE FROM review_positions WHERE game_id = ?1",
                     params![id],
                 )?;
@@ -188,15 +192,15 @@ impl Database {
         };
         let moves = game.sans.join(" ");
         self.in_transaction(|db| {
-            let old: Option<(String, String)> = db
+            let old: Option<(String, String, bool)> = db
                 .conn
                 .query_row(
-                    "SELECT start_fen, moves FROM games WHERE id = ?1",
+                    "SELECT start_fen, moves, chess960 FROM games WHERE id = ?1",
                     params![id],
-                    |row| Ok((row.get(0)?, row.get(1)?)),
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
                 )
                 .optional()?;
-            let Some((old_fen, old_moves)) = old else {
+            let Some((old_fen, old_moves, old_chess960)) = old else {
                 return Ok(false);
             };
             let tags = &game.tags;
@@ -235,14 +239,20 @@ impl Database {
                 "UPDATE games SET annotated = ?2 WHERE id = ?1",
                 params![id, movetext(pgn)],
             )?;
-            if old_fen == game.start_fen && old_moves == moves {
+            let chess960 = chess_core::Variant::from_tag(&tags.variant) == chess_core::Variant::Chess960
+                || chess_core::fen_variant(&game.start_fen) == Some(chess_core::Variant::Chess960);
+            if old_fen == game.start_fen && old_moves == moves && old_chess960 == chess960 {
                 return Ok(true);
             }
             db.unindex_game(id)?;
+            db.conn.execute("DELETE FROM structure_positions WHERE game_id = ?1", params![id])?;
+            if db.has_structure_index()? {
+                crate::structure::index_game(&db.conn, id, &game.start_fen, &moves, chess960, &crate::ImportControl::default())?;
+            }
             db.clear_review(id)?;
             db.conn.execute(
-                "UPDATE games SET start_fen = ?2, moves = ?3, plies = ?4 WHERE id = ?1",
-                params![id, game.start_fen, moves, game.sans.len() as i64],
+                "UPDATE games SET start_fen = ?2, moves = ?3, plies = ?4, chess960 = ?5 WHERE id = ?1",
+                params![id, game.start_fen, moves, game.sans.len() as i64, chess960],
             )?;
             let mut insert = db.conn.prepare_cached(
                 "INSERT OR IGNORE INTO positions (hash, game_id, ply, next_san)
