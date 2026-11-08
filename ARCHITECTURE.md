@@ -58,6 +58,11 @@ needs no decoder, external files or network. Classic plays placement/capture rec
 two placements for castling and a board-reset recording at game end, without electronic
 check tones. Existing saved sound choices remain selectable; Classic is available in Settings.
 
+Futuristic, NES, Piano and SFX are Lichess' free sound sets by Enigmahack (AGPL-3.0-or-later),
+kept with their MP3 originals in `assets/sounds/lichess` and converted by the same script.
+They play Lichess' move, capture and check sounds, the move sound for castling and the
+notify sound at game end.
+
 Wood, Soft, Click, Bell, Deep wood and Thud remain as optional synthesized profiles.
 Previews and saved volume apply to every profile. PCM loading, synthesis and playback run
 on the sound thread with a bounded request queue. The output device opens there on first

@@ -1369,7 +1369,9 @@ impl SettingsScreen {
                     screen.model.read(cx).config.board.play_sample();
                 })
             },
-        );
+        )
+        .flex_wrap()
+        .gap_y(px(6.));
         section(ui::i18n::t("Board & pieces"))
             .child(option_row(ui::i18n::t("Board"), None, boards))
             .child(option_row(ui::i18n::t("Pieces"), None, pieces))

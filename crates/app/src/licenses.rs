@@ -40,7 +40,7 @@ pub fn libraries() -> &'static [Library] {
 pub const FAST_LICENSE: &str = "GPL-3.0-or-later";
 
 /// Bundled assets: what, by whom, and under which licence.
-pub const ASSETS: [(&str, &str, &str); 10] = [
+pub const ASSETS: [(&str, &str, &str); 11] = [
     (
         "Geist and Geist Mono",
         "The Geist Project Authors (Vercel)",
@@ -60,6 +60,11 @@ pub const ASSETS: [(&str, &str, &str); 10] = [
         "Classic chess recordings",
         "el_boss (Chess Puzzle Blitz SFX)",
         "CC0-1.0",
+    ),
+    (
+        "Lichess sounds (Futuristic, NES, Piano, SFX)",
+        "Enigmahack, via Lichess",
+        "AGPL-3.0-or-later",
     ),
     ("Chess opening names", "Lichess contributors", "CC0-1.0"),
     ("Synthesized move sounds", "Fast", "GPL-3.0-or-later"),

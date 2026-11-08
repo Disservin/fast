@@ -1,5 +1,7 @@
 //! Recorded chess-piece sounds by default, with optional synthesized profiles.
 //! Classic uses CC0 wooden-board recordings by el_boss (see assets/sounds/classic).
+//! Futuristic, NES, Piano and SFX are the AGPL-licensed Lichess sets by Enigmahack
+//! (see assets/sounds/lichess).
 //!
 //! The audio device is opened on first use, on a thread of its own (its stream cannot
 //! move between threads on every platform). Without a device the sounds are skipped.
@@ -37,9 +39,13 @@ pub enum SoundProfile {
     Bell,
     DeepWood,
     Thud,
+    Futuristic,
+    Nes,
+    Piano,
+    Sfx,
 }
 impl SoundProfile {
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 11] = [
         Self::Classic,
         Self::Wood,
         Self::Soft,
@@ -47,6 +53,10 @@ impl SoundProfile {
         Self::Bell,
         Self::DeepWood,
         Self::Thud,
+        Self::Futuristic,
+        Self::Nes,
+        Self::Piano,
+        Self::Sfx,
     ];
     pub fn name(self) -> &'static str {
         match self {
@@ -57,6 +67,10 @@ impl SoundProfile {
             Self::Bell => "Bell",
             Self::DeepWood => "Deep wood",
             Self::Thud => "Thud",
+            Self::Futuristic => "Futuristic",
+            Self::Nes => "NES",
+            Self::Piano => "Piano",
+            Self::Sfx => "SFX",
         }
     }
 }
@@ -228,14 +242,76 @@ fn tone(out: &mut [f32], at: usize, freq: f32, loudness: f32, decay: f32) {
     }
 }
 
+/// Turns embedded signed 16-bit little-endian mono PCM into samples.
+fn decode(bytes: &[u8]) -> Vec<f32> {
+    bytes
+        .chunks_exact(2)
+        .map(|sample| i16::from_le_bytes([sample[0], sample[1]]) as f32 / 32768.0)
+        .collect()
+}
+
+/// The embedded PCM of one Lichess sound set, as (move, capture, check, game end).
+macro_rules! lichess_set {
+    ($set:literal) => {
+        [
+            include_bytes!(concat!(
+                "../../../assets/sounds/lichess/",
+                $set,
+                "/Move.pcm"
+            ))
+            .as_slice(),
+            include_bytes!(concat!(
+                "../../../assets/sounds/lichess/",
+                $set,
+                "/Capture.pcm"
+            ))
+            .as_slice(),
+            include_bytes!(concat!(
+                "../../../assets/sounds/lichess/",
+                $set,
+                "/Check.pcm"
+            ))
+            .as_slice(),
+            include_bytes!(concat!(
+                "../../../assets/sounds/lichess/",
+                $set,
+                "/GenericNotify.pcm"
+            ))
+            .as_slice(),
+        ]
+    };
+}
+
+/// A Lichess set's recording for a move event, decoded once on the sound thread.
+/// Castling uses the move sound, as on Lichess; the game's end uses its notify sound.
+fn lichess(profile: SoundProfile, sound: Sound) -> Vec<f32> {
+    static SETS: [[&[u8]; 4]; 4] = [
+        lichess_set!("futuristic"),
+        lichess_set!("nes"),
+        lichess_set!("piano"),
+        lichess_set!("sfx"),
+    ];
+    static DECODED: [[OnceLock<Vec<f32>>; 4]; 4] = [const { [const { OnceLock::new() }; 4] }; 4];
+    let set = match profile {
+        SoundProfile::Futuristic => 0,
+        SoundProfile::Nes => 1,
+        SoundProfile::Piano => 2,
+        SoundProfile::Sfx => 3,
+        _ => return Vec::new(),
+    };
+    let index = match sound {
+        Sound::Move | Sound::Castle => 0,
+        Sound::Capture => 1,
+        Sound::Check => 2,
+        Sound::GameEnd => 3,
+    };
+    DECODED[set][index]
+        .get_or_init(|| decode(SETS[set][index]))
+        .clone()
+}
+
 /// Decode embedded mono PCM once, away from the UI thread. No runtime downloads.
 fn classic(sound: Sound) -> Vec<f32> {
-    fn decode(bytes: &[u8]) -> Vec<f32> {
-        bytes
-            .chunks_exact(2)
-            .map(|sample| i16::from_le_bytes([sample[0], sample[1]]) as f32 / 32768.0)
-            .collect()
-    }
     static PLACEMENT: OnceLock<Vec<f32>> = OnceLock::new();
     static CAPTURE: OnceLock<Vec<f32>> = OnceLock::new();
     static RESET: OnceLock<Vec<f32>> = OnceLock::new();
@@ -273,6 +349,9 @@ pub fn synthesise_profile(profile: SoundProfile, sound: Sound) -> Vec<f32> {
     match profile {
         SoundProfile::Classic => return classic(sound),
         SoundProfile::Wood => return synthesise(sound),
+        SoundProfile::Futuristic | SoundProfile::Nes | SoundProfile::Piano | SoundProfile::Sfx => {
+            return lichess(profile, sound);
+        }
         _ => {}
     }
     let length = match sound {
@@ -307,7 +386,12 @@ pub fn synthesise_profile(profile: SoundProfile, sound: Sound) -> Vec<f32> {
             tone(&mut out, 0, pitch * 0.23, 0.65, 0.025);
             tone(&mut out, 0, pitch * 0.36, 0.16, 0.012);
         }
-        SoundProfile::Wood | SoundProfile::Classic => unreachable!(),
+        SoundProfile::Wood
+        | SoundProfile::Classic
+        | SoundProfile::Futuristic
+        | SoundProfile::Nes
+        | SoundProfile::Piano
+        | SoundProfile::Sfx => unreachable!(),
     }
     if matches!(sound, Sound::Castle | Sound::GameEnd) {
         let multiplier = match profile {
@@ -524,6 +608,31 @@ mod tests {
             mix(SoundProfile::Classic, &[Sound::Move, Sound::Check], 1.0),
             mix(SoundProfile::Classic, &[Sound::Move], 1.0)
         );
+    }
+
+    #[test]
+    fn lichess_sets_play_their_own_recording_for_every_event() {
+        for profile in [
+            SoundProfile::Futuristic,
+            SoundProfile::Nes,
+            SoundProfile::Piano,
+            SoundProfile::Sfx,
+        ] {
+            let clips = [Sound::Move, Sound::Capture, Sound::Check, Sound::GameEnd]
+                .map(|sound| synthesise_profile(profile, sound));
+            for (index, clip) in clips.iter().enumerate() {
+                assert!(clip.iter().any(|s| s.abs() > 0.1), "{profile:?} is silent");
+                assert!(clip.len() <= ms(1500), "{profile:?} is too long");
+                for other in &clips[index + 1..] {
+                    assert_ne!(clip, other, "{profile:?} repeats a sound");
+                }
+            }
+            assert_eq!(
+                synthesise_profile(profile, Sound::Castle),
+                clips[0],
+                "{profile:?} castles with its move sound"
+            );
+        }
     }
 
     #[test]

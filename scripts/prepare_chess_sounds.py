@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Convert the bundled CC0 chess recordings to runtime PCM using libsndfile.
+"""Convert the bundled chess sounds (assets/sounds/**/*.mp3) to runtime PCM using libsndfile.
 
 Run from any directory. Requires a system libsndfile with MP3 support; no Python
 packages are needed. Runtime playback does not use libsndfile or an audio decoder.
@@ -22,7 +22,7 @@ lib.sf_readf_float.argtypes = [c.c_void_p, c.POINTER(c.c_float), c.c_longlong]
 lib.sf_readf_float.restype = c.c_longlong
 lib.sf_close.argtypes = [c.c_void_p]
 
-for path in (Path(__file__).resolve().parents[1] / "assets/sounds/classic").glob("*.mp3"):
+for path in sorted((Path(__file__).resolve().parents[1] / "assets/sounds").rglob("*.mp3")):
     info = Info()
     handle = lib.sf_open(bytes(path), 0x10, c.byref(info))
     if not handle:
@@ -46,4 +46,4 @@ for path in (Path(__file__).resolve().parents[1] / "assets/sounds/classic").glob
     for i in range(fade):
         output[-fade + i] *= 1 - i / fade
     path.with_suffix(".pcm").write_bytes(b"".join(struct.pack("<h", round(max(-1, min(1, value)) * 32767)) for value in output))
-    print(path.name, f"{len(output) / 44100:.3f}s")
+    print(path.relative_to(Path(__file__).resolve().parents[1] / "assets/sounds"), f"{len(output) / 44100:.3f}s")
