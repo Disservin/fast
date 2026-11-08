@@ -187,6 +187,9 @@ pub struct GameDetails {
     /// starting positions were retained.
     pub start_fen: String,
     pub sans: Vec<String>,
+    /// The movetext with comments, variations and annotations, once the game has been
+    /// saved from Analyse. Imported games keep only their moves.
+    pub annotated: Option<String>,
     pub review_summary: Option<ReviewSummary>,
     pub review_positions: Vec<ReviewPosition>,
 }
@@ -252,6 +255,13 @@ impl GameDetails {
             tag("ECO", &row.eco);
         }
         out.push('\n');
+        if let Some(movetext) = &self.annotated {
+            out.push_str(movetext);
+            out.push(' ');
+            out.push_str(&row.result);
+            out.push('\n');
+            return out;
+        }
         for (ply, san) in self.sans.iter().enumerate() {
             if ply % 2 == 0 {
                 out.push_str(&format!("{}. ", ply / 2 + 1));
@@ -353,14 +363,18 @@ impl Database {
         let mut found = self
             .conn
             .query_row(
-                &format!("SELECT {ROW_COLUMNS}, moves, start_fen FROM games WHERE id = ?1"),
+                &format!(
+                    "SELECT {ROW_COLUMNS}, moves, start_fen, annotated FROM games WHERE id = ?1"
+                ),
                 params![id],
                 |row| {
                     let moves: String = row.get(14)?;
                     let start_fen: String = row.get(15)?;
+                    let annotated: Option<String> = row.get(16)?;
                     Ok(GameDetails {
                         row: GameRow::from_row(row)?,
                         start_fen,
+                        annotated,
                         sans: moves.split_ascii_whitespace().map(str::to_owned).collect(),
                         review_summary: None,
                         review_positions: Vec::new(),

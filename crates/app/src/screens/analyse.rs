@@ -279,6 +279,11 @@ pub struct AnalyseScreen {
     workspace: WeakEntity<Workspace>,
     /// Set while the board holds a game opened from a database.
     db_game: Option<DbGame>,
+    /// The game as last loaded from or saved to its database, to tell whether it has
+    /// unsaved changes.
+    db_saved_pgn: String,
+    /// The stored review's findings for that game, with the move each one is on.
+    db_findings: Vec<(NodeId, crate::screens::database::ReviewMark)>,
     pub tree: GameTree,
     pub current: NodeId,
     board: Entity<BoardView>,
@@ -456,6 +461,8 @@ impl AnalyseScreen {
             model,
             workspace,
             db_game: None,
+            db_saved_pgn: String::new(),
+            db_findings: Vec::new(),
             tree,
             current,
             board,
@@ -526,6 +533,16 @@ impl AnalyseScreen {
     }
 
     pub fn breadcrumb(&self) -> SharedString {
+        if self.db_game.is_some() {
+            let player = |side: &'static str| {
+                self.tree
+                    .header(side)
+                    .filter(|name| !name.is_empty() && *name != "?")
+                    .unwrap_or(side)
+                    .to_owned()
+            };
+            return format!("{} – {}", player("White"), player("Black")).into();
+        }
         match self.opening() {
             Some(opening) => opening
                 .name
@@ -925,6 +942,7 @@ impl AnalyseScreen {
     pub fn load_tree(&mut self, tree: GameTree, window: &mut Window, cx: &mut Context<Self>) {
         self.tree = tree;
         self.db_game = None;
+        self.db_findings.clear();
         // A different game: engines hear `ucinewgame` before its first search.
         self.live.update(cx, |live, _| live.game += 1);
         self.current = GameTree::ROOT;
@@ -1243,7 +1261,8 @@ impl AnalyseScreen {
     }
 
     /// Opens a game from a database at `ply`, with its engine review on the eval graph
-    /// and its review findings marked on the moves. Saving then updates that game.
+    /// and its review findings listed above the moves. Saving then updates that game,
+    /// comments and variations included.
     pub fn load_db_game(
         &mut self,
         details: &db::GameDetails,
@@ -1252,7 +1271,7 @@ impl AnalyseScreen {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let mut tree = match parse_pgn(&details.to_pgn()) {
+        let tree = match parse_pgn(&details.to_pgn()) {
             Ok(mut games) if !games.is_empty() => games.remove(0),
             Ok(_) => return self.model.toast("That PGN contains no games.", cx),
             Err(err) => {
@@ -1266,13 +1285,13 @@ impl AnalyseScreen {
             0 => Some(GameTree::ROOT),
             ply => main.get(ply - 1).copied(),
         };
-        for mark in crate::screens::database::review_marks(details) {
-            if let Some(id) = node_at(mark.ply + 1) {
-                tree.toggle_nag(id, mark.nag);
-                tree.node_mut(id).comment = mark.note;
-            }
-        }
+        let findings = crate::screens::database::review_marks(details)
+            .into_iter()
+            .filter_map(|mark| Some((node_at(mark.ply + 1)?, mark)))
+            .collect();
         self.load_tree(tree, window, cx);
+        self.db_findings = findings;
+        self.db_saved_pgn = write_pgn(&self.tree);
         let mate = chess_core::annotation::MATE_CP;
         for position in &details.review_positions {
             if let Some(id) = node_at(position.ply as usize) {
@@ -1464,15 +1483,28 @@ impl AnalyseScreen {
         .detach();
     }
 
-    /// Writes the board's game over the stored game it was opened from.
+    /// Whether the game opened from a database has changes it has not saved back.
+    fn db_game_dirty(&self) -> bool {
+        self.db_game.is_some() && write_pgn(&self.tree) != self.db_saved_pgn
+    }
+
+    /// Writes the board's game, comments and variations included, over the stored game
+    /// it was opened from.
     fn save_to_db_game(&mut self, origin: DbGame, cx: &mut Context<Self>) {
         let pgn = write_pgn(&self.tree);
         let model = self.model.clone();
         let DbGame { path, id, name } = origin;
-        cx.spawn(async move |_, cx| {
+        cx.spawn(async move |this, cx| {
+            let written = pgn.clone();
             let saved = cx
                 .background_spawn(async move { Database::open(&path)?.replace_game(id, &pgn) })
                 .await;
+            if matches!(saved, Ok(true)) {
+                let _ = this.update(cx, |this, cx| {
+                    this.db_saved_pgn = written;
+                    cx.notify();
+                });
+            }
             model.update(cx, |model, cx| {
                 match saved {
                     Ok(true) => model.toast(format!("Saved changes to {name}."), cx),
@@ -1626,6 +1658,96 @@ impl AnalyseScreen {
         )
     }
 
+    /// Under the scoresheet header while the game came from a database: which database,
+    /// whether there are unsaved changes, a Save button, and the review findings.
+    fn render_db_game_strip(&self, cx: &mut Context<Self>) -> Option<gpui::AnyElement> {
+        let origin = self.db_game.as_ref()?;
+        let dirty = self.db_game_dirty();
+        let this = cx.entity();
+        let save_this = this.clone();
+        let mut strip = v_flex()
+            .flex_none()
+            .px(px(18.))
+            .py(px(10.))
+            .gap(px(8.))
+            .bg(rgb(T.surface_2))
+            .border_b_1()
+            .border_color(rgb(T.border))
+            .child(
+                h_flex()
+                    .gap(px(8.))
+                    .child(ui::widgets::icon("icons/database.svg", px(16.), T.accent))
+                    .child(
+                        v_flex()
+                            .flex_1()
+                            .min_w_0()
+                            .child(
+                                div()
+                                    .text_size(px(13.))
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .truncate()
+                                    .child(origin.name.clone()),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(12.))
+                                    .text_color(rgb(if dirty { T.warn } else { T.muted }))
+                                    .child(if dirty {
+                                        ui::i18n::t("Unsaved changes")
+                                    } else {
+                                        ui::i18n::t("Saved in this database")
+                                    }),
+                            ),
+                    )
+                    .child(
+                        btn("db-game-save", "Save")
+                            .compact()
+                            .when(dirty, |button| button.primary())
+                            .disabled(!dirty)
+                            .tooltip(ui::i18n::t(
+                                "Save moves, comments and variations to the database (Ctrl+S)",
+                            ))
+                            .on_click(move |_, cx| {
+                                save_this.update(cx, |screen, cx| screen.save_game(cx))
+                            }),
+                    ),
+            );
+        if !self.db_findings.is_empty() {
+            let mut chips = h_flex().flex_wrap().gap(px(4.));
+            for (index, (node, mark)) in self.db_findings.iter().enumerate() {
+                let node = *node;
+                let this = this.clone();
+                let tip = if mark.best.is_empty() {
+                    mark.loss.clone()
+                } else {
+                    format!(
+                        "{}, {} {}",
+                        mark.loss,
+                        ui::i18n::t("engine line"),
+                        mark.best
+                    )
+                };
+                chips = chips.child(
+                    btn(
+                        ("db-finding", index),
+                        format!("{} {}", mark.label, mark.loss),
+                    )
+                    .mini()
+                    .mono()
+                    .pad(6.)
+                    .dot(quality_color(mark.quality))
+                    .selected(node == self.current)
+                    .tooltip(tip)
+                    .on_click(move |window, cx| {
+                        this.update(cx, |screen, cx| screen.jump(node, window, cx))
+                    }),
+                );
+            }
+            strip = strip.child(section_label("Review findings")).child(chips);
+        }
+        Some(strip.into_any_element())
+    }
+
     fn render_scoresheet(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let this = cx.entity();
         let opening = self
@@ -1722,6 +1844,7 @@ impl AnalyseScreen {
                             .child(opening),
                     ),
             )
+            .children(self.render_db_game_strip(cx))
             .child(
                 div()
                     .relative()

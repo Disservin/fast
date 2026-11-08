@@ -561,7 +561,11 @@ pub fn translate(language: Language, text: &str) -> &str {
             "Their reviews go too. This cannot be undone." => {
                 "Ihre Auswertungen werden ebenfalls gelöscht. Das lässt sich nicht rückgängig machen."
             }
-            "Review:" => "Auswertung:",
+            "Unsaved changes" => "Ungespeicherte Änderungen",
+            "Saved in this database" => "In dieser Datenbank gespeichert",
+            "Save moves, comments and variations to the database (Ctrl+S)" => {
+                "Züge, Kommentare und Varianten in der Datenbank speichern (Strg+S)"
+            }
             "engine line" => "Engine-Variante",
             "White rating" => "Elo Weiß",
             "Black rating" => "Elo Schwarz",

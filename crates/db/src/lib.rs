@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS games (
     event TEXT NOT NULL,
     round TEXT NOT NULL,
     start_fen TEXT NOT NULL DEFAULT '',
+    annotated TEXT,
     source TEXT NOT NULL,
     time_class TEXT NOT NULL,
     plies INTEGER NOT NULL,
@@ -116,6 +117,17 @@ impl Database {
                 "ALTER TABLE games ADD COLUMN start_fen TEXT NOT NULL DEFAULT ''",
                 [],
             )?;
+        }
+        let has_annotated = {
+            let mut columns = conn.prepare("PRAGMA table_info(games)")?;
+            columns
+                .query_map([], |row| row.get::<_, String>(1))?
+                .collect::<rusqlite::Result<Vec<_>>>()?
+                .iter()
+                .any(|column| column == "annotated")
+        };
+        if !has_annotated {
+            conn.execute("ALTER TABLE games ADD COLUMN annotated TEXT", [])?;
         }
         let has_mate_distance = {
             let mut columns = conn.prepare("PRAGMA table_info(review_positions)")?;

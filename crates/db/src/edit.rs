@@ -44,6 +44,23 @@ impl GameInfo {
     }
 }
 
+/// The movetext of a PGN without its tags and its closing result, as stored for a game
+/// with comments or variations.
+fn movetext(pgn: &str) -> String {
+    let body: Vec<&str> = pgn
+        .lines()
+        .skip_while(|line| line.trim_start().starts_with('[') || line.trim().is_empty())
+        .collect();
+    let mut text = body.join("\n").trim().to_owned();
+    for result in ["1-0", "0-1", "1/2-1/2", "*"] {
+        if let Some(rest) = text.strip_suffix(result) {
+            text = rest.trim_end().to_owned();
+            break;
+        }
+    }
+    text
+}
+
 /// The position hash before every move and after the last one, as the positions table
 /// stores them.
 fn line_hashes(start_fen: &str, moves: &str) -> Vec<u64> {
@@ -212,6 +229,10 @@ impl Database {
                     ],
                 )?;
             }
+            db.conn.execute(
+                "UPDATE games SET annotated = ?2 WHERE id = ?1",
+                params![id, movetext(pgn)],
+            )?;
             if old_fen == game.start_fen && old_moves == moves {
                 return Ok(true);
             }
@@ -343,6 +364,27 @@ mod tests {
                 .is_empty()
         );
         assert!(!db.replace_game(id, "").unwrap());
+    }
+
+    #[test]
+    fn comments_and_variations_survive_a_save() {
+        let (_dir, mut db) = database();
+        let id = ids(&db)[0];
+        let pgn = "[White \"me\"]\n[Black \"alice\"]\n[Result \"1-0\"]\n\n\
+            1. e4 { Best by test } c5 (1... e5 2. Nf3) 2. Nf3 $1 d6 1-0\n";
+        assert!(db.replace_game(id, pgn).unwrap());
+        let game = db.game(id).unwrap().unwrap();
+        assert_eq!(game.sans, vec!["e4", "c5", "Nf3", "d6"]);
+        let mut info = GameInfo::from_row(&game.row);
+        info.result = "0-1".into();
+        db.update_game_info(id, &info).unwrap();
+        let game = db.game(id).unwrap().unwrap();
+        let tree = chess_core::parse_pgn(&game.to_pgn()).unwrap().remove(0);
+        let first = tree.mainline()[0];
+        assert_eq!(tree.node(first).comment, "Best by test");
+        assert_eq!(tree.node(first).children.len(), 2);
+        assert_eq!(tree.header("Result"), Some("0-1"));
+        assert!(game.to_pgn().trim_end().ends_with("d6 0-1"));
     }
 
     #[test]

@@ -2453,33 +2453,34 @@ struct ReviewFinding {
     best: String,
 }
 
-/// A review finding as a mark on a move in Analyse.
+/// A review finding as Analyse lists it beside the game.
+#[derive(Clone, Debug)]
 pub(crate) struct ReviewMark {
     /// The index of the move in the game's mainline.
     pub ply: usize,
-    pub nag: u8,
-    /// A short comment: what the move lost and what the engine preferred.
-    pub note: String,
+    /// The move in numbered notation, such as `14.c4`.
+    pub label: String,
+    /// What the move lost, such as `−1.16`.
+    pub loss: String,
+    pub quality: engine::Quality,
+    /// What the engine preferred, in numbered SAN.
+    pub best: String,
 }
 
-/// The review findings of a stored game as marks to put on its moves.
+/// The review findings of a stored game, for Analyse.
 pub(crate) fn review_marks(game: &GameDetails) -> Vec<ReviewMark> {
     review_findings(game)
         .into_iter()
-        .map(|finding| {
-            let mut note = format!("{} {}", ui::i18n::t("Review:"), finding.loss);
-            if !finding.best.is_empty() {
-                note.push_str(&format!(
-                    ", {} {}",
-                    ui::i18n::t("engine line"),
-                    finding.best
-                ));
-            }
-            ReviewMark {
-                ply: finding.ply,
-                nag: finding.nag,
-                note,
-            }
+        .map(|finding| ReviewMark {
+            ply: finding.ply,
+            label: finding.label,
+            loss: finding.loss,
+            quality: match finding.nag {
+                4 => engine::Quality::Blunder,
+                2 => engine::Quality::Mistake,
+                _ => engine::Quality::Inaccuracy,
+            },
+            best: finding.best,
         })
         .collect()
 }

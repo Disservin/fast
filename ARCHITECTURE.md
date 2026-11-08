@@ -270,9 +270,12 @@ each mode, so existing cross-screen actions target that mode's selected document
 Analyse, Play and Database can have multiple independent entities; Train and
 Settings remain singletons. Database/game-to-analysis actions create a new tab.
 A game opened from the Database tab keeps a `DbGame` link (file and game id), so
-Save in Analyse replaces that stored game instead of adding one to My games. Its
-stored engine review fills the eval graph, and review findings become NAGs and
-comments on the moves. Loading any other game clears the link.
+Save in Analyse replaces that stored game instead of adding one to My games. The
+mainline goes to `moves` and the position index; the full movetext with comments,
+variations and NAGs goes to the `annotated` column, which `GameDetails::to_pgn`
+prefers. The scoresheet shows a strip naming the database, whether there are
+unsaved changes, and the stored review's findings. The review also fills the eval
+graph. Loading any other game clears the link.
 The tab strip scrolls horizontally; tab keyboard actions remain available during
 text entry without enabling move-navigation keys inside inputs.
 
