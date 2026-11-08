@@ -200,9 +200,9 @@ python3 scripts/third_party.py   # after changing dependencies
 `crates/app/third_party.json`, generated from `cargo metadata`; a test fails when it no longer
 matches `Cargo.lock`.
 
-See [ARCHITECTURE.md](ARCHITECTURE.md). Release packaging and signing are described in
-[packaging/README.md](packaging/README.md). Push a tag matching the workspace version
-(for example, `v0.1.0`) to build packages and create a draft GitHub release.
+See [ARCHITECTURE.md](ARCHITECTURE.md). Release packaging is described in
+[packaging/README.md](packaging/README.md). Run the Release workflow from GitHub Actions
+to build packages, tag the workspace version (for example, `v0.1.0`) and publish a release.
 The release includes a Windows installer and ZIP, macOS DMGs for Apple Silicon and Intel,
 and Linux x86-64 AppImage and Debian packages, with SHA-256 checksums.
 

@@ -86,8 +86,8 @@ def package_windows(work):
     run(os.environ.get("ISCC", "iscc"), f"/DAppVersion={VERSION}", ROOT / "packaging/windows.iss")
 
 
-def package_macos(work, unsigned):
-    """Create a Mac app and DMG, signing and notarizing public release packages."""
+def package_macos(work):
+    """Create an ad-hoc signed Mac app and DMG."""
     arch = "aarch64" if platform.machine() == "arm64" else "x86_64"
     app = work / "image/Fast.app"
     contents = app / "Contents"
@@ -110,43 +110,21 @@ def package_macos(work, unsigned):
                       "CFBundlePackageType": "APPL", "CFBundleIconFile": "Fast.icns",
                       "CFBundleShortVersionString": VERSION, "CFBundleVersion": VERSION,
                       "NSHighResolutionCapable": True, "LSMinimumSystemVersion": "12.0"}, output)
-    identity = "-" if unsigned else os.environ["MACOS_SIGNING_IDENTITY"]
-    run("codesign", "--force", "--options", "runtime", "--sign", identity,
-        *([] if unsigned else ["--timestamp"]), app)
+    # Ad-hoc signing lets the app start on Apple Silicon; it is not notarized.
+    run("codesign", "--force", "--sign", "-", app)
     run("codesign", "--verify", "--deep", "--strict", app)
-    if not unsigned:
-        archive = work / "Fast.zip"
-        run("ditto", "-c", "-k", "--keepParent", app, archive)
-        notarize(archive)
-        run("xcrun", "stapler", "staple", app)
     (work / "image/Applications").symlink_to("/Applications")
-    suffix = "-unsigned" if unsigned else ""
-    dmg = DIST / f"Fast-{VERSION}-macos-{arch}{suffix}.dmg"
+    dmg = DIST / f"Fast-{VERSION}-macos-{arch}.dmg"
     run("hdiutil", "create", "-volname", "Fast", "-srcfolder", work / "image",
         "-ov", "-format", "UDZO", dmg)
-    if not unsigned:
-        run("codesign", "--timestamp", "--sign", identity, dmg)
-        notarize(dmg)
-        run("xcrun", "stapler", "staple", dmg)
-        run("xcrun", "stapler", "validate", dmg)
-
-
-def notarize(path):
-    """Submit a Mac download to Apple and require acceptance before distributing it."""
-    run("xcrun", "notarytool", "submit", path, "--keychain-profile", "fast-notary", "--wait")
 
 
 def main():
     """Validate the release version and write packages and SHA-256 checksums."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--tag", help="Require a tag matching the workspace version")
-    parser.add_argument("--unsigned-macos", action="store_true",
-                        help="Create a clearly labelled local Mac test package")
-    args = parser.parse_args()
+    parser.parse_args()
     if not re.fullmatch(r"\d+\.\d+\.\d+", VERSION):
         parser.error("release versions must use major.minor.patch")
-    if args.tag and args.tag != f"v{VERSION}":
-        parser.error(f"tag must be v{VERSION}")
     DIST.mkdir(exist_ok=True)
     if any(DIST.iterdir()):
         parser.error("dist must be empty; move previous packages before packaging again")
@@ -158,7 +136,7 @@ def main():
         elif system == "Windows":
             package_windows(work)
         elif system == "Darwin":
-            package_macos(work, args.unsigned_macos)
+            package_macos(work)
         else:
             parser.error(f"unsupported platform: {system}")
     checksums = []

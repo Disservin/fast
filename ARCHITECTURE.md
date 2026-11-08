@@ -16,17 +16,15 @@ The four domain crates are pure and unit-tested, including a fake UCI engine for
 
 ## Release packaging
 
-`.github/workflows/release.yml` checks and builds native executables on Linux,
-Windows and both Mac architectures. Version tags matching the workspace version
-produce a draft GitHub release only after all package jobs pass. Manual runs
-produce test artifacts without a release. `scripts/package_release.py` stages
+`.github/workflows/release.yml` is started manually and builds native executables on
+Linux, Windows and both Mac architectures. Once all package jobs pass it creates a
+`v` tag from the workspace version and publishes the GitHub release. `scripts/package_release.py` stages
 the executable, icons and license notices, invokes native packaging tools and
 writes SHA-256 checksums. Linux uses dpkg-shlibdeps for Debian dependencies and
 linuxdeploy for AppImage library bundling; Windows uses `packaging/windows.iss`
-with Inno Setup; macOS creates an app bundle and DMG with Apple's tools. Tagged
-Mac packages require Developer ID signing and notarization in a temporary CI
-keychain. Packaging does not include chess engines or modify user profiles.
-See `packaging/README.md` for signing secrets and release validation.
+with Inno Setup; macOS creates an ad-hoc signed app bundle and DMG with Apple's
+tools. Packaging does not include chess engines or modify user profiles.
+See `packaging/README.md` for release steps and validation.
 
 The app build script embeds `assets/app/fast.ico` through `fast.rc` in Windows
 executables, including plain CI downloads. The installer uses the same icon.
