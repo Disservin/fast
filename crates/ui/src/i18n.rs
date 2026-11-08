@@ -53,6 +53,40 @@ pub fn translate(language: Language, text: &str) -> &str {
             "Keyboard shortcuts" => "Tastenkürzel",
             "Shortcuts" => "Tastenkürzel",
             "Accounts" => "Konten",
+            "Folders" => "Ordner",
+            "Everything else" => "Alles andere",
+            "Disk use" => "Speicherbedarf",
+            "Refresh" => "Aktualisieren",
+            "Measuring…" => "Wird gemessen…",
+            "Contents" => "Inhalt",
+            "Size" => "Größe",
+            "Total" => "Gesamt",
+            "Analysis cache" => "Analyse-Cache",
+            "Notes" => "Notizen",
+            "Recovery" => "Wiederherstellung",
+            "Opening books" => "Eröffnungsbücher",
+            "Tournaments" => "Turniere",
+            "Tools" => "Werkzeuge",
+            "Preferences, engines, shortcuts and panel sizes" => {
+                "Einstellungen, Engines, Tastenkürzel und Panelgrößen"
+            }
+            "Imported games and My games" => "Importierte Partien und Meine Partien",
+            "Engine lines saved for positions you analysed" => {
+                "Gespeicherte Engine-Varianten analysierter Stellungen"
+            }
+            "Training lines and review schedule" => "Trainingsvarianten und Wiederholungsplan",
+            "Comments on positions" => "Kommentare zu Stellungen",
+            "Open games, restored after a crash" => {
+                "Offene Partien, nach einem Absturz wiederhergestellt"
+            }
+            "Engines downloaded from the catalog" => "Aus dem Katalog geladene Engines",
+            "Downloaded books for Play and Tournament" => "Geladene Bücher für Spielen und Turnier",
+            "Saved tournament runs and their games" => "Gespeicherte Turniere und ihre Partien",
+            "Fastchess, used to run tournaments" => "Fastchess, zum Ausführen von Turnieren",
+            "Files Fast does not list above" => "Dateien, die oben nicht aufgeführt sind",
+            "Everything stays on this computer. Back up these folders to keep your games, repertoire and analysis." => {
+                "Alles bleibt auf diesem Computer. Sichern Sie diese Ordner, um Partien, Repertoire und Analysen zu behalten."
+            }
             "Licenses" => "Lizenzen",
             "Licences" => "Lizenzen",
             "Appearance" => "Darstellung",

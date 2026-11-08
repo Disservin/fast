@@ -1,4 +1,5 @@
-//! Settings: General, Board & pieces, Engines, Databases, Keyboard shortcuts.
+//! Settings: General, Board & pieces, Engines, Analysis, Databases, Keyboard shortcuts,
+//! Accounts, Data and Licenses.
 
 use std::{collections::HashMap, path::PathBuf, process::Command};
 
@@ -40,11 +41,12 @@ pub enum SettingsPage {
     Databases,
     Shortcuts,
     Accounts,
+    Data,
     Licenses,
 }
 
 impl SettingsPage {
-    pub const ALL: [Self; 8] = [
+    pub const ALL: [Self; 9] = [
         Self::General,
         Self::Board,
         Self::Engines,
@@ -52,6 +54,7 @@ impl SettingsPage {
         Self::Databases,
         Self::Shortcuts,
         Self::Accounts,
+        Self::Data,
         Self::Licenses,
     ];
 
@@ -64,6 +67,7 @@ impl SettingsPage {
             Self::Databases => ui::i18n::t("Databases"),
             Self::Shortcuts => ui::i18n::t("Keyboard shortcuts"),
             Self::Accounts => ui::i18n::t("Accounts"),
+            Self::Data => ui::i18n::t("Data"),
             Self::Licenses => ui::i18n::t("Licenses"),
         }
     }
@@ -257,6 +261,9 @@ pub struct SettingsScreen {
     install_task: Option<gpui::Task<()>>,
     opening_task: Option<gpui::Task<()>>,
     opening_status: Option<SharedString>,
+    /// Disk use per kind of data, from the last time the Data page was opened.
+    usage: Option<crate::storage::Usage>,
+    usage_task: Option<gpui::Task<()>>,
     _subscriptions: Vec<Subscription>,
     _option_subscriptions: Vec<Subscription>,
 }
@@ -423,6 +430,8 @@ impl SettingsScreen {
             install_task: None,
             opening_task: None,
             opening_status: None,
+            usage: None,
+            usage_task: None,
             _subscriptions: subscriptions,
             _option_subscriptions: Vec::new(),
         };
@@ -437,7 +446,27 @@ impl SettingsScreen {
     pub fn set_page(&mut self, page: SettingsPage, _window: &mut Window, cx: &mut Context<Self>) {
         self.page = page;
         self.capturing = None;
+        if page == SettingsPage::Data {
+            self.measure_usage(cx);
+        }
         cx.notify();
+    }
+
+    /// Measures disk use in the background; the Data page shows dashes until it is done.
+    fn measure_usage(&mut self, cx: &mut Context<Self>) {
+        if self.usage_task.is_some() {
+            return;
+        }
+        let paths = self.model.read(cx).paths.clone();
+        let worker = cx.background_spawn(async move { crate::storage::measure(&paths) });
+        self.usage_task = Some(cx.spawn(async move |this, cx| {
+            let usage = worker.await;
+            let _ = this.update(cx, |screen, cx| {
+                screen.usage = Some(usage);
+                screen.usage_task = None;
+                cx.notify();
+            });
+        }));
     }
 
     fn update_board(
@@ -2948,6 +2977,187 @@ impl SettingsScreen {
     }
 }
 
+impl SettingsScreen {
+    /// The Data page: where Fast keeps its files, what each kind holds and its size.
+    fn render_data(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let this = cx.entity();
+        let paths = self.model.read(cx).paths.clone();
+        let config_dir = crate::storage::config_dir(&paths);
+        let usage = self.usage.clone();
+        let measuring = self.usage_task.is_some();
+        let size = |bytes: Option<u64>| {
+            // Nothing measured yet, or nothing saved of that kind.
+            bytes
+                .filter(|bytes| *bytes > 0)
+                .map_or_else(|| "—".to_owned(), crate::storage::format_bytes)
+        };
+        let size_cell = |text: String| {
+            mono(text)
+                .w(px(96.))
+                .flex_none()
+                .whitespace_nowrap()
+                .flex()
+                .justify_end()
+                .text_size(px(13.))
+                .text_color(rgb(T.fg_2))
+        };
+        let row = |name: &str, about: &str, bytes: Option<u64>| {
+            h_flex()
+                .h(px(40.))
+                .gap(px(12.))
+                .border_b_1()
+                .border_color(rgb(T.divider))
+                .child(
+                    div()
+                        .w(px(160.))
+                        .flex_none()
+                        .text_size(px(13.))
+                        .font_weight(FontWeight::MEDIUM)
+                        .child(ui::i18n::t(name).to_owned()),
+                )
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .overflow_hidden()
+                        .whitespace_nowrap()
+                        .text_size(px(13.))
+                        .text_color(rgb(T.muted))
+                        .child(ui::i18n::t(about).to_owned()),
+                )
+                .child(size_cell(size(bytes)))
+        };
+        let mut table = v_flex().child(
+            h_flex()
+                .h(px(32.))
+                .gap(px(12.))
+                .px(px(16.))
+                .bg(rgb(T.surface_2))
+                .border_b_1()
+                .border_color(rgb(T.divider))
+                .child(div().w(px(160.)).flex_none().child(section_label("Data")))
+                .child(div().flex_1().child(section_label("Contents")))
+                .child(
+                    h_flex()
+                        .w(px(96.))
+                        .flex_none()
+                        .justify_end()
+                        .child(section_label("Size")),
+                ),
+        );
+        let mut rows = v_flex().px(px(16.));
+        for (index, store) in crate::storage::STORES.iter().enumerate() {
+            let bytes = usage.as_ref().map(|usage| usage.stores[index]);
+            rows = rows.child(row(store.name, store.about, bytes));
+        }
+        if let Some(other) = usage
+            .as_ref()
+            .map(|usage| usage.other)
+            .filter(|other| *other > 0)
+        {
+            rows = rows.child(row("Other", "Files Fast does not list above", Some(other)));
+        }
+        rows = rows.child(
+            h_flex()
+                .h(px(40.))
+                .gap(px(12.))
+                .child(
+                    div()
+                        .flex_1()
+                        .text_size(px(13.))
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .child(ui::i18n::t("Total")),
+                )
+                .child(
+                    size_cell(size(usage.as_ref().map(crate::storage::Usage::total)))
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(rgb(T.fg)),
+                ),
+        );
+        table = table.child(rows);
+        let folder_row = |id: &'static str, label: &'static str, path: PathBuf| {
+            h_flex()
+                .h(px(44.))
+                .gap(px(12.))
+                .border_b_1()
+                .border_color(rgb(T.divider))
+                .child(
+                    div()
+                        .w(px(160.))
+                        .flex_none()
+                        .text_size(px(13.))
+                        .font_weight(FontWeight::MEDIUM)
+                        .child(ui::i18n::t(label)),
+                )
+                .child(
+                    mono(path.display().to_string())
+                        .flex_1()
+                        .min_w_0()
+                        .overflow_hidden()
+                        .whitespace_nowrap()
+                        .text_size(px(12.))
+                        .text_color(rgb(T.fg_2)),
+                )
+                .child(
+                    btn(id, "Open folder")
+                        .compact()
+                        .disabled(!path.is_dir())
+                        .on_click(move |_, _| crate::storage::reveal_folder(&path)),
+                )
+        };
+        v_flex()
+            .gap(px(16.))
+            .child(page_title(ui::i18n::t("Data")))
+            .child(
+                section(ui::i18n::t("Folders"))
+                    .child(folder_row("open-config-folder", "Settings", config_dir))
+                    .child(folder_row(
+                        "open-data-folder",
+                        "Everything else",
+                        paths.data_dir.clone(),
+                    ))
+                    .child(
+                        div()
+                            .pt(px(10.))
+                            .text_size(px(12.))
+                            .text_color(rgb(T.muted))
+                            .child(ui::i18n::t(
+                                "Everything stays on this computer. Back up these folders to keep \
+                                 your games, repertoire and analysis.",
+                            )),
+                    ),
+            )
+            .child(
+                panel()
+                    .overflow_hidden()
+                    .child(
+                        h_flex()
+                            .h(px(44.))
+                            .px(px(16.))
+                            .border_b_1()
+                            .border_color(rgb(T.border))
+                            .child(section_label("Disk use"))
+                            .child(div().flex_1())
+                            .child(
+                                btn(
+                                    "measure-usage",
+                                    if measuring { "Measuring…" } else { "Refresh" },
+                                )
+                                .compact()
+                                .disabled(measuring)
+                                .on_click(move |_, cx| {
+                                    this.update(cx, |screen, cx| {
+                                        screen.measure_usage(cx);
+                                        cx.notify();
+                                    })
+                                }),
+                            ),
+                    )
+                    .child(table),
+            )
+    }
+}
+
 /// Node presets for backwards analysis.
 const BACKWARD_PRESETS: [(u64, &str); 5] = [
     (100_000, "100k"),
@@ -3297,6 +3507,7 @@ impl Render for SettingsScreen {
             SettingsPage::Databases => self.render_databases(cx).into_any_element(),
             SettingsPage::Shortcuts => self.render_shortcuts(cx).into_any_element(),
             SettingsPage::Accounts => self.render_accounts().into_any_element(),
+            SettingsPage::Data => self.render_data(cx).into_any_element(),
             SettingsPage::Licenses => self.render_licenses(cx).into_any_element(),
         };
         h_flex().items_start().size_full().child(nav).child(

@@ -449,6 +449,7 @@ impl Workspace {
             "settings:board" => (Mode::Settings, Some(SettingsPage::Board)),
             "settings:databases" => (Mode::Settings, Some(SettingsPage::Databases)),
             "settings:shortcuts" => (Mode::Settings, Some(SettingsPage::Shortcuts)),
+            "settings:data" => (Mode::Settings, Some(SettingsPage::Data)),
             "settings:licenses" => (Mode::Settings, Some(SettingsPage::Licenses)),
             _ => (Mode::Analyse, None),
         };

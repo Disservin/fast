@@ -45,7 +45,7 @@ cargo run --release -p fast -- --demo  # a generated profile with every screen p
 
 `--demo` uses its own directories (`fast-demo`), never touching your data. Its engine output
 is scripted, so no engine needs to be installed. A first start generates its databases, which
-takes a few seconds. `--screen analyse|database|train|play|settings[:engines|board|databases|shortcuts]`
+takes a few seconds. `--screen analyse|database|train|play|settings[:engines|board|databases|shortcuts|data]`
 picks the opening screen.
 
 Choose a full interface palette under **Settings › General › Appearance**: Slate, Paper, Sand,

@@ -183,7 +183,9 @@ needless frames: the board positions pieces proportionally so a resize needs onl
 Profile and PGN replacement stages a file beside its destination, syncs it and atomically
 replaces the destination. A `.previous` sibling retains the preceding version; config and
 repertoire saves preserve only valid previous data and startup falls back to that version.
-Settings exposes storage paths, and a retry control only while a save has failed. A cancelled
+Settings exposes storage paths, and a retry control only while a save has failed.
+Settings › Data lists each kind of saved data with its files (`storage::STORES`) and
+measures their disk use in `cx.background_spawn` whenever the page opens. A cancelled
 PGN dialog does not mutate the game or its saved baseline.
 
 The original Analyse/Play views use `game-recovery.json` and `play-recovery.json`;

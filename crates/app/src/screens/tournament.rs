@@ -1984,7 +1984,7 @@ impl TournamentScreen {
             .child(
                 btn("tournament-open-folder", "Open folder")
                     .tooltip(folder.display().to_string())
-                    .on_click(move |_, _| reveal_folder(&folder)),
+                    .on_click(move |_, _| crate::storage::reveal_folder(&folder)),
             )
             .when_some(open_last, |row, (number, index)| {
                 let open = this.clone();
@@ -3505,19 +3505,6 @@ fn format_duration(secs: f64) -> String {
         format!("{}m {:02}s", secs / 60, secs % 60)
     } else {
         format!("{}h {:02}m", secs / 3600, secs / 60 % 60)
-    }
-}
-
-/// Shows a folder in the system's file manager.
-fn reveal_folder(path: &Path) {
-    #[cfg(target_os = "windows")]
-    let program = "explorer";
-    #[cfg(target_os = "macos")]
-    let program = "open";
-    #[cfg(all(unix, not(target_os = "macos")))]
-    let program = "xdg-open";
-    if let Err(err) = std::process::Command::new(program).arg(path).spawn() {
-        log::warn!("could not open {}: {err}", path.display());
     }
 }
 
