@@ -1,9 +1,11 @@
 //! SQLite game databases: one file per database, position search by Zobrist hash.
 
+mod edit;
 mod import;
 mod notes;
 mod queries;
 
+pub use edit::GameInfo;
 pub use import::{ImportControl, ImportProgress, ImportSummary, import_games};
 pub use notes::NoteStore;
 pub use queries::{

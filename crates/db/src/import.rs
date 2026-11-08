@@ -48,31 +48,34 @@ impl ImportControl {
 }
 
 #[derive(Default)]
-struct Tags {
-    white: String,
-    black: String,
-    white_elo: Option<i64>,
-    black_elo: Option<i64>,
-    result: String,
-    date: String,
+pub(crate) struct Tags {
+    pub(crate) white: String,
+    pub(crate) black: String,
+    pub(crate) white_elo: Option<i64>,
+    pub(crate) black_elo: Option<i64>,
+    pub(crate) result: String,
+    pub(crate) date: String,
     eco: String,
-    event: String,
-    round: String,
+    pub(crate) event: String,
+    pub(crate) round: String,
     site: String,
-    time_control: String,
+    pub(crate) time_control: String,
     fen: String,
 }
 
-struct Game {
-    tags: Tags,
-    start_fen: String,
+/// One game read from a PGN, ready to store.
+pub(crate) struct Game {
+    pub(crate) tags: Tags,
+    pub(crate) start_fen: String,
     pos: Chess,
-    sans: Vec<String>,
-    hashes: Vec<u64>,
+    pub(crate) sans: Vec<String>,
+    /// The position before every move and after the last one.
+    pub(crate) hashes: Vec<u64>,
     failed: bool,
 }
 
-struct ImportVisitor;
+/// Reads the mainline of each game; games with an illegal move come out as `None`.
+pub(crate) struct ImportVisitor;
 
 impl Visitor for ImportVisitor {
     type Tags = Tags;
@@ -165,15 +168,20 @@ impl Visitor for ImportVisitor {
     }
 }
 
-fn insert_game(tx: &Transaction<'_>, game: &Game, source: &str) -> Result<()> {
-    let tags = &game.tags;
-    let eco = if tags.eco.is_empty() {
+/// The game's ECO tag, or the code of the opening its moves reach when it has none.
+pub(crate) fn game_eco(game: &Game) -> String {
+    if game.tags.eco.is_empty() {
         chess_core::classify(game.sans.iter().map(String::as_str))
             .map(|opening| opening.eco.to_owned())
             .unwrap_or_default()
     } else {
-        tags.eco.clone()
-    };
+        game.tags.eco.clone()
+    }
+}
+
+fn insert_game(tx: &Transaction<'_>, game: &Game, source: &str) -> Result<()> {
+    let tags = &game.tags;
+    let eco = game_eco(game);
     let mut insert_game = tx.prepare_cached(
         "INSERT INTO games (white, black, white_elo, black_elo, result, date, eco, event, round,
             start_fen, source, time_class, plies, moves)

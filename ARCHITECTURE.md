@@ -6,7 +6,7 @@
 | --- | --- | --- |
 | `chess_core` | no | Game tree (mainline, variations, NAGs, comments), PGN in/out, notation, opening table |
 | `engine` | no | UCI parser, supervised engine processes, analysis events |
-| `db` | no | One SQLite file per database, streaming PGN import, filters, position search, notes |
+| `db` | no | One SQLite file per database, streaming PGN import, filters, position search, editing and deleting games, copying a database, notes |
 | `trainer` | no | Repertoire tree, SM-2 scheduler, leak and gap detection |
 | `ui` | yes | Design tokens and shared views: `BoardView`, scoresheet, timeline, buttons |
 | `fast` (`crates/app`) | yes | Window, routing, shortcuts, the five screens, configuration, demo mode |
@@ -185,6 +185,9 @@ The UI thread never blocks on engines or databases.
   then starts the newest request. Stale lines cannot overwrite a new position's analysis.
 - **Databases:** queries run in `cx.background_spawn` with a new connection per task. Dropping the
   task cancels a stale query's delivery. Imports commit every 2,000 games so readers keep working.
+  Editing or deleting a game removes its position-index rows by recomputing its own hashes, so
+  it never scans the whole `positions` table. A database's display name lives in its `meta`
+  table; duplicating uses `VACUUM INTO`.
 - **Games table:** ids for the filter are loaded once and rows are paged on demand as
   `uniform_list` reveals them, so memory and render cost follow the viewport, not the row count.
 
@@ -266,6 +269,10 @@ selected tab per mode. Its public screen fields point at the current entity for
 each mode, so existing cross-screen actions target that mode's selected document.
 Analyse, Play and Database can have multiple independent entities; Train and
 Settings remain singletons. Database/game-to-analysis actions create a new tab.
+A game opened from the Database tab keeps a `DbGame` link (file and game id), so
+Save in Analyse replaces that stored game instead of adding one to My games. Its
+stored engine review fills the eval graph, and review findings become NAGs and
+comments on the moves. Loading any other game clears the link.
 The tab strip scrolls horizontally; tab keyboard actions remain available during
 text entry without enabling move-navigation keys inside inputs.
 

@@ -788,6 +788,22 @@ impl Workspace {
             .update(cx, |screen, cx| screen.load_pgn_at(pgn, ply, window, cx));
     }
 
+    /// Opens a stored game in a new Analyse tab, linked to its database so saving
+    /// updates it.
+    pub fn open_db_game(
+        &mut self,
+        details: &db::GameDetails,
+        ply: usize,
+        origin: crate::screens::analyse::DbGame,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.new_tab(Mode::Analyse, window, cx);
+        self.analyse.update(cx, |screen, cx| {
+            screen.load_db_game(details, ply, origin, window, cx)
+        });
+    }
+
     fn close_tab(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
         let Some(index) = self.tabs.iter().position(|tab| tab.id == id) else {
             return;

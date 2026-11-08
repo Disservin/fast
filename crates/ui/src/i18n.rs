@@ -543,6 +543,29 @@ pub fn translate(language: Language, text: &str) -> &str {
             "Open a new tab" => "Neuen Tab öffnen",
             "Rename tab" => "Tab umbenennen",
             "Double-click to rename" => "Doppelklick zum Umbenennen",
+            "Rename database" => "Datenbank umbenennen",
+            "Duplicate database" => "Datenbank duplizieren",
+            "copy" => "Kopie",
+            "Edit game…" => "Partie bearbeiten…",
+            "Edit game" => "Partie bearbeiten",
+            "Delete game…" => "Partie löschen…",
+            "Delete game" => "Partie löschen",
+            "Delete games" => "Partien löschen",
+            "Delete this game" => "Diese Partie löschen",
+            "Edit players, result and other headers" => {
+                "Spieler, Ergebnis und weitere Angaben bearbeiten"
+            }
+            "Saving in Analyse updates this game. Double-click a row to open it." => {
+                "Speichern in Analyse aktualisiert diese Partie. Doppelklick auf eine Zeile öffnet sie."
+            }
+            "Their reviews go too. This cannot be undone." => {
+                "Ihre Auswertungen werden ebenfalls gelöscht. Das lässt sich nicht rückgängig machen."
+            }
+            "Review:" => "Auswertung:",
+            "engine line" => "Engine-Variante",
+            "White rating" => "Elo Weiß",
+            "Black rating" => "Elo Schwarz",
+            "ECO" => "ECO",
             "An arrow per engine line, coloured from best (blue) to blunder (red)" => {
                 "Ein Pfeil pro Engine-Variante, vom besten Zug (blau) bis zum groben Fehler (rot)"
             }

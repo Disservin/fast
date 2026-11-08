@@ -259,6 +259,15 @@ use panels::{LOG_POLL, LogSelection, PvView};
 
 type MenuHandler = Box<dyn Fn(&mut Window, &mut gpui::App)>;
 
+/// The stored game this board was opened from, so saving writes the changes back to it.
+#[derive(Clone, Debug)]
+pub struct DbGame {
+    pub path: std::path::PathBuf,
+    pub id: i64,
+    /// The database's name, for messages.
+    pub name: SharedString,
+}
+
 pub struct AnalyseScreen {
     recovery: Option<crate::recovery::Recovery>,
     recovery_path: std::path::PathBuf,
@@ -268,6 +277,8 @@ pub struct AnalyseScreen {
     autosave_failed: bool,
     model: Entity<AppModel>,
     workspace: WeakEntity<Workspace>,
+    /// Set while the board holds a game opened from a database.
+    db_game: Option<DbGame>,
     pub tree: GameTree,
     pub current: NodeId,
     board: Entity<BoardView>,
@@ -444,6 +455,7 @@ impl AnalyseScreen {
             autosave_failed: false,
             model,
             workspace,
+            db_game: None,
             tree,
             current,
             board,
@@ -912,6 +924,7 @@ impl AnalyseScreen {
 
     pub fn load_tree(&mut self, tree: GameTree, window: &mut Window, cx: &mut Context<Self>) {
         self.tree = tree;
+        self.db_game = None;
         // A different game: engines hear `ucinewgame` before its first search.
         self.live.update(cx, |live, _| live.game += 1);
         self.current = GameTree::ROOT;
@@ -1229,6 +1242,51 @@ impl AnalyseScreen {
         }
     }
 
+    /// Opens a game from a database at `ply`, with its engine review on the eval graph
+    /// and its review findings marked on the moves. Saving then updates that game.
+    pub fn load_db_game(
+        &mut self,
+        details: &db::GameDetails,
+        ply: usize,
+        origin: DbGame,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let mut tree = match parse_pgn(&details.to_pgn()) {
+            Ok(mut games) if !games.is_empty() => games.remove(0),
+            Ok(_) => return self.model.toast("That PGN contains no games.", cx),
+            Err(err) => {
+                return self
+                    .model
+                    .toast(format!("Could not read the game: {err}"), cx);
+            }
+        };
+        let main = tree.mainline();
+        let node_at = |ply: usize| match ply {
+            0 => Some(GameTree::ROOT),
+            ply => main.get(ply - 1).copied(),
+        };
+        for mark in crate::screens::database::review_marks(details) {
+            if let Some(id) = node_at(mark.ply + 1) {
+                tree.toggle_nag(id, mark.nag);
+                tree.node_mut(id).comment = mark.note;
+            }
+        }
+        self.load_tree(tree, window, cx);
+        let mate = chess_core::annotation::MATE_CP;
+        for position in &details.review_positions {
+            if let Some(id) = node_at(position.ply as usize) {
+                self.evals.insert(id, position.eval_cp.clamp(-mate, mate));
+                self.depths.insert(id, position.depth);
+            }
+        }
+        self.db_game = Some(origin);
+        if let Some(id) = node_at(ply).filter(|_| ply > 0) {
+            self.jump(id, window, cx);
+        }
+        cx.notify();
+    }
+
     pub fn load_fen(&mut self, fen: &str, window: &mut Window, cx: &mut Context<Self>) {
         match GameTree::from_fen(fen) {
             Ok(tree) => self.load_tree(tree, window, cx),
@@ -1366,8 +1424,12 @@ impl AnalyseScreen {
         .detach();
     }
 
-    /// Saves the game to "My games".
+    /// Saves the game: back into the database it was opened from, otherwise to
+    /// "My games".
     pub fn save_game(&mut self, cx: &mut Context<Self>) {
+        if let Some(origin) = self.db_game.clone() {
+            return self.save_to_db_game(origin, cx);
+        }
         let mut tree = self.tree.clone();
         let player = self.model.read(cx).config.player_name.clone();
         if tree.header("White").is_none_or(|white| white == "White") {
@@ -1396,6 +1458,29 @@ impl AnalyseScreen {
                     Err(err) => model.toast(format!("Could not save the game: {err}"), cx),
                 }
                 model.refresh_databases();
+                cx.emit(ModelEvent::Databases);
+            });
+        })
+        .detach();
+    }
+
+    /// Writes the board's game over the stored game it was opened from.
+    fn save_to_db_game(&mut self, origin: DbGame, cx: &mut Context<Self>) {
+        let pgn = write_pgn(&self.tree);
+        let model = self.model.clone();
+        let DbGame { path, id, name } = origin;
+        cx.spawn(async move |_, cx| {
+            let saved = cx
+                .background_spawn(async move { Database::open(&path)?.replace_game(id, &pgn) })
+                .await;
+            model.update(cx, |model, cx| {
+                match saved {
+                    Ok(true) => model.toast(format!("Saved changes to {name}."), cx),
+                    Ok(false) => model.toast("Could not save: the game is no longer there.", cx),
+                    Err(err) => model.toast(format!("Could not save the game: {err}"), cx),
+                }
+                model.refresh_databases();
+                model.refresh_leaks(cx);
                 cx.emit(ModelEvent::Databases);
             });
         })

@@ -4,7 +4,7 @@ use std::{collections::HashMap, ops::Range, path::PathBuf};
 
 use chess_core::{Chess, GameTree, Position, classify, position_hash};
 use db::{
-    Database, Filter, FilterStats, GameDetails, GameRow, ImportControl, ImportProgress,
+    Database, Filter, FilterStats, GameDetails, GameInfo, GameRow, ImportControl, ImportProgress,
     ReviewPosition, ReviewSummary, SideFilter, TimeClass, import_games,
 };
 use gpui::{
@@ -14,6 +14,7 @@ use gpui::{
 };
 use gpui_component::{
     input::{InputEvent, InputState},
+    menu::{ContextMenuExt as _, PopupMenuItem},
     scroll::ScrollableElement as _,
     select::SelectEvent,
 };
@@ -29,6 +30,40 @@ use crate::{
     model::{AppModel, DbEntry, ModelEvent, ToastExt as _, pick_path},
     shell::Workspace,
 };
+
+/// The results a game can be given in the game editor, as stored.
+const RESULTS: [&str; 4] = ["1-0", "1/2-1/2", "0-1", "*"];
+
+/// The open game editor: a field for each header and the chosen result.
+struct GameEditor {
+    id: i64,
+    white: Entity<InputState>,
+    black: Entity<InputState>,
+    white_elo: Entity<InputState>,
+    black_elo: Entity<InputState>,
+    event: Entity<InputState>,
+    round: Entity<InputState>,
+    date: Entity<InputState>,
+    eco: Entity<InputState>,
+    result: usize,
+    _subscriptions: Vec<Subscription>,
+}
+
+impl GameEditor {
+    /// The fields in the order they appear, for focus and Enter handling.
+    fn inputs(&self) -> [&Entity<InputState>; 8] {
+        [
+            &self.white,
+            &self.black,
+            &self.white_elo,
+            &self.black_elo,
+            &self.event,
+            &self.round,
+            &self.date,
+            &self.eco,
+        ]
+    }
+}
 
 const COLOURS: [&str; 3] = ["Any", "White", "Black"];
 const TIME_CONTROLS: [&str; 5] = ["Any", "Rapid + Classical", "Classical", "Rapid", "Blitz"];
@@ -163,6 +198,12 @@ pub struct DatabaseScreen {
     review_selected_only: bool,
     /// Whether the batch review settings dialog is open.
     review_settings_open: bool,
+    /// The database being renamed and the field holding its new name.
+    renaming: Option<(PathBuf, Entity<InputState>)>,
+    _rename_sub: Option<Subscription>,
+    editing: Option<GameEditor>,
+    /// Games waiting for the user to confirm that they should be deleted.
+    confirm_delete: Option<Vec<i64>>,
     query_task: Option<Task<()>>,
     count_task: Option<Task<()>>,
     preview_task: Option<Task<()>>,
@@ -312,6 +353,10 @@ impl DatabaseScreen {
             review_side: 0,
             review_selected_only: false,
             review_settings_open: false,
+            renaming: None,
+            _rename_sub: None,
+            editing: None,
+            confirm_delete: None,
             query_task: None,
             count_task: None,
             preview_task: None,
@@ -452,9 +497,21 @@ impl DatabaseScreen {
                         this.leak_text = leak;
                         this.rows.clear();
                         this.requested_pages.clear();
-                        this.scroll.scroll_to_item(0, ScrollStrategy::Top);
-                        let first = this.ids.first().copied();
-                        this.select_game(first, cx);
+                        // Edits and deletions re-run the query; stay on the same game.
+                        let kept = this
+                            .selected
+                            .and_then(|id| this.ids.iter().position(|&other| other == id));
+                        match kept {
+                            Some(index) => {
+                                this.scroll.scroll_to_item(index, ScrollStrategy::Center);
+                                this.select_game(Some(this.ids[index]), cx);
+                            }
+                            None => {
+                                this.scroll.scroll_to_item(0, ScrollStrategy::Top);
+                                let first = this.ids.first().copied();
+                                this.select_game(first, cx);
+                            }
+                        }
                         this.ensure_rows(0..PAGE.min(this.ids.len()), cx);
                     }
                     Err(err) => this.model.toast(format!("Query failed: {err}"), cx),
@@ -549,15 +606,56 @@ impl DatabaseScreen {
         self.apply_filter(cx);
     }
 
+    /// Opens the previewed game in a new Analyse tab at the previewed move, with its
+    /// review. Saving there writes the changes back to this database.
     fn open_in_analyse(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(preview) = &self.preview else { return };
-        let pgn = preview.to_pgn();
+        let (Some(preview), Some(entry)) = (&self.preview, &self.db_snapshot) else {
+            return;
+        };
+        let origin = crate::screens::analyse::DbGame {
+            path: entry.path.clone(),
+            id: preview.row.id,
+            name: entry.name.clone(),
+        };
         let key = self.preview_key;
+        let details = preview.clone();
         if let Some(workspace) = self.workspace.upgrade() {
             workspace.update(cx, |workspace, cx| {
-                workspace.open_pgn(&pgn, key, window, cx);
+                workspace.open_db_game(&details, key, origin, window, cx);
             });
         }
+    }
+
+    /// Opens a game from the table in Analyse, loading it first when it is not the one
+    /// in the preview.
+    fn open_game_in_analyse(&mut self, id: i64, window: &mut Window, cx: &mut Context<Self>) {
+        if self
+            .preview
+            .as_ref()
+            .is_some_and(|preview| preview.row.id == id)
+        {
+            return self.open_in_analyse(window, cx);
+        }
+        let Some(path) = self.selected_db.clone() else {
+            return;
+        };
+        self.selected = Some(id);
+        let task =
+            cx.background_spawn(async move { Database::open(path).and_then(|db| db.game(id)) });
+        cx.spawn_in(window, async move |this, cx| {
+            let Some(details) = task.await.ok().flatten() else {
+                return;
+            };
+            let _ = this.update_in(cx, |this, window, cx| {
+                let key = key_moment(&details);
+                this.show_preview(&details, key, cx);
+                this.preview_key = key;
+                this.preview = Some(details);
+                this.open_in_analyse(window, cx);
+            });
+        })
+        .detach();
+        cx.notify();
     }
 
     pub fn prompt_import(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
@@ -698,13 +796,289 @@ impl DatabaseScreen {
         cx.notify();
     }
 
-    /// Escape closes the review settings dialog. Returns whether it was open.
+    /// Escape closes an open dialog. Returns whether one was open.
     pub fn escape(&mut self, cx: &mut Context<Self>) -> bool {
+        if self.editing.take().is_some() || self.confirm_delete.take().is_some() {
+            cx.notify();
+            return true;
+        }
         let open = self.review_settings_open;
         if open {
             self.set_review_settings_open(false, cx);
         }
         open
+    }
+
+    /// Whether a database's name can be changed. "My games" keeps its name, since saving
+    /// games from Analyse looks for it.
+    fn can_rename(&self, path: &PathBuf, cx: &gpui::App) -> bool {
+        *path != self.model.read(cx).my_games_path()
+    }
+
+    /// Opens a field in the database's place in the list to type a new name for it.
+    fn start_rename(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.can_rename(&path, cx) {
+            return;
+        }
+        let Some(entry) = self
+            .model
+            .read(cx)
+            .databases
+            .iter()
+            .find(|entry| entry.path == path)
+        else {
+            return;
+        };
+        let current = entry.name.to_string();
+        let input = cx.new(|cx| InputState::new(window, cx));
+        input.update(cx, |input, cx| {
+            input.set_value(current, window, cx);
+            input.focus(window, cx);
+        });
+        self._rename_sub = Some(
+            cx.subscribe_in(&input, window, |this, _, event, window, cx| {
+                if matches!(event, InputEvent::PressEnter { .. } | InputEvent::Blur) {
+                    this.finish_rename(true, window, cx);
+                }
+            }),
+        );
+        self.renaming = Some((path, input));
+        cx.notify();
+    }
+
+    /// Closes the rename field, storing the typed name when `keep` is set and it is not
+    /// empty.
+    fn finish_rename(&mut self, keep: bool, _window: &mut Window, cx: &mut Context<Self>) {
+        let Some((path, input)) = self.renaming.take() else {
+            return;
+        };
+        self._rename_sub = None;
+        cx.notify();
+        let name = input.read(cx).value().trim().to_owned();
+        let unchanged = self
+            .model
+            .read(cx)
+            .databases
+            .iter()
+            .any(|entry| entry.path == path && entry.name == name);
+        if !keep || name.is_empty() || unchanged {
+            return;
+        }
+        let model = self.model.clone();
+        let task =
+            cx.background_spawn(
+                async move { Database::open(&path).and_then(|db| db.set_name(&name)) },
+            );
+        cx.spawn(async move |_, cx| {
+            let result = task.await;
+            model.update(cx, |model, cx| {
+                if let Err(err) = result {
+                    model.toast(format!("Could not rename the database: {err}"), cx);
+                }
+                model.refresh_databases();
+                cx.emit(ModelEvent::Databases);
+            });
+        })
+        .detach();
+    }
+
+    /// Copies a database to a new file next to it, named "<name> copy", and selects
+    /// the copy.
+    fn duplicate_db(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+        let model = self.model.read(cx);
+        let Some(entry) = model.databases.iter().find(|entry| entry.path == path) else {
+            return;
+        };
+        let name = format!("{} {}", entry.name, ui::i18n::t("copy"));
+        let dir = model.paths.databases_dir();
+        let stem = path
+            .file_stem()
+            .map(|stem| stem.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "database".to_owned());
+        let dest = (1..)
+            .map(|n| {
+                let suffix = if n == 1 {
+                    String::new()
+                } else {
+                    format!("-{n}")
+                };
+                dir.join(format!("{stem}-copy{suffix}.sqlite"))
+            })
+            .find(|candidate| !candidate.exists())
+            .expect("an unused file name");
+        let task = cx.background_spawn({
+            let dest = dest.clone();
+            async move { Database::open(&path)?.duplicate_to(&dest, &name) }
+        });
+        cx.spawn(async move |this, cx| {
+            let result = task.await;
+            let _ = this.update(cx, |this, cx| {
+                this.model.update(cx, |model, cx| {
+                    match &result {
+                        Ok(()) => model.toast("Duplicated the database.", cx),
+                        Err(err) => {
+                            model.toast(format!("Could not duplicate the database: {err}"), cx)
+                        }
+                    }
+                    model.refresh_databases();
+                });
+                if result.is_ok() {
+                    this.selected_db = Some(dest);
+                    this.selected = None;
+                }
+                this.model
+                    .update(cx, |_, cx| cx.emit(ModelEvent::Databases));
+            });
+        })
+        .detach();
+        self.model.toast("Duplicating the database…", cx);
+    }
+
+    /// Opens the editor for a game's players, ratings, result and other headers.
+    fn open_editor(&mut self, id: i64, window: &mut Window, cx: &mut Context<Self>) {
+        let row = match self.rows.get(&id) {
+            Some(row) => row.clone(),
+            None => match &self.preview {
+                Some(preview) if preview.row.id == id => preview.row.clone(),
+                _ => return,
+            },
+        };
+        let info = GameInfo::from_row(&row);
+        let elo = |elo: Option<i64>| elo.map(|elo| elo.to_string()).unwrap_or_default();
+        let mut input =
+            |value: String, placeholder: &'static str| new_input(value, placeholder, window, cx);
+        let white = input(info.white, "");
+        let black = input(info.black, "");
+        let white_elo = input(elo(info.white_elo), "—");
+        let black_elo = input(elo(info.black_elo), "—");
+        let event = input(info.event, "");
+        let round = input(info.round, "");
+        let date = input(info.date, "YYYY-MM-DD");
+        let eco = input(info.eco, "B90");
+        let result = RESULTS
+            .iter()
+            .position(|result| *result == info.result)
+            .unwrap_or(3);
+        let mut editor = GameEditor {
+            id,
+            white,
+            black,
+            white_elo,
+            black_elo,
+            event,
+            round,
+            date,
+            eco,
+            result,
+            _subscriptions: Vec::new(),
+        };
+        let inputs: Vec<_> = editor.inputs().into_iter().cloned().collect();
+        for input in &inputs {
+            editor
+                ._subscriptions
+                .push(cx.subscribe_in(input, window, |this, _, event, _, cx| {
+                    if matches!(event, InputEvent::PressEnter { .. }) {
+                        this.save_editor(cx);
+                    }
+                }));
+        }
+        editor.white.update(cx, |input, cx| input.focus(window, cx));
+        self.editing = Some(editor);
+        cx.notify();
+    }
+
+    /// Stores the edited headers and closes the editor.
+    fn save_editor(&mut self, cx: &mut Context<Self>) {
+        let (Some(editor), Some(path)) = (&self.editing, self.selected_db.clone()) else {
+            return;
+        };
+        let text = |input: &Entity<InputState>| input.read(cx).value().trim().to_owned();
+        let elo = |input: &Entity<InputState>| {
+            let value = text(input);
+            if value.is_empty() || value == "—" {
+                Ok(None)
+            } else {
+                value.parse::<i64>().map(Some)
+            }
+        };
+        let (Ok(white_elo), Ok(black_elo)) = (elo(&editor.white_elo), elo(&editor.black_elo))
+        else {
+            self.model.toast("Ratings must be whole numbers.", cx);
+            return;
+        };
+        let info = GameInfo {
+            white: text(&editor.white),
+            black: text(&editor.black),
+            white_elo,
+            black_elo,
+            result: RESULTS[editor.result].to_owned(),
+            date: text(&editor.date).replace('.', "-"),
+            event: text(&editor.event),
+            round: text(&editor.round),
+            eco: text(&editor.eco).to_uppercase(),
+        };
+        let id = editor.id;
+        self.editing = None;
+        cx.notify();
+        let task = cx.background_spawn(async move {
+            Database::open(&path).and_then(|db| db.update_game_info(id, &info))
+        });
+        let model = self.model.clone();
+        cx.spawn(async move |_, cx| {
+            let result = task.await;
+            model.update(cx, |model, cx| {
+                match result {
+                    Ok(()) => model.toast("Saved the game.", cx),
+                    Err(err) => model.toast(format!("Could not save the game: {err}"), cx),
+                }
+                model.refresh_leaks(cx);
+                cx.emit(ModelEvent::Databases);
+            });
+        })
+        .detach();
+    }
+
+    /// Asks before deleting games from the selected database.
+    fn ask_delete(&mut self, ids: Vec<i64>, cx: &mut Context<Self>) {
+        if !ids.is_empty() {
+            self.confirm_delete = Some(ids);
+            cx.notify();
+        }
+    }
+
+    /// Deletes the games the user confirmed, then shows the next game.
+    fn delete_confirmed(&mut self, cx: &mut Context<Self>) {
+        let (Some(ids), Some(path)) = (self.confirm_delete.take(), self.selected_db.clone()) else {
+            return;
+        };
+        // Move the selection to the game after the deleted ones, so the table stays put.
+        if let Some(selected) = self.selected
+            && ids.contains(&selected)
+        {
+            let index = self.ids.iter().position(|&id| id == selected).unwrap_or(0);
+            self.selected = self.ids[index..]
+                .iter()
+                .chain(self.ids[..index].iter().rev())
+                .find(|id| !ids.contains(id))
+                .copied();
+        }
+        cx.notify();
+        let task = cx.background_spawn(async move { Database::open(&path)?.delete_games(&ids) });
+        let model = self.model.clone();
+        cx.spawn(async move |_, cx| {
+            let result = task.await;
+            model.update(cx, |model, cx| {
+                match result {
+                    Ok(1) => model.toast("Deleted 1 game.", cx),
+                    Ok(count) => model.toast(format!("Deleted {} games.", format_count(count)), cx),
+                    Err(err) => model.toast(format!("Could not delete: {err}"), cx),
+                }
+                model.refresh_databases();
+                model.refresh_leaks(cx);
+                cx.emit(ModelEvent::Databases);
+            });
+        })
+        .detach();
     }
 
     fn toggle_review_pause(&mut self, cx: &mut Context<Self>) {
@@ -861,8 +1235,37 @@ impl DatabaseScreen {
         let mut list = v_flex().mb(px(20.));
         for (index, entry) in entries.iter().enumerate() {
             let selected = self.selected_db.as_ref() == Some(&entry.path);
+            let renamable = self.can_rename(&entry.path, cx);
+            let rename_input = self
+                .renaming
+                .as_ref()
+                .filter(|(path, _)| *path == entry.path)
+                .map(|(_, input)| input.clone());
+            if let Some(input) = rename_input {
+                let cancel = this.clone();
+                list = list.child(
+                    div()
+                        .h(px(35.))
+                        .flex()
+                        .items_center()
+                        .border_b_1()
+                        .border_color(rgb(T.divider))
+                        .on_key_down(move |event: &gpui::KeyDownEvent, window, cx| {
+                            if event.keystroke.key == "escape" {
+                                cx.stop_propagation();
+                                cancel.update(cx, |screen, cx| {
+                                    screen.finish_rename(false, window, cx)
+                                });
+                            }
+                        })
+                        .child(div().w_full().child(text_input(&input).height(28.))),
+                );
+                continue;
+            }
             let path = entry.path.clone();
             let this_click = this.clone();
+            let (rename_this, duplicate_this) = (this.clone(), this.clone());
+            let (rename_path, duplicate_path) = (entry.path.clone(), entry.path.clone());
             list = list.child(
                 h_flex()
                     .id(("db", index))
@@ -872,15 +1275,57 @@ impl DatabaseScreen {
                     .border_b_1()
                     .border_color(rgb(T.divider))
                     .hover(|style| style.bg(rgb(T.hover)))
-                    .on_click(move |_, _, cx| {
+                    .when(renamable, |row| {
+                        row.tooltip(|window, cx| {
+                            gpui_component::tooltip::Tooltip::new(ui::i18n::t(
+                                "Double-click to rename",
+                            ))
+                            .build(window, cx)
+                        })
+                    })
+                    .on_click(move |event, window, cx| {
                         let path = path.clone();
                         this_click.update(cx, |screen, cx| {
+                            if event.click_count() == 2 {
+                                screen.start_rename(path, window, cx);
+                                return;
+                            }
+                            if screen.selected_db.as_ref() != Some(&path) {
+                                screen.selected = None;
+                            }
                             screen.selected_db = Some(path);
                             screen.apply_filter(cx);
                         });
                     })
+                    .context_menu(move |menu, _, _| {
+                        let (rename_this, duplicate_this) =
+                            (rename_this.clone(), duplicate_this.clone());
+                        let (rename_path, duplicate_path) =
+                            (rename_path.clone(), duplicate_path.clone());
+                        menu.item(
+                            PopupMenuItem::new(ui::i18n::t("Rename database"))
+                                .disabled(!renamable)
+                                .on_click(move |_, window, cx| {
+                                    let path = rename_path.clone();
+                                    rename_this.update(cx, |screen, cx| {
+                                        screen.start_rename(path, window, cx)
+                                    })
+                                }),
+                        )
+                        .item(
+                            PopupMenuItem::new(ui::i18n::t("Duplicate database")).on_click(
+                                move |_, _, cx| {
+                                    let path = duplicate_path.clone();
+                                    duplicate_this
+                                        .update(cx, |screen, cx| screen.duplicate_db(path, cx))
+                                },
+                            ),
+                        )
+                    })
                     .child(
                         div()
+                            .min_w_0()
+                            .truncate()
                             .when(selected, |name| name.font_weight(FontWeight::SEMIBOLD))
                             .child(entry.name.clone()),
                     )
@@ -1423,8 +1868,56 @@ impl DatabaseScreen {
             .text_size(px(13.))
             .when(selected, |row| row.bg(rgb(T.selected)))
             .when(!selected, |row| row.hover(|style| style.bg(rgb(T.hover))))
-            .on_click(move |_, _, cx| {
-                this.update(cx, |screen, cx| screen.select_game(Some(id), cx));
+            .on_click({
+                let this = this.clone();
+                move |event, window, cx| {
+                    this.update(cx, |screen, cx| {
+                        if event.click_count() == 2 {
+                            screen.open_game_in_analyse(id, window, cx);
+                        } else {
+                            screen.select_game(Some(id), cx);
+                        }
+                    });
+                }
+            })
+            .context_menu({
+                let shown = self.ids.len();
+                move |menu, _, _| {
+                    let (open, edit, delete, delete_all) =
+                        (this.clone(), this.clone(), this.clone(), this.clone());
+                    menu.item(PopupMenuItem::new(ui::i18n::t("Open in Analyse")).on_click(
+                        move |_, window, cx| {
+                            open.update(cx, |screen, cx| {
+                                screen.open_game_in_analyse(id, window, cx)
+                            })
+                        },
+                    ))
+                    .item(PopupMenuItem::new(ui::i18n::t("Edit game…")).on_click(
+                        move |_, window, cx| {
+                            edit.update(cx, |screen, cx| screen.open_editor(id, window, cx))
+                        },
+                    ))
+                    .separator()
+                    .item(PopupMenuItem::new(ui::i18n::t("Delete game…")).on_click(
+                        move |_, _, cx| {
+                            delete.update(cx, |screen, cx| screen.ask_delete(vec![id], cx))
+                        },
+                    ))
+                    .when(shown > 1, |menu| {
+                        menu.item(
+                            PopupMenuItem::new(format!(
+                                "Delete all {} shown games…",
+                                format_count(shown as u64)
+                            ))
+                            .on_click(move |_, _, cx| {
+                                delete_all.update(cx, |screen, cx| {
+                                    let ids = screen.ids.clone();
+                                    screen.ask_delete(ids, cx)
+                                })
+                            }),
+                        )
+                    })
+                }
             })
             .when(selected, |row| {
                 row.child(
@@ -1593,14 +2086,188 @@ impl DatabaseScreen {
             .when_some(self.preview.as_ref(), |column, preview| {
                 column.child(move_snippet(preview, self.preview_key))
             })
+            .child({
+                let previewed = self.preview.as_ref().map(|preview| preview.row.id);
+                let (edit, delete) = (this.clone(), this.clone());
+                h_flex()
+                    .gap(px(6.))
+                    .child(
+                        btn("open-analyse", "Open in Analyse")
+                            .flex_1()
+                            .disabled(previewed.is_none())
+                            .tooltip(ui::i18n::t(
+                                "Saving in Analyse updates this game. Double-click a row to open it.",
+                            ))
+                            .on_click(move |window, cx| {
+                                this.update(cx, |screen, cx| screen.open_in_analyse(window, cx));
+                            }),
+                    )
+                    .child(
+                        icon_btn("edit-game", "icons/pencil.svg")
+                            .disabled(previewed.is_none())
+                            .tooltip(ui::i18n::t("Edit players, result and other headers"))
+                            .on_click(move |window, cx| {
+                                if let Some(id) = previewed {
+                                    edit.update(cx, |screen, cx| screen.open_editor(id, window, cx));
+                                }
+                            }),
+                    )
+                    .child(
+                        icon_btn("delete-game", "icons/trash.svg")
+                            .disabled(previewed.is_none())
+                            .tooltip(ui::i18n::t("Delete this game"))
+                            .on_click(move |_, cx| {
+                                if let Some(id) = previewed {
+                                    delete.update(cx, |screen, cx| screen.ask_delete(vec![id], cx));
+                                }
+                            }),
+                    )
+            })
+    }
+
+    /// The game editor over the tab: players, ratings, result, event, round, date and ECO.
+    fn render_editor(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let editor = self.editing.as_ref()?;
+        let this = cx.entity();
+        let result_this = this.clone();
+        let result = segmented(
+            "edit-result",
+            RESULTS
+                .iter()
+                .enumerate()
+                .map(|(index, result)| (index, result_text(result).into(), false))
+                .collect(),
+            editor.result,
+            move |index, _, cx| {
+                result_this.update(cx, |screen, cx| {
+                    if let Some(editor) = &mut screen.editing {
+                        editor.result = index;
+                        cx.notify();
+                    }
+                })
+            },
+        );
+        let pair = |left: AnyElement, right: AnyElement| {
+            div()
+                .grid()
+                .grid_cols(2)
+                .gap_x(px(10.))
+                .child(left)
+                .child(right)
+        };
+        let input = |label: &'static str, state: &Entity<InputState>| {
+            field(label, text_input(state).height(32.)).into_any_element()
+        };
+        let body = v_flex()
+            .px(px(16.))
+            .py(px(14.))
+            .gap(px(10.))
+            .child(pair(
+                input("White", &editor.white),
+                input("Black", &editor.black),
+            ))
+            .child(pair(
+                input("White rating", &editor.white_elo),
+                input("Black rating", &editor.black_elo),
+            ))
+            .child(field("Result", result))
+            .child(pair(
+                input("Event", &editor.event),
+                input("Round", &editor.round),
+            ))
+            .child(pair(input("Date", &editor.date), input("ECO", &editor.eco)));
+        let (cancel, save) = (this.clone(), this.clone());
+        let footer = h_flex()
+            .justify_end()
+            .gap(px(6.))
+            .px(px(16.))
+            .py(px(12.))
+            .border_t_1()
+            .border_color(rgb(T.border))
+            .child(btn("edit-cancel", "Cancel").on_click(move |_, cx| {
+                cancel.update(cx, |screen, cx| {
+                    screen.editing = None;
+                    cx.notify();
+                })
+            }))
             .child(
-                btn("open-analyse", "Open in Analyse")
-                    .full()
-                    .disabled(self.preview.is_none())
-                    .on_click(move |window, cx| {
-                        this.update(cx, |screen, cx| screen.open_in_analyse(window, cx));
-                    }),
+                btn("edit-save", "Save")
+                    .primary()
+                    .on_click(move |_, cx| save.update(cx, |screen, cx| screen.save_editor(cx))),
+            );
+        Some(dialog(
+            "game-editor",
+            "Edit game",
+            480.,
+            body.child(footer).into_any_element(),
+            this,
+        ))
+    }
+
+    /// Asks whether to delete the chosen games, saying how many and from where.
+    fn render_confirm_delete(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let ids = self.confirm_delete.as_ref()?;
+        let this = cx.entity();
+        let database = self.db_snapshot.as_ref().map_or_else(
+            || SharedString::from("this database"),
+            |entry| entry.name.clone(),
+        );
+        let question = if ids.len() == 1 {
+            format!("Delete this game from {database}?")
+        } else {
+            format!(
+                "Delete {} games from {database}?",
+                format_count(ids.len() as u64)
             )
+        };
+        let (cancel, confirm) = (this.clone(), this.clone());
+        let body = v_flex()
+            .child(
+                v_flex()
+                    .px(px(16.))
+                    .py(px(14.))
+                    .gap(px(4.))
+                    .child(div().text_size(px(14.)).child(question))
+                    .child(
+                        div()
+                            .text_size(px(13.))
+                            .text_color(rgb(T.muted))
+                            .child(ui::i18n::t("Their reviews go too. This cannot be undone.")),
+                    ),
+            )
+            .child(
+                h_flex()
+                    .justify_end()
+                    .gap(px(6.))
+                    .px(px(16.))
+                    .py(px(12.))
+                    .border_t_1()
+                    .border_color(rgb(T.border))
+                    .child(btn("delete-cancel", "Cancel").on_click(move |_, cx| {
+                        cancel.update(cx, |screen, cx| {
+                            screen.confirm_delete = None;
+                            cx.notify();
+                        })
+                    }))
+                    .child(
+                        btn("delete-confirm", "Delete")
+                            .primary()
+                            .on_click(move |_, cx| {
+                                confirm.update(cx, |screen, cx| screen.delete_confirmed(cx))
+                            }),
+                    ),
+            );
+        Some(dialog(
+            "confirm-delete",
+            if ids.len() == 1 {
+                "Delete game"
+            } else {
+                "Delete games"
+            },
+            420.,
+            body.into_any_element(),
+            this,
+        ))
     }
 
     fn render_import_bar(&self, cx: &mut Context<Self>) -> Option<impl IntoElement + use<>> {
@@ -1780,6 +2447,41 @@ struct ReviewFinding {
     /// What was lost, such as `−1.16` or `Mate`.
     loss: String,
     text: String,
+    /// The move-quality NAG for the loss: `?!`, `?` or `??`.
+    nag: u8,
+    /// The engine's line from the position before the move, in SAN.
+    best: String,
+}
+
+/// A review finding as a mark on a move in Analyse.
+pub(crate) struct ReviewMark {
+    /// The index of the move in the game's mainline.
+    pub ply: usize,
+    pub nag: u8,
+    /// A short comment: what the move lost and what the engine preferred.
+    pub note: String,
+}
+
+/// The review findings of a stored game as marks to put on its moves.
+pub(crate) fn review_marks(game: &GameDetails) -> Vec<ReviewMark> {
+    review_findings(game)
+        .into_iter()
+        .map(|finding| {
+            let mut note = format!("{} {}", ui::i18n::t("Review:"), finding.loss);
+            if !finding.best.is_empty() {
+                note.push_str(&format!(
+                    ", {} {}",
+                    ui::i18n::t("engine line"),
+                    finding.best
+                ));
+            }
+            ReviewMark {
+                ply: finding.ply,
+                nag: finding.nag,
+                note,
+            }
+        })
+        .collect()
 }
 
 fn review_findings(game: &GameDetails) -> Vec<ReviewFinding> {
@@ -1881,11 +2583,21 @@ fn review_findings(game: &GameDetails) -> Vec<ReviewFinding> {
             text.push_str(&format!(" Engine line: {}.", sans.join(" ")));
         }
         text.push_str(" Engine estimates can change with deeper searches.");
+        // 4 is ??, 2 is ? and 6 is ?!.
+        let nag = if mate_lost || loss >= 300 {
+            4
+        } else if loss >= 150 {
+            2
+        } else {
+            6
+        };
         findings.push(ReviewFinding {
             ply,
             label,
             loss: loss_label,
             text,
+            nag,
+            best: chess_core::format_pv((fullmove - 1) * 2 + u32::from(!white_moved), &sans),
         });
     }
     findings
@@ -2213,6 +2925,8 @@ impl Render for DatabaseScreen {
         let review_dialog = self
             .review_settings_open
             .then(|| self.render_review_dialog(cx));
+        let editor = self.render_editor(cx);
+        let confirm_delete = self.render_confirm_delete(cx);
         h_flex()
             .relative()
             .items_start()
@@ -2243,7 +2957,69 @@ impl Render for DatabaseScreen {
                     ),
             )
             .children(review_dialog)
+            .children(editor)
+            .children(confirm_delete)
     }
+}
+
+/// A dialog over the Database tab with a titled header and `body`. The × and a click
+/// on the dimmed backdrop close the game editor and the delete question.
+fn dialog(
+    id: &'static str,
+    title: &'static str,
+    width: f32,
+    body: AnyElement,
+    screen: Entity<DatabaseScreen>,
+) -> AnyElement {
+    let close = move |cx: &mut gpui::App| {
+        screen.update(cx, |screen, cx| {
+            screen.editing = None;
+            screen.confirm_delete = None;
+            cx.notify();
+        })
+    };
+    let close_button = close.clone();
+    let panel = v_flex()
+        .id(id)
+        .w(px(width))
+        .max_w_full()
+        .max_h_full()
+        .overflow_y_scroll()
+        .rounded(px(6.))
+        .bg(rgb(T.surface))
+        .border_1()
+        .border_color(rgb(T.border_strong))
+        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+        .child(
+            h_flex()
+                .h(px(44.))
+                .flex_none()
+                .px(px(16.))
+                .justify_between()
+                .border_b_1()
+                .border_color(rgb(T.border))
+                .child(section_label(title))
+                .child(
+                    icon_btn((id, 0usize), "icons/x.svg")
+                        .mini()
+                        .tooltip(ui::i18n::t("Close"))
+                        .on_click(move |_, cx| close_button(cx)),
+                ),
+        )
+        .child(body);
+    div()
+        .id((id, 1usize))
+        .absolute()
+        .inset_0()
+        .occlude()
+        .flex()
+        .items_center()
+        .justify_center()
+        .p(px(24.))
+        .bg(gpui::rgba(0x0000_0099))
+        .on_mouse_down(MouseButton::Left, move |_, _, cx| close(cx))
+        .child(panel)
+        .into_any_element()
 }
 
 #[cfg(test)]
