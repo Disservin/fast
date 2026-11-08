@@ -24,6 +24,15 @@ use crate::config::AnalysisLimit;
 use crate::debug_window::LOG_ROW_H;
 use crate::model::ToastExt as _;
 
+/// The settings the Engine panel shows under its engines.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum EngineTab {
+    /// How many lines to show, and replacing cached results.
+    Engines,
+    /// Threads, hash, the search limit and the moves searched.
+    Search,
+}
+
 /// Selected log text, which has to read clearly under every line colour.
 const LOG_SELECTION_BG: u32 = 0x34507A;
 /// How often an open Log panel checks its engine for new lines.
@@ -716,6 +725,7 @@ impl AnalyseScreen {
         let limit = self.model.read(cx).config.analysis_limit;
         let chosen = self.panel_engine_config(cx);
         let on = self.live.read(cx).on;
+        let tab = self.engine_tab;
         let reset_layout = this.clone();
         let mut body = panel().flex_none().overflow_hidden().child(
             h_flex()
@@ -724,7 +734,35 @@ impl AnalyseScreen {
                 .gap(px(6.))
                 .border_b_1()
                 .border_color(rgb(T.border))
-                .child(div().flex_1().child(section_label(ui::i18n::t("Engine"))))
+                // With engines, the tabs name the panel; without, the label does.
+                .when(engines.is_empty(), |header| {
+                    header.child(section_label(ui::i18n::t("Engine")))
+                })
+                .children((!engines.is_empty()).then(|| {
+                    let mut tabs = h_flex().gap(px(4.));
+                    for (index, (value, label)) in [
+                        (EngineTab::Engines, "Engines"),
+                        (EngineTab::Search, "Search"),
+                    ]
+                    .into_iter()
+                    .enumerate()
+                    {
+                        let this = this.clone();
+                        tabs = tabs.child(
+                            btn(("engine-tab", index), label)
+                                .mini()
+                                .selected(tab == value)
+                                .on_click(move |_, cx| {
+                                    this.update(cx, |screen, cx| {
+                                        screen.engine_tab = value;
+                                        cx.notify();
+                                    })
+                                }),
+                        );
+                    }
+                    tabs
+                }))
+                .child(div().flex_1())
                 .child(
                     btn("reset-panel-sizes", "Reset panel sizes")
                         .compact()
@@ -787,6 +825,9 @@ impl AnalyseScreen {
                     }),
             );
         }
+        if tab == EngineTab::Engines {
+            return self.render_engines_tab(body, chosen, cx);
+        }
         let workspace = self.workspace.clone();
         let mut settings = v_flex().gap(px(14.)).p(px(16.));
         if let Some(config) = &chosen {
@@ -797,7 +838,6 @@ impl AnalyseScreen {
                     .flex_wrap()
                     .gap_x(px(20.))
                     .gap_y(px(8.))
-                    .child(self.stepper(config, "MultiPV", "Lines", "", cx))
                     .child(self.stepper(config, "Threads", "Threads", "", cx))
                     .child(self.stepper(config, "Hash", "Hash", " MB", cx)),
             );
@@ -936,7 +976,18 @@ impl AnalyseScreen {
                     )),
             );
         }
-        body = body.child(search);
+        body.child(search).into_any_element()
+    }
+
+    /// The Engine panel's first tab: how many lines each engine shows, and replacing a
+    /// cached result with a fresh search.
+    fn render_engines_tab(
+        &mut self,
+        body: Div,
+        chosen: Option<EngineConfig>,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let this = cx.entity();
         let Some(config) = chosen else {
             return body.into_any_element();
         };
@@ -949,24 +1000,33 @@ impl AnalyseScreen {
             .find(|engine| engine.config.id == id)
             .is_some_and(|engine| engine.lines.values().any(|line| line.cached));
         let replace_this = this.clone();
-        body.when(has_cached, |panel| {
-            panel.child(
-                div().px(px(16.)).pb(px(12.)).child(
-                    btn("replace-cached-analysis", "Replace cached analysis")
-                        .compact()
-                        .tooltip(ui::i18n::t(
-                            "Discard this saved result and run a fresh search",
-                        ))
-                        .on_click(move |_, cx| {
-                            replace_this.update(cx, |screen, cx| {
-                                screen
-                                    .live
-                                    .update(cx, |live, cx| live.replace_cached(id, cx));
-                            });
-                        }),
-                ),
-            )
-        })
+        body.child(
+            h_flex()
+                .flex_wrap()
+                .gap(px(10.))
+                .p(px(16.))
+                .child(
+                    div()
+                        .flex_1()
+                        .child(self.stepper(&config, "MultiPV", "Lines", "", cx)),
+                )
+                .when(has_cached, |row| {
+                    row.child(
+                        btn("replace-cached-analysis", "Replace cached analysis")
+                            .compact()
+                            .tooltip(ui::i18n::t(
+                                "Discard this saved result and run a fresh search",
+                            ))
+                            .on_click(move |_, cx| {
+                                replace_this.update(cx, |screen, cx| {
+                                    screen
+                                        .live
+                                        .update(cx, |live, cx| live.replace_cached(id, cx));
+                                });
+                            }),
+                    )
+                }),
+        )
         .into_any_element()
     }
 

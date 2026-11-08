@@ -295,6 +295,8 @@ pub struct AnalyseScreen {
     engine_panel_open: bool,
     /// Whether the Engine panel lists every legal move to restrict the search to.
     search_moves_open: bool,
+    /// Which tab of settings the Engine panel shows under its engines.
+    engine_tab: panels::EngineTab,
     spin_edit: Option<(EngineId, &'static str, Entity<InputState>, Subscription)>,
     log_panel_open: bool,
     /// The Online panel and its tablebase and cloud lookups.
@@ -458,6 +460,7 @@ impl AnalyseScreen {
             show_wdl: true,
             engine_panel_open: false,
             search_moves_open: false,
+            engine_tab: panels::EngineTab::Engines,
             spin_edit: None,
             log_panel_open: false,
             online: online::OnlineState::default(),
