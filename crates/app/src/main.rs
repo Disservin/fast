@@ -1,6 +1,7 @@
 //! Fast: a desktop chess workstation.
 
 mod analysis_store;
+mod app_update;
 mod assets;
 mod backup;
 mod config;

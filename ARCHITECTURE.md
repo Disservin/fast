@@ -14,6 +14,31 @@
 The four domain crates are pure and unit-tested, including a fake UCI engine for process tests
 (`crates/engine/tests`).
 
+## Release packaging
+
+`.github/workflows/release.yml` checks and builds native executables on Linux,
+Windows and both Mac architectures. Version tags matching the workspace version
+produce a draft GitHub release only after all package jobs pass. Manual runs
+produce test artifacts without a release. `scripts/package_release.py` stages
+the executable, icons and license notices, invokes native packaging tools and
+writes SHA-256 checksums. Linux uses dpkg-shlibdeps for Debian dependencies and
+linuxdeploy for AppImage library bundling; Windows uses `packaging/windows.iss`
+with Inno Setup; macOS creates an app bundle and DMG with Apple's tools. Tagged
+Mac packages require Developer ID signing and notarization in a temporary CI
+keychain. Packaging does not include chess engines or modify user profiles.
+See `packaging/README.md` for signing secrets and release validation.
+
+`app_update.rs` exposes the Cargo package version in Settings › General and
+checks the latest stable release of `Disservin/fast` only on user request.
+Settings runs release requests, bounded downloads, SHA-256 verification and
+installation work in `cx.background_spawn`. Asset URLs must match the official
+release and checksums come from its `SHA256SUMS.txt`. AppImage updates use an
+atomic replacement in the installation directory and keep a `.previous` backup.
+Other installations open the verified Windows installer, Mac DMG or Debian
+package through the platform. The user finishes installation and restarts Fast;
+the updater does not stop active engines or modify user data. It never downloads
+drafts or prereleases and does not check automatically at startup.
+
 ## Pinned dependencies
 
 `gpui-component` is pinned to a git rev. That rev builds against the `gpui-pre` 0.3.11 snapshot of

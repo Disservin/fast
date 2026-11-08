@@ -261,6 +261,9 @@ pub struct SettingsScreen {
     install_task: Option<gpui::Task<()>>,
     opening_task: Option<gpui::Task<()>>,
     opening_status: Option<SharedString>,
+    app_update: Option<crate::app_update::Update>,
+    app_update_task: Option<gpui::Task<()>>,
+    app_update_status: Option<SharedString>,
     /// Disk use per kind of data, from the last time the Data page was opened.
     usage: Option<crate::storage::Usage>,
     usage_task: Option<gpui::Task<()>>,
@@ -430,6 +433,9 @@ impl SettingsScreen {
             install_task: None,
             opening_task: None,
             opening_status: None,
+            app_update: None,
+            app_update_task: None,
+            app_update_status: None,
             usage: None,
             usage_task: None,
             _subscriptions: subscriptions,
@@ -1735,6 +1741,7 @@ impl SettingsScreen {
         v_flex()
             .gap(px(16.))
             .child(page_title(ui::i18n::t("General")))
+            .child(self.render_app_update(cx))
             .child(self.render_storage(cx))
             .child(self.render_opening_data(cx))
             .child(self.render_appearance(cx))
@@ -1759,6 +1766,93 @@ impl SettingsScreen {
             )
             .child(self.render_board_section(cx))
             .child(self.render_shortcut_summary(cx))
+    }
+
+    /// Show the installed version and user-requested application update controls.
+    fn render_app_update(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let check_this = cx.entity();
+        let install_this = cx.entity();
+        let busy = self.app_update_task.is_some();
+        panel().p(px(16.)).child(v_flex().gap(px(8.))
+            .child(section_label("Fast updates"))
+            .child(h_flex().gap(px(8.))
+                .child(ui::i18n::t("Installed version"))
+                .child(mono(crate::app_update::VERSION)))
+            .child(ui::i18n::t("Check for a new Fast release. Updates keep your settings, databases and engines."))
+            .child(h_flex().gap(px(8.))
+                .child(btn("check-fast-update", "Check for updates").compact().disabled(busy)
+                    .on_click(move |_, cx| check_this.update(cx, |screen, cx| screen.check_app_update(cx))))
+                .when(self.app_update.is_some(), |row| row.child(
+                    btn("install-fast-update", "Download and install update").compact().primary().disabled(busy)
+                        .on_click(move |_, cx| install_this.update(cx, |screen, cx| screen.install_app_update(cx))))))
+            .children(self.app_update.as_ref().map(|update| h_flex().gap(px(8.))
+                .child(ui::i18n::t("Available version"))
+                .child(mono(update.version.clone()))))
+            .children(self.app_update_status.clone().map(|status| div().text_color(rgb(T.fg_2)).child(status))))
+    }
+
+    /// Check public releases in the background without disturbing the current session.
+    fn check_app_update(&mut self, cx: &mut Context<Self>) {
+        if self.app_update_task.is_some() {
+            return;
+        }
+        self.app_update = None;
+        self.app_update_status = Some(ui::i18n::t("Checking for updates…").into());
+        let worker = cx.background_spawn(async { crate::app_update::check() });
+        self.app_update_task = Some(cx.spawn(async move |this, cx| {
+            let result = worker.await;
+            let _ = this.update(cx, |screen, cx| {
+                screen.app_update_task = None;
+                screen.app_update_status = Some(match result {
+                    Ok(Some(update)) => {
+                        screen.app_update = Some(update);
+                        ui::i18n::t("A new version is available.").into()
+                    }
+                    Ok(None) => ui::i18n::t("Fast is up to date.").into(),
+                    Err(error) => format!(
+                        "{} {error:#}",
+                        ui::i18n::t("Could not check for updates. Try again later.")
+                    )
+                    .into(),
+                });
+                cx.notify();
+            });
+        }));
+        cx.notify();
+    }
+
+    /// Verify a release download and install it through the current platform's update flow.
+    fn install_app_update(&mut self, cx: &mut Context<Self>) {
+        if self.app_update_task.is_some() {
+            return;
+        }
+        let Some(update) = self.app_update.clone() else {
+            return;
+        };
+        self.app_update_status = Some(ui::i18n::t("Downloading and verifying update…").into());
+        let worker = cx.background_spawn(async move { crate::app_update::install(&update) });
+        self.app_update_task = Some(cx.spawn(async move |this, cx| {
+            let result = worker.await;
+            let _ = this.update(cx, |screen, cx| {
+                screen.app_update_task = None;
+                screen.app_update_status = Some(match result {
+                    Ok(replaced) => {
+                        screen.app_update = None;
+                        ui::i18n::t(if replaced {
+                            "Update installed. Close and reopen Fast to use the new version."
+                        } else {
+                            "Installer opened. Finish installation, then close and reopen Fast."
+                        })
+                        .into()
+                    }
+                    Err(error) => {
+                        format!("{} {error:#}", ui::i18n::t("Update failed. You can retry.")).into()
+                    }
+                });
+                cx.notify();
+            });
+        }));
+        cx.notify();
     }
 
     fn render_opening_data(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {

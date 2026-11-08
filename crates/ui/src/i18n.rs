@@ -46,6 +46,28 @@ pub fn translate(language: Language, text: &str) -> &str {
             "Settings" => "Einstellungen",
             "Tournament" => "Turnier",
             "General" => "Allgemein",
+            "Fast updates" => "Fast-Updates",
+            "Installed version" => "Installierte Version",
+            "Available version" => "Verfügbare Version",
+            "Check for updates" => "Nach Updates suchen",
+            "Download and install update" => "Update herunterladen und installieren",
+            "Check for a new Fast release. Updates keep your settings, databases and engines." => {
+                "Nach einer neuen Fast-Version suchen. Einstellungen, Datenbanken und Engines bleiben erhalten."
+            }
+            "Checking for updates…" => "Es wird nach Updates gesucht…",
+            "A new version is available." => "Eine neue Version ist verfügbar.",
+            "Fast is up to date." => "Fast ist auf dem neuesten Stand.",
+            "Could not check for updates. Try again later." => {
+                "Updates konnten nicht geprüft werden. Bitte später erneut versuchen."
+            }
+            "Downloading and verifying update…" => "Update wird heruntergeladen und geprüft…",
+            "Update installed. Close and reopen Fast to use the new version." => {
+                "Update installiert. Fast schließen und erneut öffnen, um die neue Version zu verwenden."
+            }
+            "Installer opened. Finish installation, then close and reopen Fast." => {
+                "Installationsprogramm geöffnet. Installation abschließen, dann Fast schließen und erneut öffnen."
+            }
+            "Update failed. You can retry." => "Update fehlgeschlagen. Bitte erneut versuchen.",
             "Board" => "Brett",
             "Board & pieces" => "Brett und Figuren",
             "Engines" => "Engines",
