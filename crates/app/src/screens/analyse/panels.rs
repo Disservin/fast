@@ -603,17 +603,19 @@ impl AnalyseScreen {
             v_flex()
                 .w(px(width))
                 .flex_none()
+                .gap(px(1.))
                 .child(
                     div()
-                        .text_size(px(10.))
-                        .text_color(rgb(T.faint))
+                        .text_size(px(11.))
+                        .text_color(rgb(T.muted))
                         .child(title),
                 )
                 .child(
                     mono(text)
                         .whitespace_nowrap()
-                        .text_size(px(12.))
-                        .text_color(rgb(T.fg_2)),
+                        .text_size(px(14.))
+                        .font_weight(FontWeight::MEDIUM)
+                        .text_color(rgb(T.fg)),
                 )
         };
         let dash = || "—".to_owned();
@@ -651,7 +653,7 @@ impl AnalyseScreen {
             format!("{} {}", config.name, config.version)
         };
         let row = h_flex()
-            .h(px(42.))
+            .h(px(52.))
             .px(px(16.))
             .gap(px(6.))
             .child(
@@ -692,12 +694,12 @@ impl AnalyseScreen {
                     .text_color(rgb(T.faint))
                     .child(ui::i18n::t(state).to_owned())
             }))
-            .child(cell(depth, 56., "DEPTH"))
-            .child(cell(nodes, 62., "NODES"))
-            .child(cell(speed, 72., "SPEED"))
-            .child(cell(time, 52., "TIME"))
-            .child(cell(hash, 40., "HASH"))
-            .children(tb.map(|tb| cell(tb, 48., "TB")));
+            .child(cell(depth, 68., "DEPTH"))
+            .child(cell(nodes, 78., "NODES"))
+            .child(cell(speed, 90., "SPEED"))
+            .child(cell(time, 64., "TIME"))
+            .child(cell(hash, 50., "HASH"))
+            .children(tb.map(|tb| cell(tb, 60., "TB")));
         v_flex()
             .when(chosen, |el| el.bg(rgb(T.selected)))
             .child(row)
