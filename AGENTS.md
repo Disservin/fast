@@ -41,7 +41,7 @@ decoration is kept to a minimum.
 - Take every colour from the active palette through `ui::T` (`rgb(T.fg)` and so on). Never
   hard-code a hex value in a screen. If a new role is needed, add a token to `Theme` and give
   it a value in every palette.
-- There are six palettes: Obsidian (the default), Slate, Forest and Plum are dark; Paper and
+- There are six palettes: Forest (the default), Obsidian, Slate and Plum are dark; Paper and
   Sand are light. Every change must look right in all of them, including the light ones.
   Board colours are a separate setting (`BoardTheme`).
 - Token roles:

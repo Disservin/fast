@@ -124,7 +124,7 @@ pub struct BoardConfig {
 impl Default for BoardConfig {
     fn default() -> Self {
         Self {
-            theme: SavedTheme::Graphite,
+            theme: SavedTheme::Moss,
             pieces: SavedPieces::Classic,
             coordinates: SavedCoordinates::OnSquares,
             animation_ms: 150,
@@ -742,10 +742,10 @@ mod tests {
     }
 
     #[test]
-    fn every_ui_theme_round_trips_and_missing_theme_defaults_to_obsidian() {
+    fn every_ui_theme_round_trips_and_missing_theme_defaults_to_forest() {
         assert_eq!(
             toml::from_str::<Config>("").unwrap().ui_theme,
-            ui::UiTheme::Obsidian
+            ui::UiTheme::Forest
         );
         for ui_theme in ui::UiTheme::ALL {
             let config = Config {
