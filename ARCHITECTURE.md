@@ -185,6 +185,11 @@ The UI thread never blocks on engines or databases.
   then starts the newest request. Stale lines cannot overwrite a new position's analysis.
 - **Databases:** queries run in `cx.background_spawn` with a new connection per task. Dropping the
   task cancels a stale query's delivery. Imports commit every 2,000 games so readers keep working.
+  Import writes each game's full movetext (comments, NAGs and legal variations) to
+  `games.annotated` while parsing, using a position stack per open variation; plain games keep
+  it NULL. Only mainline moves go into `moves` and the `positions` index. A variation with an
+  illegal move is cut from the text and counted; an illegal mainline move skips the game. The
+  source file is kept in `meta` for re-importing.
   Editing or deleting a game removes its position-index rows by recomputing its own hashes, so
   it never scans the whole `positions` table. A database's display name lives in its `meta`
   table; duplicating uses `VACUUM INTO`.

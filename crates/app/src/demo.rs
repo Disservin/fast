@@ -8,7 +8,7 @@ use chess_core::{
     Chess, GameTree, Position,
     shakmaty::{Move, san::SanPlus},
 };
-use db::{Database, ImportControl, import_games};
+use db::{Database, ImportControl, ImportOptions, import_games};
 use engine::{AnalysisUpdate, EngineConfig, EngineInfo, OptionKind, Score, UciOption, Wdl};
 use trainer::{Card, CardState, CuratedRow, RepNode, Repertoire};
 
@@ -81,6 +81,36 @@ struct PgnGame<'a> {
 }
 
 fn write_game(out: &mut String, game: &PgnGame<'_>) {
+    write_annotated_game(out, game, &[]);
+}
+
+/// Annotations for the Najdorf English Attack, by ply: NAGs, comments and variations
+/// written after that move.
+const NAJDORF_NOTES: &[(usize, &str)] = &[
+    (
+        9,
+        "$1 { The Najdorf: a flexible move that keeps b5 and e5 in reserve. [%clk 0:14:50] }",
+    ),
+    (
+        10,
+        "{ The English Attack. } (6. Bg5 e6 7. f4 { the old main line }) (6. Be2 e5 7. Nb3)",
+    ),
+    (11, "$5 { A sharp position with play on both wings. }"),
+];
+
+/// The club league game's notes: the opening ones and a comment and variation at the
+/// moment the preview shows.
+const CLUB_NOTES: &[(usize, &str)] = &[
+    (9, "$1 { The Najdorf. [%clk 0:14:50] }"),
+    (
+        26,
+        "$1 { Opening the f-file before Black's queenside play arrives. } (14. h4 a5 15. h5)",
+    ),
+];
+
+/// Writes a game like [`write_game`], adding the raw annotation text in `notes` after
+/// the move at each given ply.
+fn write_annotated_game(out: &mut String, game: &PgnGame<'_>, notes: &[(usize, &str)]) {
     use std::fmt::Write as _;
     let _ = writeln!(out, "[Event \"{}\"]", game.event);
     let _ = writeln!(out, "[Site \"{}\"]", game.site);
@@ -100,6 +130,9 @@ fn write_game(out: &mut String, game: &PgnGame<'_>) {
             let _ = write!(out, "{}. ", ply / 2 + 1);
         }
         let _ = write!(out, "{san} ");
+        for (_, note) in notes.iter().filter(|(at, _)| *at == ply) {
+            let _ = write!(out, "{note} ");
+        }
     }
     let _ = writeln!(out, "{}\n", game.result);
 }
@@ -263,7 +296,13 @@ fn my_games(path: &Path, rng: &mut Rng) {
         }
     };
     for &(opponent, my_elo, opp_elo, result, source, date, moves, _, kind) in MY_ROWS {
-        write_game(
+        // The club league game is annotated, so the preview shows comments.
+        let notes = if opponent == "knightowl_42" && kind != "OPP" && kind != "G4" {
+            CLUB_NOTES
+        } else {
+            &[]
+        };
+        write_annotated_game(
             &mut pgn,
             &PgnGame {
                 white: "me",
@@ -287,6 +326,7 @@ fn my_games(path: &Path, rng: &mut Rng) {
                 time_control: "900+10",
                 sans: extend(&line_after(kind), moves * 2 - 1, rng),
             },
+            notes,
         );
     }
     // Further games to reach the design's 128 filtered games at 58.2%.
@@ -394,7 +434,13 @@ fn my_games(path: &Path, rng: &mut Rng) {
             },
         );
     }
-    let imported = import_games(path, pgn.as_bytes(), "", &ImportControl::default(), |_| {});
+    let imported = import_games(
+        path,
+        pgn.as_bytes(),
+        &ImportOptions::default(),
+        &ImportControl::default(),
+        |_| {},
+    );
     if let Err(err) = imported {
         log::error!("demo import failed: {err}");
         return;
@@ -461,7 +507,13 @@ fn reference_db(path: &Path, rng: &mut Rng) {
 fn small_db(path: &Path, name: &str, count: usize, white: &str, line: &str, rng: &mut Rng) {
     let mut pgn = String::new();
     for index in 0..count {
-        write_game(
+        // A model game collection: the first games carry a book's comments.
+        let notes = if line == ENGLISH_ATTACK && index < 12 {
+            NAJDORF_NOTES
+        } else {
+            &[]
+        };
+        write_annotated_game(
             &mut pgn,
             &PgnGame {
                 white,
@@ -477,13 +529,20 @@ fn small_db(path: &Path, name: &str, count: usize, white: &str, line: &str, rng:
                 time_control: "5400+30",
                 sans: extend(line, 30 + rng.below(30), rng),
             },
+            notes,
         );
     }
     import_named(path, &pgn, name);
 }
 
 fn import_named(path: &Path, pgn: &str, name: &str) {
-    match import_games(path, pgn.as_bytes(), "", &ImportControl::default(), |_| {}) {
+    match import_games(
+        path,
+        pgn.as_bytes(),
+        &ImportOptions::default(),
+        &ImportControl::default(),
+        |_| {},
+    ) {
         Ok(_) => {
             if let Ok(database) = Database::open(path) {
                 let _ = database.set_name(name);
@@ -814,7 +873,7 @@ pub fn prepare(paths: &Paths, config: &mut Config) {
     config.next_engine_id = 5;
 
     let databases = paths.databases_dir();
-    let stamp = databases.join(".generated-v1");
+    let stamp = databases.join(".generated-v2");
     if stamp.exists() {
         return;
     }

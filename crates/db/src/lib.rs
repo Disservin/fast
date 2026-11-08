@@ -6,7 +6,7 @@ mod notes;
 mod queries;
 
 pub use edit::GameInfo;
-pub use import::{ImportControl, ImportProgress, ImportSummary, import_games};
+pub use import::{ImportControl, ImportOptions, ImportProgress, ImportSummary, import_games};
 pub use notes::NoteStore;
 pub use queries::{
     Filter, FilterStats, GameDetails, GameRow, MoveStat, PlayerLine, ReviewPosition, ReviewSummary,
@@ -171,6 +171,39 @@ impl Database {
             "INSERT OR REPLACE INTO meta (key, value) VALUES ('name', ?1)",
             params![name],
         )?;
+        Ok(())
+    }
+
+    /// The PGN file this database was last imported from, if any, for re-importing it.
+    pub fn source_file(&self) -> Result<Option<PathBuf>> {
+        let stored: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT value FROM meta WHERE key = 'source_file'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?;
+        Ok(stored.map(PathBuf::from))
+    }
+
+    /// Remembers the PGN file this database was imported from.
+    pub fn set_source_file(&self, file: &Path) -> Result<()> {
+        self.conn.execute(
+            "INSERT OR REPLACE INTO meta (key, value) VALUES ('source_file', ?1)",
+            params![file.to_string_lossy().into_owned()],
+        )?;
+        Ok(())
+    }
+
+    /// Removes every game, its positions and reviews, before importing the file again.
+    pub fn clear_games(&mut self) -> Result<()> {
+        let tx = self.conn.transaction()?;
+        tx.execute_batch(
+            "DELETE FROM positions; DELETE FROM review_positions;
+             DELETE FROM review_summaries; DELETE FROM games;",
+        )?;
+        tx.commit()?;
         Ok(())
     }
 

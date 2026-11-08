@@ -4,8 +4,8 @@ use std::{collections::HashMap, ops::Range, path::PathBuf};
 
 use chess_core::{Chess, GameTree, Position, classify, position_hash};
 use db::{
-    Database, Filter, FilterStats, GameDetails, GameInfo, GameRow, ImportControl, ImportProgress,
-    ReviewPosition, ReviewSummary, SideFilter, TimeClass, import_games,
+    Database, Filter, FilterStats, GameDetails, GameInfo, GameRow, ImportControl, ImportOptions,
+    ImportProgress, ReviewPosition, ReviewSummary, SideFilter, TimeClass, import_games,
 };
 use gpui::{
     AnyElement, AppContext as _, Context, Entity, FontWeight, IntoElement, MouseButton, Render,
@@ -187,10 +187,19 @@ pub struct DatabaseScreen {
     leak_text: Option<String>,
     selected: Option<i64>,
     preview: Option<GameDetails>,
+    /// Comments and side variations after each mainline move of the previewed game.
+    preview_notes: Vec<MoveNotes>,
     preview_key: usize,
     preview_board: Entity<BoardView>,
     scroll: UniformListScrollHandle,
     importing: Option<Importing>,
+    /// Whether the Import dialog is open.
+    import_dialog: bool,
+    /// The file numbers of games that lost a variation in the last import, shown when
+    /// the user asks for details.
+    dropped_details: Option<Vec<u64>>,
+    /// A database and its source file waiting for the user to confirm a re-import.
+    confirm_reimport: Option<(PathBuf, PathBuf)>,
     reviewing: Option<Reviewing>,
     review_engine: Option<engine::EngineId>,
     review_limit: usize,
@@ -367,10 +376,14 @@ impl DatabaseScreen {
             leak_text: None,
             selected: None,
             preview: None,
+            preview_notes: Vec::new(),
             preview_key: 0,
             preview_board,
             scroll: UniformListScrollHandle::new(),
             importing: None,
+            import_dialog: false,
+            dropped_details: None,
+            confirm_reimport: None,
             reviewing: None,
             review_engine,
             review_limit: 0,
@@ -435,6 +448,7 @@ impl DatabaseScreen {
                 .filter(|_| self.reached)
                 .map(|(hash, _)| *hash),
             only_left_repertoire: self.only_left_rep,
+            only_annotated: false,
         }
     }
 
@@ -602,6 +616,7 @@ impl DatabaseScreen {
                 let key = key_moment(&details);
                 this.show_preview(&details, key, cx);
                 this.preview_key = key;
+                this.preview_notes = move_notes(&details);
                 this.preview = Some(details);
                 cx.notify();
             });
@@ -680,6 +695,7 @@ impl DatabaseScreen {
                 let key = key_moment(&details);
                 this.show_preview(&details, key, cx);
                 this.preview_key = key;
+                this.preview_notes = move_notes(&details);
                 this.preview = Some(details);
                 this.open_in_analyse(window, cx);
             });
@@ -688,10 +704,19 @@ impl DatabaseScreen {
         cx.notify();
     }
 
+    /// Opens the Import dialog, unless an import is already running.
     pub fn prompt_import(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         if self.importing.is_some() {
             return;
         }
+        self.import_dialog = true;
+        cx.notify();
+    }
+
+    /// Closes the Import dialog and asks for the PGN file to import.
+    fn choose_import_file(&mut self, cx: &mut Context<Self>) {
+        self.import_dialog = false;
+        cx.notify();
         let this = cx.entity().downgrade();
         pick_path(
             self.model.clone(),
@@ -699,18 +724,37 @@ impl DatabaseScreen {
             None,
             cx,
             move |path, cx| {
-                let _ = this.update(cx, |this, cx| this.import_file(path, cx));
+                let _ = this.update(cx, |this, cx| this.import_file(path, false, cx));
             },
         );
     }
 
-    /// Streams a PGN into the selected database, with progress and cancel.
-    pub fn import_file(&mut self, file: PathBuf, cx: &mut Context<Self>) {
+    /// Empties a database and imports its source file again, so games imported before
+    /// comments and variations were kept get them.
+    fn reimport_confirmed(&mut self, cx: &mut Context<Self>) {
+        let Some((database, file)) = self.confirm_reimport.take() else {
+            return;
+        };
+        if self.importing.is_some() {
+            return;
+        }
+        self.selected_db = Some(database);
+        self.selected = None;
+        self.import_file(file, true, cx);
+    }
+
+    /// Streams a PGN into the selected database, with progress and cancel. With
+    /// `replace`, the database is emptied first.
+    pub fn import_file(&mut self, file: PathBuf, replace: bool, cx: &mut Context<Self>) {
         let target = self
             .selected_db
             .clone()
             .unwrap_or_else(|| self.model.read(cx).my_games_path());
         let control = ImportControl::default();
+        let options = ImportOptions {
+            keep_annotations: self.model.read(cx).config.import_keep_annotations,
+            ..Default::default()
+        };
         self.importing = Some(Importing {
             control: control.clone(),
             progress: ImportProgress::default(),
@@ -725,13 +769,17 @@ impl DatabaseScreen {
             let target = target.clone();
             async move {
                 let reader = std::fs::File::open(&file)?;
-                let summary = import_games(&target, reader, "", &control, |progress| {
+                if replace {
+                    Database::open(&target)?.clear_games()?;
+                }
+                let summary = import_games(&target, reader, &options, &control, |progress| {
                     let _ = progress_tx.try_send(progress);
                 })?;
-                if let Ok(database) = Database::open(&target)
-                    && target.file_stem().is_some_and(|stem| stem == "my_games")
-                {
-                    let _ = database.set_name("My games");
+                if let Ok(database) = Database::open(&target) {
+                    if target.file_stem().is_some_and(|stem| stem == "my_games") {
+                        let _ = database.set_name("My games");
+                    }
+                    let _ = database.set_source_file(&file);
                 }
                 anyhow::Ok(summary)
             }
@@ -751,19 +799,37 @@ impl DatabaseScreen {
             let outcome = worker.await;
             let _ = this.update(cx, |this, cx| {
                 this.importing = None;
-                let message = match outcome {
-                    Ok(summary) if summary.cancelled => {
-                        format!("Import cancelled after {} games.", summary.games)
-                    }
-                    Ok(summary) => format!(
-                        "Imported {} games ({} skipped).",
-                        summary.games, summary.skipped
+                let message = match &outcome {
+                    Ok(summary) if summary.cancelled => ui::i18n::tf(
+                        "Import cancelled after {} games.",
+                        &[&format_count(summary.games)],
                     ),
-                    Err(err) => format!("Import failed: {err:#}"),
+                    Ok(summary) => import_message(summary),
+                    Err(err) => format!("{} {err:#}", ui::i18n::t("Import failed:")),
                 };
+                let dropped = outcome
+                    .as_ref()
+                    .ok()
+                    .map(|summary| summary.games_with_dropped.clone())
+                    .filter(|games| !games.is_empty());
                 this.selected_db = Some(target);
+                let screen = cx.entity().downgrade();
                 this.model.update(cx, |model, cx| {
-                    model.toast(message, cx);
+                    match dropped {
+                        Some(games) => model.toast_with_action(
+                            message,
+                            "Show details",
+                            move |_, cx| {
+                                let games = games.clone();
+                                let _ = screen.update(cx, |screen, cx| {
+                                    screen.dropped_details = Some(games);
+                                    cx.notify();
+                                });
+                            },
+                            cx,
+                        ),
+                        None => model.toast(message, cx),
+                    }
                     model.refresh_databases();
                     model.refresh_leaks(cx);
                     cx.emit(ModelEvent::Databases);
@@ -947,7 +1013,12 @@ impl DatabaseScreen {
             self.close_suggestions(cx);
             return true;
         }
-        if self.editing.take().is_some() || self.confirm_delete.take().is_some() {
+        if self.editing.take().is_some()
+            || self.confirm_delete.take().is_some()
+            || std::mem::take(&mut self.import_dialog)
+            || self.dropped_details.take().is_some()
+            || self.confirm_reimport.take().is_some()
+        {
             cx.notify();
             return true;
         }
@@ -1415,6 +1486,12 @@ impl DatabaseScreen {
             let this_click = this.clone();
             let (rename_this, duplicate_this) = (this.clone(), this.clone());
             let (rename_path, duplicate_path) = (entry.path.clone(), entry.path.clone());
+            let reimport_this = this.clone();
+            let reimport = entry
+                .source_file
+                .clone()
+                .filter(|file| file.exists())
+                .map(|file| (entry.path.clone(), file));
             list = list.child(
                 h_flex()
                     .id(("db", index))
@@ -1470,6 +1547,20 @@ impl DatabaseScreen {
                                 },
                             ),
                         )
+                        .when_some(reimport.clone(), |menu, target| {
+                            let reimport_this = reimport_this.clone();
+                            menu.item(
+                                PopupMenuItem::new(ui::i18n::t("Re-import from file…")).on_click(
+                                    move |_, _, cx| {
+                                        let target = target.clone();
+                                        reimport_this.update(cx, |screen, cx| {
+                                            screen.confirm_reimport = Some(target);
+                                            cx.notify();
+                                        })
+                                    },
+                                ),
+                            )
+                        })
                     })
                     .child(
                         div()
@@ -2098,7 +2189,7 @@ impl DatabaseScreen {
         let Some(game) = self.rows.get(&id) else {
             return row_el.child(div().text_color(rgb(T.faint)).child("…"));
         };
-        let name = |name: &str, elo: Option<i64>, winner: bool| {
+        let name = |name: &str, elo: Option<i64>, winner: bool, annotated: bool| {
             h_flex()
                 .flex_1()
                 .min_w_0()
@@ -2119,6 +2210,24 @@ impl DatabaseScreen {
                         .text_color(rgb(T.muted))
                         .text_size(px(14.))
                 }))
+                .when(annotated, |cell| {
+                    cell.child(
+                        div()
+                            .id(("annotated", id as usize))
+                            .flex_none()
+                            .child(ui::widgets::icon(
+                                "icons/message-square.svg",
+                                px(12.),
+                                T.muted,
+                            ))
+                            .tooltip(|window, cx| {
+                                gpui_component::tooltip::Tooltip::new(ui::i18n::t(
+                                    "Has comments or variations",
+                                ))
+                                .build(window, cx)
+                            }),
+                    )
+                })
         };
         let white_won = game.result == "1-0";
         let black_won = game.result == "0-1";
@@ -2130,8 +2239,8 @@ impl DatabaseScreen {
                 .text_color(rgb(color))
         };
         row_el
-            .child(name(&game.white, game.white_elo, white_won))
-            .child(name(&game.black, game.black_elo, black_won))
+            .child(name(&game.white, game.white_elo, white_won, game.annotated))
+            .child(name(&game.black, game.black_elo, black_won, false))
             .child(mono_cell(result_text(&game.result), W_RESULT, T.fg))
             .child(match &game.left_rep {
                 Some(left) => mono_cell(left.clone(), W_LEFT, T.warn),
@@ -2249,7 +2358,7 @@ impl DatabaseScreen {
                     .child(self.preview_board.clone()),
             )
             .when_some(self.preview.as_ref(), |column, preview| {
-                column.child(move_snippet(preview, self.preview_key))
+                column.child(move_snippet(preview, &self.preview_notes, self.preview_key))
             })
             .child({
                 let previewed = self.preview.as_ref().map(|preview| preview.row.id);
@@ -2435,6 +2544,181 @@ impl DatabaseScreen {
         ))
     }
 
+    /// The Import dialog: where the games go, whether comments and variations are
+    /// kept, and the button that asks for the file.
+    fn render_import_dialog(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        if !self.import_dialog {
+            return None;
+        }
+        let this = cx.entity();
+        let keep = self.model.read(cx).config.import_keep_annotations;
+        let target = self.db_snapshot.as_ref().map_or_else(
+            || SharedString::from(ui::i18n::t("My games")),
+            |entry| entry.name.clone(),
+        );
+        let model = self.model.clone();
+        let (cancel, choose) = (this.clone(), this.clone());
+        let body = v_flex()
+            .child(
+                v_flex()
+                    .px(px(16.))
+                    .py(px(14.))
+                    .gap(px(10.))
+                    .child(
+                        h_flex()
+                            .gap(px(6.))
+                            .text_size(px(14.))
+                            .child(div().text_color(rgb(T.muted)).child(ui::i18n::t("Into")))
+                            .child(div().font_weight(FontWeight::MEDIUM).child(target)),
+                    )
+                    .child(
+                        check(
+                            "import-keep-annotations",
+                            keep,
+                            "Keep comments and variations",
+                        )
+                        .on_change(move |value, _, cx| {
+                            model.update(cx, |model, cx| {
+                                model.config.import_keep_annotations = value;
+                                model.save_config(cx);
+                            });
+                        }),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(13.))
+                            .text_color(rgb(T.muted))
+                            .child(ui::i18n::t(
+                                "Turn this off for very large reference files where size matters.",
+                            )),
+                    ),
+            )
+            .child(
+                h_flex()
+                    .justify_end()
+                    .gap(px(6.))
+                    .px(px(16.))
+                    .py(px(12.))
+                    .border_t_1()
+                    .border_color(rgb(T.border))
+                    .child(btn("import-cancel", "Cancel").on_click(move |_, cx| {
+                        cancel.update(cx, |screen, cx| {
+                            screen.import_dialog = false;
+                            cx.notify();
+                        })
+                    }))
+                    .child(btn("import-choose", "Choose PGN file…").primary().on_click(
+                        move |_, cx| choose.update(cx, |screen, cx| screen.choose_import_file(cx)),
+                    )),
+            );
+        Some(dialog(
+            "import-dialog",
+            "Import games",
+            420.,
+            body.into_any_element(),
+            this,
+        ))
+    }
+
+    /// Asks before emptying a database to import its source file again.
+    fn render_confirm_reimport(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let (database, file) = self.confirm_reimport.as_ref()?;
+        let this = cx.entity();
+        let name = self
+            .model
+            .read(cx)
+            .databases
+            .iter()
+            .find(|entry| &entry.path == database)
+            .map_or_else(|| SharedString::from(""), |entry| entry.name.clone());
+        let (cancel, confirm) = (this.clone(), this.clone());
+        let body = v_flex()
+            .child(
+                v_flex()
+                    .px(px(16.))
+                    .py(px(14.))
+                    .gap(px(4.))
+                    .child(div().text_size(px(14.)).child(ui::i18n::tf(
+                        "Replace the games in {} with {}?",
+                        &[&name, &file.display().to_string()],
+                    )))
+                    .child(
+                        div()
+                            .text_size(px(13.))
+                            .text_color(rgb(T.muted))
+                            .child(ui::i18n::t(
+                                "Edits and reviews of these games are lost. This cannot be undone.",
+                            )),
+                    ),
+            )
+            .child(
+                h_flex()
+                    .justify_end()
+                    .gap(px(6.))
+                    .px(px(16.))
+                    .py(px(12.))
+                    .border_t_1()
+                    .border_color(rgb(T.border))
+                    .child(btn("reimport-cancel", "Cancel").on_click(move |_, cx| {
+                        cancel.update(cx, |screen, cx| {
+                            screen.confirm_reimport = None;
+                            cx.notify();
+                        })
+                    }))
+                    .child(btn("reimport-confirm", "Re-import").primary().on_click(
+                        move |_, cx| confirm.update(cx, |screen, cx| screen.reimport_confirmed(cx)),
+                    )),
+            );
+        Some(dialog(
+            "confirm-reimport",
+            "Re-import from file",
+            460.,
+            body.into_any_element(),
+            this,
+        ))
+    }
+
+    /// The games whose variations had illegal moves in the last import, by their
+    /// number in the file.
+    fn render_dropped_details(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let games = self.dropped_details.as_ref()?;
+        let this = cx.entity();
+        let shown: Vec<String> = games.iter().take(200).map(|n| format_count(*n)).collect();
+        let more = games.len().saturating_sub(shown.len());
+        let body = v_flex()
+            .px(px(16.))
+            .py(px(14.))
+            .gap(px(8.))
+            .child(
+                div()
+                    .text_size(px(13.))
+                    .text_color(rgb(T.muted))
+                    .child(ui::i18n::t(
+                        "These games kept their moves, but a variation with an illegal move was left out. Numbers count games in the file from 1.",
+                    )),
+            )
+            .child(
+                mono(shown.join(", "))
+                    .text_size(px(13.))
+                    .text_color(rgb(T.fg_2)),
+            )
+            .when(more > 0, |body| {
+                body.child(
+                    div()
+                        .text_size(px(13.))
+                        .text_color(rgb(T.muted))
+                        .child(ui::i18n::tf("and {} more", &[&format_count(more as u64)])),
+                )
+            });
+        Some(dialog(
+            "dropped-details",
+            "Variations left out",
+            460.,
+            body.into_any_element(),
+            this,
+        ))
+    }
+
     fn render_import_bar(&self, cx: &mut Context<Self>) -> Option<impl IntoElement + use<>> {
         let importing = self.importing.as_ref()?;
         let this = cx.entity();
@@ -2521,8 +2805,64 @@ fn key_moment(details: &GameDetails) -> usize {
     details.sans.len().min(SHOWN_PLIES.max(last_book))
 }
 
-/// The moves around the key moment, with the next move marked as a pill.
-fn move_snippet(preview: &GameDetails, key: usize) -> impl IntoElement + use<> {
+/// The comment and side variations that follow one mainline move.
+#[derive(Clone, Debug, Default, PartialEq)]
+struct MoveNotes {
+    /// The comment without `[%clk]`, `[%eval]` and other commands.
+    comment: String,
+    /// Each variation replacing this move, as PGN movetext.
+    variations: Vec<String>,
+}
+
+/// The comments and variations after each mainline move of an annotated game, indexed
+/// like `sans`. Empty for plain games.
+fn move_notes(details: &GameDetails) -> Vec<MoveNotes> {
+    if details.annotated.is_none() {
+        return Vec::new();
+    }
+    let Some(tree) = chess_core::parse_pgn(&details.to_pgn())
+        .ok()
+        .and_then(|mut games| (!games.is_empty()).then(|| games.remove(0)))
+    else {
+        return Vec::new();
+    };
+    tree.mainline()
+        .into_iter()
+        .map(|id| {
+            let node = tree.node(id);
+            let siblings = node
+                .parent
+                .map(|parent| tree.node(parent).children.clone())
+                .unwrap_or_default();
+            MoveNotes {
+                comment: chess_core::strip_commands(&node.comment),
+                variations: siblings
+                    .into_iter()
+                    .skip(1)
+                    .map(|variation| chess_core::write_pgn_from(&tree, variation))
+                    .collect(),
+            }
+        })
+        .collect()
+}
+
+/// Shortens a comment for the preview so one long note does not push the board away.
+fn short_comment(text: &str) -> String {
+    const LIMIT: usize = 140;
+    if text.chars().count() <= LIMIT {
+        return text.to_owned();
+    }
+    let cut: String = text.chars().take(LIMIT).collect();
+    format!("{}…", cut.trim_end())
+}
+
+/// The moves around the key moment, with the next move marked as a pill. Comments
+/// follow their move in `fg_2` and variations in `muted`, as in the scoresheet.
+fn move_snippet(
+    preview: &GameDetails,
+    notes: &[MoveNotes],
+    key: usize,
+) -> impl IntoElement + use<> {
     let start = key.saturating_sub(2);
     let end = (key + 6).min(preview.sans.len());
     let mut row = div()
@@ -2554,8 +2894,60 @@ fn move_snippet(preview: &GameDetails, key: usize) -> impl IntoElement + use<> {
                 })
                 .child(ui::i18n::t(&label).to_owned()),
         );
+        let Some(note) = notes.get(ply) else {
+            continue;
+        };
+        // Notes take their own wrapped line so the snippet stays inside the panel.
+        if !note.comment.is_empty() {
+            row = row.child(
+                div()
+                    .w_full()
+                    .font_family(ui::SANS)
+                    .text_size(px(13.))
+                    .line_height(px(19.))
+                    .text_color(rgb(T.fg_2))
+                    .child(short_comment(&note.comment)),
+            );
+        }
+        for variation in &note.variations {
+            row = row.child(
+                div()
+                    .w_full()
+                    .text_size(px(13.))
+                    .line_height(px(19.))
+                    .text_color(rgb(T.muted))
+                    .child(format!("({})", short_comment(variation))),
+            );
+        }
     }
     row
+}
+
+/// The toast after an import: games, how many have annotations, skipped games and
+/// variations left out.
+fn import_message(summary: &db::ImportSummary) -> String {
+    let mut message = ui::i18n::tf(
+        "Imported {} games, {} with annotations.",
+        &[
+            &format_count(summary.games),
+            &format_count(summary.annotated),
+        ],
+    );
+    if summary.skipped > 0 {
+        message.push(' ');
+        message.push_str(&ui::i18n::tf(
+            "{} games skipped.",
+            &[&format_count(summary.skipped)],
+        ));
+    }
+    if summary.variations_dropped > 0 {
+        message.push(' ');
+        message.push_str(&ui::i18n::tf(
+            "{} variations had illegal moves and were left out.",
+            &[&format_count(summary.variations_dropped)],
+        ));
+    }
+    message
 }
 
 pub fn format_count(count: u64) -> String {
@@ -3093,6 +3485,9 @@ impl Render for DatabaseScreen {
             .then(|| self.render_review_dialog(cx));
         let editor = self.render_editor(cx);
         let confirm_delete = self.render_confirm_delete(cx);
+        let import_dialog = self.render_import_dialog(cx);
+        let dropped_details = self.render_dropped_details(cx);
+        let confirm_reimport = self.render_confirm_reimport(cx);
         h_flex()
             .relative()
             .items_start()
@@ -3125,6 +3520,9 @@ impl Render for DatabaseScreen {
             .children(review_dialog)
             .children(editor)
             .children(confirm_delete)
+            .children(import_dialog)
+            .children(dropped_details)
+            .children(confirm_reimport)
     }
 }
 
@@ -3141,6 +3539,9 @@ fn dialog(
         screen.update(cx, |screen, cx| {
             screen.editing = None;
             screen.confirm_delete = None;
+            screen.import_dialog = false;
+            screen.dropped_details = None;
+            screen.confirm_reimport = None;
             cx.notify();
         })
     };

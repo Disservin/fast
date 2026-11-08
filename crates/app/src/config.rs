@@ -513,6 +513,8 @@ pub struct Config {
     pub review_engines: u32,
     /// The tabs open when Fast last closed, reopened on the next start.
     pub session: Option<SavedSession>,
+    /// Keep comments, NAGs and variations when importing a PGN into a database.
+    pub import_keep_annotations: bool,
 }
 
 /// The open tabs, in order, and which one was shown.
@@ -571,6 +573,7 @@ impl Default for Config {
             test_positions: TestPositionSettings::default(),
             review_engines: 1,
             session: None,
+            import_keep_annotations: true,
         }
     }
 }

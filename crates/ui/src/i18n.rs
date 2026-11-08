@@ -821,6 +821,36 @@ pub fn translate(language: Language, text: &str) -> &str {
             "Fantasy" => "Fantasie",
             "Letters" => "Buchstaben",
             "Flat" => "Flach",
+            "Show details" => "Details anzeigen",
+            "Import cancelled after {} games." => "Import nach {} Partien abgebrochen.",
+            "Import failed:" => "Import fehlgeschlagen:",
+            "Imported {} games, {} with annotations." => {
+                "{} Partien importiert, {} mit Anmerkungen."
+            }
+            "{} games skipped." => "{} Partien übersprungen.",
+            "{} variations had illegal moves and were left out." => {
+                "{} Varianten enthielten unzulässige Züge und wurden ausgelassen."
+            }
+            "Into" => "In",
+            "Keep comments and variations" => "Kommentare und Varianten behalten",
+            "Turn this off for very large reference files where size matters." => {
+                "Für sehr große Referenzdateien ausschalten, wenn die Größe zählt."
+            }
+            "Choose PGN file…" => "PGN-Datei wählen…",
+            "Import games" => "Partien importieren",
+            "These games kept their moves, but a variation with an illegal move was left out. Numbers count games in the file from 1." => {
+                "Diese Partien behielten ihre Züge, aber eine Variante mit einem unzulässigen Zug wurde ausgelassen. Die Nummern zählen die Partien in der Datei ab 1."
+            }
+            "and {} more" => "und {} weitere",
+            "Variations left out" => "Ausgelassene Varianten",
+            "Has comments or variations" => "Hat Kommentare oder Varianten",
+            "Replace the games in {} with {}?" => "Partien in {} durch {} ersetzen?",
+            "Edits and reviews of these games are lost. This cannot be undone." => {
+                "Änderungen und Bewertungen dieser Partien gehen verloren. Dies kann nicht rückgängig gemacht werden."
+            }
+            "Re-import" => "Neu importieren",
+            "Re-import from file" => "Aus Datei neu importieren",
+            "Re-import from file…" => "Aus Datei neu importieren…",
             _ => text,
         }
     } else {
@@ -837,6 +867,21 @@ pub fn t(text: &str) -> &str {
     translate(language, text)
 }
 
+/// Translates a message with `{}` placeholders, then fills them with `args` in order,
+/// so formatted messages such as "Imported {} games." are translated too.
+pub fn tf(template: &str, args: &[&str]) -> String {
+    let mut out = String::new();
+    let mut parts = t(template).split("{}");
+    if let Some(first) = parts.next() {
+        out.push_str(first);
+    }
+    for (index, part) in parts.enumerate() {
+        out.push_str(args.get(index).copied().unwrap_or(""));
+        out.push_str(part);
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -848,5 +893,11 @@ mod tests {
             translate(Language::German, "Unknown message"),
             "Unknown message"
         );
+    }
+
+    #[test]
+    fn templates_fill_placeholders_in_order() {
+        assert_eq!(tf("{} of {} games", &["3", "10"]), "3 of 10 games");
+        assert_eq!(tf("No placeholders", &["x"]), "No placeholders");
     }
 }

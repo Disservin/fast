@@ -61,6 +61,8 @@ pub struct Filter {
     /// Only games reaching this position.
     pub position: Option<u64>,
     pub only_left_repertoire: bool,
+    /// Only games with comments, NAGs or variations.
+    pub only_annotated: bool,
 }
 
 impl Filter {
@@ -121,6 +123,9 @@ impl Filter {
         if self.only_left_repertoire {
             clauses.push("left_rep IS NOT NULL".to_owned());
         }
+        if self.only_annotated {
+            clauses.push("annotated IS NOT NULL".to_owned());
+        }
         let clause = if clauses.is_empty() {
             String::new()
         } else {
@@ -150,6 +155,8 @@ pub struct GameRow {
     pub plies: i64,
     pub accuracy: Option<f64>,
     pub left_rep: Option<String>,
+    /// The game has comments, NAGs or variations.
+    pub annotated: bool,
 }
 
 impl GameRow {
@@ -173,11 +180,12 @@ impl GameRow {
             plies: row.get(11)?,
             accuracy: row.get(12)?,
             left_rep: row.get(13)?,
+            annotated: row.get(14)?,
         })
     }
 }
 
-const ROW_COLUMNS: &str = "id, white, black, white_elo, black_elo, result, date, eco, event, round, source, plies, accuracy, left_rep";
+const ROW_COLUMNS: &str = "id, white, black, white_elo, black_elo, result, date, eco, event, round, source, plies, accuracy, left_rep, annotated IS NOT NULL";
 
 /// Row data plus the move list, for preview and opening a game.
 #[derive(Clone, Debug, PartialEq)]
@@ -187,8 +195,8 @@ pub struct GameDetails {
     /// starting positions were retained.
     pub start_fen: String,
     pub sans: Vec<String>,
-    /// The movetext with comments, variations and annotations, once the game has been
-    /// saved from Analyse. Imported games keep only their moves.
+    /// The movetext with comments, variations and NAGs, without the result. Set when
+    /// the game was imported with them or saved from Analyse; plain games keep `None`.
     pub annotated: Option<String>,
     pub review_summary: Option<ReviewSummary>,
     pub review_positions: Vec<ReviewPosition>,
@@ -397,9 +405,9 @@ impl Database {
                 ),
                 params![id],
                 |row| {
-                    let moves: String = row.get(14)?;
-                    let start_fen: String = row.get(15)?;
-                    let annotated: Option<String> = row.get(16)?;
+                    let moves: String = row.get(15)?;
+                    let start_fen: String = row.get(16)?;
+                    let annotated: Option<String> = row.get(17)?;
                     Ok(GameDetails {
                         row: GameRow::from_row(row)?,
                         start_fen,
@@ -660,7 +668,7 @@ impl Database {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{ImportControl, import_games};
+    use crate::{ImportControl, ImportOptions, import_games};
     use chess_core::{Chess, Position, position_hash, shakmaty::san::San};
 
     const GAMES: &str = r#"[White "me"]
@@ -704,7 +712,7 @@ mod tests {
         let summary = import_games(
             &path,
             GAMES.as_bytes(),
-            "",
+            &ImportOptions::default(),
             &ImportControl::default(),
             |_| {},
         )

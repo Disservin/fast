@@ -22,6 +22,8 @@ pub struct DbEntry {
     pub path: PathBuf,
     pub name: SharedString,
     pub games: u64,
+    /// The PGN file the database was last imported from, for "Re-import from file".
+    pub source_file: Option<PathBuf>,
 }
 
 pub type PathCallback = Box<dyn FnOnce(Vec<PathBuf>, &mut App)>;
@@ -36,6 +38,17 @@ pub struct PendingPath {
 pub struct Toast {
     pub id: u64,
     pub text: SharedString,
+    /// A button on the toast, such as "Show details".
+    pub action: Option<ToastAction>,
+}
+
+/// What a toast's button does when clicked.
+pub type ToastRun = std::rc::Rc<dyn Fn(&mut gpui::Window, &mut App)>;
+
+/// A labelled button on a toast and what it does.
+pub struct ToastAction {
+    pub label: SharedString,
+    pub run: ToastRun,
 }
 
 /// Emitted when something other screens should re-read has changed.
@@ -251,11 +264,14 @@ impl AppModel {
                 if path.extension().is_none_or(|ext| ext != "sqlite") {
                     continue;
                 }
-                match Database::open(&path).and_then(|db| Ok((db.name()?, db.game_count()?))) {
-                    Ok((name, games)) => entries.push(DbEntry {
+                match Database::open(&path)
+                    .and_then(|db| Ok((db.name()?, db.game_count()?, db.source_file()?)))
+                {
+                    Ok((name, games, source_file)) => entries.push(DbEntry {
                         path,
                         name: name.into(),
                         games,
+                        source_file,
                     }),
                     Err(err) => log::warn!("skipping {}: {err}", path.display()),
                 }
@@ -321,15 +337,50 @@ impl AppModel {
     }
 
     pub fn toast(&mut self, text: impl Into<SharedString>, cx: &mut Context<Self>) {
+        self.push_toast(text.into(), None, cx);
+    }
+
+    /// Shows a toast with a button, such as "Show details". It stays longer than a
+    /// plain toast so there is time to use the button.
+    pub fn toast_with_action(
+        &mut self,
+        text: impl Into<SharedString>,
+        label: &str,
+        run: impl Fn(&mut gpui::Window, &mut App) + 'static,
+        cx: &mut Context<Self>,
+    ) {
+        let action = ToastAction {
+            label: ui::i18n::t(label).to_owned().into(),
+            run: std::rc::Rc::new(run),
+        };
+        self.push_toast(text.into(), Some(action), cx);
+    }
+
+    /// Removes a toast at once, as after its button was used.
+    pub fn dismiss_toast(&mut self, id: u64, cx: &mut Context<Self>) {
+        self.toasts.retain(|toast| toast.id != id);
+        cx.notify();
+    }
+
+    fn push_toast(
+        &mut self,
+        text: SharedString,
+        action: Option<ToastAction>,
+        cx: &mut Context<Self>,
+    ) {
         let id = self.next_toast;
         self.next_toast += 1;
+        let seconds = if action.is_some() { 10 } else { 5 };
         self.toasts.push(Toast {
             id,
-            text: ui::i18n::t(&text.into()).to_owned().into(),
+            text: ui::i18n::t(&text).to_owned().into(),
+            action,
         });
         cx.notify();
         cx.spawn(async move |this, cx| {
-            cx.background_executor().timer(Duration::from_secs(5)).await;
+            cx.background_executor()
+                .timer(Duration::from_secs(seconds))
+                .await;
             let _ = this.update(cx, |model, cx| {
                 model.toasts.retain(|toast| toast.id != id);
                 cx.notify();
@@ -554,7 +605,7 @@ pub fn split_engine_name(id_name: &str, fallback: &str) -> (String, String) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use db::{ImportControl, import_games};
+    use db::{ImportControl, ImportOptions, import_games};
 
     #[test]
     fn engine_names_split_on_versions() {
@@ -582,7 +633,14 @@ mod tests {
         let path = dir.path().join("mine.sqlite");
         let pgn = "[White \"me\"]\n[Black \"x\"]\n[Result \"0-1\"]\n\n1. e4 c5 2. c3 0-1\n\n\
                    [White \"me\"]\n[Black \"x\"]\n[Result \"1-0\"]\n\n1. e4 c5 2. Nf3 1-0\n";
-        import_games(&path, pgn.as_bytes(), "", &ImportControl::default(), |_| {}).unwrap();
+        import_games(
+            &path,
+            pgn.as_bytes(),
+            &ImportOptions::default(),
+            &ImportControl::default(),
+            |_| {},
+        )
+        .unwrap();
         let mut rep = Repertoire::new("r", true);
         rep.add_line(&["e4", "c5", "Nf3"]).unwrap();
         let (leaks, _) = compute_leaks(&path, "me", &rep).unwrap();

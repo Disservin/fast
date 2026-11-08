@@ -10,7 +10,7 @@ use chess_core::{
     GameTree, Move, NodeId, Position, classify, display_san, parse_pgn, position_hash, write_pgn,
     write_pgn_from,
 };
-use db::{Database, ImportControl, MoveStat, import_games};
+use db::{Database, ImportControl, ImportOptions, MoveStat, import_games};
 use engine::{EngineId, LogLine, Quality, Score, Wdl};
 use gpui::{
     AppContext as _, ClipboardItem, Context, Entity, FocusHandle, FontWeight, IntoElement,
@@ -1465,8 +1465,13 @@ impl AnalyseScreen {
         cx.spawn(async move |_, cx| {
             let saved = cx
                 .background_spawn(async move {
-                    let summary =
-                        import_games(&path, pgn.as_bytes(), "", &ImportControl::default(), |_| {})?;
+                    let summary = import_games(
+                        &path,
+                        pgn.as_bytes(),
+                        &ImportOptions::default(),
+                        &ImportControl::default(),
+                        |_| {},
+                    )?;
                     if let Ok(database) = Database::open(&path) {
                         let _ = database.set_name("My games");
                     }

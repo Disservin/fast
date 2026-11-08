@@ -181,7 +181,9 @@ impl Database {
     /// place in the database. The engine review is kept only when the moves are the
     /// same. Returns false when `pgn` holds no game that can be read.
     pub fn replace_game(&mut self, id: i64, pgn: &str) -> Result<bool> {
-        let Some(Some(game)) = Reader::new(pgn.as_bytes()).read_game(&mut ImportVisitor)? else {
+        let Some(Some(game)) =
+            Reader::new(pgn.as_bytes()).read_game(&mut ImportVisitor::default())?
+        else {
             return Ok(false);
         };
         let moves = game.sans.join(" ");
@@ -266,7 +268,7 @@ impl Database {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Filter, ImportControl, ReviewPosition, import_games};
+    use crate::{Filter, ImportControl, ImportOptions, ReviewPosition, import_games};
 
     const GAMES: &str = "[White \"me\"]\n[Black \"alice\"]\n[Result \"1-0\"]\n\n1. e4 c5 2. Nf3 d6 1-0\n\n\
         [White \"bob\"]\n[Black \"me\"]\n[Result \"0-1\"]\n\n1. d4 d5 0-1\n";
@@ -277,7 +279,7 @@ mod tests {
         import_games(
             &path,
             GAMES.as_bytes(),
-            "",
+            &ImportOptions::default(),
             &ImportControl::default(),
             |_| {},
         )

@@ -2094,9 +2094,19 @@ impl Workspace {
             .right(px(24.))
             .gap(px(8.));
         for toast in &model.toasts {
+            let action = toast.action.as_ref().map(|action| {
+                let (run, id, model) = (action.run.clone(), toast.id, self.model.clone());
+                btn(("toast-action", toast.id as usize), action.label.clone())
+                    .compact()
+                    .on_click(move |window, cx| {
+                        run(window, cx);
+                        model.update(cx, |model, cx| model.dismiss_toast(id, cx));
+                    })
+            });
             column = column.child(
-                div()
+                h_flex()
                     .max_w(px(420.))
+                    .gap(px(10.))
                     .px(px(14.))
                     .py(px(10.))
                     .rounded(px(6.))
@@ -2105,7 +2115,8 @@ impl Workspace {
                     .border_color(rgb(T.border_strong))
                     .text_size(px(14.))
                     .text_color(rgb(T.fg))
-                    .child(toast.text.clone()),
+                    .child(div().flex_1().min_w_0().child(toast.text.clone()))
+                    .children(action),
             );
         }
         deferred(column)
