@@ -2441,27 +2441,31 @@ impl AnalyseScreen {
             .and_then(|id| live.engines.iter().find(|engine| engine.config.id == id));
         let stats = engine.and_then(|engine| engine.stats());
         let depth = match stats.and_then(|stats| stats.seldepth) {
-            Some(sel) if sel > row.depth => format!("d{}/{sel}", row.depth),
-            _ => format!("d{}", row.depth),
+            Some(sel) if sel > row.depth => format!("{}/{sel}", row.depth),
+            _ => row.depth.to_string(),
         };
-        let mut figures: Vec<String> = Vec::new();
+        let mut figures: Vec<(&'static str, String)> = vec![("Depth", depth)];
         if !self.engine_panel_open
             && let Some(stats) = stats
         {
-            figures.extend(stats.nodes.map(engine::format_nodes));
-            figures.extend(stats.nps.map(engine::format_speed));
-            figures.extend(stats.time_ms.map(search_time));
+            figures.extend(
+                stats
+                    .nodes
+                    .map(|nodes| ("Nodes", engine::format_nodes(nodes))),
+            );
+            figures.extend(stats.nps.map(|nps| ("Speed", engine::format_speed(nps))));
+            figures.extend(stats.time_ms.map(|ms| ("Time", search_time(ms))));
             figures.extend(
                 stats
                     .hashfull
                     .filter(|full| *full > 0)
-                    .map(|full| format!("hash {:.0}%", f64::from(full) / 10.)),
+                    .map(|full| ("Hash", format!("{:.0}%", f64::from(full) / 10.))),
             );
             figures.extend(
                 stats
                     .tbhits
                     .filter(|hits| *hits > 0)
-                    .map(|hits| format!("tb {}", engine::format_nodes(hits).replace(" n", ""))),
+                    .map(|hits| ("TB", engine::format_nodes(hits).replace(" n", ""))),
             );
         }
         let name = engine.map(|engine| {
@@ -2470,24 +2474,42 @@ impl AnalyseScreen {
                 .trim()
                 .to_owned()
         });
-        h_flex()
-            .gap(px(6.))
-            .items_center()
-            .text_size(px(12.))
-            .text_color(rgb(T.muted))
-            .children(engine.map(|engine| crate::controls::engine_icon(&engine.config, 14.)))
-            .children(name.map(|name| div().text_color(rgb(T.fg_2)).child(name)))
-            .when(engine.is_some(), |row| row.child("·"))
-            .child(mono(depth).text_size(px(12.)))
-            .children(figures.into_iter().flat_map(|figure| {
-                [
-                    div().child("·").into_any_element(),
-                    mono(figure)
+        // Each figure is a small muted label and its value, spaced apart like the
+        // Engine panel's columns.
+        let figure = |(label, value): (&'static str, String)| {
+            h_flex()
+                .flex_none()
+                .gap(px(4.))
+                .child(
+                    div()
+                        .text_size(px(11.))
+                        .text_color(rgb(T.faint))
+                        .child(ui::i18n::t(label).to_owned()),
+                )
+                .child(
+                    mono(value)
                         .whitespace_nowrap()
                         .text_size(px(12.))
-                        .into_any_element(),
-                ]
+                        .text_color(rgb(T.fg_2)),
+                )
+        };
+        h_flex()
+            .flex_wrap()
+            .gap_x(px(14.))
+            .gap_y(px(4.))
+            .items_center()
+            .text_size(px(12.))
+            .children(engine.map(|engine| {
+                h_flex()
+                    .flex_none()
+                    .gap(px(6.))
+                    .child(crate::controls::engine_icon(&engine.config, 14.))
+                    .children(
+                        name.clone()
+                            .map(|name| div().text_color(rgb(T.fg_2)).child(name)),
+                    )
             }))
+            .children(figures.into_iter().map(figure))
             .into_any_element()
     }
 
@@ -2602,11 +2624,18 @@ impl AnalyseScreen {
                     .child(text)
             });
         // What the databases and the repertoire say about the selected move.
-        let stat_text = |stat: Option<&MoveStat>| {
-            stat.map_or_else(
-                || ui::i18n::t("No games").to_owned(),
-                |stat| format!("{} · {:.0}%", stat.games, stat.score_percent(white_to_move)),
-            )
+        // A game count and the score, as two figures side by side.
+        let stat_text = |stat: Option<&MoveStat>| -> gpui::AnyElement {
+            match stat {
+                None => div()
+                    .child(ui::i18n::t("No games").to_owned())
+                    .into_any_element(),
+                Some(stat) => h_flex()
+                    .gap(px(12.))
+                    .child(format!("{} {}", stat.games, ui::i18n::t("games")))
+                    .child(mono(format!("{:.0}%", stat.score_percent(white_to_move))))
+                    .into_any_element(),
+            }
         };
         let (rep_text, rep_color) = match selected.as_ref().map_or(RepTag::None, |row| row.rep) {
             RepTag::Main => ("Main", T.good),
@@ -2614,7 +2643,7 @@ impl AnalyseScreen {
             RepTag::Deviate => ("You deviate", T.warn),
             RepTag::None => ("Not in repertoire", T.fg_2),
         };
-        let fact = |title: String, value: String, color: u32| {
+        let fact = |title: String, value: gpui::AnyElement, color: u32| {
             v_flex()
                 .flex_1()
                 .min_w_0()
@@ -2655,7 +2684,9 @@ impl AnalyseScreen {
                 ))
                 .child(fact(
                     ui::i18n::t("Repertoire").to_owned(),
-                    ui::i18n::t(rep_text).to_owned(),
+                    div()
+                        .child(ui::i18n::t(rep_text).to_owned())
+                        .into_any_element(),
                     rep_color,
                 ))
         });
@@ -2919,7 +2950,7 @@ fn short_engine(name: &str) -> String {
 }
 
 fn reference_column_title(name: &str) -> String {
-    name.rsplit([' ', '·'])
+    name.rsplit(' ')
         .next()
         .filter(|word| !word.is_empty())
         .unwrap_or("Reference")

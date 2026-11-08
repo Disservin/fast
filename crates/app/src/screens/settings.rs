@@ -1904,9 +1904,8 @@ impl SettingsScreen {
         if self.install_cancel.is_some() {
             let this = cx.entity();
             body = body.child(
-                btn("cancel-engine-install", ui::i18n::t("Cancel download")).on_click(
-                    move |_, cx| this.update(cx, |screen, cx| screen.cancel_install(cx)),
-                ),
+                btn("cancel-engine-install", ui::i18n::t("Cancel download"))
+                    .on_click(move |_, cx| this.update(cx, |screen, cx| screen.cancel_install(cx))),
             );
         }
         panel().p(px(16.)).child(body)

@@ -617,12 +617,9 @@ impl AnalyseScreen {
                 )
         };
         let dash = || "—".to_owned();
-        let depth = stats.map_or_else(dash, |stats| {
-            let depth = match stats.seldepth {
-                Some(sel) => format!("{}/{sel}", stats.depth),
-                None => stats.depth.to_string(),
-            };
-            depth
+        let depth = stats.map_or_else(dash, |stats| match stats.seldepth {
+            Some(sel) => format!("{}/{sel}", stats.depth),
+            None => stats.depth.to_string(),
         });
         let state = if stale {
             Some("stale")
@@ -842,16 +839,21 @@ impl AnalyseScreen {
         let open = self.search_moves_open || !restricted.is_empty();
         let reset = this.clone();
         let toggle = this.clone();
-        let summary = if restricted.is_empty() {
-            format!("{} {}", ui::i18n::t("Search moves · all"), legal.len())
+        // "Search moves" and, beside it in muted text, how many of the legal moves.
+        let count = if restricted.is_empty() {
+            format!("{} {}", ui::i18n::t("all"), legal.len())
         } else {
             format!(
-                "{} · {}/{}",
-                ui::i18n::t("Search moves · selected only"),
+                "{}/{} {}",
                 restricted.len(),
-                legal.len()
+                legal.len(),
+                ui::i18n::t("selected")
             )
         };
+        let summary = h_flex()
+            .gap(px(8.))
+            .child(ui::i18n::t("Search moves").to_owned())
+            .child(div().text_color(rgb(T.muted)).child(count));
         let mut search = v_flex()
             .px(px(16.))
             .py(px(10.))

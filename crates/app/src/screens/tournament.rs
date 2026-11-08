@@ -22,7 +22,7 @@ use gpui_component::{
 };
 use ui::{
     BoardView, MONO, T,
-    widgets::{btn, check, divider, h_flex, mono, panel, section_label, segmented, v_flex},
+    widgets::{badge, btn, check, divider, h_flex, mono, panel, section_label, segmented, v_flex},
 };
 
 use crate::{
@@ -1248,10 +1248,8 @@ impl TournamentScreen {
             let id = engine.id;
             let order = self.selected.iter().position(|selected| *selected == id);
             let this = cx.entity();
-            let label = match order {
-                Some(index) if self.gauntlet && index == 0 => format!("{} · seed", engine.name),
-                _ => engine.name.clone(),
-            };
+            let seed = matches!(order, Some(0)) && self.gauntlet;
+            let label = engine.name.clone();
             let selfplay = cx.entity();
             let copy = Participant {
                 name: engine.name.clone(),
@@ -1263,11 +1261,20 @@ impl TournamentScreen {
                     .justify_between()
                     .gap(px(8.))
                     .child(
-                        check(("tournament-engine", id as usize), order.is_some(), label)
-                            .text(13.)
-                            .on_change(move |on, _, cx| {
-                                this.update(cx, |screen, cx| screen.toggle_engine(id, on, cx))
-                            }),
+                        h_flex()
+                            .flex_1()
+                            .min_w_0()
+                            .gap(px(8.))
+                            .child(
+                                check(("tournament-engine", id as usize), order.is_some(), label)
+                                    .text(13.)
+                                    .on_change(move |on, _, cx| {
+                                        this.update(cx, |screen, cx| {
+                                            screen.toggle_engine(id, on, cx)
+                                        })
+                                    }),
+                            )
+                            .when(seed, |row| row.child(badge(ui::i18n::t("Seed")))),
                     )
                     .child(
                         btn(("selfplay-copy", id as usize), "Add selfplay copy")
@@ -1293,16 +1300,26 @@ impl TournamentScreen {
                 h_flex()
                     .gap(px(6.))
                     .child(
-                        div()
+                        h_flex()
                             .flex_1()
                             .min_w_0()
-                            .overflow_hidden()
+                            .gap(px(10.))
                             .text_size(px(13.))
-                            .child(SharedString::from(format!(
-                                "{} · {}",
-                                engine.name,
-                                engine.cmd.display()
-                            ))),
+                            .child(
+                                div()
+                                    .flex_none()
+                                    .child(SharedString::from(engine.name.clone())),
+                            )
+                            .child(
+                                div()
+                                    .min_w_0()
+                                    .overflow_hidden()
+                                    .text_ellipsis()
+                                    .whitespace_nowrap()
+                                    .text_size(px(12.))
+                                    .text_color(rgb(T.muted))
+                                    .child(SharedString::from(engine.cmd.display().to_string())),
+                            ),
                     )
                     .child(
                         btn(("tournament-extra-remove", index), "×")
@@ -1666,19 +1683,29 @@ impl TournamentScreen {
                                 div()
                                     .text_size(px(13.))
                                     .overflow_hidden()
-                                    .child(SharedString::from(saved.engines.join(" · "))),
+                                    .child(SharedString::from(saved.engines.join(", "))),
                             )
-                            .child(div().text_size(px(12.)).text_color(rgb(T.muted)).child(
-                                SharedString::from(format!(
-                                        "{} games saved · {}",
-                                        saved.games,
-                                        saved
-                                            .dir
-                                            .file_name()
-                                            .map(|name| name.to_string_lossy().into_owned())
-                                            .unwrap_or_default()
-                                    )),
-                            )),
+                            .child(
+                                h_flex()
+                                    .gap(px(12.))
+                                    .text_size(px(12.))
+                                    .text_color(rgb(T.muted))
+                                    .child(SharedString::from(format!(
+                                        "{} games saved",
+                                        saved.games
+                                    )))
+                                    .child(
+                                        div().font_family(ui::MONO).text_color(rgb(T.faint)).child(
+                                            SharedString::from(
+                                                saved
+                                                    .dir
+                                                    .file_name()
+                                                    .map(|name| name.to_string_lossy().into_owned())
+                                                    .unwrap_or_default(),
+                                            ),
+                                        ),
+                                    ),
+                            ),
                     )
                     .child(
                         btn(("tournament-continue", index), "Continue")
@@ -2051,16 +2078,27 @@ impl TournamentScreen {
                             .justify_between()
                             .text_size(px(13.))
                             .text_color(rgb(T.muted))
-                            .child(SharedString::from(format!(
-                                "{} / {} games · {:.0}%",
-                                run.played(),
-                                total,
-                                fraction * 100.
-                            )))
-                            .child(SharedString::from(format!(
-                                "{live} live · {queued} queued · ETA {}",
-                                eta(run)
-                            ))),
+                            .child(
+                                h_flex()
+                                    .gap(px(14.))
+                                    .child(SharedString::from(format!(
+                                        "{} / {} games",
+                                        run.played(),
+                                        total
+                                    )))
+                                    .child(
+                                        div().font_family(ui::MONO).text_color(rgb(T.fg_2)).child(
+                                            SharedString::from(format!("{:.0}%", fraction * 100.)),
+                                        ),
+                                    ),
+                            )
+                            .child(
+                                h_flex()
+                                    .gap(px(14.))
+                                    .child(SharedString::from(format!("{live} live")))
+                                    .child(SharedString::from(format!("{queued} queued")))
+                                    .child(SharedString::from(format!("ETA {}", eta(run)))),
+                            ),
                     )
                     .child(
                         div()
@@ -2157,7 +2195,12 @@ impl TournamentScreen {
                     .items_center()
                     .flex_wrap()
                     .gap(px(8.))
-                    .child(heading(format!("Results · {games} games")))
+                    .child(
+                        h_flex()
+                            .gap(px(10.))
+                            .child(heading("Results"))
+                            .child(small(format!("{games} games"))),
+                    )
                     .child(small(format!("from {view}'s view"))),
             )
             .child(body)
@@ -2542,40 +2585,32 @@ impl TournamentScreen {
         let busy = self.run.as_ref().is_some_and(Run::active);
         let has_data = self.folder_size.is_some_and(|size| size > 0);
         let this = cx.entity();
-        let actions = if self.clear_armed {
-            let cancel = this.clone();
-            h_flex()
-                .gap(px(6.))
-                .items_center()
-                .child(
-                    div()
-                        .text_size(px(12.))
-                        .text_color(rgb(T.warn))
-                        .child(SharedString::from(format!(
-                            "Delete {} of saved games and configs?",
-                            size
-                        ))),
-                )
-                .child(
-                    btn("tournament-clear-confirm", "Delete")
-                        .compact()
-                        .on_click(move |_, cx| {
-                            this.update(cx, |screen, cx| screen.clear_folder(cx))
-                        }),
-                )
-                .child(
-                    btn("tournament-clear-cancel", "Cancel")
-                        .compact()
-                        .on_click(move |_, cx| {
+        let actions =
+            if self.clear_armed {
+                let cancel = this.clone();
+                h_flex()
+                    .gap(px(6.))
+                    .items_center()
+                    .child(div().text_size(px(12.)).text_color(rgb(T.warn)).child(
+                        SharedString::from(format!("Delete {} of saved games and configs?", size)),
+                    ))
+                    .child(
+                        btn("tournament-clear-confirm", "Delete")
+                            .compact()
+                            .on_click(move |_, cx| {
+                                this.update(cx, |screen, cx| screen.clear_folder(cx))
+                            }),
+                    )
+                    .child(btn("tournament-clear-cancel", "Cancel").compact().on_click(
+                        move |_, cx| {
                             cancel.update(cx, |screen, cx| {
                                 screen.clear_armed = false;
                                 cx.notify();
                             })
-                        }),
-                )
-        } else {
-            h_flex()
-                .child(
+                        },
+                    ))
+            } else {
+                h_flex().child(
                     btn("tournament-clear", "Free up space")
                         .compact()
                         .disabled(busy || !has_data)
@@ -3114,11 +3149,15 @@ fn results_body(n: &fastchess::Results, a: &str, b: &str) -> Div {
     tiles = tiles.child(
         tile("Score")
             .child(big(format!("{:.1} / {}", n.points, n.games)))
-            .child(small(format!(
-                "{:.1}% · draws {:.0}%",
-                n.score_pct,
-                n.draws as f64 / games * 100.
-            ))),
+            .child(
+                h_flex()
+                    .gap(px(12.))
+                    .child(small(format!("{:.1}%", n.score_pct)))
+                    .child(small(format!(
+                        "draws {:.0}%",
+                        n.draws as f64 / games * 100.
+                    ))),
+            ),
     );
     if let Some(llr) = n.llr {
         let span = (llr.upper - llr.lower).max(f64::EPSILON);
@@ -3295,7 +3334,7 @@ fn locked_summary(run: &Run) -> Div {
         })
         .unwrap_or_else(|| "None".into());
     let schedule = format!(
-        "{} · {}",
+        "{}, {}",
         if flag_value(args, "-tournament") == Some("gauntlet") {
             "Gauntlet"
         } else {
@@ -3310,12 +3349,12 @@ fn locked_summary(run: &Run) -> Div {
     let settings = [
         ("Time control", limit),
         (
-            "Hash · Threads",
-            format!(
-                "{} MB · {}",
-                kv(&each, "option.Hash").unwrap_or("–"),
-                kv(&each, "option.Threads").unwrap_or("–")
-            ),
+            "Hash",
+            format!("{} MB", kv(&each, "option.Hash").unwrap_or("–")),
+        ),
+        (
+            "Threads",
+            kv(&each, "option.Threads").unwrap_or("–").to_owned(),
         ),
         ("Schedule", schedule),
         (
@@ -3336,7 +3375,7 @@ fn locked_summary(run: &Run) -> Div {
     let sprt = if has(args, "-sprt") {
         let sprt = flag_values(args, "-sprt");
         format!(
-            "elo0 {} · elo1 {}",
+            "elo0 {}, elo1 {}",
             kv(&sprt, "elo0").unwrap_or("–"),
             kv(&sprt, "elo1").unwrap_or("–")
         )
@@ -3346,7 +3385,7 @@ fn locked_summary(run: &Run) -> Div {
     let draw = if has(args, "-draw") {
         let draw = flag_values(args, "-draw");
         format!(
-            "From move {} · {} moves within ±{} cp",
+            "From move {}, {} moves within ±{} cp",
             kv(&draw, "movenumber").unwrap_or("–"),
             kv(&draw, "movecount").unwrap_or("–"),
             kv(&draw, "score").unwrap_or("–")
@@ -3361,7 +3400,7 @@ fn locked_summary(run: &Run) -> Div {
             kv(&resign, "movecount").unwrap_or("–"),
             kv(&resign, "score").unwrap_or("–"),
             if kv(&resign, "twosided") == Some("true") {
-                " · both engines"
+                ", both engines"
             } else {
                 ""
             }

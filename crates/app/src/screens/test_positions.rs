@@ -827,7 +827,7 @@ impl TestPositionsScreen {
             Some(took) => format!("Finished in {}", format_ms(took.as_millis() as u64)),
             None if run.cancel.load(Ordering::Relaxed) => "Stopping…".to_owned(),
             None => format!(
-                "Running · {}",
+                "Running for {}",
                 format_ms(run.started.elapsed().as_millis() as u64)
             ),
         };
@@ -1074,15 +1074,30 @@ fn render_cell(cell: Option<&Cell>) -> Div {
             .text_color(rgb(T.muted))
             .child(SharedString::from(format!("… {}", search_text(search)))),
         Some(Cell::Solved(search)) => {
+            // The move in green, then where it was found in muted text beside it.
             let found = search
                 .found
-                .map(|found| format!(" · d{} {}", found.depth, format_ms(found.time_ms)))
-                .unwrap_or_default();
-            base.text_color(rgb(T.good))
-                .child(SharedString::from(format!(
-                    "✓ {}{found}",
-                    search.best.clone().unwrap_or_default()
-                )))
+                .map(|found| format!("d{} {}", found.depth, format_ms(found.time_ms)));
+            base.flex()
+                .flex_row()
+                .gap(px(8.))
+                .child(
+                    div()
+                        .flex_none()
+                        .text_color(rgb(T.good))
+                        .child(SharedString::from(format!(
+                            "✓ {}",
+                            search.best.clone().unwrap_or_default()
+                        ))),
+                )
+                .children(found.map(|found| {
+                    div()
+                        .min_w_0()
+                        .overflow_hidden()
+                        .text_ellipsis()
+                        .text_color(rgb(T.muted))
+                        .child(SharedString::from(found))
+                }))
         }
         Some(Cell::Failed(search)) => base
             .text_color(rgb(T.q_blunder))
