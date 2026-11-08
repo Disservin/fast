@@ -17,6 +17,8 @@ jobs:
       tag: ${{ steps.version.outputs.tag }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Read version and check the tag is new
         id: version
         env:
@@ -40,6 +42,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.12'
@@ -47,21 +51,25 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - name: Install Linux build and packaging tools
         if: runner.os == 'Linux'
+        env:
+          LINUXDEPLOY_TAG: 1-alpha-20251107-1
+          LINUXDEPLOY_SHA256: c20cd71e3a4e3b80c3483cef793cda3f4e990aca14014d23c544ca3ce1270b4d
         run: |
           sudo apt-get update
           sudo apt-get install -y libfontconfig-dev libfreetype-dev libxkbcommon-dev \
             libxkbcommon-x11-dev libwayland-dev libxcb1-dev libasound2-dev \
             libvulkan1 dpkg-dev file desktop-file-utils
           curl --fail --location --retry 3 \
-            https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage \
+            "https://github.com/linuxdeploy/linuxdeploy/releases/download/$LINUXDEPLOY_TAG/linuxdeploy-x86_64.AppImage" \
             -o "$RUNNER_TEMP/linuxdeploy"
+          echo "$LINUXDEPLOY_SHA256  $RUNNER_TEMP/linuxdeploy" | sha256sum --check --strict
           chmod +x "$RUNNER_TEMP/linuxdeploy"
           echo "LINUXDEPLOY=$RUNNER_TEMP/linuxdeploy" >> "$GITHUB_ENV"
       - name: Install Windows packaging tools
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          choco install innosetup --no-progress -y
+          choco install innosetup --version 6.7.1 --no-progress -y
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $compiler = Get-ChildItem "${env:ProgramFiles(x86)}\Inno Setup *\ISCC.exe" | Select-Object -Last 1
           if (!$compiler) { throw 'Inno Setup compiler was not installed' }
