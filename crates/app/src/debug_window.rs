@@ -94,25 +94,34 @@ impl DebugWindow {
         let Some(line) = self.lines.get(index) else {
             return div().into_any_element();
         };
-        let (mark, color) = match line.kind {
-            LogKind::Sent => (">", T.fg),
-            LogKind::Received => ("<", T.fg_2),
-            LogKind::Stderr => ("!", T.warn),
-            LogKind::System => ("*", T.muted),
-        };
-        h_flex()
-            .min_w_full()
-            .h(px(19.))
-            .px(px(12.))
-            .gap(px(8.))
-            .whitespace_nowrap()
-            .font_family(MONO)
-            .text_size(px(12.))
-            .text_color(rgb(color))
-            .child(div().flex_none().text_color(rgb(T.faint)).child(mark))
+        log_row(line.kind)
             .child(SharedString::from(line.text.clone()))
             .into_any_element()
     }
+}
+
+/// Height of one engine log line.
+pub(crate) const LOG_ROW_H: f32 = 19.;
+
+/// One engine log line, coloured by direction and starting with its mark; the caller
+/// adds the text.
+pub(crate) fn log_row(kind: LogKind) -> gpui::Div {
+    let (mark, color) = match kind {
+        LogKind::Sent => (">", T.fg),
+        LogKind::Received => ("<", T.fg_2),
+        LogKind::Stderr => ("!", T.warn),
+        LogKind::System => ("*", T.muted),
+    };
+    h_flex()
+        .min_w_full()
+        .h(px(LOG_ROW_H))
+        .px(px(12.))
+        .gap(px(8.))
+        .whitespace_nowrap()
+        .font_family(MONO)
+        .text_size(px(12.))
+        .text_color(rgb(color))
+        .child(div().flex_none().text_color(rgb(T.faint)).child(mark))
 }
 
 impl Render for DebugWindow {

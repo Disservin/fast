@@ -214,14 +214,7 @@ impl AppModel {
         let engine_status = config
             .engines
             .iter()
-            .map(|engine| {
-                let status = if engine.enabled {
-                    EngineStatus::Ready
-                } else {
-                    EngineStatus::Disabled
-                };
-                (engine.id, status)
-            })
+            .map(|engine| (engine.id, engine.idle_status()))
             .collect();
         let mut model = Self {
             unsaved_config: false,
@@ -297,6 +290,34 @@ impl AppModel {
     pub fn my_games(&self) -> Option<&DbEntry> {
         let mine = self.my_games_path();
         self.databases.iter().find(|entry| entry.path == mine)
+    }
+
+    pub fn set_engine_status(
+        &mut self,
+        id: EngineId,
+        status: EngineStatus,
+        cx: &mut Context<Self>,
+    ) {
+        self.engine_status.insert(id, status);
+        cx.notify();
+    }
+
+    /// Changes which features use an engine, enabling or disabling it to match.
+    pub fn set_engine_use(
+        &mut self,
+        id: EngineId,
+        change: impl FnOnce(&mut EngineConfig),
+        cx: &mut Context<Self>,
+    ) {
+        let Some(config) = self.engine_mut(id) else {
+            return;
+        };
+        change(config);
+        config.sync_enabled();
+        let status = config.idle_status();
+        self.engine_status.insert(id, status);
+        self.save_config(cx);
+        cx.emit(ModelEvent::Engines);
     }
 
     pub fn toast(&mut self, text: impl Into<SharedString>, cx: &mut Context<Self>) {
@@ -444,6 +465,18 @@ impl AppModel {
 }
 
 /// Opens the raw-output window for a running engine, or says how to start it.
+/// Shows a toast through a handle to the model, for screens that hold one.
+pub trait ToastExt {
+    fn toast(&self, text: impl Into<SharedString>, cx: &mut App);
+}
+
+impl ToastExt for Entity<AppModel> {
+    fn toast(&self, text: impl Into<SharedString>, cx: &mut App) {
+        let text = text.into();
+        self.update(cx, |model, cx| model.toast(text, cx));
+    }
+}
+
 pub fn open_debug_window(model: &Entity<AppModel>, id: EngineId, cx: &mut App) {
     let (log, name) = {
         let model = model.read(cx);

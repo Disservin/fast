@@ -22,10 +22,7 @@ pub struct AnalysisStore(Connection);
 
 impl AnalysisStore {
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
-        if let Some(parent) = path.as_ref().parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        let conn = Connection::open(path)?;
+        let conn = db::open_sqlite(path.as_ref())?;
         conn.execute_batch(
             "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;
              CREATE TABLE IF NOT EXISTS analyses (

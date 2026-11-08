@@ -14,7 +14,7 @@ use ui::{
 
 use crate::{
     controls::{new_input, text_input},
-    model::{AppModel, ModelEvent, pick_path, today},
+    model::{AppModel, ModelEvent, ToastExt as _, pick_path, today},
     shell::Workspace,
 };
 
@@ -340,14 +340,11 @@ impl TrainScreen {
             self.phase = Phase::Correct;
             self.message = Some(format!("Correct: {played}. How well did you know it?").into());
             let last = mv.from().map(|from| (from, mv.to()));
-            let volume = self.model.read(cx).config.board.sound_level();
-            crate::sound::play_move(
-                self.model.read(cx).config.board.sound_profile,
-                volume,
-                &mv,
-                &after,
-                None,
-            );
+            self.model
+                .read(cx)
+                .config
+                .board
+                .play_move_sound(&mv, &after, None);
             self.board.update(cx, |board, cx| {
                 board.set_position(after, last, true, cx);
                 board.set_interactive(false, cx);
@@ -508,7 +505,9 @@ impl TrainScreen {
                     .update(cx, |input, cx| input.set_value("", window, cx));
                 self.reload_queue(cx);
             }
-            Err(err) => self.toast(format!("Could not add the line: {err}"), cx),
+            Err(err) => self
+                .model
+                .toast(format!("Could not add the line: {err}"), cx),
         }
     }
 
@@ -525,12 +524,7 @@ impl TrainScreen {
                 )
             ),
         };
-        self.toast(text, cx);
-    }
-
-    fn toast(&self, text: impl Into<SharedString>, cx: &mut Context<Self>) {
-        let text = text.into();
-        self.model.update(cx, |model, cx| model.toast(text, cx));
+        self.model.toast(text, cx);
     }
 
     pub fn flip(&mut self, cx: &mut Context<Self>) {
@@ -583,7 +577,7 @@ impl TrainScreen {
             }
             Err(message) => message,
         };
-        self.toast(message, cx);
+        self.model.toast(message, cx);
     }
 
     fn render_tree(
@@ -1084,13 +1078,7 @@ impl TrainScreen {
 
 impl Render for TrainScreen {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let viewport = window.viewport_size();
-        let board_size = ui::board::snap_board_size(
-            (viewport.height - px(362.))
-                .min(viewport.width - px(720.))
-                .max(px(320.)),
-            window.scale_factor(),
-        );
+        let board_size = super::side_columns_board_size(window);
         let mode_this = cx.entity();
         let mode = btn(
             "reply-mode",
@@ -1135,31 +1123,7 @@ impl Render for TrainScreen {
         let tree = self.render_tree(session, cx);
         let center = self.render_center(board_size, cx);
         let leaks = self.render_leaks(cx);
-        h_flex()
-            .items_start()
-            .size_full()
-            .child(tree)
-            .child(
-                div()
-                    .id("train-center")
-                    .px(px(28.))
-                    .h_full()
-                    .flex_none()
-                    .overflow_y_scroll()
-                    .child(center),
-            )
-            .child(
-                div()
-                    .id("leaks-column")
-                    .flex_1()
-                    .min_w_0()
-                    .h_full()
-                    .overflow_y_scroll()
-                    .pt(px(24.))
-                    .pr(px(24.))
-                    .pb(px(16.))
-                    .child(leaks),
-            )
+        super::three_columns(tree, "train-center", center, "leaks-column", leaks)
     }
 }
 

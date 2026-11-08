@@ -19,7 +19,7 @@ use ui::{
 
 use crate::{
     controls::{TextSelect, field, new_input, new_select, select_el, text_input},
-    model::{AppModel, ModelEvent},
+    model::{AppModel, ModelEvent, ToastExt as _},
     shell::Workspace,
 };
 
@@ -339,13 +339,14 @@ impl PlayScreen {
 
     fn start_game(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some((minutes, increment)) = self.time_control(cx) else {
-            self.toast("Enter a custom time such as 12+3.", cx);
+            self.model.toast("Enter a custom time such as 12+3.", cx);
             return;
         };
         let demo = self.model.read(cx).demo;
         let config = self.opponent_config(cx);
         let Some(config) = config else {
-            self.toast("Add an engine for Play in Settings › Engines first.", cx);
+            self.model
+                .toast("Add an engine for Play in Settings › Engines first.", cx);
             return;
         };
         let tree = self.start_tree(window, cx);
@@ -426,7 +427,8 @@ impl PlayScreen {
                         this.engine_move(search_id, best, cx);
                     }
                     EngineEvent::Crashed(reason) => {
-                        this.toast(format!("The engine stopped: {reason}"), cx);
+                        this.model
+                            .toast(format!("The engine stopped: {reason}"), cx);
                         this.finish("Engine stopped".to_owned(), cx);
                     }
                     _ => {}
@@ -563,14 +565,11 @@ impl PlayScreen {
         } else {
             None
         };
-        let volume = self.model.read(cx).config.board.sound_level();
-        crate::sound::play_move(
-            self.model.read(cx).config.board.sound_profile,
-            volume,
-            &mv,
-            &after,
-            end,
-        );
+        self.model
+            .read(cx)
+            .config
+            .board
+            .play_move_sound(&mv, &after, end);
         self.sync_board(true, cx);
         if let Some(end) = end {
             self.finish(end.describe().to_owned(), cx);
@@ -660,7 +659,7 @@ impl PlayScreen {
         match parsed {
             Some(mv) => self.apply_move(mv, cx),
             None => {
-                self.toast("The engine returned no legal move.", cx);
+                self.model.toast("The engine returned no legal move.", cx);
                 self.finish("Engine stopped".to_owned(), cx);
             }
         }
@@ -686,14 +685,15 @@ impl PlayScreen {
         if accepted {
             self.finish("Draw agreed".to_owned(), cx);
         } else {
-            self.toast(format!("{} declines the draw.", game.opponent_name), cx);
+            self.model
+                .toast(format!("{} declines the draw.", game.opponent_name), cx);
         }
     }
 
     fn takeback(&mut self, cx: &mut Context<Self>) {
         let Some(game) = &mut self.game else { return };
         if !game.takebacks || game.result.is_some() {
-            self.toast("Takebacks are off for this game.", cx);
+            self.model.toast("Takebacks are off for this game.", cx);
             return;
         }
         // A premove was meant for the position being taken back.
@@ -737,11 +737,6 @@ impl PlayScreen {
                 workspace.open_analysis(tree, window, cx);
             });
         }
-    }
-
-    fn toast(&self, text: impl Into<SharedString>, cx: &mut Context<Self>) {
-        let text = text.into();
-        self.model.update(cx, |model, cx| model.toast(text, cx));
     }
 
     fn render_setup(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
@@ -1205,42 +1200,11 @@ impl Render for PlayScreen {
                 None => self.recovery = Some(recovery),
             }
         }
-        let viewport = window.viewport_size();
-        let board_size = ui::board::snap_board_size(
-            (viewport.height - px(362.))
-                .min(viewport.width - px(720.))
-                .max(px(320.)),
-            window.scale_factor(),
-        );
+        let board_size = super::side_columns_board_size(window);
         let setup = self.render_setup(cx);
         let center = self.render_center(board_size, cx);
         let side = self.render_side(cx);
-        h_flex()
-            .items_start()
-            .size_full()
-            .child(setup)
-            .child(
-                div()
-                    .id("play-center")
-                    .px(px(28.))
-                    .h_full()
-                    .flex_none()
-                    .overflow_y_scroll()
-                    .child(center),
-            )
-            .child(
-                div()
-                    .id("play-side")
-                    .flex_1()
-                    .min_w_0()
-                    .h_full()
-                    .overflow_y_scroll()
-                    .pt(px(24.))
-                    .pr(px(24.))
-                    .pb(px(16.))
-                    .child(side),
-            )
-            .into_any_element()
+        super::three_columns(setup, "play-center", center, "play-side", side)
     }
 }
 

@@ -25,7 +25,7 @@ use ui::{
 use crate::{
     controls::{TextSelect, field, new_input, new_select, select_el, text_input},
     fastchess::{self, Limit, Line, Participant, Pasted, Setup, StopHandle},
-    model::{AppModel, ModelEvent, pick_path},
+    model::{AppModel, ModelEvent, ToastExt as _, pick_path},
     shell::Workspace,
     tournament_live::{self, LiveGame, LiveGames, Score, Search},
     tournament_wall::{self, LiveWall},
@@ -1040,8 +1040,7 @@ impl TournamentScreen {
         if let Some(run) = &self.run {
             let command = fastchess::display_command(&run.program.display().to_string(), &run.args);
             cx.write_to_clipboard(ClipboardItem::new_string(command));
-            self.model
-                .update(cx, |model, cx| model.toast("Command copied", cx));
+            self.model.toast("Command copied", cx);
         }
     }
 
@@ -1050,8 +1049,7 @@ impl TournamentScreen {
         match std::fs::read_to_string(&run.config) {
             Ok(text) => {
                 cx.write_to_clipboard(ClipboardItem::new_string(text));
-                self.model
-                    .update(cx, |model, cx| model.toast("config.json copied", cx));
+                self.model.toast("config.json copied", cx);
             }
             Err(_) => self.model.update(cx, |model, cx| {
                 model.toast("fastchess has not saved a config yet.", cx)

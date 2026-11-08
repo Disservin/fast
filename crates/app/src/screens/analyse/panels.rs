@@ -3,7 +3,7 @@
 use std::ops::Range;
 
 use chess_core::{Chess, Move, Position, format_pv, shakmaty::san::San};
-use engine::{EngineConfig, EngineId, LogKind, LogLine, OptionKind};
+use engine::{EngineConfig, EngineId, LogLine, OptionKind};
 use gpui::{
     AnyElement, ClipboardItem, Context, CursorStyle, Div, FontWeight, HighlightStyle, IntoElement,
     KeyDownEvent, ListHorizontalSizingBehavior, MouseButton, MouseMoveEvent, Pixels, Point,
@@ -21,8 +21,9 @@ use ui::{
 
 use super::{AnalyseScreen, MoveRow};
 use crate::config::AnalysisLimit;
+use crate::debug_window::LOG_ROW_H;
+use crate::model::ToastExt as _;
 
-const LOG_ROW_H: f32 = 19.;
 /// Selected log text, which has to read clearly under every line colour.
 const LOG_SELECTION_BG: u32 = 0x34507A;
 /// How often an open Log panel checks its engine for new lines.
@@ -473,19 +474,7 @@ impl AnalyseScreen {
     /// Turns an engine on or off for live analysis.
     fn set_engine_analysis(&mut self, id: EngineId, on: bool, cx: &mut Context<Self>) {
         self.model.update(cx, |model, cx| {
-            let Some(config) = model.engine_mut(id) else {
-                return;
-            };
-            config.use_analysis = on;
-            config.enabled = config.use_analysis || config.use_review || config.use_play;
-            let status = if config.enabled {
-                engine::EngineStatus::Ready
-            } else {
-                engine::EngineStatus::Disabled
-            };
-            model.engine_status.insert(id, status);
-            model.save_config(cx);
-            cx.emit(crate::model::ModelEvent::Engines);
+            model.set_engine_use(id, |config| config.use_analysis = on, cx);
         });
     }
 
@@ -569,7 +558,7 @@ impl AnalyseScreen {
                 div()
                     .text_size(px(12.))
                     .text_color(rgb(T.muted))
-                    .child(ui::i18n::t(&label).to_owned()),
+                    .child(ui::i18n::t(label).to_owned()),
             )
             .child(
                 h_flex()
@@ -1080,12 +1069,6 @@ impl AnalyseScreen {
         let Some(line) = self.log_lines.get(index) else {
             return div().into_any_element();
         };
-        let (mark, color) = match line.kind {
-            LogKind::Sent => (">", T.fg),
-            LogKind::Received => ("<", T.fg_2),
-            LogKind::Stderr => ("!", T.warn),
-            LogKind::System => ("*", T.muted),
-        };
         let selected = self
             .log_selection
             .and_then(|selection| selection.range_in(index, &line.text));
@@ -1104,16 +1087,8 @@ impl AnalyseScreen {
             .borrow_mut()
             .insert(index, text.layout().clone());
         // Rows take their text's width; the list scrolls sideways to the longest.
-        h_flex()
+        crate::debug_window::log_row(line.kind)
             .id(("log-line", index))
-            .min_w_full()
-            .h(px(LOG_ROW_H))
-            .px(px(12.))
-            .gap(px(8.))
-            .whitespace_nowrap()
-            .font_family(MONO)
-            .text_size(px(12.))
-            .text_color(rgb(color))
             .cursor(CursorStyle::IBeam)
             .on_mouse_down(
                 MouseButton::Left,
@@ -1136,7 +1111,6 @@ impl AnalyseScreen {
                     cx.notify();
                 }
             }))
-            .child(div().flex_none().text_color(rgb(T.faint)).child(mark))
             .child(text)
             .into_any_element()
     }
@@ -1167,7 +1141,7 @@ impl AnalyseScreen {
             true
         } else if keystroke.key == "c" && keystroke.modifiers.secondary(cx) {
             cx.write_to_clipboard(ClipboardItem::new_string(selection.text(&self.log_lines)));
-            self.toast("Selection copied.", cx);
+            self.model.toast("Selection copied.", cx);
             true
         } else {
             false
@@ -1260,7 +1234,7 @@ impl AnalyseScreen {
                                 ),
                             };
                             cx.write_to_clipboard(ClipboardItem::new_string(text));
-                            screen.toast(message, cx);
+                            screen.model.toast(message, cx);
                         });
                     }),
             )
@@ -1726,7 +1700,7 @@ impl AnalyseScreen {
             },
         };
         cx.write_to_clipboard(ClipboardItem::new_string(text));
-        self.toast("Line copied.", cx);
+        self.model.toast("Line copied.", cx);
     }
 
     /// Heading text while the board shows something other than the game position.
@@ -1825,6 +1799,7 @@ mod tests {
 #[cfg(test)]
 mod log_tests {
     use super::*;
+    use engine::LogKind;
 
     fn line(text: &str) -> LogLine {
         LogLine {

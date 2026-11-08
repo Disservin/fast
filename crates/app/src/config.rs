@@ -151,6 +151,25 @@ impl BoardConfig {
             0.0
         }
     }
+
+    /// Plays the sounds for `mv`, which led to `after`, at the saved profile and loudness.
+    pub fn play_move_sound(
+        &self,
+        mv: &chess_core::Move,
+        after: &chess_core::Chess,
+        end: Option<chess_core::GameEnd>,
+    ) {
+        crate::sound::play_move(self.sound_profile, self.sound_level(), mv, after, end);
+    }
+
+    /// A single move sound, to preview the profile and loudness.
+    pub fn play_sample(&self) {
+        crate::sound::play(
+            self.sound_profile,
+            &[crate::sound::Sound::Move],
+            self.sound_level(),
+        );
+    }
 }
 
 impl BoardConfig {

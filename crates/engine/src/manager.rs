@@ -66,6 +66,20 @@ pub struct EngineConfig {
 }
 
 impl EngineConfig {
+    /// An engine is enabled while any feature uses it.
+    pub fn sync_enabled(&mut self) {
+        self.enabled = self.use_analysis || self.use_review || self.use_play;
+    }
+
+    /// The status of an engine that is not running: ready, or disabled.
+    pub fn idle_status(&self) -> EngineStatus {
+        if self.enabled {
+            EngineStatus::Ready
+        } else {
+            EngineStatus::Disabled
+        }
+    }
+
     /// Saves the current options under `name`, replacing a profile of that name.
     pub fn save_profile(&mut self, name: &str) {
         let name = name.trim();

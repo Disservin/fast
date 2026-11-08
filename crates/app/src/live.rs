@@ -155,6 +155,34 @@ pub struct LiveLine {
     position_context: String,
 }
 
+impl LiveLine {
+    /// A fresh line from a search of `pos`, with its score and WDL made White-relative.
+    fn new(
+        pos: &chess_core::Chess,
+        update: AnalysisUpdate,
+        search_limit: String,
+        engine_signature: String,
+        position_context: String,
+    ) -> Self {
+        let white_to_move = pos.turn().is_white();
+        Self {
+            score: update
+                .score
+                .map(|score| if white_to_move { score } else { score.negate() }),
+            wdl: update
+                .wdl
+                .map(|wdl| if white_to_move { wdl } else { wdl.flip() }),
+            sans: chess_core::pv_to_san(pos, &update.pv),
+            update,
+            cached: false,
+            stale: false,
+            search_limit,
+            engine_signature,
+            position_context,
+        }
+    }
+}
+
 pub struct LiveEngine {
     pub config: EngineConfig,
     pub handle: Option<EngineHandle>,
@@ -261,8 +289,7 @@ impl LiveAnalysis {
                 engine.running = false;
                 let id = engine.config.id;
                 self.model.update(cx, |model, cx| {
-                    model.engine_status.insert(id, EngineStatus::Stopped);
-                    cx.notify();
+                    model.set_engine_status(id, EngineStatus::Stopped, cx);
                 });
             }
         }
@@ -440,37 +467,20 @@ impl LiveAnalysis {
                         kept.time_ms = update.time_ms.or(kept.time_ms);
                         continue;
                     }
-                    let white_to_move = pos.turn().is_white();
-                    let score = update
-                        .score
-                        .map(|score| if white_to_move { score } else { score.negate() });
-                    let wdl = update
-                        .wdl
-                        .map(|wdl| if white_to_move { wdl } else { wdl.flip() });
-                    if update.multipv == 1
-                        && !update.bound
-                        && let Some(score) = score
-                    {
-                        newest_eval = Some((score_cp(score), update.depth));
-                    }
-                    let sans = chess_core::pv_to_san(pos, &update.pv);
-                    live.lines.insert(
-                        update.multipv,
-                        LiveLine {
-                            update,
-                            score,
-                            wdl,
-                            sans,
-                            cached: false,
-                            stale: false,
-                            search_limit: current_limit.clone(),
-                            engine_signature: current_signature.clone(),
-                            position_context: crate::analysis_store::position_key(
-                                &self.fen,
-                                &self.moves,
-                            ),
-                        },
+                    let line = LiveLine::new(
+                        pos,
+                        update,
+                        current_limit.clone(),
+                        current_signature.clone(),
+                        crate::analysis_store::position_key(&self.fen, &self.moves),
                     );
+                    if line.update.multipv == 1
+                        && !line.update.bound
+                        && let Some(score) = line.score
+                    {
+                        newest_eval = Some((score_cp(score), line.update.depth));
+                    }
+                    live.lines.insert(line.update.multipv, line);
                 }
                 EngineEvent::Analysis { .. } => {}
                 EngineEvent::BestMove {
@@ -479,8 +489,7 @@ impl LiveAnalysis {
                     if from == search_id {
                         live.running = false;
                         self.model.update(cx, |model, cx| {
-                            model.engine_status.insert(id, EngineStatus::Ready);
-                            cx.notify();
+                            model.set_engine_status(id, EngineStatus::Ready, cx);
                         });
                     }
                 }
@@ -549,8 +558,7 @@ impl LiveAnalysis {
                 engine.lines.clear();
                 let id = engine.config.id;
                 self.model.update(cx, |model, cx| {
-                    model.engine_status.insert(id, EngineStatus::Stopped);
-                    cx.notify();
+                    model.set_engine_status(id, EngineStatus::Stopped, cx);
                 });
             }
         }
@@ -652,8 +660,7 @@ impl LiveAnalysis {
                 engine.running = false;
                 let id = engine.config.id;
                 self.model.update(cx, |model, cx| {
-                    model.engine_status.insert(id, EngineStatus::Paused);
-                    cx.notify();
+                    model.set_engine_status(id, EngineStatus::Paused, cx);
                 });
             }
         } else {
@@ -848,7 +855,6 @@ impl LiveAnalysis {
         };
         if demo {
             let mut scripted = crate::demo::scripted_lines(hash);
-            let white_to_move = pos.turn().is_white();
             let search_limit = crate::analysis_store::current_limit(limit);
             for engine in &mut self.engines {
                 let signature = crate::analysis_store::engine_signature(&engine.config);
@@ -882,30 +888,14 @@ impl LiveAnalysis {
                         engine
                             .log
                             .push(LogKind::Received, crate::demo::info_line(&update));
-                        let score = update
-                            .score
-                            .map(|score| if white_to_move { score } else { score.negate() });
-                        let wdl = update
-                            .wdl
-                            .map(|wdl| if white_to_move { wdl } else { wdl.flip() });
-                        let sans = chess_core::pv_to_san(pos, &update.pv);
-                        engine.lines.insert(
-                            update.multipv,
-                            LiveLine {
-                                update,
-                                score,
-                                wdl,
-                                sans,
-                                cached: false,
-                                stale: false,
-                                search_limit: search_limit.clone(),
-                                engine_signature: signature.clone(),
-                                position_context: crate::analysis_store::position_key(
-                                    &self.fen,
-                                    &self.moves,
-                                ),
-                            },
+                        let line = LiveLine::new(
+                            pos,
+                            update,
+                            search_limit.clone(),
+                            signature.clone(),
+                            crate::analysis_store::position_key(&self.fen, &self.moves),
                         );
+                        engine.lines.insert(line.update.multipv, line);
                     }
                 }
             }
@@ -921,10 +911,7 @@ impl LiveAnalysis {
                 // matching bestmove event to clear the previous running state.
                 engine.running = false;
                 self.model.update(cx, |model, cx| {
-                    model
-                        .engine_status
-                        .insert(engine.config.id, EngineStatus::Ready);
-                    cx.notify();
+                    model.set_engine_status(engine.config.id, EngineStatus::Ready, cx);
                 });
                 continue;
             }
@@ -938,19 +925,13 @@ impl LiveAnalysis {
                 handle.stop();
                 engine.running = false;
                 self.model.update(cx, |model, cx| {
-                    model
-                        .engine_status
-                        .insert(engine.config.id, EngineStatus::Ready);
-                    cx.notify();
+                    model.set_engine_status(engine.config.id, EngineStatus::Ready, cx);
                 });
                 continue;
             }
             engine.running = true;
             self.model.update(cx, |model, cx| {
-                model
-                    .engine_status
-                    .insert(engine.config.id, EngineStatus::Searching);
-                cx.notify();
+                model.set_engine_status(engine.config.id, EngineStatus::Searching, cx);
             });
             handle.search(SearchRequest {
                 search_moves: self.search_moves.clone(),

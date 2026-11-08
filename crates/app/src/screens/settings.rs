@@ -26,7 +26,7 @@ use ui::{
 use crate::{
     config::{SavedCoordinates, SavedPieces, SavedTheme},
     controls::{TextSelect, engine_icon, new_input, new_select, select_el, text_input},
-    model::{AppModel, ModelEvent, pick_path, split_engine_name},
+    model::{AppModel, ModelEvent, ToastExt as _, pick_path, split_engine_name},
     screens::database::format_count,
     shell,
 };
@@ -351,12 +351,7 @@ impl SettingsScreen {
                     if this.model.read(cx).config.board.sound_volume != volume {
                         this.update_board(cx, |board| board.sound_volume = volume);
                         // A sample at the new loudness.
-                        let board = &this.model.read(cx).config.board;
-                        crate::sound::play(
-                            board.sound_profile,
-                            &[crate::sound::Sound::Move],
-                            board.sound_level(),
-                        );
+                        this.model.read(cx).config.board.play_sample();
                     }
                 }
             }),
@@ -604,12 +599,8 @@ impl SettingsScreen {
             let mut copy = source.duplicate(new_id, &model.config.engines);
             // Only one copy analyses at first, so the table does not double up.
             copy.use_analysis = false;
-            copy.enabled = copy.use_review || copy.use_play;
-            let status = if copy.enabled {
-                EngineStatus::Ready
-            } else {
-                EngineStatus::Disabled
-            };
+            copy.sync_enabled();
+            let status = copy.idle_status();
             model.config.engines.push(copy);
             model.engine_status.insert(new_id, status);
             model.save_config(cx);
@@ -660,8 +651,7 @@ impl SettingsScreen {
         };
         let name = self.profile_input.read(cx).value().trim().to_owned();
         if name.is_empty() {
-            self.model
-                .update(cx, |model, cx| model.toast("Name the profile first.", cx));
+            self.model.toast("Name the profile first.", cx);
             return;
         }
         self.model.update(cx, |model, cx| {
@@ -742,21 +732,8 @@ impl SettingsScreen {
         let Some(id) = self.selected_engine else {
             return;
         };
-        self.model.update(cx, |model, cx| {
-            let Some(config) = model.engine_mut(id) else {
-                return;
-            };
-            change(config);
-            config.enabled = config.use_analysis || config.use_review || config.use_play;
-            let status = if config.enabled {
-                EngineStatus::Ready
-            } else {
-                EngineStatus::Disabled
-            };
-            model.engine_status.insert(id, status);
-            model.save_config(cx);
-            cx.emit(ModelEvent::Engines);
-        });
+        self.model
+            .update(cx, |model, cx| model.set_engine_use(id, change, cx));
     }
 
     fn add_from_file(&mut self, cx: &mut Context<Self>) {
@@ -1359,8 +1336,7 @@ impl SettingsScreen {
             move |profile, _, cx| {
                 sound_this.update(cx, |screen, cx| {
                     screen.update_board(cx, |board| board.sound_profile = profile);
-                    let board = &screen.model.read(cx).config.board;
-                    crate::sound::play(profile, &[crate::sound::Sound::Move], board.sound_level());
+                    screen.model.read(cx).config.board.play_sample();
                 })
             },
         );
@@ -1406,12 +1382,13 @@ impl SettingsScreen {
                         btn("preview-move-sound", ui::i18n::t("Preview"))
                             .disabled(!config.move_sounds || config.sound_volume == 0)
                             .on_click(move |_, cx| {
-                                let board = &preview_this.read(cx).model.read(cx).config.board;
-                                crate::sound::play(
-                                    board.sound_profile,
-                                    &[crate::sound::Sound::Move],
-                                    board.sound_level(),
-                                );
+                                preview_this
+                                    .read(cx)
+                                    .model
+                                    .read(cx)
+                                    .config
+                                    .board
+                                    .play_sample();
                             }),
                     ),
             ))
@@ -1855,9 +1832,7 @@ impl SettingsScreen {
                         let message =
                             format!("Engine installation stopped: {err:#}. You can retry.");
                         screen.install_status = Some(message.clone().into());
-                        screen
-                            .model
-                            .update(cx, |model, cx| model.toast(message, cx));
+                        screen.model.toast(message, cx);
                     }
                 }
                 cx.notify();

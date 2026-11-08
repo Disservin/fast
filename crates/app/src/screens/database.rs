@@ -23,7 +23,7 @@ use ui::{
 
 use crate::{
     controls::{TextSelect, field, new_input, new_select, select_el, text_input},
-    model::{AppModel, DbEntry, ModelEvent, pick_path},
+    model::{AppModel, DbEntry, ModelEvent, ToastExt as _, pick_path},
     shell::Workspace,
 };
 
@@ -446,16 +446,11 @@ impl DatabaseScreen {
                         this.select_game(first, cx);
                         this.ensure_rows(0..PAGE.min(this.ids.len()), cx);
                     }
-                    Err(err) => this.toast(format!("Query failed: {err}"), cx),
+                    Err(err) => this.model.toast(format!("Query failed: {err}"), cx),
                 }
                 cx.notify();
             });
         }));
-    }
-
-    fn toast(&self, text: impl Into<SharedString>, cx: &mut Context<Self>) {
-        let text = text.into();
-        self.model.update(cx, |model, cx| model.toast(text, cx));
     }
 
     /// Fetches any pages in `range` not loaded yet, off the UI thread.
@@ -677,7 +672,7 @@ impl DatabaseScreen {
                                 Ok(count) => format!("Exported {count} games."),
                                 Err(err) => format!("Export failed: {err:#}"),
                             };
-                            this.toast(text, cx);
+                            this.model.toast(text, cx);
                         });
                     })
                     .detach();
@@ -758,14 +753,14 @@ impl DatabaseScreen {
             })
             .cloned()
         else {
-            self.toast(
+            self.model.toast(
                 "Choose an engine for batch review in Settings › Engines.",
                 cx,
             );
             return;
         };
         if model.demo {
-            self.toast(
+            self.model.toast(
                 "Batch review needs a real engine; demo mode only has scripted lines.",
                 cx,
             );
@@ -830,7 +825,7 @@ impl DatabaseScreen {
             let _ = this.update(cx, |this, cx| {
                 this.reviewing = None;
                 if let Err(err) = result {
-                    this.toast(format!("Review stopped: {err:#}"), cx);
+                    this.model.toast(format!("Review stopped: {err:#}"), cx);
                 }
                 this.apply_filter(cx);
             });

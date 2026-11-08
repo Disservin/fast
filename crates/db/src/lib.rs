@@ -26,6 +26,14 @@ pub enum DbError {
 
 pub type Result<T> = std::result::Result<T, DbError>;
 
+/// Opens an SQLite file, creating it and its directory when missing.
+pub fn open_sqlite(path: &Path) -> Result<Connection> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    Ok(Connection::open(path)?)
+}
+
 const SCHEMA: &str = r#"
 PRAGMA journal_mode = WAL;
 PRAGMA synchronous = NORMAL;
@@ -91,10 +99,7 @@ pub struct Database {
 impl Database {
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref().to_path_buf();
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        let conn = Connection::open(&path)?;
+        let conn = open_sqlite(&path)?;
         conn.execute_batch(SCHEMA)?;
         let has_start_fen = {
             let mut columns = conn.prepare("PRAGMA table_info(games)")?;

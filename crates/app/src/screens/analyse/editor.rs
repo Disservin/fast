@@ -12,6 +12,7 @@ use ui::{
 
 use super::AnalyseScreen;
 use crate::controls::text_input;
+use crate::model::ToastExt as _;
 
 /// Castling rights by the rook each one needs: White O-O, O-O-O, Black O-O, O-O-O.
 const CASTLING: [(Square, &str); 4] = [
@@ -160,7 +161,9 @@ impl AnalyseScreen {
                 self.close_editor(cx);
                 self.load_fen(&fen, window, cx);
             }
-            Err(reason) => self.toast(format!("Can't use this position: {reason}"), cx),
+            Err(reason) => self
+                .model
+                .toast(format!("Can't use this position: {reason}"), cx),
         }
     }
 
@@ -269,7 +272,7 @@ impl AnalyseScreen {
                         .w(px(48.))
                         .text_size(px(13.))
                         .text_color(rgb(T.muted))
-                        .child(ui::i18n::t(&label).to_owned()),
+                        .child(ui::i18n::t(label).to_owned()),
                 )
                 .child(castle(first))
                 .child(castle(first + 1))

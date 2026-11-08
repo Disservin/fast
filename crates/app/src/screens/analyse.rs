@@ -24,7 +24,7 @@ use ui::{
 use crate::{
     config::{GraphTab, LineSort, ScoresheetStyle},
     live::{LiveAnalysis, LiveEvent},
-    model::{AppModel, ModelEvent},
+    model::{AppModel, ModelEvent, ToastExt as _},
     shell::Workspace,
 };
 
@@ -519,7 +519,7 @@ impl AnalyseScreen {
             Err(err) => {
                 log::error!("autosave failed: {err:#}");
                 if !std::mem::replace(&mut self.autosave_failed, true) {
-                    self.toast(
+                    self.model.toast(
                         format!("Could not autosave this game: {err}. Check storage permissions."),
                         cx,
                     );
@@ -561,10 +561,7 @@ impl AnalyseScreen {
         let last = node.mv.as_ref().and_then(|mv| Some((mv.from()?, mv.to())));
         // A move made, or one step forward: the same moments the board animates.
         if animate && let Some(mv) = node.mv {
-            let volume = self.model.read(cx).config.board.sound_level();
-            crate::sound::play_move(
-                self.model.read(cx).config.board.sound_profile,
-                volume,
+            self.model.read(cx).config.board.play_move_sound(
                 &mv,
                 &pos,
                 self.tree.game_end(self.current),
@@ -929,7 +926,7 @@ impl AnalyseScreen {
                 if !errors.is_empty()
                     && let Some(this) = this.upgrade()
                 {
-                    this.update(cx, |screen, cx| screen.toast(errors.join("; "), cx));
+                    this.update(cx, |screen, cx| screen.model.toast(errors.join("; "), cx));
                 }
             });
         });
@@ -939,7 +936,7 @@ impl AnalyseScreen {
     pub fn load_text(&mut self, text: &str, window: &mut Window, cx: &mut Context<Self>) {
         let text = text.trim();
         if text.is_empty() {
-            self.toast("Nothing to load.", cx);
+            self.model.toast("Nothing to load.", cx);
             return;
         }
         if GameTree::from_fen(text).is_ok() {
@@ -949,7 +946,7 @@ impl AnalyseScreen {
         let count = parse_pgn(text).map(|games| games.len()).unwrap_or(0);
         self.load_pgn_at(text, 0, window, cx);
         if count > 1 {
-            self.toast(
+            self.model.toast(
                 format!("Loaded the first of {count} games. Import the file in Database to browse them all."),
                 cx,
             );
@@ -960,7 +957,7 @@ impl AnalyseScreen {
     pub fn paste_game(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         match cx.read_from_clipboard().and_then(|item| item.text()) {
             Some(text) => self.load_text(&text, window, cx),
-            None => self.toast("The clipboard has no text.", cx),
+            None => self.model.toast("The clipboard has no text.", cx),
         }
     }
 
@@ -995,14 +992,14 @@ impl AnalyseScreen {
             return;
         }
         if self.model.read(cx).analysis_engines().is_empty() {
-            self.toast(
+            self.model.toast(
                 "Add an engine for analysis first, in Settings › Engines.",
                 cx,
             );
             return;
         }
         if self.model.read(cx).demo {
-            self.toast(
+            self.model.toast(
                 "Backwards analysis needs a real engine; demo mode only has scripted lines.",
                 cx,
             );
@@ -1096,7 +1093,7 @@ impl AnalyseScreen {
             live.search(cx);
         });
         if let Some(message) = message {
-            self.toast(message.to_owned(), cx);
+            self.model.toast(message.to_owned(), cx);
         }
         cx.notify();
     }
@@ -1105,7 +1102,9 @@ impl AnalyseScreen {
     pub fn open_engine_output(&mut self, cx: &mut Context<Self>) {
         match self.panel_engine_id(cx) {
             Some(id) => crate::model::open_debug_window(&self.model, id, cx),
-            None => self.toast("No engine yet. Add one in Settings › Engines.", cx),
+            None => self
+                .model
+                .toast("No engine yet. Add one in Settings › Engines.", cx),
         }
     }
 
@@ -1189,21 +1188,18 @@ impl AnalyseScreen {
                     self.jump(id, window, cx);
                 }
             }
-            Ok(_) => self.toast("That PGN contains no games.", cx),
-            Err(err) => self.toast(format!("Could not read the game: {err}"), cx),
+            Ok(_) => self.model.toast("That PGN contains no games.", cx),
+            Err(err) => self
+                .model
+                .toast(format!("Could not read the game: {err}"), cx),
         }
     }
 
     pub fn load_fen(&mut self, fen: &str, window: &mut Window, cx: &mut Context<Self>) {
         match GameTree::from_fen(fen) {
             Ok(tree) => self.load_tree(tree, window, cx),
-            Err(err) => self.toast(format!("Invalid FEN: {err}"), cx),
+            Err(err) => self.model.toast(format!("Invalid FEN: {err}"), cx),
         }
-    }
-
-    fn toast(&self, text: impl Into<SharedString>, cx: &mut Context<Self>) {
-        let text = text.into();
-        self.model.update(cx, |model, cx| model.toast(text, cx));
     }
 
     /// Copies the position on the board as FEN, a previewed line's included.
@@ -1211,14 +1207,14 @@ impl AnalyseScreen {
         let fen = GameTree::fen_of(&self.analysed_pos());
         cx.write_to_clipboard(ClipboardItem::new_string(fen));
         self.copy_menu = false;
-        self.toast("FEN copied.", cx);
+        self.model.toast("FEN copied.", cx);
     }
 
     /// Copies the whole game, headers and variations included.
     fn copy_pgn(&mut self, cx: &mut Context<Self>) {
         cx.write_to_clipboard(ClipboardItem::new_string(write_pgn(&self.tree)));
         self.copy_menu = false;
-        self.toast("PGN copied.", cx);
+        self.model.toast("PGN copied.", cx);
     }
 
     /// The copy button and, when open, its menu above it.
@@ -1235,7 +1231,7 @@ impl AnalyseScreen {
                 .text_size(px(14.))
                 .cursor_pointer()
                 .hover(|style| style.bg(rgb(T.hover)))
-                .child(ui::i18n::t(&label).to_owned())
+                .child(ui::i18n::t(label).to_owned())
                 .child(
                     div()
                         .text_size(px(12.))
@@ -1323,12 +1319,14 @@ impl AnalyseScreen {
                 Ok((png, path)) => {
                     let image = gpui::Image::from_bytes(gpui::ImageFormat::Png, png);
                     cx.write_to_clipboard(ClipboardItem::new_image(&image));
-                    screen.toast(
+                    screen.model.toast(
                         format!("Board image copied and saved to {}", path.display()),
                         cx,
                     );
                 }
-                Err(err) => screen.toast(format!("Could not save the board image: {err}"), cx),
+                Err(err) => screen
+                    .model
+                    .toast(format!("Could not save the board image: {err}"), cx),
             });
         })
         .detach();
@@ -2762,7 +2760,7 @@ impl AnalyseScreen {
                 .cursor_pointer()
                 .hover(|style| style.bg(rgb(T.hover)))
                 .on_click(move |_, window, cx| handler(window, cx))
-                .child(ui::i18n::t(&label).to_owned())
+                .child(ui::i18n::t(label).to_owned())
         };
         let delete_this = this.clone();
         let delete_sidelines_this = this.clone();
@@ -2822,7 +2820,7 @@ impl AnalyseScreen {
                                 let text = write_pgn_from(&screen.tree, id);
                                 cx.write_to_clipboard(ClipboardItem::new_string(text));
                                 screen.context_menu = None;
-                                screen.toast("PGN copied.", cx);
+                                screen.model.toast("PGN copied.", cx);
                             });
                         }),
                     )),

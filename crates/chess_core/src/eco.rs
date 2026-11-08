@@ -113,10 +113,8 @@ pub fn classify<'a>(moves: impl IntoIterator<Item = &'a str>) -> Option<Opening>
                 name: name.into(),
             });
         }
-        match line.rfind(' ') {
-            Some(end) => line.truncate(end),
-            None => return None,
-        }
+        let end = line.rfind(' ')?;
+        line.truncate(end);
     }
 }
 
