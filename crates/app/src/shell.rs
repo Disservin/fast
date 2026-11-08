@@ -1001,9 +1001,10 @@ impl Workspace {
 
     /// Covers the content area when the + button is open: one card per kind of tab.
     fn new_tab_picker(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let choices: [(Mode, &str, &str); 5] = [
+        let choices: [(Mode, &'static str, &str, &str); 6] = [
             (
                 Mode::Analyse,
+                "icons/microscope.svg",
                 ui::i18n::t("Analyse"),
                 ui::i18n::t(
                     "A board, engine analysis and the move list for a new position or game.",
@@ -1011,28 +1012,38 @@ impl Workspace {
             ),
             (
                 Mode::Play,
+                "icons/swords.svg",
                 ui::i18n::t("Play"),
                 ui::i18n::t("Play a game against an engine, with clocks."),
             ),
             (
                 Mode::Database,
+                "icons/database.svg",
                 ui::i18n::t("Database"),
                 ui::i18n::t("Browse, search and import your game collections."),
             ),
             (
+                Mode::Train,
+                "icons/graduation-cap.svg",
+                ui::i18n::t("Train"),
+                ui::i18n::t("Drill your repertoire with spaced repetition."),
+            ),
+            (
                 Mode::Tournament,
+                "icons/trophy.svg",
                 ui::i18n::t("Tournament"),
                 ui::i18n::t("Engine-vs-engine matches run with fastchess."),
             ),
             (
                 Mode::TestPositions,
+                "icons/flask-conical.svg",
                 ui::i18n::t("Test positions"),
                 ui::i18n::t("Run engines over an EPD suite to find best moves or mates."),
             ),
         ];
-        // Two by two, in one column with the header so their edges line up.
+        // Two per row, in one column with the header so their edges line up.
         let mut cards = div().grid().grid_cols(2).gap(px(16.)).w_full();
-        for (index, (mode, title, description)) in choices.into_iter().enumerate() {
+        for (index, (mode, icon_path, title, description)) in choices.into_iter().enumerate() {
             let pick = cx.entity();
             cards = cards.child(
                 v_flex()
@@ -1048,11 +1059,17 @@ impl Workspace {
                     .cursor_pointer()
                     .hover(|card| card.border_color(rgb(T.border_strong)).bg(rgb(T.selected)))
                     .child(
-                        div()
-                            .text_size(px(19.))
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(rgb(T.fg))
-                            .child(title),
+                        h_flex()
+                            .gap(px(10.))
+                            .items_center()
+                            .child(ui::widgets::icon(icon_path, px(20.), T.accent))
+                            .child(
+                                div()
+                                    .text_size(px(19.))
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .text_color(rgb(T.fg))
+                                    .child(title),
+                            ),
                     )
                     .child(
                         div()

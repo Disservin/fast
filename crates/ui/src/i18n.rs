@@ -277,6 +277,9 @@ pub fn translate(language: Language, text: &str) -> &str {
                 "Partiesammlungen durchsuchen und importieren."
             }
             "Engine-vs-engine matches run with fastchess." => "Engine-Turniere mit fastchess.",
+            "Drill your repertoire with spaced repetition." => {
+                "Repertoire mit verteilter Wiederholung üben."
+            }
             "Analyse backwards" => "Rückwärts analysieren",
             "Acc." => "Genauigkeit",
             "Add an engine in Settings › Engines to play." => {
