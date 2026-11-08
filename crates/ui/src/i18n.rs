@@ -386,6 +386,8 @@ pub fn translate(language: Language, text: &str) -> &str {
             }
             "Review" => "Prüfung",
             "Review findings" => "Prüfergebnisse",
+            "Engines at once" => "Engines gleichzeitig",
+            "Mate lost" => "Matt verpasst",
             "Run benchmark" => "Benchmark starten",
             "Save comment" => "Kommentar speichern",
             "Save current" => "Aktuelle speichern",
@@ -488,9 +490,7 @@ pub fn translate(language: Language, text: &str) -> &str {
                 "MultiPV: Varianten, die jede Engine durchsucht; in ihren Optionen gespeichert"
             }
             "Open the containing folder" => "Übergeordneten Ordner öffnen",
-            "Open this move and its engine continuation in Analyse" => {
-                "Diesen Zug und seine Engine-Fortsetzung in Analyse öffnen"
-            }
+            "Click to open it in Analyse." => "Klicken, um ihn in Analyse zu öffnen.",
             "Order engine lines by evaluation or by search depth" => {
                 "Engine-Varianten nach Bewertung oder Suchtiefe sortieren"
             }

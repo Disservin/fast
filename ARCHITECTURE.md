@@ -73,6 +73,10 @@ is skipped without blocking the UI.
 - Each `SearchRequest` names its game. A search from a different game is preceded by
   `ucinewgame` (and so by `isready`). Analyse bumps the game when it loads another one, Play
   starts a process per game, and batch review uses the database game id.
+- Batch review starts as many processes of the review engine as `config.review_engines`
+  (set by the "Engines at once" stepper), each on its own `background_spawn` worker with its
+  own database connection. The workers take the next game from a shared atomic index, and an
+  error in one cancels the rest.
 - The standard initial position is sent as `position startpos`, other starts as
   `position fen`, with the moves after `moves`.
 - Analysis engines that offer `UCI_AnalyseMode` get it set to `true`.

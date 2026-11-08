@@ -50,18 +50,20 @@ struct Importing {
 
 /// Progress of the "Analyse all" batch engine review.
 struct Reviewing {
-    done: usize,
+    /// Games finished by all engines together.
+    finished: std::sync::Arc<std::sync::atomic::AtomicUsize>,
     total: usize,
+    /// Engines reviewing at once.
+    engines: usize,
     ply: usize,
     plies: usize,
     cancelled: std::sync::Arc<std::sync::atomic::AtomicBool>,
     paused: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
+/// The position one review engine has reached in its current game.
 #[derive(Clone, Copy)]
 struct ReviewProgress {
-    games: usize,
-    game: usize,
     plies: usize,
     ply: usize,
 }
@@ -79,9 +81,13 @@ struct ReviewSettings {
     side: usize,
 }
 
+/// Shared state of a batch review: stop and pause flags, and the queue of games that
+/// every engine takes its next game from.
 struct ReviewControlRef<'a> {
     cancelled: &'a std::sync::atomic::AtomicBool,
     paused: &'a std::sync::atomic::AtomicBool,
+    next: &'a std::sync::atomic::AtomicUsize,
+    finished: &'a std::sync::atomic::AtomicUsize,
 }
 
 impl ReviewLimit {
@@ -782,49 +788,82 @@ impl DatabaseScreen {
             limit: ReviewLimit::ALL[self.review_limit],
             side: self.review_side,
         };
+        let engines = (model.config.review_engines.max(1) as usize).min(ids.len().max(1));
         let cancelled = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let paused = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let next = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let finished = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
         self.reviewing = Some(Reviewing {
-            done: 0,
+            finished: finished.clone(),
             total: ids.len(),
+            engines,
             ply: 0,
             plies: 0,
             cancelled: cancelled.clone(),
             paused: paused.clone(),
         });
+        let ids = std::sync::Arc::new(ids);
         let (tx, rx) = smol::channel::bounded(1);
-        let worker = cx.background_spawn(async move {
-            review_games(
-                &engine,
-                &path,
-                &ids,
-                &player,
-                settings,
-                ReviewControlRef {
-                    cancelled: &cancelled,
-                    paused: &paused,
-                },
-                |progress| {
-                    let _ = tx.try_send(progress);
-                },
-            )
-        });
+        let workers: Vec<_> = (0..engines)
+            .map(|_| {
+                let (engine, path, ids, player, tx) = (
+                    engine.clone(),
+                    path.clone(),
+                    ids.clone(),
+                    player.clone(),
+                    tx.clone(),
+                );
+                let (cancelled, paused, next, finished) = (
+                    cancelled.clone(),
+                    paused.clone(),
+                    next.clone(),
+                    finished.clone(),
+                );
+                cx.background_spawn(async move {
+                    let result = review_games(
+                        &engine,
+                        &path,
+                        &ids,
+                        &player,
+                        settings,
+                        ReviewControlRef {
+                            cancelled: &cancelled,
+                            paused: &paused,
+                            next: &next,
+                            finished: &finished,
+                        },
+                        |progress| {
+                            let _ = tx.try_send(progress);
+                        },
+                    );
+                    // One failed engine stops the others too, so the error is not hidden.
+                    if result.is_err() {
+                        cancelled.store(true, std::sync::atomic::Ordering::Relaxed);
+                    }
+                    result
+                })
+            })
+            .collect();
+        drop(tx);
         cx.spawn(async move |this, cx| {
             while let Ok(progress) = rx.recv().await {
                 let _ = this.update(cx, |this, cx| {
                     if let Some(reviewing) = &mut this.reviewing {
-                        reviewing.done = progress.game.saturating_sub(1);
-                        reviewing.total = progress.games;
                         reviewing.ply = progress.ply;
                         reviewing.plies = progress.plies;
                     }
                     cx.notify();
                 });
             }
-            let result = worker.await;
+            let mut error = None;
+            for worker in workers {
+                if let Err(err) = worker.await {
+                    error.get_or_insert(err);
+                }
+            }
             let _ = this.update(cx, |this, cx| {
                 this.reviewing = None;
-                if let Err(err) = result {
+                if let Some(err) = error {
                     this.model.toast(format!("Review stopped: {err:#}"), cx);
                 }
                 this.apply_filter(cx);
@@ -984,7 +1023,15 @@ impl DatabaseScreen {
     fn render_main_header(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let this = cx.entity();
         let analyse_label: SharedString = match &self.reviewing {
-            Some(reviewing) => format!("Stop review {}/{}", reviewing.done, reviewing.total).into(),
+            Some(reviewing) => format!(
+                "Stop review {}/{}",
+                reviewing
+                    .finished
+                    .load(std::sync::atomic::Ordering::Relaxed)
+                    .min(reviewing.total),
+                reviewing.total
+            )
+            .into(),
             None => "Analyse all".into(),
         };
         let analyse_this = this.clone();
@@ -1044,6 +1091,56 @@ impl DatabaseScreen {
         let engine_this = this.clone();
         let limit_this = this.clone();
         let side_this = this.clone();
+        let engines = self.model.read(cx).config.review_engines.max(1);
+        let max_engines = max_review_engines();
+        let running = self.reviewing.is_some();
+        let step = |up: bool| {
+            let this = this.clone();
+            let next = if up {
+                (engines + 1).min(max_engines)
+            } else {
+                engines.saturating_sub(1).max(1)
+            };
+            btn(
+                if up {
+                    "review-engines-up"
+                } else {
+                    "review-engines-down"
+                },
+                if up { "+" } else { "−" },
+            )
+            .w(36.)
+            .pad(0.)
+            .disabled(running || next == engines)
+            .on_click(move |_, cx| {
+                this.update(cx, |screen, cx| {
+                    screen.model.update(cx, |model, cx| {
+                        model.config.review_engines = next;
+                        model.save_config(cx);
+                    });
+                    cx.notify();
+                })
+            })
+        };
+        let parallel = h_flex()
+            .gap(px(4.))
+            .child(
+                div()
+                    .text_size(px(13.))
+                    .text_color(rgb(T.muted))
+                    .mr(px(2.))
+                    .child(ui::i18n::t("Engines at once")),
+            )
+            .child(step(false))
+            .child(
+                mono(engines.to_string())
+                    .w(px(28.))
+                    .text_size(px(13.))
+                    .flex()
+                    .justify_center()
+                    .whitespace_nowrap(),
+            )
+            .child(step(true));
         h_flex()
             .flex_wrap()
             .gap(px(8.))
@@ -1083,6 +1180,7 @@ impl DatabaseScreen {
                     side_this.update(cx, |screen, cx| screen.cycle_review_side(cx))
                 }),
             )
+            .child(parallel)
             .child(
                 btn(
                     "review-scope",
@@ -1114,10 +1212,12 @@ impl DatabaseScreen {
                         pause_this.update(cx, |screen, cx| screen.toggle_review_pause(cx))
                     }),
                 )
-                .child(
-                    mono(format!("Position {}/{}", reviewing.ply, reviewing.plies))
-                        .text_size(px(12.)),
-                )
+                .when(reviewing.engines == 1, |row| {
+                    row.child(
+                        mono(format!("Position {}/{}", reviewing.ply, reviewing.plies))
+                            .text_size(px(12.)),
+                    )
+                })
             })
     }
 
@@ -1377,25 +1477,27 @@ impl DatabaseScreen {
             }
             let findings = review_findings(preview);
             if !findings.is_empty() {
-                column = column.child(section_label("Review findings").mt(px(6.)));
+                let mut list = v_flex()
+                    .mt(px(2.))
+                    .mb(px(10.))
+                    .border_t_1()
+                    .border_color(rgb(T.divider));
                 for finding in findings.into_iter().take(6) {
                     let this = this.clone();
                     let ply = finding.ply;
-                    column = column.child(
-                        btn(("review-finding", ply), finding.text)
-                            .full()
-                            .text(12.)
-                            .tooltip(ui::i18n::t(
-                                "Open this move and its engine continuation in Analyse",
-                            ))
-                            .on_click(move |window, cx| {
-                                this.update(cx, |screen, cx| {
-                                    screen.preview_key = ply;
-                                    screen.open_in_analyse(window, cx);
-                                });
-                            }),
-                    );
+                    list = list.child(FindingRow {
+                        finding,
+                        on_click: std::rc::Rc::new(move |window, cx| {
+                            this.update(cx, |screen, cx| {
+                                screen.preview_key = ply;
+                                screen.open_in_analyse(window, cx);
+                            });
+                        }),
+                    });
                 }
+                column = column
+                    .child(section_label("Review findings").mt(px(6.)))
+                    .child(list);
             }
         }
         column
@@ -1586,8 +1688,14 @@ fn review_accuracy(evals: &[Option<i32>], white: bool, first_white: bool) -> Opt
         .then(|| accuracy_from_loss(losses.iter().sum::<f64>() / losses.len() as f64))
 }
 
+/// A move from the game review that lost a lot of the engine score, as one line of the
+/// preview: the move, what it lost, and a longer explanation for the tooltip.
 struct ReviewFinding {
     ply: usize,
+    /// The move in numbered notation, such as `14.c4` or `14...Nf6`.
+    label: String,
+    /// What was lost, such as `−1.16` or `Mate`.
+    loss: String,
     text: String,
 }
 
@@ -1632,6 +1740,17 @@ fn review_findings(game: &GameDetails) -> Vec<ReviewFinding> {
         if loss < 75 && !mate_lost {
             continue;
         }
+        let fullmove = before_pos.fullmoves().get();
+        let label = if white_moved {
+            format!("{fullmove}.{}", game.sans[ply])
+        } else {
+            format!("{fullmove}...{}", game.sans[ply])
+        };
+        let loss_label = if mate_lost {
+            ui::i18n::t("Mate lost").to_owned()
+        } else {
+            format!("−{:.2}", f64::from(loss) / 100.0)
+        };
         let mut text = if mate_lost {
             format!(
                 "Ply {} {} gives up a forced mate in {} for {}.",
@@ -1679,9 +1798,81 @@ fn review_findings(game: &GameDetails) -> Vec<ReviewFinding> {
             text.push_str(&format!(" Engine line: {}.", sans.join(" ")));
         }
         text.push_str(" Engine estimates can change with deeper searches.");
-        findings.push(ReviewFinding { ply, text });
+        findings.push(ReviewFinding {
+            ply,
+            label,
+            loss: loss_label,
+            text,
+        });
     }
     findings
+}
+
+/// One review finding in the preview: the move on the left and the score it lost on the
+/// right, on a single line. Hovering shows the engine's explanation, and clicking or
+/// pressing Enter opens the move in Analyse.
+#[derive(IntoElement)]
+struct FindingRow {
+    finding: ReviewFinding,
+    on_click: ClickHandler,
+}
+
+/// A click handler that a row shares between mouse and keyboard.
+type ClickHandler = std::rc::Rc<dyn Fn(&mut Window, &mut gpui::App)>;
+
+impl RenderOnce for FindingRow {
+    fn render(self, window: &mut Window, cx: &mut gpui::App) -> impl IntoElement {
+        let id = gpui::ElementId::from(("review-finding", self.finding.ply));
+        let focus = window
+            .use_keyed_state(id.clone(), cx, |_, cx| cx.focus_handle().tab_stop(true))
+            .read(cx)
+            .clone();
+        let on_key = self.on_click.clone();
+        let on_click = self.on_click;
+        let text = SharedString::from(format!(
+            "{} {}",
+            self.finding.text,
+            ui::i18n::t("Click to open it in Analyse.")
+        ));
+        h_flex()
+            .id(id)
+            .track_focus(&focus)
+            .h(px(28.))
+            .px(px(6.))
+            .gap(px(8.))
+            .justify_between()
+            .border_b_1()
+            .border_color(rgb(T.divider))
+            .cursor_pointer()
+            .hover(|style| style.bg(rgb(T.hover)))
+            .focus_visible(|style| style.border_2().border_color(rgb(T.accent)))
+            .text_size(px(13.))
+            .whitespace_nowrap()
+            .on_click(move |_, window, cx| on_click(window, cx))
+            .on_key_down(move |event, window, cx| {
+                let key = event.keystroke.key.as_str();
+                if (key == "enter" || key == "space") && !event.keystroke.modifiers.modified() {
+                    on_key(window, cx);
+                    cx.stop_propagation();
+                }
+            })
+            .tooltip(move |window, cx| {
+                gpui_component::tooltip::Tooltip::new(text.clone()).build(window, cx)
+            })
+            .child(
+                mono(self.finding.label)
+                    .min_w_0()
+                    .overflow_hidden()
+                    .text_ellipsis()
+                    .text_color(rgb(T.fg)),
+            )
+            .child(mono(self.finding.loss).flex_none().text_color(rgb(T.warn)))
+    }
+}
+
+/// The most engines a batch review may run at once: one per logical CPU.
+fn max_review_engines() -> u32 {
+    std::thread::available_parallelism().map_or(4, |n| n.get() as u32)
 }
 
 /// Runs engine review for each game on a worker thread and stores the accuracy.
@@ -1696,7 +1887,19 @@ fn review_games(
 ) -> anyhow::Result<()> {
     use engine::{EngineEvent, EngineHandle, Score, SearchRequest};
     use std::sync::atomic::Ordering;
-    let ReviewControlRef { cancelled, paused } = control;
+    let ReviewControlRef {
+        cancelled,
+        paused,
+        next,
+        finished,
+    } = control;
+    /// Counts a game as finished when this engine moves on from it.
+    struct Finished<'a>(&'a std::sync::atomic::AtomicUsize);
+    impl Drop for Finished<'_> {
+        fn drop(&mut self) {
+            self.0.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        }
+    }
     const START: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
     let database = Database::open(path)?;
@@ -1717,10 +1920,14 @@ fn review_games(
     let mut search_id = 0;
     let limit_label = settings.limit.label();
     let job_key = crate::analysis_store::identity("batch-review", engine, &limit_label);
-    'games: for (done, &id) in ids.iter().enumerate() {
+    'games: loop {
         if cancelled.load(Ordering::Relaxed) {
             break;
         }
+        let Some(&id) = ids.get(next.fetch_add(1, Ordering::Relaxed)) else {
+            break;
+        };
+        let _finished = Finished(finished);
         let Some(game) = database.game(id)? else {
             continue;
         };
@@ -1730,12 +1937,6 @@ fn review_games(
             &game.start_fen
         };
         let Ok(start_tree) = chess_core::GameTree::from_fen(start_fen) else {
-            on_progress(ReviewProgress {
-                games: ids.len(),
-                game: done + 1,
-                plies: 0,
-                ply: 0,
-            });
             continue;
         };
         let mut moves: Vec<String> = Vec::new();
@@ -1865,8 +2066,6 @@ fn review_games(
             }
             evals.push(eval);
             on_progress(ReviewProgress {
-                games: ids.len(),
-                game: done + 1,
                 plies: game.sans.len() + 1,
                 ply: san_index + 1,
             });

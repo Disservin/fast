@@ -460,6 +460,8 @@ pub struct Config {
     pub panels: PanelSizes,
     /// The Test positions tab's last settings.
     pub test_positions: TestPositionSettings,
+    /// How many engine processes a Database batch review runs at once.
+    pub review_engines: u32,
     /// The tabs open when Fast last closed, reopened on the next start.
     pub session: Option<SavedSession>,
 }
@@ -518,6 +520,7 @@ impl Default for Config {
             window: None,
             panels: PanelSizes::default(),
             test_positions: TestPositionSettings::default(),
+            review_engines: 1,
             session: None,
         }
     }
