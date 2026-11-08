@@ -216,6 +216,15 @@ fn primary(key: &str) -> String {
     format!("{modifier}-{key}")
 }
 
+/// The browser's Back or Forward key: Alt plus an arrow, or Cmd plus a bracket on macOS.
+fn history_key(arrow: &str, bracket: &str) -> String {
+    if cfg!(target_os = "macos") {
+        format!("cmd-{bracket}")
+    } else {
+        format!("alt-{arrow}")
+    }
+}
+
 /// Default keystrokes per action name. Users can rebind them in Settings; an empty
 /// keystroke means the action has no shortcut.
 pub fn default_shortcuts() -> BTreeMap<String, String> {
@@ -253,6 +262,8 @@ pub fn default_shortcuts() -> BTreeMap<String, String> {
         ("reopen_tab", primary("shift-t")),
         ("next_tab", primary("tab")),
         ("prev_tab", primary("shift-tab")),
+        ("tab_back", history_key("left", "[")),
+        ("tab_forward", history_key("right", "]")),
         ("search", primary("k")),
         ("show_analyse", primary("1")),
         ("show_database", primary("2")),

@@ -45,6 +45,8 @@ actions!(
         ReopenTab,
         NextTab,
         PrevTab,
+        TabBack,
+        TabForward,
         OpenGame,
         SavePgnAs,
         PasteGame,
@@ -99,6 +101,8 @@ fn app_menus() -> Vec<gpui::Menu> {
             MenuItem::action(ui::i18n::t("Play"), ShowPlay),
             MenuItem::action(ui::i18n::t("Next tab"), NextTab),
             MenuItem::action(ui::i18n::t("Previous tab"), PrevTab),
+            MenuItem::action(ui::i18n::t("Go back"), TabBack),
+            MenuItem::action(ui::i18n::t("Go forward"), TabForward),
             MenuItem::separator(),
             MenuItem::action(ui::i18n::t("Flip board"), FlipBoard),
         ]),
@@ -154,6 +158,8 @@ pub fn action_for(name: &str) -> Option<(Box<dyn Action>, &'static str)> {
         "reopen_tab" => (Box::new(ReopenTab), TAB_CONTEXT),
         "next_tab" => (Box::new(NextTab), TAB_CONTEXT),
         "prev_tab" => (Box::new(PrevTab), TAB_CONTEXT),
+        "tab_back" => (Box::new(TabBack), TAB_CONTEXT),
+        "tab_forward" => (Box::new(TabForward), TAB_CONTEXT),
         "open_game" => (Box::new(OpenGame), SHORTCUT_CONTEXT),
         "save_pgn_as" => (Box::new(SavePgnAs), SHORTCUT_CONTEXT),
         "paste_game" => (Box::new(PasteGame), SHORTCUT_CONTEXT),
@@ -345,6 +351,10 @@ pub struct Workspace {
     active_tab: u64,
     next_tab_id: u64,
     last_tab: BTreeMap<Mode, u64>,
+    /// Tabs visited before the active one, most recent last, for Back.
+    back_tabs: Vec<u64>,
+    /// Tabs left with Back, most recent last, for Forward.
+    forward_tabs: Vec<u64>,
     new_tab_menu_open: bool,
     /// The tab being renamed and the field holding its new name.
     renaming: Option<(u64, Entity<InputState>)>,
@@ -469,6 +479,8 @@ impl Workspace {
             active_tab: 1,
             next_tab_id: 2,
             last_tab: [(mode, 1)].into(),
+            back_tabs: Vec::new(),
+            forward_tabs: Vec::new(),
             new_tab_menu_open: false,
             renaming: None,
             _rename_sub: None,
@@ -579,7 +591,32 @@ impl Workspace {
         }
     }
 
+    /// Shows a tab and remembers the one left, so Back returns to it.
     fn activate_tab(&mut self, id: u64, cx: &mut Context<Self>) {
+        self.show_tab(id, true, cx);
+    }
+
+    /// Goes to the tab visited before the current one (`back`) or the one left with Back.
+    /// Tabs closed since are skipped.
+    fn step_history(&mut self, back: bool, cx: &mut Context<Self>) {
+        let (from, to) = if back {
+            (&mut self.back_tabs, &mut self.forward_tabs)
+        } else {
+            (&mut self.forward_tabs, &mut self.back_tabs)
+        };
+        while let Some(id) = from.pop() {
+            if id == self.active_tab || !self.tabs.iter().any(|tab| tab.id == id) {
+                continue;
+            }
+            to.push(self.active_tab);
+            self.show_tab(id, false, cx);
+            return;
+        }
+    }
+
+    /// Shows a tab. With `record`, the tab left goes into the Back history and the
+    /// Forward history is dropped, as in a browser.
+    fn show_tab(&mut self, id: u64, record: bool, cx: &mut Context<Self>) {
         let Some(tab) = self.tabs.iter().find(|tab| tab.id == id).cloned() else {
             return;
         };
@@ -612,6 +649,14 @@ impl Workspace {
             }
             self.train
                 .update(cx, |screen, cx| screen.set_visible(false, cx));
+        }
+        if record && self.tabs.iter().any(|tab| tab.id == self.active_tab) {
+            self.back_tabs.retain(|visited| *visited != self.active_tab);
+            self.back_tabs.push(self.active_tab);
+            if self.back_tabs.len() > 50 {
+                self.back_tabs.remove(0);
+            }
+            self.forward_tabs.clear();
         }
         self.active_tab = id;
         self.mode = tab.content.mode();
@@ -1925,6 +1970,15 @@ impl Render for Workspace {
                     }
                 }),
             )
+            // The back and forward buttons on a mouse move through the tab history.
+            .on_mouse_down(
+                MouseButton::Navigate(gpui::NavigationDirection::Back),
+                cx.listener(|this, _, _, cx| this.step_history(true, cx)),
+            )
+            .on_mouse_down(
+                MouseButton::Navigate(gpui::NavigationDirection::Forward),
+                cx.listener(|this, _, _, cx| this.step_history(false, cx)),
+            )
             .on_key_down(cx.listener(move |this, event: &gpui::KeyDownEvent, _, cx| {
                 if event.keystroke.key == "escape"
                     && this.mode == Mode::Tournament
@@ -1998,6 +2052,8 @@ impl Render for Workspace {
             .on_action(cx.listener(|this, _: &ReopenTab, _, cx| this.reopen_tab(cx)))
             .on_action(cx.listener(|this, _: &NextTab, _, cx| this.cycle_tab(1, cx)))
             .on_action(cx.listener(|this, _: &PrevTab, _, cx| this.cycle_tab(-1, cx)))
+            .on_action(cx.listener(|this, _: &TabBack, _, cx| this.step_history(true, cx)))
+            .on_action(cx.listener(|this, _: &TabForward, _, cx| this.step_history(false, cx)))
             .on_action(cx.listener(|this, _: &OpenGame, window, cx| {
                 this.new_tab(Mode::Analyse, window, cx);
                 this.analyse

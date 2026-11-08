@@ -122,6 +122,8 @@ const SHORTCUT_GROUPS: [(&str, &[(&str, &str)]); 5] = [
             ("reopen_tab", "Reopen closed tab"),
             ("next_tab", "Next tab"),
             ("prev_tab", "Previous tab"),
+            ("tab_back", "Go back"),
+            ("tab_forward", "Go forward"),
             ("search", "Search"),
             ("show_analyse", "Analyse"),
             ("show_database", "Database"),

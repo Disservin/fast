@@ -189,6 +189,8 @@ pub fn translate(language: Language, text: &str) -> &str {
             "Fewer lines" => "Weniger Varianten",
             "Next tab" => "Nächster Tab",
             "Previous tab" => "Vorheriger Tab",
+            "Go back" => "Zurück",
+            "Go forward" => "Vorwärts",
             "Navigation" => "Navigation",
             "Reset all" => "Alles zurücksetzen",
             "Reset to defaults" => "Auf Standard zurücksetzen",
