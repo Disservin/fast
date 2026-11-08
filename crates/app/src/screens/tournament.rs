@@ -3152,7 +3152,7 @@ fn reveal_folder(path: &Path) {
     }
 }
 
-fn search_text(search: &Search, long: bool) -> String {
+pub(crate) fn search_text(search: &Search, long: bool) -> String {
     let Some(score) = search.score else {
         return String::new();
     };
