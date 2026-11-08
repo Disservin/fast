@@ -1,9 +1,16 @@
 [workspace]
 resolver = "2"
-members = ["crates/app", "crates/ui", "crates/chess_core", "crates/engine", "crates/db", "crates/trainer"]
+members = [
+    "crates/app",
+    "crates/ui",
+    "crates/chess_core",
+    "crates/engine",
+    "crates/db",
+    "crates/trainer",
+]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 license = "GPL-3.0-or-later"
 
@@ -11,7 +18,12 @@ license = "GPL-3.0-or-later"
 # gpui-component at this rev is built against the gpui-pre 0.3.11 snapshot of Zed's
 # crates, so that exact snapshot is what must be used for gpui / gpui_platform.
 gpui = { package = "gpui-pre", version = "=0.3.11" }
-gpui_platform = { package = "gpui-pre-platform", version = "=0.3.11", features = ["font-kit", "x11", "wayland", "runtime_shaders"] }
+gpui_platform = { package = "gpui-pre-platform", version = "=0.3.11", features = [
+    "font-kit",
+    "x11",
+    "wayland",
+    "runtime_shaders",
+] }
 gpui-component = { git = "https://github.com/longbridge/gpui-component", rev = "48ac25b50c81ca5e34ec1631e3efabe22f4af64a" }
 
 chess_core = { path = "crates/chess_core" }
