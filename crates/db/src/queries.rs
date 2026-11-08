@@ -49,6 +49,52 @@ pub enum SideFilter {
     Black,
 }
 
+/// A game result to filter by. With a player set it is that player's result;
+/// otherwise Win is 1-0 and Loss is 0-1.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ResultFilter {
+    Win,
+    Draw,
+    Loss,
+}
+
+/// Reads a date bound typed as `2020`, `2020.05` or `2020.05.17` (dots or dashes) and
+/// pads it to the stored `YYYY-MM-DD` form. A lower bound fills missing parts with the
+/// smallest value; an upper bound with one above any digit or `?`, so `2020` up to
+/// includes `2020-??-??`. Returns `None` for anything else.
+pub fn date_bound(text: &str, upper: bool) -> Option<String> {
+    let text = text.trim();
+    let parts: Vec<&str> = text.split(['.', '-', '/']).collect();
+    let valid = |part: &str, len: usize, range: std::ops::RangeInclusive<u32>| {
+        part.len() == len
+            && part
+                .parse::<u32>()
+                .is_ok_and(|value| range.contains(&value))
+    };
+    if parts.is_empty()
+        || parts.len() > 3
+        || !valid(parts[0], 4, 1000..=9999)
+        || parts.get(1).is_some_and(|month| !valid(month, 2, 1..=12))
+        || parts.get(2).is_some_and(|day| !valid(day, 2, 1..=31))
+    {
+        return None;
+    }
+    let fill = if upper { "~~" } else { "00" };
+    let month = parts.get(1).copied().unwrap_or(fill);
+    let day = parts.get(2).copied().unwrap_or(fill);
+    Some(format!("{}-{month}-{day}", parts[0]))
+}
+
+/// Escapes `%`, `_` and `\` for a LIKE pattern that finds `text` anywhere.
+fn contains_pattern(text: &str) -> String {
+    format!(
+        "%{}%",
+        text.replace('\\', "\\\\")
+            .replace('%', "\\%")
+            .replace('_', "\\_")
+    )
+}
+
 /// A column the games table can be sorted by.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum SortKey {
@@ -135,11 +181,15 @@ impl Sort {
         descending: false,
     };
 
-    fn order_by(self) -> String {
+    /// The ORDER BY clause. With `filtered`, the sort column is written as `+column`
+    /// so SQLite scans the table and sorts the matches, which is several times faster
+    /// than walking the sort index and fetching every row to test it.
+    fn order_by(self, filtered: bool) -> String {
         let direction = if self.descending { "DESC" } else { "ASC" };
+        let plus = if filtered { "+" } else { "" };
         match self.key {
             SortKey::FileOrder => format!("id {direction}"),
-            key => format!("{} {direction}, id {direction}", key.sql()),
+            key => format!("{plus}{} {direction}, id {direction}", key.sql()),
         }
     }
 }
@@ -166,6 +216,18 @@ pub struct Filter {
     pub only_left_repertoire: bool,
     /// Only games with comments, NAGs or variations.
     pub only_annotated: bool,
+    /// Earliest and latest date, in the stored form from [`date_bound`].
+    pub date_from: Option<String>,
+    pub date_to: Option<String>,
+    /// Text the event or site contains.
+    pub event: String,
+    pub result: Option<ResultFilter>,
+    /// The player's rating range; without a player, both players' ratings.
+    pub min_rating: Option<i64>,
+    pub max_rating: Option<i64>,
+    /// Game length in moves.
+    pub min_moves: Option<i64>,
+    pub max_moves: Option<i64>,
     /// The order of the results.
     pub sort: Sort,
 }
@@ -251,6 +313,82 @@ impl Filter {
         }
         if self.only_annotated {
             clauses.push("annotated IS NOT NULL".to_owned());
+        }
+        if let Some(from) = &self.date_from {
+            clauses.push("date >= ?".to_owned());
+            values.push(Box::new(from.clone()));
+        }
+        if let Some(to) = &self.date_to {
+            clauses.push("date <= ?".to_owned());
+            values.push(Box::new(to.clone()));
+        }
+        let event = self.event.trim();
+        if !event.is_empty() {
+            clauses.push("(event LIKE ? ESCAPE '\\' OR site LIKE ? ESCAPE '\\')".to_owned());
+            values.push(Box::new(contains_pattern(event)));
+            values.push(Box::new(contains_pattern(event)));
+        }
+        let list = marks(names.len());
+        if let Some(result) = self.result {
+            if names.is_empty() {
+                let stored = match result {
+                    ResultFilter::Win => "1-0",
+                    ResultFilter::Draw => "1/2-1/2",
+                    ResultFilter::Loss => "0-1",
+                };
+                clauses.push("result = ?".to_owned());
+                values.push(Box::new(stored));
+            } else if result == ResultFilter::Draw {
+                clauses.push("result = '1/2-1/2'".to_owned());
+            } else {
+                let (as_white, as_black) = if result == ResultFilter::Win {
+                    ("1-0", "0-1")
+                } else {
+                    ("0-1", "1-0")
+                };
+                clauses.push(format!(
+                    "((white COLLATE NOCASE IN ({list}) AND result = '{as_white}')
+                      OR (black COLLATE NOCASE IN ({list}) AND result = '{as_black}'))"
+                ));
+                push_names(&mut values);
+                push_names(&mut values);
+            }
+        }
+        if self.min_rating.is_some() || self.max_rating.is_some() {
+            let (low, high) = if names.is_empty() {
+                (
+                    "MIN(COALESCE(white_elo, 0), COALESCE(black_elo, 0))".to_owned(),
+                    "MAX(COALESCE(white_elo, 0), COALESCE(black_elo, 0))".to_owned(),
+                )
+            } else {
+                let own = format!(
+                    "(CASE WHEN white COLLATE NOCASE IN ({list}) THEN COALESCE(white_elo, 0)
+                           ELSE COALESCE(black_elo, 0) END)"
+                );
+                (own.clone(), own)
+            };
+            if let Some(min) = self.min_rating {
+                clauses.push(format!("{low} >= ?"));
+                if !names.is_empty() {
+                    push_names(&mut values);
+                }
+                values.push(Box::new(min));
+            }
+            if let Some(max) = self.max_rating {
+                clauses.push(format!("{high} <= ?"));
+                if !names.is_empty() {
+                    push_names(&mut values);
+                }
+                values.push(Box::new(max));
+            }
+        }
+        if let Some(min) = self.min_moves {
+            clauses.push("(plies + 1) / 2 >= ?".to_owned());
+            values.push(Box::new(min));
+        }
+        if let Some(max) = self.max_moves {
+            clauses.push("(plies + 1) / 2 <= ?".to_owned());
+            values.push(Box::new(max));
         }
         let clause = if clauses.is_empty() {
             String::new()
@@ -446,7 +584,7 @@ impl Database {
     /// and lets the table virtualize by fetching row data only for the visible range.
     pub fn filtered_ids(&self, filter: &Filter) -> Result<Vec<i64>> {
         let (clause, values) = filter.sql();
-        let order = filter.sort.order_by();
+        let order = filter.sort.order_by(!clause.is_empty());
         let mut statement = self
             .conn
             .prepare(&format!("SELECT id FROM games{clause} ORDER BY {order}"))?;
@@ -1056,6 +1194,139 @@ mod tests {
         assert_eq!(lines[0].3, 1.0);
         assert!(!lines[1].2);
         assert_eq!(lines[1].3, 0.5);
+    }
+
+    #[test]
+    fn date_bounds_pad_partial_dates() {
+        assert_eq!(date_bound("2020", false).as_deref(), Some("2020-00-00"));
+        assert_eq!(date_bound("2020", true).as_deref(), Some("2020-~~-~~"));
+        assert_eq!(date_bound("2020.05", true).as_deref(), Some("2020-05-~~"));
+        assert_eq!(
+            date_bound("2020-05-17", false).as_deref(),
+            Some("2020-05-17")
+        );
+        for bad in [
+            "",
+            "20",
+            "2020.5",
+            "2020.13",
+            "2020.05.32",
+            "abc",
+            "2020.01.01.01",
+        ] {
+            assert_eq!(date_bound(bad, false), None, "{bad}");
+        }
+    }
+
+    #[test]
+    fn metadata_filters_alone_and_combined() {
+        let (_dir, db) = database();
+        let count = |filter: Filter| db.filtered_ids(&filter).unwrap().len();
+        let dates = |from: &str, to: &str| Filter {
+            date_from: date_bound(from, false),
+            date_to: date_bound(to, true),
+            ..Default::default()
+        };
+        assert_eq!(count(dates("2026.01.02", "2026")), 2);
+        assert_eq!(count(dates("2025", "2026.01.01")), 1);
+        assert_eq!(count(dates("2027", "2027")), 0);
+        assert_eq!(
+            count(Filter {
+                event: "LICHESS".to_owned(),
+                ..Default::default()
+            }),
+            1
+        );
+        assert_eq!(
+            count(Filter {
+                event: "%".to_owned(),
+                ..Default::default()
+            }),
+            0
+        );
+        let me = |result| Filter {
+            player: "me".to_owned(),
+            result: Some(result),
+            ..Default::default()
+        };
+        // "me" won with White, drew with Black and lost with White.
+        assert_eq!(db.filtered_ids(&me(ResultFilter::Win)).unwrap(), vec![1]);
+        assert_eq!(db.filtered_ids(&me(ResultFilter::Draw)).unwrap(), vec![2]);
+        assert_eq!(db.filtered_ids(&me(ResultFilter::Loss)).unwrap(), vec![3]);
+        let bob_loss = Filter {
+            player: "bob".to_owned(),
+            result: Some(ResultFilter::Loss),
+            ..Default::default()
+        };
+        assert_eq!(count(bob_loss), 0);
+        let white_wins = Filter {
+            result: Some(ResultFilter::Win),
+            ..Default::default()
+        };
+        assert_eq!(db.filtered_ids(&white_wins).unwrap(), vec![1]);
+        assert_eq!(
+            count(Filter {
+                player: "me".to_owned(),
+                min_rating: Some(2005),
+                ..Default::default()
+            }),
+            1
+        );
+        assert_eq!(
+            count(Filter {
+                min_rating: Some(1900),
+                max_rating: Some(2100),
+                ..Default::default()
+            }),
+            1
+        );
+        assert_eq!(
+            count(Filter {
+                min_moves: Some(2),
+                max_moves: Some(2),
+                ..Default::default()
+            }),
+            3
+        );
+        assert_eq!(
+            count(Filter {
+                max_moves: Some(1),
+                ..Default::default()
+            }),
+            0
+        );
+        let combined = Filter {
+            player: "me".to_owned(),
+            side: SideFilter::White,
+            result: Some(ResultFilter::Loss),
+            date_from: date_bound("2026", false),
+            event: "lichess".to_owned(),
+            ..Default::default()
+        };
+        assert_eq!(db.filtered_ids(&combined).unwrap(), vec![3]);
+        assert_eq!(db.stats(&combined).unwrap().games, 1);
+    }
+
+    #[test]
+    fn unknown_date_parts_fall_inside_a_year() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("q.sqlite");
+        let pgn = "[Date \"2019.??.??\"]\n\n1. e4 *\n\n[Date \"????.??.??\"]\n\n1. d4 *\n";
+        import_games(
+            &path,
+            pgn.as_bytes(),
+            &ImportOptions::default(),
+            &ImportControl::default(),
+            |_| {},
+        )
+        .unwrap();
+        let db = Database::open(&path).unwrap();
+        let year = Filter {
+            date_from: date_bound("2019", false),
+            date_to: date_bound("2019", true),
+            ..Default::default()
+        };
+        assert_eq!(db.filtered_ids(&year).unwrap(), vec![1]);
     }
 
     #[test]

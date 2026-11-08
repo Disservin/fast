@@ -4,9 +4,10 @@ Reddit threads about En Croissant name the gaps that keep people on ChessBase, S
 Chess. Fast already covers many of them: tabs for any screen, saving annotations back to a
 database, Play from any position, engine tournaments, clearing arrows with a left click, native
 Mac and Linux builds. This plan covers the requests Fast does not meet yet, in the order
-they should be built. Comments, variations and NAGs now survive database import, the opening tree can use any
-database, the games table sorts by file order and by column, and your Lichess and
-Chess.com games download on request.
+they should be built. Already shipped from it: comments, variations and NAGs survive database
+import; the opening tree can use any database; the games table sorts by file order and by
+column; Lichess and Chess.com games download on request; and the Database tab filters by
+date, event, result, rating and length, with saved searches.
 
 It refines items 4 and 6 of `docs/roadmap.md`. When an item ships, remove it here and from the
 roadmap, and update `ARCHITECTURE.md` where the item changes crates, threads, protocol or data
@@ -14,10 +15,9 @@ flow.
 
 | # | Item | Size | Touches |
 | --- | --- | --- | --- |
-| 5 | More search filters | M (phase A), L (phase B) | `db`, Database tab |
+| 5 | Position pattern search (phase B of more filters) | L | `db`, Database tab |
 | 6 | Chess960 in Analyse and Play | L | `chess_core`, `engine`, board, Analyse, Play |
 
-Item 5's metadata filters can ship at any time.
 Item 6 touches the most code, so it goes last.
 
 ## Rules for every item
@@ -47,23 +47,12 @@ Each item follows `AGENTS.md`. In particular:
 
 ## 5. More search filters
 
-**Problem.** The filter panel has Player, Colour, ECO, Opponent rating, time class and exact
-position. Users comparing Fast with ChessBase and Scid miss date, event and result filters,
-and ways to search by material or pawn structure.
+**Problem.** Users comparing Fast with ChessBase and Scid miss ways to search by material
+or pawn structure.
 
-### Phase A: metadata filters
-
-1. **`db::Filter`.** New fields:
-   - Date from and to: accept `YYYY`, `YYYY.MM` and `YYYY.MM.DD`. Pad them to PGN date
-     strings (`2020` from becomes `2020.00.00`, `2020` to becomes `2020.99.99`) so the
-     `games_date` index works and `??` parts behave.
-   - Event or site contains.
-   - Result: Win / Draw / Loss when a player is set, 1-0 / ½-½ / 0-1 otherwise.
-   - Player's rating range, next to the existing opponent rating.
-   - Moves, minimum and maximum.
-   - Only annotated games (item 1).
-2. **Saved searches.** A name plus a `Filter` in `config.saved_filters`, listed under the
-   Filter heading. One click applies a saved search.
+Phase A has shipped: date, event or site, result, player rating, moves and annotated
+filters, saved searches, live filtering with "Clear filters", and the "More filters"
+disclosure. Phase B remains.
 
 ### Phase B: position patterns
 
@@ -75,26 +64,10 @@ and ways to search by material or pawn structure.
   index"), measure the size on one million games first, and build it per database on request
   for existing ones. This overlaps roadmap item 11 and should be designed together with it.
 
-### UX
-
-- **The panel stays compact.** Player, Colour, Result and Date stay visible. The rest sits
-  under a "More filters" disclosure, which shows a `badge()` with the number of active hidden
-  filters, so no filter is active without the user seeing it. Number pairs are one-line
-  `min – max` inputs, side by side. The left column already scrolls; at 1100×720 the visible
-  set must fit without scrolling.
-- **Live, debounced.** Filters apply 200 ms after typing stops. Above the table: "1,204 of
-  48,310 games" in mono, and a "Clear filters" button when any filter is active.
-- **Invalid input.** An unreadable date gets a `warn` outline and a short hint under the field
-  ("Use 2020, 2020.05 or 2020.05.17"). The filter is ignored until the date is fixed.
-- **Keeping results.** When a filter changes, the current rows stay until the new ones arrive,
-  with the 2px bar under the header.
-
 ### Verification
 
-- `db` tests for each filter on its own and combined, dates with `??`, and Win / Loss from
-  both colours.
-- Timing on one million games for each filter. An event search that scans the whole table is
-  acceptable if it finishes in about a second; record the time in the PR.
+- Phase B: measure the index size on one million games before building it, and time each
+  pattern search.
 
 ---
 

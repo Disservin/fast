@@ -525,6 +525,30 @@ pub struct Config {
     pub database_sorts: BTreeMap<String, SavedSort>,
     /// Lichess and Chess.com accounts whose games were downloaded, for updating them.
     pub accounts: Vec<Account>,
+    /// Named Database searches, listed under the Filter heading.
+    pub saved_filters: Vec<SavedFilter>,
+}
+
+/// A named Database search: the filter fields as typed.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SavedFilter {
+    pub name: String,
+    pub player: String,
+    pub colour: usize,
+    pub result: usize,
+    pub date_from: String,
+    pub date_to: String,
+    pub eco: String,
+    pub time_control: usize,
+    pub opponent_rating: String,
+    pub min_rating: String,
+    pub max_rating: String,
+    pub min_moves: String,
+    pub max_moves: String,
+    pub event: String,
+    pub only_annotated: bool,
+    pub only_left_repertoire: bool,
 }
 
 /// An online account whose games Fast downloaded into a database.
@@ -612,6 +636,7 @@ impl Default for Config {
             explorer_default: None,
             database_sorts: BTreeMap::new(),
             accounts: Vec::new(),
+            saved_filters: Vec::new(),
         }
     }
 }

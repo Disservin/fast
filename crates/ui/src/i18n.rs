@@ -909,6 +909,27 @@ pub fn translate(language: Language, text: &str) -> &str {
             "Updates only run when you ask. Each one fetches the games played since the last." => {
                 "Aktualisierungen laufen nur auf Wunsch. Jede lädt die Partien seit der letzten."
             }
+            "Win" => "Sieg",
+            "Loss" => "Niederlage",
+            "From" => "Von",
+            "To" => "Bis",
+            "Event or site" => "Turnier oder Ort",
+            "Min" => "Min",
+            "Max" => "Max",
+            "Name of the search" => "Name der Suche",
+            "Use 2020, 2020.05 or 2020.05.17" => "2020, 2020.05 oder 2020.05.17 verwenden",
+            "Delete saved search" => "Gespeicherte Suche löschen",
+            "Right-click to delete" => "Rechtsklick zum Löschen",
+            "Only annotated games" => "Nur kommentierte Partien",
+            "Import a PGN file, or download games from Lichess or Chess.com" => {
+                "PGN-Datei importieren oder Partien von Lichess oder Chess.com laden"
+            }
+            "Save search" => "Suche speichern",
+            "Save these filters under a name" => "Diese Filter unter einem Namen speichern",
+            "More filters" => "Weitere Filter",
+            "{} of {} games" => "{} von {} Partien",
+            "{} games" => "{} Partien",
+            "Clear filters" => "Filter löschen",
             _ => text,
         }
     } else {

@@ -180,6 +180,7 @@ pub struct Btn {
     on_click: Option<ClickHandler>,
     tooltip: Option<SharedString>,
     dot: Option<u32>,
+    left: bool,
 }
 
 pub fn btn(id: impl Into<ElementId>, label: impl Into<SharedString>) -> Btn {
@@ -200,6 +201,7 @@ pub fn btn(id: impl Into<ElementId>, label: impl Into<SharedString>) -> Btn {
         on_click: None,
         tooltip: None,
         dot: None,
+        left: false,
     }
 }
 
@@ -304,6 +306,12 @@ impl Btn {
         self
     }
 
+    /// Lines the icon and label up on the left, for buttons that read like list rows.
+    pub fn left(mut self) -> Self {
+        self.left = true;
+        self
+    }
+
     pub fn dot(mut self, color: u32) -> Self {
         self.dot = Some(color);
         self
@@ -386,6 +394,9 @@ impl RenderOnce for Btn {
                 });
         }
         el = el.focus_visible(|style| style.border_2().border_color(rgb(T.accent)));
+        if self.left {
+            el = el.justify_start().overflow_hidden();
+        }
         if let Some(color) = self.dot {
             el = el
                 .gap(px(8.))

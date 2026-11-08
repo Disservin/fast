@@ -9,8 +9,8 @@ pub use edit::GameInfo;
 pub use import::{ImportControl, ImportOptions, ImportProgress, ImportSummary, import_games};
 pub use notes::NoteStore;
 pub use queries::{
-    Filter, FilterStats, GameDetails, GameRow, MoveStat, PlayerLine, ReviewPosition, ReviewSummary,
-    SideFilter, Sort, SortKey, TimeClass,
+    Filter, FilterStats, GameDetails, GameRow, MoveStat, PlayerLine, ResultFilter, ReviewPosition,
+    ReviewSummary, SideFilter, Sort, SortKey, TimeClass, date_bound,
 };
 
 use std::path::{Path, PathBuf};

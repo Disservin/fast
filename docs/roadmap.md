@@ -9,7 +9,7 @@ A standalone product backlog for the native, offline chess workstation. Prioriti
 3. **Change — make layouts work across window sizes.** Save panel sizes per screen, provide a reset action, and allow panels to stack when space is tight. Keep the board square, tables aligned and essential actions reachable with keyboard navigation and visible focus.
 4. **Change — make PGN imports tolerant and transparent.** Accept unknown ratings, common encoding artifacts and valid annotation variants. Report imported, skipped and failed games with useful diagnostics; cancellation must retain committed work and report partial completion accurately.
 5. **Add — import deduplication and database cleanup.** Detect exact repeated games first. Offer optional prefix/metadata-tolerant matching, preview proposed merges, preserve annotations and allow the user to choose which version survives. Never silently delete games based on a fuzzy match.
-6. **Add — database management tools.** Merge selected databases, save filters and manage reference collections. Keep searches, imports and large result lists responsive; verify this with representative large datasets before choosing optimizations.
+6. **Add — database management tools.** Merge selected databases and manage reference collections. Keep searches, imports and large result lists responsive; verify this with representative large datasets before choosing optimizations.
 
 **Completion checks:** a reopened workspace returns to the same study context; cancelling an import reports exactly what was retained; deduplication offers a reviewable preview; common tasks remain reachable in a narrow window.
 

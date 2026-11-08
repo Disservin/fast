@@ -20,6 +20,7 @@ pub struct TextField {
     suffix: Option<&'static str>,
     icon: Option<&'static str>,
     hint: Option<AnyElement>,
+    invalid: bool,
 }
 
 pub fn text_input(state: &Entity<InputState>) -> TextField {
@@ -29,6 +30,7 @@ pub fn text_input(state: &Entity<InputState>) -> TextField {
         suffix: None,
         icon: None,
         hint: None,
+        invalid: false,
     }
 }
 
@@ -46,6 +48,12 @@ impl TextField {
     /// Shows a small icon before the text, such as a magnifier on a search box.
     pub fn icon(mut self, path: &'static str) -> Self {
         self.icon = Some(path);
+        self
+    }
+
+    /// Marks the field's value as unreadable with a `warn` outline.
+    pub fn invalid(mut self, invalid: bool) -> Self {
+        self.invalid = invalid;
         self
     }
 
@@ -68,7 +76,13 @@ impl RenderOnce for TextField {
             .rounded(px(4.))
             .bg(rgb(T.bg))
             .border_1()
-            .border_color(rgb(if focused { T.fg } else { T.border_strong }))
+            .border_color(rgb(if self.invalid {
+                T.warn
+            } else if focused {
+                T.fg
+            } else {
+                T.border_strong
+            }))
             .child(
                 Input::new(&self.state)
                     .appearance(false)

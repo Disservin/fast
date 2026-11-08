@@ -5,8 +5,8 @@ use std::{collections::HashMap, ops::Range, path::PathBuf};
 use chess_core::{Chess, GameTree, Position, classify, position_hash};
 use db::{
     Database, Filter, FilterStats, GameDetails, GameInfo, GameRow, ImportControl, ImportOptions,
-    ImportProgress, ReviewPosition, ReviewSummary, SideFilter, Sort, SortKey, TimeClass,
-    import_games,
+    ImportProgress, ResultFilter, ReviewPosition, ReviewSummary, SideFilter, Sort, SortKey,
+    TimeClass, date_bound, import_games,
 };
 use gpui::{
     AnyElement, AppContext as _, Context, Entity, FontWeight, IntoElement, MouseButton, Render,
@@ -68,6 +68,11 @@ impl GameEditor {
 }
 
 const COLOURS: [&str; 3] = ["Any", "White", "Black"];
+/// Result choices with a player set, and without one.
+const PLAYER_RESULTS: [&str; 4] = ["Any", "Win", "Draw", "Loss"];
+const BOARD_RESULTS: [&str; 4] = ["Any", "1–0", "½–½", "0–1"];
+/// How long typing must pause before the filter runs.
+const FILTER_DELAY: std::time::Duration = std::time::Duration::from_millis(200);
 const TIME_CONTROLS: [&str; 5] = ["Any", "Rapid + Classical", "Classical", "Rapid", "Blitz"];
 /// Rows fetched per page as the table scrolls.
 const PAGE: usize = 200;
@@ -202,6 +207,23 @@ pub struct DatabaseScreen {
     db_snapshot: Option<DbEntry>,
     player: Entity<InputState>,
     colour: TextSelect,
+    result: TextSelect,
+    /// Whether the result choices are currently worded for a player.
+    result_for_player: bool,
+    date_from: Entity<InputState>,
+    date_to: Entity<InputState>,
+    event: Entity<InputState>,
+    min_rating: Entity<InputState>,
+    max_rating: Entity<InputState>,
+    min_moves: Entity<InputState>,
+    max_moves: Entity<InputState>,
+    only_annotated: bool,
+    /// Whether the "More filters" section is unfolded.
+    more_filters: bool,
+    /// The name field shown while saving the current search.
+    saving_search: Option<Entity<InputState>>,
+    _saving_sub: Option<Subscription>,
+    filter_task: Option<Task<()>>,
     eco: Entity<InputState>,
     opp_rating: Entity<InputState>,
     time_control: TextSelect,
@@ -218,8 +240,6 @@ pub struct DatabaseScreen {
     /// Keyboard focus for each sortable column heading, by `SortKey`.
     sort_focus: Vec<gpui::FocusHandle>,
     summary: SharedString,
-    /// Preview count for the "Show N games" button.
-    pending_count: Option<u64>,
     ids: Vec<i64>,
     rows: HashMap<i64, GameRow>,
     requested_pages: std::collections::HashSet<usize>,
@@ -272,7 +292,6 @@ pub struct DatabaseScreen {
     player_picked: Option<String>,
     suggest_task: Option<Task<()>>,
     query_task: Option<Task<()>>,
-    count_task: Option<Task<()>>,
     preview_task: Option<Task<()>>,
     _subscriptions: Vec<Subscription>,
 }
@@ -334,6 +353,22 @@ impl DatabaseScreen {
             window,
             cx,
         );
+        let result = new_select(
+            BOARD_RESULTS
+                .iter()
+                .map(|text| SharedString::from(ui::i18n::t(text)))
+                .collect(),
+            0,
+            window,
+            cx,
+        );
+        let date_from = new_input("", "From", window, cx);
+        let date_to = new_input("", "To", window, cx);
+        let event = new_input("", "Event or site", window, cx);
+        let min_rating = new_input("", "Min", window, cx);
+        let max_rating = new_input("", "Max", window, cx);
+        let min_moves = new_input("", "Min", window, cx);
+        let max_moves = new_input("", "Max", window, cx);
         let preview_board = cx.new(|_| BoardView::new("preview-board").read_only());
         let prefs = model.read(cx).config.board.prefs();
         preview_board.update(cx, |board, cx| board.set_prefs(prefs, cx));
@@ -351,7 +386,8 @@ impl DatabaseScreen {
             window,
             |this, _, event, window, cx| match event {
                 InputEvent::Change => {
-                    this.update_pending_count(cx);
+                    this.sync_result_labels(window, cx);
+                    this.schedule_filter(cx);
                     this.suggest_players(cx);
                 }
                 InputEvent::PressEnter { .. } => match this.player_highlight {
@@ -362,20 +398,30 @@ impl DatabaseScreen {
                 _ => {}
             },
         ));
-        for input in [&eco, &opp_rating] {
+        for input in [
+            &eco,
+            &opp_rating,
+            &date_from,
+            &date_to,
+            &event,
+            &min_rating,
+            &max_rating,
+            &min_moves,
+            &max_moves,
+        ] {
             subscriptions.push(cx.subscribe_in(
                 input,
                 window,
                 |this, _, event, _, cx| match event {
-                    InputEvent::Change => this.update_pending_count(cx),
+                    InputEvent::Change => this.schedule_filter(cx),
                     InputEvent::PressEnter { .. } => this.apply_filter(cx),
                     _ => {}
                 },
             ));
         }
-        for select in [&colour, &time_control] {
+        for select in [&colour, &time_control, &result] {
             subscriptions.push(cx.subscribe(select, |this, _, _: &SelectEvent<_>, cx| {
-                this.update_pending_count(cx);
+                this.schedule_filter(cx);
             }));
         }
         subscriptions.push(
@@ -425,6 +471,20 @@ impl DatabaseScreen {
             db_snapshot: None,
             player,
             colour,
+            result,
+            result_for_player: false,
+            date_from,
+            date_to,
+            event,
+            min_rating,
+            max_rating,
+            min_moves,
+            max_moves,
+            only_annotated: false,
+            more_filters: false,
+            saving_search: None,
+            _saving_sub: None,
+            filter_task: None,
             eco,
             opp_rating,
             time_control,
@@ -439,7 +499,6 @@ impl DatabaseScreen {
                 .map(|_| cx.focus_handle().tab_stop(true))
                 .collect(),
             summary: "".into(),
-            pending_count: None,
             ids: Vec::new(),
             rows: HashMap::new(),
             requested_pages: Default::default(),
@@ -478,10 +537,10 @@ impl DatabaseScreen {
             player_picked: None,
             suggest_task: None,
             query_task: None,
-            count_task: None,
             preview_task: None,
             _subscriptions: subscriptions,
         };
+        this.sync_result_labels(window, cx);
         this.apply_filter(cx);
         this
     }
@@ -539,12 +598,30 @@ impl DatabaseScreen {
                 .filter(|_| self.reached)
                 .map(|(hash, _)| *hash),
             only_left_repertoire: self.only_left_rep,
-            only_annotated: false,
+            only_annotated: self.only_annotated,
+            date_from: date_bound(self.date_from.read(cx).value().as_ref(), false),
+            date_to: date_bound(self.date_to.read(cx).value().as_ref(), true),
+            event: self.event.read(cx).value().trim().to_owned(),
+            result: match self
+                .result
+                .read(cx)
+                .selected_index(cx)
+                .map(|index| index.row)
+            {
+                Some(1) => Some(ResultFilter::Win),
+                Some(2) => Some(ResultFilter::Draw),
+                Some(3) => Some(ResultFilter::Loss),
+                _ => None,
+            },
+            min_rating: number(&self.min_rating, cx),
+            max_rating: number(&self.max_rating, cx),
+            min_moves: number(&self.min_moves, cx),
+            max_moves: number(&self.max_moves, cx),
             sort: self.sort,
         }
     }
 
-    fn summary_for(&self, filter: &Filter) -> SharedString {
+    fn summary_for(&self, filter: &Filter, cx: &gpui::App) -> SharedString {
         let mut parts = Vec::new();
         if let Some((_, label)) = self.reached_position.as_ref().filter(|_| self.reached) {
             parts.push(label.clone());
@@ -560,8 +637,34 @@ impl DatabaseScreen {
                 }
             }
         }
+        if let Some(result) = filter.result {
+            let player = !filter.player.trim().is_empty();
+            parts.push(
+                match (result, player) {
+                    (ResultFilter::Win, true) => "won",
+                    (ResultFilter::Loss, true) => "lost",
+                    (ResultFilter::Draw, _) => "drawn",
+                    (ResultFilter::Win, false) => "1–0",
+                    (ResultFilter::Loss, false) => "0–1",
+                }
+                .to_owned(),
+            );
+        }
+        let typed = |input: &Entity<InputState>| input.read(cx).value().trim().to_owned();
+        match (typed(&self.date_from), typed(&self.date_to)) {
+            (from, to) if from.is_empty() && to.is_empty() => {}
+            (from, to) if to.is_empty() => parts.push(format!("from {from}")),
+            (from, to) if from.is_empty() => parts.push(format!("until {to}")),
+            (from, to) => parts.push(format!("{from}–{to}")),
+        }
+        if !filter.event.is_empty() {
+            parts.push(format!("“{}”", filter.event));
+        }
         if filter.only_left_repertoire {
             parts.push("left repertoire".to_owned());
+        }
+        if filter.only_annotated {
+            parts.push("annotated".to_owned());
         }
         parts.join(", ").into()
     }
@@ -617,28 +720,201 @@ impl DatabaseScreen {
         self.apply_filter(cx);
     }
 
-    /// Counts matches in the background for the "Show N games" button.
-    fn update_pending_count(&mut self, cx: &mut Context<Self>) {
-        let Some(path) = self.selected_db.clone() else {
+    /// Runs the filter once typing has paused for a moment. Each change restarts
+    /// the wait, and the rows on screen stay until the new ones arrive.
+    fn schedule_filter(&mut self, cx: &mut Context<Self>) {
+        self.filter_task = Some(cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(FILTER_DELAY).await;
+            let _ = this.update(cx, |this, cx| this.run_query(cx));
+        }));
+        cx.notify();
+    }
+
+    /// Words the Result choices for a player (Win, Draw, Loss) when one is typed, and
+    /// as board results (1–0, ½–½, 0–1) otherwise, keeping the choice.
+    fn sync_result_labels(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let for_player = !self.player.read(cx).value().trim().is_empty();
+        if for_player == self.result_for_player {
+            return;
+        }
+        self.result_for_player = for_player;
+        let labels = if for_player {
+            PLAYER_RESULTS
+        } else {
+            BOARD_RESULTS
+        };
+        let items: Vec<SharedString> = labels
+            .iter()
+            .map(|text| SharedString::from(ui::i18n::t(text)))
+            .collect();
+        self.result.update(cx, |select, cx| {
+            let chosen = select.selected_index(cx);
+            select.set_items(
+                gpui_component::select::SearchableVec::new(items),
+                window,
+                cx,
+            );
+            select.set_selected_index(chosen, window, cx);
+        });
+    }
+
+    /// The filter fields hidden under "More filters" that are set, for its badge.
+    fn hidden_filters_set(&self, cx: &gpui::App) -> usize {
+        let typed = |input: &Entity<InputState>| !input.read(cx).value().trim().is_empty();
+        let time = self
+            .time_control
+            .read(cx)
+            .selected_index(cx)
+            .is_some_and(|index| index.row != 0);
+        [
+            typed(&self.eco),
+            time,
+            typed(&self.opp_rating),
+            typed(&self.min_rating) || typed(&self.max_rating),
+            typed(&self.min_moves) || typed(&self.max_moves),
+            typed(&self.event),
+            self.only_annotated,
+            self.only_left_rep,
+        ]
+        .into_iter()
+        .filter(|set| *set)
+        .count()
+    }
+
+    /// Whether any filter is set, so "Clear filters" is offered.
+    fn any_filter_set(&self, cx: &gpui::App) -> bool {
+        let typed = |input: &Entity<InputState>| !input.read(cx).value().trim().is_empty();
+        let chosen = |select: &TextSelect| {
+            select
+                .read(cx)
+                .selected_index(cx)
+                .is_some_and(|index| index.row != 0)
+        };
+        self.hidden_filters_set(cx) > 0
+            || typed(&self.player)
+            || typed(&self.date_from)
+            || typed(&self.date_to)
+            || chosen(&self.colour)
+            || chosen(&self.result)
+            || self.reached
+    }
+
+    /// Empties every filter and shows all games.
+    fn clear_filters(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.clear_filter_fields(window, cx);
+        self.sync_result_labels(window, cx);
+        self.apply_filter(cx);
+    }
+
+    /// The current filter fields under a name, for the saved searches list.
+    fn current_search(&self, name: String, cx: &gpui::App) -> crate::config::SavedFilter {
+        let text = |input: &Entity<InputState>| input.read(cx).value().trim().to_owned();
+        let index = |select: &TextSelect| {
+            select
+                .read(cx)
+                .selected_index(cx)
+                .map_or(0, |index| index.row)
+        };
+        crate::config::SavedFilter {
+            name,
+            player: text(&self.player),
+            colour: index(&self.colour),
+            result: index(&self.result),
+            date_from: text(&self.date_from),
+            date_to: text(&self.date_to),
+            eco: text(&self.eco),
+            time_control: index(&self.time_control),
+            opponent_rating: text(&self.opp_rating),
+            min_rating: text(&self.min_rating),
+            max_rating: text(&self.max_rating),
+            min_moves: text(&self.min_moves),
+            max_moves: text(&self.max_moves),
+            event: text(&self.event),
+            only_annotated: self.only_annotated,
+            only_left_repertoire: self.only_left_rep,
+        }
+    }
+
+    /// Fills the filter fields from a saved search and shows its games.
+    fn apply_saved_search(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(saved) = self.model.read(cx).config.saved_filters.get(index).cloned() else {
             return;
         };
-        let filter = self.build_filter(cx);
-        let task = cx.background_spawn(async move {
-            Database::open(path)
-                .and_then(|db| db.stats(&filter))
-                .map(|stats| stats.games)
-        });
-        self.count_task = Some(cx.spawn(async move |this, cx| {
-            let count = task.await.ok();
-            let _ = this.update(cx, |this, cx| {
-                this.pending_count = count;
-                cx.notify();
+        self.clear_filter_fields(window, cx);
+        for (input, value) in [
+            (&self.player, &saved.player),
+            (&self.date_from, &saved.date_from),
+            (&self.date_to, &saved.date_to),
+            (&self.eco, &saved.eco),
+            (&self.opp_rating, &saved.opponent_rating),
+            (&self.min_rating, &saved.min_rating),
+            (&self.max_rating, &saved.max_rating),
+            (&self.min_moves, &saved.min_moves),
+            (&self.max_moves, &saved.max_moves),
+            (&self.event, &saved.event),
+        ] {
+            let value = value.clone();
+            input.update(cx, |input, cx| input.set_value(value, window, cx));
+        }
+        self.player_picked = Some(saved.player.clone());
+        self.sync_result_labels(window, cx);
+        for (select, row) in [
+            (&self.colour, saved.colour),
+            (&self.result, saved.result),
+            (&self.time_control, saved.time_control),
+        ] {
+            select.update(cx, |select, cx| {
+                select.set_selected_index(Some(gpui_component::IndexPath::new(row)), window, cx)
             });
-        }));
+        }
+        self.only_annotated = saved.only_annotated;
+        self.only_left_rep = saved.only_left_repertoire;
+        self.more_filters |= self.hidden_filters_set(cx) > 0;
+        self.apply_filter(cx);
+    }
+
+    /// Opens a field under the Filter heading to name the current search.
+    fn start_saving_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let input = new_input(self.summary.to_string(), "Name of the search", window, cx);
+        input.update(cx, |input, cx| input.focus(window, cx));
+        self._saving_sub = Some(
+            cx.subscribe_in(&input, window, |this, input, event, _, cx| match event {
+                InputEvent::PressEnter { .. } => {
+                    let name = input.read(cx).value().trim().to_owned();
+                    if !name.is_empty() {
+                        let search = this.current_search(name, cx);
+                        this.model.update(cx, |model, cx| {
+                            model
+                                .config
+                                .saved_filters
+                                .retain(|saved| saved.name != search.name);
+                            model.config.saved_filters.push(search);
+                            model.save_config(cx);
+                        });
+                    }
+                    this.saving_search = None;
+                    cx.notify();
+                }
+                InputEvent::Blur => {
+                    this.saving_search = None;
+                    cx.notify();
+                }
+                _ => {}
+            }),
+        );
+        self.saving_search = Some(input);
+        cx.notify();
     }
 
     pub fn apply_filter(&mut self, cx: &mut Context<Self>) {
         self.close_suggestions(cx);
+        self.run_query(cx);
+    }
+
+    /// Runs the filter on the selected database. The rows on screen stay until the
+    /// new ones arrive.
+    fn run_query(&mut self, cx: &mut Context<Self>) {
+        self.filter_task = None;
         let entries = self.model.read(cx).databases.clone();
         if self
             .selected_db
@@ -653,13 +929,12 @@ impl DatabaseScreen {
             .and_then(|path| entries.iter().find(|entry| &entry.path == path).cloned());
         self.sort = self.saved_sort(cx);
         let filter = self.build_filter(cx);
-        self.summary = self.summary_for(&filter);
+        self.summary = self.summary_for(&filter, cx);
         self.applied = filter.clone();
         let Some(path) = self.selected_db.clone() else {
             self.ids.clear();
             self.rows.clear();
             self.stats = FilterStats::default();
-            self.pending_count = Some(0);
             self.querying = false;
             cx.notify();
             return;
@@ -681,7 +956,6 @@ impl DatabaseScreen {
                 this.querying = false;
                 match result {
                     Ok((ids, stats, leak)) => {
-                        this.pending_count = Some(stats.games);
                         this.ids = ids;
                         this.stats = stats;
                         this.leak_text = leak;
@@ -812,10 +1086,22 @@ impl DatabaseScreen {
 
     /// Empties every filter field and option, without running the query.
     fn clear_filter_fields(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        for input in [&self.player, &self.eco, &self.opp_rating] {
+        for input in [
+            &self.player,
+            &self.eco,
+            &self.opp_rating,
+            &self.date_from,
+            &self.date_to,
+            &self.event,
+            &self.min_rating,
+            &self.max_rating,
+            &self.min_moves,
+            &self.max_moves,
+        ] {
             input.update(cx, |input, cx| input.set_value("", window, cx));
         }
-        for select in [&self.colour, &self.time_control] {
+        self.only_annotated = false;
+        for select in [&self.colour, &self.time_control, &self.result] {
             select.update(cx, |select, cx| {
                 select.set_selected_index(Some(gpui_component::IndexPath::new(0)), window, cx)
             });
@@ -2066,10 +2352,134 @@ impl DatabaseScreen {
         }
         let reached = self.reached;
         let only_left = self.only_left_rep;
-        let count = self.pending_count.unwrap_or(self.stats.games);
+        let only_annotated = self.only_annotated;
         let reached_this = this.clone();
-        let only_this = this.clone();
-        let show_this = this.clone();
+        let (only_this, annotated_this, more_this, save_this) =
+            (this.clone(), this.clone(), this.clone(), this.clone());
+        // Number pairs as one line: min – max.
+        let pair = |low: &Entity<InputState>, high: &Entity<InputState>| {
+            h_flex()
+                .gap(px(6.))
+                .child(div().flex_1().min_w_0().child(text_input(low)))
+                .child(div().text_color(rgb(T.muted)).child("–"))
+                .child(div().flex_1().min_w_0().child(text_input(high)))
+        };
+        let date_text = |input: &Entity<InputState>| input.read(cx).value().trim().to_owned();
+        let (from_text, to_text) = (date_text(&self.date_from), date_text(&self.date_to));
+        let from_bad = !from_text.is_empty() && date_bound(&from_text, false).is_none();
+        let to_bad = !to_text.is_empty() && date_bound(&to_text, true).is_none();
+        let dates = v_flex()
+            .gap(px(4.))
+            .child(
+                h_flex()
+                    .gap(px(6.))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .child(text_input(&self.date_from).invalid(from_bad)),
+                    )
+                    .child(div().text_color(rgb(T.muted)).child("–"))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .child(text_input(&self.date_to).invalid(to_bad)),
+                    ),
+            )
+            .when(from_bad || to_bad, |dates| {
+                dates.child(
+                    div()
+                        .text_size(px(12.))
+                        .text_color(rgb(T.warn))
+                        .child(ui::i18n::t("Use 2020, 2020.05 or 2020.05.17")),
+                )
+            });
+        let hidden = self.hidden_filters_set(cx);
+        let saved: Vec<String> = self
+            .model
+            .read(cx)
+            .config
+            .saved_filters
+            .iter()
+            .map(|saved| saved.name.clone())
+            .collect();
+        let mut saved_list = v_flex().mb(px(6.));
+        for (index, name) in saved.iter().enumerate() {
+            let (apply, delete) = (this.clone(), self.model.clone());
+            saved_list = saved_list.child(
+                div()
+                    .id(("saved-search-row", index))
+                    .child(
+                        btn(("saved-search", index), name.clone())
+                            .kind(ui::widgets::BtnKind::Ghost)
+                            .compact()
+                            .full()
+                            .left()
+                            .icon("icons/search.svg")
+                            .tooltip("Right-click to delete")
+                            .on_click(move |window, cx| {
+                                apply.update(cx, |screen, cx| {
+                                    screen.apply_saved_search(index, window, cx)
+                                });
+                            }),
+                    )
+                    .context_menu(move |menu, _, _| {
+                        let delete = delete.clone();
+                        menu.item(
+                            PopupMenuItem::new(ui::i18n::t("Delete saved search")).on_click(
+                                move |_, _, cx| {
+                                    delete.update(cx, |model, cx| {
+                                        if index < model.config.saved_filters.len() {
+                                            model.config.saved_filters.remove(index);
+                                            model.save_config(cx);
+                                        }
+                                    })
+                                },
+                            ),
+                        )
+                    }),
+            );
+        }
+        let more = v_flex()
+            .gap(px(7.))
+            .mb(px(10.))
+            .child(
+                div()
+                    .grid()
+                    .grid_cols(2)
+                    .gap_x(px(10.))
+                    .gap_y(px(7.))
+                    .child(field("ECO", text_input(&self.eco)))
+                    .child(field("Time control", select_el(&self.time_control)))
+                    .child(field("Opp. rating ≥", text_input(&self.opp_rating)))
+                    .child(field("Rating", pair(&self.min_rating, &self.max_rating))),
+            )
+            .child(field("Moves", pair(&self.min_moves, &self.max_moves)))
+            .child(field("Event or site", text_input(&self.event)))
+            .child(
+                check("only-annotated", only_annotated, "Only annotated games").on_change(
+                    move |value, _, cx| {
+                        annotated_this.update(cx, |screen, cx| {
+                            screen.only_annotated = value;
+                            screen.schedule_filter(cx);
+                        });
+                    },
+                ),
+            )
+            .child(
+                check(
+                    "left-rep",
+                    only_left,
+                    "Only games where I left my repertoire",
+                )
+                .on_change(move |value, _, cx| {
+                    only_this.update(cx, |screen, cx| {
+                        screen.only_left_rep = value;
+                        screen.schedule_filter(cx);
+                    });
+                }),
+            );
         v_flex()
             .id("database-left")
             .w(px(281.))
@@ -2093,7 +2503,9 @@ impl DatabaseScreen {
                         btn("import", ui::i18n::t("Import"))
                             .mini()
                             .icon("icons/plus.svg")
-                            .tooltip(ui::i18n::t("Import a PGN file into the selected database"))
+                            .tooltip(ui::i18n::t(
+                                "Import a PGN file, or download games from Lichess or Chess.com",
+                            ))
                             .on_click(move |window, cx| {
                                 import_this
                                     .update(cx, |screen, cx| screen.prompt_import(window, cx));
@@ -2101,7 +2513,27 @@ impl DatabaseScreen {
                     }),
             )
             .child(list)
-            .child(section_label("Filter").mb(px(8.)))
+            .child(
+                h_flex()
+                    .justify_between()
+                    .items_center()
+                    .mb(px(6.))
+                    .child(section_label("Filter"))
+                    .child(
+                        btn("save-search", "Save search")
+                            .mini()
+                            .tooltip("Save these filters under a name")
+                            .on_click(move |window, cx| {
+                                save_this.update(cx, |screen, cx| {
+                                    screen.start_saving_search(window, cx)
+                                });
+                            }),
+                    ),
+            )
+            .when_some(self.saving_search.clone(), |column, input| {
+                column.child(div().mb(px(6.)).child(text_input(&input).height(28.)))
+            })
+            .when(!saved.is_empty(), |column| column.child(saved_list))
             .child({
                 let (keys_this, suggestions) = (this.clone(), self.render_player_suggestions(cx));
                 let open = suggestions.is_some();
@@ -2124,15 +2556,13 @@ impl DatabaseScreen {
                     .grid()
                     .grid_cols(2)
                     .gap_x(px(10.))
-                    .gap_y(px(7.))
-                    .mb(px(10.))
+                    .mb(px(7.))
                     .child(field("Colour", select_el(&self.colour)))
-                    .child(field("ECO", text_input(&self.eco)))
-                    .child(field("Opp. rating ≥", text_input(&self.opp_rating)))
-                    .child(field("Time control", select_el(&self.time_control))),
+                    .child(field("Result", select_el(&self.result))),
             )
+            .child(div().mb(px(10.)).child(field("Date", dates)))
             .child(
-                div().mb(px(10.)).child(
+                div().mb(px(8.)).child(
                     check("reached", reached, "Reached the Analyse board position")
                         .text(13.)
                         .on_change(move |value, _, cx| {
@@ -2141,29 +2571,29 @@ impl DatabaseScreen {
                 ),
             )
             .child(
-                div().mb(px(10.)).child(
-                    check(
-                        "left-rep",
-                        only_left,
-                        "Only games where I left my repertoire",
+                h_flex()
+                    .gap(px(6.))
+                    .mb(px(6.))
+                    .ml(px(-10.))
+                    .child(
+                        btn("more-filters", "More filters")
+                            .kind(ui::widgets::BtnKind::Ghost)
+                            .compact()
+                            .icon(if self.more_filters {
+                                "icons/chevron-down.svg"
+                            } else {
+                                "icons/chevron-right.svg"
+                            })
+                            .on_click(move |_, cx| {
+                                more_this.update(cx, |screen, cx| {
+                                    screen.more_filters = !screen.more_filters;
+                                    cx.notify();
+                                });
+                            }),
                     )
-                    .on_change(move |value, _, cx| {
-                        only_this.update(cx, |screen, cx| {
-                            screen.only_left_rep = value;
-                            screen.update_pending_count(cx);
-                            cx.notify();
-                        });
-                    }),
-                ),
+                    .when(hidden > 0, |row| row.child(badge(hidden.to_string()))),
             )
-            .child(
-                btn("show-games", format!("Show {} games", format_count(count)))
-                    .primary()
-                    .full()
-                    .on_click(move |_, cx| {
-                        show_this.update(cx, |screen, cx| screen.apply_filter(cx));
-                    }),
-            )
+            .when(self.more_filters, |column| column.child(more))
     }
 
     fn toggle_reached(&mut self, value: bool, cx: &mut Context<Self>) {
@@ -2178,8 +2608,7 @@ impl DatabaseScreen {
                 .unwrap_or_else(|| "Analyse board position".to_owned());
             self.reached_position = Some((position_hash(&node.pos), label));
         }
-        self.update_pending_count(cx);
-        cx.notify();
+        self.schedule_filter(cx);
     }
 
     fn render_main_header(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
@@ -2198,6 +2627,8 @@ impl DatabaseScreen {
         };
         let analyse_this = this.clone();
         let settings_this = this.clone();
+        let clear_this = this.clone();
+        let filtered = self.any_filter_set(cx);
         h_flex()
             .flex_wrap()
             .justify_between()
@@ -2208,18 +2639,39 @@ impl DatabaseScreen {
                     .min_w_0()
                     .gap(px(12.))
                     .items_baseline()
-                    .child(
-                        div()
-                            .text_size(px(20.))
+                    .child({
+                        let total = self.db_snapshot.as_ref().map_or(0, |entry| entry.games);
+                        let text = if filtered && total != self.stats.games {
+                            ui::i18n::tf(
+                                "{} of {} games",
+                                &[&format_count(self.stats.games), &format_count(total)],
+                            )
+                        } else {
+                            ui::i18n::tf("{} games", &[&format_count(self.stats.games)])
+                        };
+                        mono(text)
+                            .text_size(px(18.))
                             .font_weight(FontWeight::SEMIBOLD)
-                            .child(format!("{} games", format_count(self.stats.games))),
-                    )
+                    })
                     .child(
                         div()
+                            .min_w_0()
+                            .truncate()
                             .text_size(px(14.))
                             .text_color(rgb(T.muted))
                             .child(self.summary.clone()),
-                    ),
+                    )
+                    .when(filtered, |row| {
+                        row.child(
+                            btn("clear-filters", "Clear filters")
+                                .compact()
+                                .icon("icons/x.svg")
+                                .on_click(move |window, cx| {
+                                    clear_this
+                                        .update(cx, |screen, cx| screen.clear_filters(window, cx));
+                                }),
+                        )
+                    }),
             )
             .child(
                 h_flex()
@@ -3775,6 +4227,11 @@ fn import_message(summary: &db::ImportSummary) -> String {
         ));
     }
     message
+}
+
+/// A whole number typed in a field, or `None` when it is empty or unreadable.
+fn number(input: &Entity<InputState>, cx: &gpui::App) -> Option<i64> {
+    input.read(cx).value().trim().parse().ok()
 }
 
 /// Seconds since 1970 (UTC), now.

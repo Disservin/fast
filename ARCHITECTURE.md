@@ -222,7 +222,10 @@ The UI thread never blocks on engines or databases.
   `uniform_list` reveals them, so memory and render cost follow the viewport, not the row count.
   `Filter::sort` picks a fixed SQL expression per `SortKey` and always ends with `id` in the same
   direction; ascending `id` is file order. The sort is saved per database in
-  `config.database_sorts`. While a query runs the old rows stay and a 2px bar shows.
+  `config.database_sorts`. With any filter set the sort column is written `+column`, so SQLite
+  scans the table and sorts the matches instead of walking the sort index row by row (0.27 s
+  against up to 5 s on a million games). Filters run 200 ms after the last change; while a
+  query runs the old rows stay and a 2px bar shows.
 
 ## Rendering cost
 

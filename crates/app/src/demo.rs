@@ -834,6 +834,21 @@ fn spin(name: &str, default: i64, min: i64, max: i64) -> UciOption {
 pub fn prepare(paths: &Paths, config: &mut Config) {
     let today = today();
     config.player_name = "me".to_owned();
+    config.saved_filters = vec![
+        crate::config::SavedFilter {
+            name: "Najdorf losses as White".to_owned(),
+            player: "me".to_owned(),
+            colour: 1,
+            result: 3,
+            eco: "B90–B99".to_owned(),
+            ..Default::default()
+        },
+        crate::config::SavedFilter {
+            name: "Annotated model games".to_owned(),
+            only_annotated: true,
+            ..Default::default()
+        },
+    ];
     // A remembered Lichess account, so Settings › Databases and Import show one.
     config.player_aliases = vec!["me_on_lichess".to_owned()];
     config.accounts = vec![crate::config::Account {

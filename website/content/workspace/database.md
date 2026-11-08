@@ -4,15 +4,28 @@ Each database is listed on the left with its game count.
 
 ## Filter games
 
-Filter by:
+Filters apply as you type. Player, Colour, Result and Date are always shown; **More filters**
+holds the rest and shows how many of them are set.
 
-- player and colour;
-- ECO range;
-- opponent rating;
-- time control.
+- **Result** reads Win, Draw and Loss for the player you typed, and 1–0, ½–½ and 0–1 without
+  one.
+- **Date** takes `2020`, `2020.05` or `2020.05.17` for each end. Games with unknown months or
+  days still count inside a year.
+- **More filters:** ECO range, time control, opponent rating, the player's rating range, game
+  length in moves, text in the event or site, only annotated games, and only games where you
+  left your repertoire.
+- Typing your player name also finds games under your Lichess and Chess.com names.
 
 Tick **Reached the Analyse board position** to see only games that passed through the position
 on the Analyse board.
+
+Above the table, "1,204 of 48,310 games" shows how many games match, and **Clear filters**
+empties every filter.
+
+### Saved searches
+
+**Save search** stores the current filters under a name, listed under the Filter heading.
+Click one to apply it; right-click it to delete it.
 
 ## Sort the games
 
