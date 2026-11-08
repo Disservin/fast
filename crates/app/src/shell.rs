@@ -1457,25 +1457,50 @@ impl Workspace {
             // The strip only takes the width its tabs need, so New tab sits right after the
             // last one; with many tabs the strip scrolls and the button stays in view.
             .child(tabs)
-            // New tab sits in a slot as tall as a tab, so it lines up with the tab labels
-            // instead of floating in the middle of the bar.
-            .child(
-                h_flex().flex_none().h(px(33.)).items_center().child(
-                    btn("new-tab", "New tab")
-                        .kind(BtnKind::Ghost)
-                        .icon("icons/plus.svg")
-                        .h(28.)
-                        .pad(8.)
-                        .tooltip(tip)
-                        .selected(self.new_tab_menu_open)
-                        .on_click(move |_, cx| {
-                            add.update(cx, |this, cx| {
-                                this.new_tab_menu_open = !this.new_tab_menu_open;
-                                cx.notify();
-                            })
-                        }),
-                ),
-            )
+            // New tab is drawn as one more tab: closed it looks like the inactive tabs, and
+            // while its picker is open it looks like the open tab.
+            .child({
+                let open = self.new_tab_menu_open;
+                h_flex()
+                    .id("new-tab")
+                    .flex_none()
+                    .h(px(33.))
+                    .px(px(11.))
+                    .gap(px(6.))
+                    .rounded_t(px(6.))
+                    .border_t_1()
+                    .border_l_1()
+                    .border_r_1()
+                    .cursor_pointer()
+                    .text_size(px(13.))
+                    .font_weight(FontWeight::MEDIUM)
+                    .map(|tab| {
+                        if open {
+                            tab.bg(rgb(T.bg))
+                                .border_color(rgb(T.border))
+                                .text_color(rgb(T.fg))
+                        } else {
+                            tab.border_color(gpui::transparent_black())
+                                .text_color(rgb(T.muted))
+                                .hover(|tab| tab.bg(rgb(T.hover)).text_color(rgb(T.fg)))
+                        }
+                    })
+                    .tooltip(move |window, cx| {
+                        gpui_component::tooltip::Tooltip::new(tip.clone()).build(window, cx)
+                    })
+                    .on_click(move |_, _, cx| {
+                        add.update(cx, |this, cx| {
+                            this.new_tab_menu_open = !this.new_tab_menu_open;
+                            cx.notify();
+                        })
+                    })
+                    .child(ui::widgets::icon(
+                        "icons/plus.svg",
+                        px(14.),
+                        if open { T.fg } else { T.muted },
+                    ))
+                    .child(ui::i18n::t("New tab"))
+            })
     }
 
     /// Runs an Analyse-only shortcut, ignored on other screens where its effect
