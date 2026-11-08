@@ -22,7 +22,7 @@ use ui::{
 
 use crate::{
     model::{AppModel, ModelEvent},
-    screens::tournament::{eval_graph, game_card, search_text},
+    screens::tournament::{eval_graph, game_card, search_stats},
     tournament_live::{LiveGame, LiveGames, Search},
 };
 
@@ -324,16 +324,7 @@ impl LiveWall {
                             name.clone().unwrap_or_else(|| "…".into()),
                         )),
                 )
-                .child(
-                    div()
-                        .font_family(MONO)
-                        .text_size(px(13.))
-                        .text_color(rgb(T.fg_2))
-                        .child(SharedString::from(match search_text(search, true) {
-                            text if text.is_empty() => "–".to_owned(),
-                            text => text,
-                        })),
-                )
+                .child(search_stats(search))
         };
         let text_block = |label: &str, text: String| {
             v_flex().gap(px(6.)).child(section_label(label)).child(
@@ -357,7 +348,7 @@ impl LiveWall {
             .child(engine("White", &game.white, &game.white_search))
             .child(engine("Black", &game.black, &game.black_search))
             .child(text_block("Line", line))
-            .child(eval_graph(game, &self.names, 140.))
+            .child(eval_graph(game, &self.names, 160.))
             .child(
                 div()
                     .id("wall-moves")

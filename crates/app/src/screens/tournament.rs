@@ -2365,13 +2365,7 @@ impl TournamentScreen {
                             name.clone().unwrap_or_else(|| "?".into()),
                         )),
                 )
-                .child(
-                    div()
-                        .font_family(MONO)
-                        .text_size(px(13.))
-                        .text_color(rgb(T.fg_2))
-                        .child(SharedString::from(search_text(search, true))),
-                )
+                .child(search_stats(search))
         };
         panel().p(px(14.)).child(
             h_flex()
@@ -2583,7 +2577,7 @@ fn player_line(game: &LiveGame, white: bool, size: f32) -> impl IntoElement + us
             div()
                 .font_family(MONO)
                 .text_color(rgb(T.muted))
-                .child(SharedString::from(search_text(search, false))),
+                .child(SharedString::from(search_text(search))),
         )
         .child(div().font_family(MONO).child(SharedString::from(
             clock.map(tournament_live::format_clock).unwrap_or_default(),
@@ -2911,7 +2905,11 @@ pub(crate) fn eval_graph(game: &LiveGame, names: &[String], height: f32) -> Div 
             max: chess_core::annotation::MATE_CP as f32,
             unit: 100.0,
         },
-        ticks: ui::graph::eval_ticks(),
+        // ±1 would crowd 0 and ±3 at these heights.
+        ticks: ui::graph::eval_ticks()
+            .into_iter()
+            .filter(|(cp, _)| cp.abs() != 100.0)
+            .collect(),
         height,
         on_scrub: std::rc::Rc::new(|_, _, _| {}),
         empty: "No evaluations yet. Each engine's score appears after its move.",
@@ -3357,24 +3355,52 @@ fn reveal_folder(path: &Path) {
     }
 }
 
-pub(crate) fn search_text(search: &Search, long: bool) -> String {
+fn search_text(search: &Search) -> String {
     let Some(score) = search.score else {
         return String::new();
     };
-    if !long {
-        let depth = search
-            .depth
-            .map(|depth| format!("/{depth}"))
-            .unwrap_or_default();
-        return format!("{}{depth}", score.format());
-    }
-    let nodes = search
-        .nodes
-        .map(|nodes| format!("  {nodes} nodes"))
+    let depth = search
+        .depth
+        .map(|depth| format!("/{depth}"))
         .unwrap_or_default();
-    format!(
-        "{}  depth {}{nodes}",
-        score.format(),
-        search.depth.unwrap_or(0)
-    )
+    format!("{}{depth}", score.format())
+}
+
+/// An engine's search as columns: Eval, Depth and Nodes over their values.
+pub(crate) fn search_stats(search: &Search) -> Div {
+    let dash = || "–".to_owned();
+    let column = |label: &'static str, value: String| {
+        v_flex()
+            .flex_1()
+            .min_w_0()
+            .gap(px(2.))
+            .child(
+                div()
+                    .text_size(px(11.))
+                    .text_color(rgb(T.muted))
+                    .child(ui::i18n::t(label)),
+            )
+            .child(
+                div()
+                    .font_family(MONO)
+                    .text_size(px(14.))
+                    .text_color(rgb(T.fg))
+                    .whitespace_nowrap()
+                    .child(SharedString::from(value)),
+            )
+    };
+    h_flex()
+        .gap(px(12.))
+        .child(column(
+            "Eval",
+            search.score.map_or_else(dash, Score::format),
+        ))
+        .child(column(
+            "Depth",
+            search.depth.map_or_else(dash, |depth| depth.to_string()),
+        ))
+        .child(column(
+            "Nodes",
+            search.nodes.map_or_else(dash, engine::format_nodes),
+        ))
 }
