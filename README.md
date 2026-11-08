@@ -12,7 +12,12 @@ playing against engines. Offline and single-user. Built with Rust and
 | **Play** | **Settings › Engines** |
 | ![Play: a game against Stockfish at limited strength](docs/screenshots/play.png) | ![Settings: installed engines and their options](docs/screenshots/settings.png) |
 
-The screenshots come from the demo profile (`cargo run --release -p fast -- --demo`).
+**Tournament**
+
+![Tournament: a fastchess match between two Stockfish setups with six live boards](docs/screenshots/tournament.png)
+
+The screenshots come from the demo profile (`cargo run --release -p fast -- --demo`). The
+Tournament one shows a real fastchess run in that profile.
 
 ## Workspace tabs
 
