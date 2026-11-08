@@ -1,8 +1,8 @@
 //! Thin wrappers styling the component library's stateful inputs for Fast.
 
 use gpui::{
-    App, Div, Entity, Focusable as _, IntoElement, RenderOnce, SharedString, Window, div,
-    prelude::*, px, rgb,
+    AnyElement, App, Div, Entity, Focusable as _, IntoElement, RenderOnce, SharedString, Window,
+    div, prelude::*, px, rgb,
 };
 use gpui_component::{
     input::{Input, InputState},
@@ -18,6 +18,8 @@ pub struct TextField {
     state: Entity<InputState>,
     height: f32,
     suffix: Option<&'static str>,
+    icon: Option<&'static str>,
+    hint: Option<AnyElement>,
 }
 
 pub fn text_input(state: &Entity<InputState>) -> TextField {
@@ -25,6 +27,8 @@ pub fn text_input(state: &Entity<InputState>) -> TextField {
         state: state.clone(),
         height: 34.,
         suffix: None,
+        icon: None,
+        hint: None,
     }
 }
 
@@ -36,6 +40,19 @@ impl TextField {
 
     pub fn suffix(mut self, suffix: Option<&'static str>) -> Self {
         self.suffix = suffix;
+        self
+    }
+
+    /// Shows a small icon before the text, such as a magnifier on a search box.
+    pub fn icon(mut self, path: &'static str) -> Self {
+        self.icon = Some(path);
+        self
+    }
+
+    /// Shows a hint at the right end, such as the shortcut that focuses the field. It hides
+    /// while the field has focus.
+    pub fn hint(mut self, hint: impl IntoElement) -> Self {
+        self.hint = Some(hint.into_any_element());
         self
     }
 }
@@ -56,6 +73,9 @@ impl RenderOnce for TextField {
                 Input::new(&self.state)
                     .appearance(false)
                     .text_size(px(13.))
+                    .when_some(self.icon, |input, path| {
+                        input.prefix(ui::widgets::icon(path, px(14.), T.muted))
+                    })
                     .when_some(self.suffix, |input, suffix| {
                         input.suffix(
                             div()
@@ -63,6 +83,9 @@ impl RenderOnce for TextField {
                                 .text_color(rgb(T.muted))
                                 .child(suffix),
                         )
+                    })
+                    .when_some(self.hint.filter(|_| !focused), |input, hint| {
+                        input.suffix(hint)
                     }),
             )
     }

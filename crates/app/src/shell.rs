@@ -1295,11 +1295,15 @@ impl Workspace {
             _ => None,
         };
         if let Some(width) = search_w {
-            row = row.child(
-                div()
-                    .w(px(width))
-                    .child(crate::controls::text_input(&self.search).height(34.)),
-            );
+            let shortcut = self.model.read(cx).config.shortcuts.get("search").cloned();
+            let mut field = crate::controls::text_input(&self.search)
+                .height(34.)
+                .icon("icons/search.svg");
+            // The shortcut only shows when the box has room for it beside the placeholder.
+            if let Some(key) = shortcut.filter(|key| !key.is_empty() && width >= 220.) {
+                field = field.hint(crate::screens::settings::shortcut_hint(&key));
+            }
+            row = row.child(div().w(px(width)).child(field));
         }
         match self.mode {
             Mode::Analyse => {

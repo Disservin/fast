@@ -365,6 +365,7 @@ pub fn translate(language: Language, text: &str) -> &str {
                 "Züge wählen, die die Engine in dieser Stellung untersucht"
             }
             "Position note" => "Stellungsnotiz",
+            "Add a note for this position" => "Notiz zu dieser Stellung",
             "Preview backup to restore" => "Sicherung zur Wiederherstellung ansehen",
             "Promote" => "Zur Hauptvariante machen",
             "Protocol" => "Protokoll",

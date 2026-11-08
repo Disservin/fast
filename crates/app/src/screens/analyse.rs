@@ -349,7 +349,9 @@ impl AnalyseScreen {
     ) -> Self {
         let board = cx.new(|_| BoardView::new("analyse-board"));
         let live = cx.new(|cx| LiveAnalysis::new(model.clone(), cx));
-        let note = cx.new(|cx| TextareaState::new(window, cx));
+        let note = cx.new(|cx| {
+            TextareaState::new(window, cx).placeholder(ui::i18n::t("Add a note for this position"))
+        });
         let comment = cx.new(|cx| TextareaState::new(window, cx));
         let fen_input = cx.new(|cx| {
             InputState::new(window, cx).placeholder(ui::i18n::t("Paste a FEN and press Enter"))
@@ -1499,40 +1501,35 @@ impl AnalyseScreen {
         self.tree.line_through(self.current)
     }
 
-    fn render_scoresheet(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let this = cx.entity();
-        let white = self
-            .tree
-            .header("White")
-            .unwrap_or(ui::i18n::t("White"))
-            .to_owned();
-        let black = self
-            .tree
-            .header("Black")
-            .unwrap_or(ui::i18n::t("Black"))
-            .to_owned();
-        let elo = |tag: &str| {
+    /// A side's player name and rating from the game headers, with the colour as the name and
+    /// an em dash as the rating when the game does not say.
+    fn player(&self, side: chess_core::Color) -> (String, String) {
+        let (tag, fallback) = if side.is_white() {
+            ("White", ui::i18n::t("White"))
+        } else {
+            ("Black", ui::i18n::t("Black"))
+        };
+        let known = |tag: &str| {
             self.tree
                 .header(tag)
+                .map(str::trim)
                 .filter(|value| !value.is_empty() && *value != "?")
-                .unwrap_or("—")
-                .to_owned()
+                .map(str::to_owned)
         };
-        let white_elo = elo("WhiteElo");
-        let black_elo = elo("BlackElo");
+        (
+            known(tag).unwrap_or_else(|| fallback.to_owned()),
+            known(&format!("{tag}Elo")).unwrap_or_else(|| "—".to_owned()),
+        )
+    }
+
+    fn render_scoresheet(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let this = cx.entity();
         let opening = self
             .tree
             .header("Opening")
             .map(str::to_owned)
             .or_else(|| self.opening().map(|o| format!("{} {}", o.eco, o.name)))
             .unwrap_or_else(|| ui::i18n::t("Starting position").to_owned());
-        let name_row = |name: String, rating: String| {
-            h_flex()
-                .justify_between()
-                .h(px(23.))
-                .child(div().font_weight(FontWeight::SEMIBOLD).child(name))
-                .child(mono(rating).text_color(rgb(T.muted)).text_size(px(14.)))
-        };
         let notation = self.model.read(cx).config.board.notation;
         let select_this = this.clone();
         let context_this = this.clone();
@@ -1611,11 +1608,8 @@ impl AnalyseScreen {
                             .child(section_label("Scoresheet"))
                             .child(style_toggle),
                     )
-                    .child(name_row(white, white_elo))
-                    .child(name_row(black, black_elo))
                     .child(
                         div()
-                            .mt(px(1.))
                             .text_size(px(13.))
                             .text_color(rgb(T.muted))
                             .child(opening),
@@ -1712,7 +1706,14 @@ impl AnalyseScreen {
     ) -> impl IntoElement + use<> {
         let this = cx.entity();
         let compact = board_size < px(440.);
-        let nav_width = if compact { 34. } else { 42. };
+        // Eight buttons share the row under the board, so they narrow with it.
+        let nav_width = if board_size < px(340.) {
+            32.
+        } else if compact {
+            34.
+        } else {
+            42.
+        };
         let shown = self.analysed_pos();
         let turn = if shown.turn().is_white() {
             ui::i18n::t("White")
@@ -1745,7 +1746,7 @@ impl AnalyseScreen {
                     .map(|cp| Score::Cp(*cp).display())
             })
             .filter(|_| self.editor.is_none())
-            .unwrap_or_else(|| "–".to_owned());
+            .unwrap_or_else(|| "—".to_owned());
         // A finished game shows its result, not an evaluation.
         let eval_text = match end.filter(|_| self.editor.is_none()) {
             Some(end) => end.result().replace("1/2", "½"),
@@ -1756,7 +1757,7 @@ impl AnalyseScreen {
         let material = {
             let balance = chess_core::material_balance(shown.board());
             let set = self.model.read(cx).config.board.prefs().pieces;
-            let strip = |side: chess_core::Color| {
+            let strip = move |side: chess_core::Color| {
                 (!balance.up(side).is_empty()).then(|| {
                     ui::board::material_strip(
                         balance.up(side),
@@ -1767,12 +1768,75 @@ impl AnalyseScreen {
                     )
                 })
             };
-            (self.editor.is_none()).then(|| {
-                h_flex()
-                    .gap(px(10.))
-                    .children(strip(chess_core::Color::White))
-                    .children(strip(chess_core::Color::Black))
-            })
+            let editing = self.editor.is_some();
+            move |side| strip(side).filter(|_| !editing)
+        };
+        let flipped = self.board.read(cx).is_flipped();
+        let to_move = shown.turn();
+        let player_strip = |side: chess_core::Color| {
+            let (name, rating) = self.player(side);
+            h_flex()
+                .h(px(26.))
+                .gap(px(8.))
+                .justify_between()
+                .child(
+                    h_flex()
+                        .gap(px(8.))
+                        .min_w_0()
+                        .child(
+                            // The side to move is marked beside its name.
+                            div()
+                                .flex_none()
+                                .size(px(6.))
+                                .rounded_full()
+                                .when(to_move == side && end.is_none(), |dot| {
+                                    dot.bg(rgb(T.accent))
+                                }),
+                        )
+                        .child(
+                            div()
+                                .min_w_0()
+                                .overflow_hidden()
+                                .text_ellipsis()
+                                .whitespace_nowrap()
+                                .text_size(px(13.))
+                                .font_weight(FontWeight::MEDIUM)
+                                .child(name),
+                        )
+                        .child(
+                            mono(rating)
+                                .flex_none()
+                                .text_size(px(12.))
+                                .text_color(rgb(T.muted)),
+                        ),
+                )
+                .children(material(side))
+        };
+        let (top_side, bottom_side) = if flipped {
+            (chess_core::Color::White, chess_core::Color::Black)
+        } else {
+            (chess_core::Color::Black, chess_core::Color::White)
+        };
+        let top_strip = player_strip(top_side);
+        let bottom_strip = player_strip(bottom_side);
+        // Where the shown position sits in the line, in full moves.
+        let move_counter = {
+            let ply = self.tree.node(self.current).ply;
+            let last = self
+                .timeline_ids()
+                .last()
+                .map_or(ply, |id| self.tree.node(*id).ply)
+                .max(ply);
+            mono(format!(
+                "{} {} / {}",
+                ui::i18n::t("Move"),
+                ply.div_ceil(2),
+                last.div_ceil(2)
+            ))
+            .flex_none()
+            .whitespace_nowrap()
+            .text_size(px(12.))
+            .text_color(rgb(T.muted))
         };
         let nav = |id: &'static str,
                    icon: &'static str,
@@ -1787,7 +1851,6 @@ impl AnalyseScreen {
                 })
         };
         let copy_menu = self.render_copy_menu(nav_width, cx);
-        let flipped = self.board.read(cx).is_flipped();
         let flip_tip = match self.model.read(cx).config.shortcuts.get("flip_board") {
             Some(key) => format!("Flip board ({})", key.to_uppercase()),
             None => ui::i18n::t("Flip board").to_owned(),
@@ -1798,8 +1861,7 @@ impl AnalyseScreen {
             .child(
                 h_flex()
                     .h(px(39.))
-                    .mt(px(18.))
-                    .mb(px(6.))
+                    .mt(px(12.))
                     .justify_between()
                     .child(
                         h_flex()
@@ -1819,13 +1881,12 @@ impl AnalyseScreen {
                             })),
                     )
                     .child(
-                        h_flex().gap(px(12.)).children(material).child(
-                            mono(eval_text)
-                                .text_size(px(18.))
-                                .font_weight(FontWeight::SEMIBOLD),
-                        ),
+                        mono(eval_text)
+                            .text_size(px(18.))
+                            .font_weight(FontWeight::SEMIBOLD),
                     ),
             )
+            .child(top_strip)
             .child({
                 let (evals, _) = self.line_evals(&[self.current], cx);
                 let share = evals[0].map_or(0.5, |cp| {
@@ -1843,10 +1904,10 @@ impl AnalyseScreen {
                     )
                     .child(self.board.clone())
             })
-            .child(graph)
+            .child(bottom_strip)
             .child(
                 h_flex()
-                    .mt(px(12.))
+                    .mt(px(6.))
                     .justify_between()
                     .child(
                         h_flex()
@@ -1878,7 +1939,8 @@ impl AnalyseScreen {
                                 ui::i18n::t("Last move"),
                                 this.clone(),
                                 Self::go_last,
-                            )),
+                            ))
+                            .when(!compact, |row| row.child(move_counter.ml(px(6.)))),
                     )
                     .child(
                         h_flex()
@@ -1921,6 +1983,7 @@ impl AnalyseScreen {
                             ),
                     ),
             )
+            .child(graph)
     }
 
     /// Evals along the shown line: the game's own, else what any engine found for that
@@ -2074,7 +2137,7 @@ impl AnalyseScreen {
                 h_flex()
                     .flex_wrap()
                     .gap(px(6.))
-                    .mt(px(12.))
+                    .mt(px(14.))
                     .mb(px(6.))
                     .justify_between()
                     .child(
@@ -2306,15 +2369,16 @@ impl AnalyseScreen {
                     .when(show_wdl, |row_el| {
                         row_el.child(
                             div().w(px(COL_WDL)).flex_none().pr(px(12.)).child(
-                                v_flex().gap(px(2.)).child(wdl_bar(row.wdl)).child(
-                                    mono(
-                                        wdl_percentages(row.wdl)
-                                            .map(|[w, d, l]| format!("{w:.0} / {d:.0} / {l:.0}%"))
-                                            .unwrap_or_else(|| "—".into()),
-                                    )
-                                    .text_size(px(10.))
-                                    .text_color(rgb(T.fg_2)),
-                                ),
+                                match wdl_percentages(row.wdl) {
+                                    Some([w, d, l]) => {
+                                        v_flex().gap(px(2.)).child(wdl_bar(row.wdl)).child(
+                                            mono(format!("{w:.0} / {d:.0} / {l:.0}%"))
+                                                .text_size(px(10.))
+                                                .text_color(rgb(T.fg_2)),
+                                        )
+                                    }
+                                    None => mono("—").text_size(px(13.)).text_color(rgb(T.fg_2)),
+                                },
                             ),
                         )
                     })
@@ -3041,7 +3105,7 @@ impl Render for AnalyseScreen {
         // The side column keeps room for its table, so the board gives way first.
         self.scale = window.scale_factor();
         let board_size = ui::board::snap_board_size(
-            (viewport.height - px(376.))
+            (viewport.height - px(416.))
                 .min(viewport.width - px(scoresheet_width + 420.))
                 .min(px(panels.board_size.unwrap_or(u32::MAX) as f32))
                 .max(px(240.)),

@@ -3177,14 +3177,11 @@ fn board_check(
     }))
 }
 
-/// Renders "ctrl-k" as separate caps, with friendly names.
-fn keycaps(keystroke: Option<&String>) -> Div {
-    let mut row = h_flex().gap(px(4.));
-    let Some(keystroke) = keystroke.filter(|keystroke| !keystroke.is_empty()) else {
-        return row;
-    };
-    for part in keystroke.split('-') {
-        let text = match part {
+/// The keys of a shortcut such as "ctrl-k", with friendly names ("Ctrl", "K").
+fn key_names(keystroke: &str) -> Vec<String> {
+    keystroke
+        .split('-')
+        .map(|part| match part {
             "left" => "←".to_owned(),
             "right" => "→".to_owned(),
             "up" => "↑".to_owned(),
@@ -3200,10 +3197,29 @@ fn keycaps(keystroke: Option<&String>) -> Div {
                     None => String::new(),
                 }
             }
-        };
+        })
+        .collect()
+}
+
+/// Renders "ctrl-k" as separate caps, with friendly names.
+fn keycaps(keystroke: Option<&String>) -> Div {
+    let mut row = h_flex().gap(px(4.));
+    let Some(keystroke) = keystroke.filter(|keystroke| !keystroke.is_empty()) else {
+        return row;
+    };
+    for text in key_names(keystroke) {
         row = row.child(key_cap(text));
     }
     row
+}
+
+/// A shortcut as one small cap ("Ctrl K"), for hints inside other controls.
+pub(crate) fn shortcut_hint(keystroke: &str) -> Div {
+    key_cap(key_names(keystroke).join(" "))
+        .h(px(20.))
+        .px(px(5.))
+        .text_size(px(11.))
+        .text_color(rgb(T.fg_2))
 }
 
 /// `bench` if the engine supports it, otherwise a fixed-time search on a small suite.
