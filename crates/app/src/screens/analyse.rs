@@ -2432,19 +2432,38 @@ impl AnalyseScreen {
     }
 
     /// Who found the selected line and how deep: the engine's icon and name, then the
-    /// line's depth. The search's other figures live in the Engine panel's rows.
+    /// line's depth. With the Engine panel closed the search's other figures follow,
+    /// since the panel's rows are not there to show them.
     fn render_line_source(&self, row: &MoveRow, cx: &gpui::App) -> gpui::AnyElement {
         let live = self.live.read(cx);
         let engine = row
             .engine_id
             .and_then(|id| live.engines.iter().find(|engine| engine.config.id == id));
-        let depth = match engine
-            .and_then(|engine| engine.stats())
-            .and_then(|stats| stats.seldepth)
-        {
+        let stats = engine.and_then(|engine| engine.stats());
+        let depth = match stats.and_then(|stats| stats.seldepth) {
             Some(sel) if sel > row.depth => format!("d{}/{sel}", row.depth),
             _ => format!("d{}", row.depth),
         };
+        let mut figures: Vec<String> = Vec::new();
+        if !self.engine_panel_open
+            && let Some(stats) = stats
+        {
+            figures.extend(stats.nodes.map(engine::format_nodes));
+            figures.extend(stats.nps.map(engine::format_speed));
+            figures.extend(stats.time_ms.map(search_time));
+            figures.extend(
+                stats
+                    .hashfull
+                    .filter(|full| *full > 0)
+                    .map(|full| format!("hash {:.0}%", f64::from(full) / 10.)),
+            );
+            figures.extend(
+                stats
+                    .tbhits
+                    .filter(|hits| *hits > 0)
+                    .map(|hits| format!("tb {}", engine::format_nodes(hits).replace(" n", ""))),
+            );
+        }
         let name = engine.map(|engine| {
             let config = &engine.config;
             format!("{} {}", config.name, config.version)
@@ -2460,6 +2479,15 @@ impl AnalyseScreen {
             .children(name.map(|name| div().text_color(rgb(T.fg_2)).child(name)))
             .when(engine.is_some(), |row| row.child("·"))
             .child(mono(depth).text_size(px(12.)))
+            .children(figures.into_iter().flat_map(|figure| {
+                [
+                    div().child("·").into_any_element(),
+                    mono(figure)
+                        .whitespace_nowrap()
+                        .text_size(px(12.))
+                        .into_any_element(),
+                ]
+            }))
             .into_any_element()
     }
 

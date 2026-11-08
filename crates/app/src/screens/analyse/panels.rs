@@ -506,8 +506,8 @@ impl AnalyseScreen {
             |up: bool, this: gpui::Entity<Self>| {
                 let (id_text, text) = if up { ("up", "+") } else { ("down", "−") };
                 btn(SharedString::from(format!("{name}-{id_text}")), text)
-                    .w(28.)
-                    .h(28.)
+                    .w(24.)
+                    .h(24.)
                     .pad(0.)
                     .disabled(spin.is_none_or(|(value, min, max)| {
                         step_value(name, value, up, min, max) == value
@@ -529,8 +529,8 @@ impl AnalyseScreen {
         } else {
             let text = spin.map_or_else(|| "—".to_owned(), |(value, ..)| format!("{value}{unit}"));
             btn(SharedString::from(format!("{name}-value")), text)
-                .full()
-                .h(28.)
+                .w(72.)
+                .h(24.)
                 .pad(0.)
                 .disabled(spin.is_none())
                 .on_click(move |window, cx| {
@@ -563,23 +563,19 @@ impl AnalyseScreen {
                 })
                 .into_any_element()
         };
-        v_flex()
-            .flex_1()
-            .min_w(px(150.))
+        h_flex()
+            .flex_none()
             .gap(px(4.))
             .child(
                 div()
+                    .mr(px(4.))
                     .text_size(px(12.))
                     .text_color(rgb(T.muted))
                     .child(ui::i18n::t(label).to_owned()),
             )
-            .child(
-                h_flex()
-                    .gap(px(4.))
-                    .child(button(false, this.clone()))
-                    .child(div().flex_1().min_w(px(64.)).child(value_element))
-                    .child(button(true, this)),
-            )
+            .child(button(false, this.clone()))
+            .child(div().w(px(72.)).flex_none().child(value_element))
+            .child(button(true, this))
     }
 
     /// One engine: an on/off check, what its search is doing right now, and a thin bar
@@ -613,7 +609,12 @@ impl AnalyseScreen {
                         .text_color(rgb(T.faint))
                         .child(title),
                 )
-                .child(mono(text).text_size(px(12.)).text_color(rgb(T.fg_2)))
+                .child(
+                    mono(text)
+                        .whitespace_nowrap()
+                        .text_size(px(12.))
+                        .text_color(rgb(T.fg_2)),
+                )
         };
         let dash = || "—".to_owned();
         let depth = stats.map_or_else(dash, |stats| {
@@ -621,14 +622,15 @@ impl AnalyseScreen {
                 Some(sel) => format!("{}/{sel}", stats.depth),
                 None => stats.depth.to_string(),
             };
-            if stale {
-                format!("stale {depth}")
-            } else if cached {
-                format!("cached {depth}")
-            } else {
-                depth
-            }
+            depth
         });
+        let state = if stale {
+            Some("stale")
+        } else if cached {
+            Some("cached")
+        } else {
+            None
+        };
         let nodes = stats
             .and_then(|stats| stats.nodes)
             .map_or_else(dash, engine::format_nodes);
@@ -686,6 +688,13 @@ impl AnalyseScreen {
                     })
                     .child(name),
             )
+            .children(state.map(|state| {
+                div()
+                    .flex_none()
+                    .text_size(px(11.))
+                    .text_color(rgb(T.faint))
+                    .child(ui::i18n::t(state).to_owned())
+            }))
             .child(cell(depth, 56., "DEPTH"))
             .child(cell(nodes, 62., "NODES"))
             .child(cell(speed, 72., "SPEED"))
@@ -789,8 +798,8 @@ impl AnalyseScreen {
                     .flex()
                     .flex_row()
                     .flex_wrap()
-                    .gap_x(px(14.))
-                    .gap_y(px(10.))
+                    .gap_x(px(20.))
+                    .gap_y(px(8.))
                     .child(self.stepper(config, "MultiPV", "Lines", "", cx))
                     .child(self.stepper(config, "Threads", "Threads", "", cx))
                     .child(self.stepper(config, "Hash", "Hash", " MB", cx)),
