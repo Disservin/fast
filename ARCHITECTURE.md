@@ -284,7 +284,8 @@ Deactivation stops searches and cancels readers while retaining its position cac
 idle registry handles remain available to Settings and log windows. Activation
 replaces those handles and restarts from the selected tab's position. Inactive views ignore
 late engine events and configuration notifications cannot start background analysis.
-Each Play game already owns its own engine and clock. Open games continue when
+Each Play game already owns its own engine and clock. In self-play that one
+engine process plays both sides with the shared clock, and the board stays read-only. Open games continue when
 switching tabs; closing suspends them and reopening resets the clock tick origin
 and resumes the search. Dropping a game quits its process. The last ten closed
 entities can be reopened; autosave files keep every document independently.

@@ -1,4 +1,5 @@
-//! Play against a UCI engine (or a scripted opponent in demo mode).
+//! Play against a UCI engine (or a scripted opponent in demo mode), or watch an engine play
+//! itself.
 
 use std::time::{Duration, Instant};
 
@@ -14,7 +15,7 @@ use gpui_component::{
 };
 use ui::{
     BoardEvent, BoardView, MONO, T,
-    widgets::{btn, check, h_flex, mono, panel, section_label, v_flex},
+    widgets::{btn, check, h_flex, mono, panel, section_label, segmented, v_flex},
 };
 
 use crate::{
@@ -24,6 +25,13 @@ use crate::{
 };
 
 const TIME_CONTROLS: [(u32, u32); 5] = [(3, 2), (5, 0), (10, 5), (15, 10), (30, 0)];
+
+/// Whether the user plays the engine or watches it play both sides.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Mode {
+    VsEngine,
+    SelfPlay,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ColourChoice {
@@ -55,6 +63,8 @@ struct Game {
     tree: GameTree,
     current: NodeId,
     user: Color,
+    /// The engine plays both sides and the board is read-only.
+    self_play: bool,
     white_ms: u64,
     black_ms: u64,
     increment_ms: u64,
@@ -91,6 +101,7 @@ pub struct PlayScreen {
     board: Entity<BoardView>,
     opponent: TextSelect,
     opponents: Vec<EngineConfig>,
+    mode: Mode,
     strength: Entity<SliderState>,
     strength_value: u32,
     time_index: Option<usize>,
@@ -199,6 +210,7 @@ impl PlayScreen {
             board,
             opponent,
             opponents,
+            mode: Mode::VsEngine,
             strength,
             strength_value: 1800,
             time_index: Some(2),
@@ -247,6 +259,13 @@ impl PlayScreen {
 
     pub fn breadcrumb(&self) -> SharedString {
         match &self.game {
+            Some(game) if game.self_play => format!(
+                "{} {}, {}",
+                game.opponent_name,
+                ui::i18n::t("self-play"),
+                game.label
+            )
+            .into(),
             Some(game) => format!("vs {}, {}", game.opponent_name, game.label).into(),
             None => ui::i18n::t("New game").into(),
         }
@@ -275,6 +294,7 @@ impl PlayScreen {
             tree,
             current: node,
             user: Color::White,
+            self_play: false,
             white_ms: 552_000,
             black_ms: 521_000,
             increment_ms: 5_000,
@@ -360,7 +380,9 @@ impl PlayScreen {
             .last()
             .copied()
             .unwrap_or(GameTree::ROOT);
+        let self_play = self.mode == Mode::SelfPlay;
         let user = match self.colour {
+            _ if self_play => Color::White,
             ColourChoice::White => Color::White,
             ColourChoice::Black => Color::Black,
             ColourChoice::Random => {
@@ -381,6 +403,7 @@ impl PlayScreen {
             tree,
             current,
             user,
+            self_play,
             white_ms: ms,
             black_ms: ms,
             increment_ms: u64::from(increment) * 1000,
@@ -388,8 +411,8 @@ impl PlayScreen {
             opponent_name: config.name.clone(),
             opponent_rating: limited.then_some(self.strength_value),
             label: format!("{minutes}+{increment}"),
-            takebacks: self.allow_takebacks,
-            premoves: self.allow_premoves,
+            takebacks: self.allow_takebacks && !self_play,
+            premoves: self.allow_premoves && !self_play,
             premove: None,
             last_tick: Instant::now(),
             search_id: 0,
@@ -529,12 +552,13 @@ impl PlayScreen {
         let last = node.mv.as_ref().and_then(|mv| Some((mv.from()?, mv.to())));
         let user = game.user;
         let active = game.result.is_none();
-        let premoves = game.premoves && active;
+        let interactive = active && !game.self_play;
+        let premoves = game.premoves && interactive;
         let premove = game.premove.filter(|_| premoves);
         self.board.update(cx, |board, cx| {
             board.set_position(pos, last, animate, cx);
             board.set_player(Some(user), cx);
-            board.set_interactive(active, cx);
+            board.set_interactive(interactive, cx);
             board.set_premoves(premoves, cx);
             board.set_premove(premove, cx);
         });
@@ -590,7 +614,7 @@ impl PlayScreen {
     fn user_move(&mut self, mv: Move, cx: &mut Context<Self>) {
         let Some(game) = &self.game else { return };
         let turn = game.tree.node(game.current).pos.turn();
-        if game.result.is_some() || turn != game.user {
+        if game.result.is_some() || game.self_play || turn != game.user {
             return;
         }
         self.apply_move(mv, cx);
@@ -604,7 +628,7 @@ impl PlayScreen {
             return;
         }
         let pos = &game.tree.node(game.current).pos;
-        if pos.turn() == game.user {
+        if pos.turn() == game.user && !game.self_play {
             return;
         }
         if demo {
@@ -672,6 +696,10 @@ impl PlayScreen {
 
     fn resign(&mut self, cx: &mut Context<Self>) {
         let Some(game) = &self.game else { return };
+        if game.self_play {
+            self.finish("Game stopped".to_owned(), cx);
+            return;
+        }
         let text = if game.user == Color::White {
             "Black wins by resignation"
         } else {
@@ -730,7 +758,9 @@ impl PlayScreen {
         let Some(game) = &self.game else { return };
         let mut tree = game.tree.clone();
         let player = self.model.read(cx).config.player_name.clone();
-        let (white, black) = if game.user == Color::White {
+        let (white, black) = if game.self_play {
+            (game.opponent_name.clone(), game.opponent_name.clone())
+        } else if game.user == Color::White {
             (player, game.opponent_name.clone())
         } else {
             (game.opponent_name.clone(), player)
@@ -794,6 +824,23 @@ impl PlayScreen {
         let takeback_this = this.clone();
         let start_this = this.clone();
         let can_start = !self.opponents.is_empty();
+        let self_play = self.mode == Mode::SelfPlay;
+        let mode_this = this.clone();
+        let mode = segmented(
+            "play-mode",
+            vec![
+                (Mode::VsEngine, ui::i18n::t("Vs engine").into(), false),
+                (Mode::SelfPlay, ui::i18n::t("Self-play").into(), false),
+            ],
+            self.mode,
+            move |mode, _, cx| {
+                mode_this.update(cx, |screen, cx| {
+                    screen.mode = mode;
+                    cx.notify();
+                });
+            },
+        );
+        let engine_label = if self_play { "Engine" } else { "Opponent" };
         v_flex()
             .id("play-setup")
             .w(px(300.))
@@ -806,8 +853,9 @@ impl PlayScreen {
             .bg(rgb(T.surface))
             .border_r_1()
             .border_color(rgb(T.border))
-            .child(section_label("New game vs engine").mb(px(14.)))
-            .child(field(ui::i18n::t("Opponent"), select_el(&self.opponent)).mb(px(14.)))
+            .child(section_label("New game").mb(px(10.)))
+            .child(mode.mb(px(14.)))
+            .child(field(ui::i18n::t(engine_label), select_el(&self.opponent)).mb(px(14.)))
             .child(
                 v_flex()
                     .mb(px(16.))
@@ -826,81 +874,93 @@ impl PlayScreen {
             .when(self.time_index.is_none(), |column| {
                 column.child(div().mb(px(14.)).child(text_input(&self.custom_time)))
             })
-            .child(
-                field(
-                    "Colour",
-                    h_flex()
-                        .gap(px(6.))
-                        .child(colour_button(
-                            "white",
-                            ui::i18n::t("White"),
-                            ColourChoice::White,
-                            self.colour,
-                            this.clone(),
-                        ))
-                        .child(colour_button(
-                            "random",
-                            "Random",
-                            ColourChoice::Random,
-                            self.colour,
-                            this.clone(),
-                        ))
-                        .child(colour_button(
-                            "black",
-                            ui::i18n::t("Black"),
-                            ColourChoice::Black,
-                            self.colour,
-                            this.clone(),
-                        )),
-                )
-                .mb(px(14.)),
-            )
-            .child(field("Start from", select_el(&self.start_from)).mb(px(20.)))
-            .child(
-                div().mb(px(12.)).child(
-                    check(
-                        "hide-eval",
-                        self.hide_eval,
-                        "Hide evaluation during the game",
+            .when(!self_play, |column| {
+                column.child(
+                    field(
+                        "Colour",
+                        h_flex()
+                            .gap(px(6.))
+                            .child(colour_button(
+                                "white",
+                                ui::i18n::t("White"),
+                                ColourChoice::White,
+                                self.colour,
+                                this.clone(),
+                            ))
+                            .child(colour_button(
+                                "random",
+                                "Random",
+                                ColourChoice::Random,
+                                self.colour,
+                                this.clone(),
+                            ))
+                            .child(colour_button(
+                                "black",
+                                ui::i18n::t("Black"),
+                                ColourChoice::Black,
+                                self.colour,
+                                this.clone(),
+                            )),
                     )
-                    .on_change(move |value, _, cx| {
-                        hide_this.update(cx, |screen, cx| {
-                            screen.hide_eval = value;
-                            cx.notify();
-                        });
-                    }),
-                ),
-            )
-            .child(div().mb(px(12.)).child({
-                let premove_this = cx.entity();
-                check("premoves", self.allow_premoves, "Allow premoves").on_change(
-                    move |value, _, cx| {
-                        premove_this.update(cx, |screen, cx| {
-                            screen.allow_premoves = value;
-                            cx.notify();
-                        });
+                    .mb(px(14.)),
+                )
+            })
+            .child(field("Start from", select_el(&self.start_from)).mb(px(20.)))
+            .when(!self_play, |column| {
+                column
+                    .child(
+                        div().mb(px(12.)).child(
+                            check(
+                                "hide-eval",
+                                self.hide_eval,
+                                "Hide evaluation during the game",
+                            )
+                            .on_change(move |value, _, cx| {
+                                hide_this.update(cx, |screen, cx| {
+                                    screen.hide_eval = value;
+                                    cx.notify();
+                                });
+                            }),
+                        ),
+                    )
+                    .child(div().mb(px(12.)).child({
+                        let premove_this = cx.entity();
+                        check("premoves", self.allow_premoves, "Allow premoves").on_change(
+                            move |value, _, cx| {
+                                premove_this.update(cx, |screen, cx| {
+                                    screen.allow_premoves = value;
+                                    cx.notify();
+                                });
+                            },
+                        )
+                    }))
+                    .child(div().mb(px(20.)).child(
+                        check("takebacks", self.allow_takebacks, "Allow takebacks").on_change(
+                            move |value, _, cx| {
+                                takeback_this.update(cx, |screen, cx| {
+                                    screen.allow_takebacks = value;
+                                    cx.notify();
+                                });
+                            },
+                        ),
+                    ))
+            })
+            .child(
+                btn(
+                    "start-game",
+                    if self_play {
+                        "Start self-play"
+                    } else {
+                        "Start game"
                     },
                 )
-            }))
-            .child(div().mb(px(20.)).child(
-                check("takebacks", self.allow_takebacks, "Allow takebacks").on_change(
-                    move |value, _, cx| {
-                        takeback_this.update(cx, |screen, cx| {
-                            screen.allow_takebacks = value;
-                            cx.notify();
-                        });
-                    },
-                ),
-            ))
-            .child(
-                btn("start-game", "Start game")
-                    .primary()
-                    .full()
-                    .h(40.)
-                    .disabled(!can_start)
-                    .on_click(move |window, cx| {
-                        start_this.update(cx, |screen, cx| screen.start_game(window, cx));
-                    }),
+                .primary()
+                .full()
+                .h(40.)
+                .disabled(!can_start)
+                .on_click(move |window, cx| {
+                    start_this.update(cx, |screen, cx| screen.start_game(window, cx));
+                }),
             )
             .when(!can_start, |column| {
                 column.child(
@@ -935,9 +995,11 @@ impl PlayScreen {
                 || ui::i18n::t("Opponent").into(),
                 |engine| engine.name.clone().into(),
             ),
+            (false, Some(game)) if game.self_play => game.opponent_name.clone().into(),
             (false, _) => ui::i18n::t("You").into(),
         };
-        let rating = if opponent {
+        let self_play = game.is_some_and(|game| game.self_play);
+        let rating = if opponent || self_play {
             game.and_then(|game| game.opponent_rating)
                 .map(|rating| rating.to_string())
         } else {
@@ -947,7 +1009,7 @@ impl PlayScreen {
                 .player_rating
                 .map(|rating| rating.to_string())
         };
-        let status = (!opponent && active).then_some("your move");
+        let status = (!opponent && active && !self_play).then_some(ui::i18n::t("your move"));
         // The pieces this side is up on, in the opponent's colour.
         let material = game.zip(side).map(|(game, side)| {
             let balance = chess_core::material_balance(game.tree.node(game.current).pos.board());
@@ -1090,6 +1152,7 @@ impl PlayScreen {
         }
         let result = game.and_then(|game| game.result.clone());
         let in_game = game.is_some_and(|game| game.result.is_none());
+        let self_play = game.is_some_and(|game| game.self_play);
         let draw_this = this.clone();
         let takeback_this = this.clone();
         let resign_this = this.clone();
@@ -1114,7 +1177,16 @@ impl PlayScreen {
                             .child(text)
                     })),
             )
-            .child(
+            .child(if self_play {
+                h_flex().child(
+                    btn("stop-self-play", "Stop")
+                        .flex_1()
+                        .disabled(!in_game)
+                        .on_click(move |_, cx| {
+                            resign_this.update(cx, |screen, cx| screen.resign(cx));
+                        }),
+                )
+            } else {
                 h_flex()
                     .gap(px(6.))
                     .child(
@@ -1140,8 +1212,8 @@ impl PlayScreen {
                             .on_click(move |_, cx| {
                                 resign_this.update(cx, |screen, cx| screen.resign(cx));
                             }),
-                    ),
-            )
+                    )
+            })
             .child(
                 btn("analyse-game", "Analyse this game")
                     .full()

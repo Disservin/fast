@@ -410,6 +410,12 @@ pub fn translate(language: Language, text: &str) -> &str {
             "Log" => "Protokoll",
             "Moves from here" => "Züge ab hier",
             "New game vs engine" => "Neue Partie gegen Engine",
+            "Vs engine" => "Gegen Engine",
+            "Self-play" => "Selbstspiel",
+            "self-play" => "Selbstspiel",
+            "Start self-play" => "Selbstspiel starten",
+            "Game stopped" => "Partie abgebrochen",
+            "your move" => "am Zug",
             "No databases yet. Use Import to add a PGN." => {
                 "Noch keine Datenbanken. Fügen Sie mit Importieren eine PGN-Datei hinzu."
             }
