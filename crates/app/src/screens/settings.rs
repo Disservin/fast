@@ -879,7 +879,6 @@ impl SettingsScreen {
                             name,
                             version,
                             path: path.clone(),
-                            runs_on_gpu: false,
                             enabled: true,
                             options,
                             use_analysis: true,

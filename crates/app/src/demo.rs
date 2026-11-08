@@ -717,7 +717,6 @@ fn apply_row(rep: &mut Repertoire, path: &[&str], depth: usize, label: &str, car
 fn demo_engine(
     id: u64,
     (name, version, path): (&str, &str, &str),
-    gpu: bool,
     enabled: bool,
     uses: (bool, bool, bool),
     options: &[(&str, &str)],
@@ -742,7 +741,6 @@ fn demo_engine(
         name: name.to_owned(),
         version: version.to_owned(),
         path: path.into(),
-        runs_on_gpu: gpu,
         enabled,
         options: options
             .iter()
@@ -787,7 +785,6 @@ pub fn prepare(paths: &Paths, config: &mut Config) {
                 "17.1",
                 "C:\\Engines\\stockfish\\stockfish-avx2.exe",
             ),
-            false,
             true,
             (true, true, true),
             &opts,
@@ -796,14 +793,12 @@ pub fn prepare(paths: &Paths, config: &mut Config) {
             2,
             ("Lc0", "0.31", "C:\\Engines\\lc0\\lc0.exe"),
             true,
-            true,
             (true, false, false),
             &opts,
         ),
         demo_engine(
             3,
             ("Maia", "1900", "C:\\Engines\\maia\\lc0.exe"),
-            false,
             true,
             (false, false, true),
             &opts,
@@ -811,7 +806,6 @@ pub fn prepare(paths: &Paths, config: &mut Config) {
         demo_engine(
             4,
             ("Berserk", "13", "C:\\Engines\\berserk\\berserk.exe"),
-            false,
             false,
             (false, false, false),
             &opts,

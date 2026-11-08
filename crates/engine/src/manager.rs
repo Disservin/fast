@@ -34,8 +34,6 @@ pub struct EngineConfig {
     pub version: String,
     pub path: PathBuf,
     #[serde(default)]
-    pub runs_on_gpu: bool,
-    #[serde(default)]
     pub enabled: bool,
     #[serde(default)]
     pub options: BTreeMap<String, String>,

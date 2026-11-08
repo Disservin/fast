@@ -991,8 +991,7 @@ impl LiveAnalysis {
         self.engines
             .iter()
             .filter(visible)
-            .find(|engine| engine.config.runs_on_gpu && has_data(engine))
-            .or_else(|| self.engines.iter().filter(visible).find(has_data))
+            .find(has_data)
             .or_else(|| self.engines.iter().find(visible))
     }
 }
