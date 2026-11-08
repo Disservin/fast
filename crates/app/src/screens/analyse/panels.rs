@@ -16,7 +16,7 @@ use gpui_component::{
 };
 use ui::{
     Arrow, CoordinateStyle, MONO, T,
-    widgets::{btn, check, h_flex, icon_btn, mono, panel, section_label, v_flex},
+    widgets::{btn, check, h_flex, header_tab, icon_btn, mono, panel, section_label, v_flex},
 };
 
 use super::{AnalyseScreen, MoveRow, RowKey};
@@ -27,10 +27,11 @@ use crate::model::ToastExt as _;
 /// The settings the Engine panel shows under its engines.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum EngineTab {
-    /// How many lines to show, and replacing cached results.
+    /// The engines with their live figures, and replacing cached results.
     Engines,
-    /// Threads, hash, the search limit and the moves searched.
-    Search,
+    /// The chosen engine's lines, threads and hash, the search limit and the moves
+    /// searched.
+    Options,
 }
 
 /// Selected log text, which has to read clearly under every line colour.
@@ -260,19 +261,13 @@ impl AnalyseScreen {
         self.panel_engine_config(cx).map(|config| config.id)
     }
 
-    /// Depth, nodes and speed, with the buttons that open the panels.
-    /// The Moves header's controls: the panel toggles, which share the title's row,
-    /// and the line and view settings, which get a row of their own below it.
-    pub(super) fn render_table_tools(&self, cx: &mut Context<Self>) -> (AnyElement, AnyElement) {
+    /// Lines each engine searches (MultiPV), for every analysis engine at once:
+    /// one fewer, one more, back to each engine's default, or as many as allowed.
+    fn render_lines_control(&self, cx: &mut Context<Self>) -> Option<Div> {
         let this = cx.entity();
-        let live = self.live.read(cx);
-        let (on, paused) = (live.on, live.paused);
-        let view = self.model.read(cx).config.view.clone();
-        let all_this = this.clone();
-        let arrows_this = this.clone();
         let small = |id: &'static str, label: &'static str| btn(id, label).compact();
         let lines = self.shown_lines(cx);
-        let lines_stepper = lines.map(|value| {
+        lines.map(|value| {
             let (down_this, up_this) = (this.clone(), this.clone());
             let (reset_this, max_this) = (this.clone(), this.clone());
             h_flex()
@@ -328,7 +323,19 @@ impl AnalyseScreen {
                                 .update(cx, |screen, cx| screen.set_lines(LinesTarget::All, cx));
                         }),
                 )
-        });
+        })
+    }
+
+    /// The Moves header's controls: the view settings on the left, and the pause
+    /// button and panel toggles on the right.
+    pub(super) fn render_table_tools(&self, cx: &mut Context<Self>) -> (AnyElement, AnyElement) {
+        let this = cx.entity();
+        let live = self.live.read(cx);
+        let (on, paused) = (live.on, live.paused);
+        let view = self.model.read(cx).config.view.clone();
+        let all_this = this.clone();
+        let arrows_this = this.clone();
+        let small = |id: &'static str, label: &'static str| btn(id, label).compact();
         let view_tools = h_flex()
             .flex_wrap()
             .gap(px(4.))
@@ -356,13 +363,11 @@ impl AnalyseScreen {
                     }),
             );
         let pause_this = this.clone();
-        let engine_this = this.clone();
         let log_this = this.clone();
         let online_this = this;
         let settings = h_flex()
             .flex_wrap()
             .gap(px(8.))
-            .children(lines_stepper)
             .child(view_tools)
             .into_any_element();
         let toggles = h_flex()
@@ -391,20 +396,6 @@ impl AnalyseScreen {
                     }),
                 )
             })
-            .child(
-                btn("engine-panel", ui::i18n::t("Engine"))
-                    .compact()
-                    .selected(self.engine_panel_open)
-                    .tooltip(ui::i18n::t(
-                        "Choose an engine and adjust its search settings",
-                    ))
-                    .on_click(move |_, cx| {
-                        engine_this.update(cx, |screen, cx| {
-                            screen.engine_panel_open = !screen.engine_panel_open;
-                            cx.notify();
-                        });
-                    }),
-            )
             .child(
                 btn("log-panel", "Log")
                     .compact()
@@ -726,7 +717,6 @@ impl AnalyseScreen {
         let chosen = self.panel_engine_config(cx);
         let on = self.live.read(cx).on;
         let tab = self.engine_tab;
-        let reset_layout = this.clone();
         let mut body = panel().flex_none().overflow_hidden().child(
             h_flex()
                 .h(px(44.))
@@ -739,54 +729,47 @@ impl AnalyseScreen {
                     header.child(section_label(ui::i18n::t("Engine")))
                 })
                 .children((!engines.is_empty()).then(|| {
-                    let mut tabs = h_flex().gap(px(4.));
+                    let mut tabs = h_flex().h_full().gap(px(16.));
                     for (index, (value, label)) in [
                         (EngineTab::Engines, "Engines"),
-                        (EngineTab::Search, "Search"),
+                        (EngineTab::Options, "Search options"),
                     ]
                     .into_iter()
                     .enumerate()
                     {
                         let this = this.clone();
-                        tabs = tabs.child(
-                            btn(("engine-tab", index), label)
-                                .mini()
-                                .selected(tab == value)
-                                .on_click(move |_, cx| {
-                                    this.update(cx, |screen, cx| {
-                                        screen.engine_tab = value;
-                                        cx.notify();
-                                    })
-                                }),
-                        );
+                        tabs = tabs.child(header_tab(
+                            ("engine-tab", index),
+                            label,
+                            tab == value,
+                            move |_, cx| {
+                                this.update(cx, |screen, cx| {
+                                    screen.engine_tab = value;
+                                    cx.notify();
+                                })
+                            },
+                        ));
                     }
                     tabs
                 }))
                 .child(div().flex_1())
                 .child(
-                    btn("reset-panel-sizes", "Reset panel sizes")
-                        .compact()
-                        .on_click(move |_, cx| {
-                            reset_layout.update(cx, |screen, cx| {
-                                screen.model.update(cx, |model, cx| {
-                                    model.config.panels = crate::config::PanelSizes::default();
-                                    model.save_config(cx);
-                                });
-                                cx.notify();
-                            })
-                        }),
-                )
-                .child(
-                    btn(
+                    icon_btn(
                         "engine-power",
                         if on {
-                            "Stop analysis"
+                            "icons/pause.svg"
                         } else {
-                            "Start analysis"
+                            "icons/play.svg"
                         },
                     )
+                    .w(28.)
                     .compact()
                     .selected(on)
+                    .tooltip(if on {
+                        "Stop analysis"
+                    } else {
+                        "Start analysis"
+                    })
                     .on_click({
                         let this = this.clone();
                         move |_, cx| this.update(cx, |screen, cx| screen.toggle_engine(cx))
@@ -806,9 +789,12 @@ impl AnalyseScreen {
                 )
                 .into_any_element();
         }
-        for config in &engines {
-            let is_chosen = chosen.as_ref().is_some_and(|chosen| chosen.id == config.id);
-            body = body.child(self.engine_row(config, is_chosen, limit, cx));
+        if tab == EngineTab::Engines {
+            for config in &engines {
+                let is_chosen = chosen.as_ref().is_some_and(|chosen| chosen.id == config.id);
+                body = body.child(self.engine_row(config, is_chosen, limit, cx));
+            }
+            return self.render_engines_tab(body, chosen, cx).into_any_element();
         }
         let mut limits = h_flex().gap(px(4.));
         for (index, (value, label)) in LIMITS.into_iter().enumerate() {
@@ -825,53 +811,67 @@ impl AnalyseScreen {
                     }),
             );
         }
-        if tab == EngineTab::Engines {
-            return self.render_engines_tab(body, chosen, cx);
-        }
         let workspace = self.workspace.clone();
-        let mut settings = v_flex().gap(px(14.)).p(px(16.));
+        // Options apply to the engine chosen on the Engines tab, so its name leads the row.
         if let Some(config) = &chosen {
-            settings = settings.child(
-                div()
-                    .flex()
-                    .flex_row()
+            let id = config.id;
+            let name = format!("{} {}", config.name, config.version)
+                .trim()
+                .to_owned();
+            body = body.child(
+                h_flex()
                     .flex_wrap()
                     .gap_x(px(20.))
                     .gap_y(px(8.))
+                    .px(px(16.))
+                    .py(px(10.))
+                    .child(
+                        h_flex()
+                            .flex_none()
+                            .gap(px(6.))
+                            .text_size(px(13.))
+                            .font_weight(FontWeight::MEDIUM)
+                            .child(crate::controls::engine_icon(config, 14.))
+                            .child(name),
+                    )
+                    .children(self.render_lines_control(cx))
                     .child(self.stepper(config, "Threads", "Threads", "", cx))
-                    .child(self.stepper(config, "Hash", "Hash", " MB", cx)),
+                    .child(self.stepper(config, "Hash", "Hash", " MB", cx))
+                    .child(div().flex_1())
+                    .child(
+                        btn("all-options", "All options")
+                            .compact()
+                            .tooltip(ui::i18n::t(
+                                "Every option this engine offers, in Settings › Engines",
+                            ))
+                            .on_click(move |window, cx| {
+                                if let Some(workspace) = workspace.upgrade() {
+                                    workspace.update(cx, |workspace, cx| {
+                                        workspace.open_engine_settings(id, window, cx);
+                                    });
+                                }
+                            }),
+                    ),
             );
         }
-        let options_id = chosen.as_ref().map(|config| config.id);
-        settings = settings.child(
+        body = body.child(
             h_flex()
                 .flex_wrap()
                 .gap(px(10.))
+                .px(px(16.))
+                .py(px(10.))
+                .border_t_1()
+                .border_color(rgb(T.divider))
                 .child(
                     div()
                         .flex_1()
                         .min_w(px(90.))
-                        .text_size(px(12.))
-                        .text_color(rgb(T.muted))
+                        .text_size(px(13.))
+                        .text_color(rgb(T.fg_2))
                         .child(ui::i18n::t("Search limit")),
                 )
-                .child(limits)
-                .children(options_id.map(|id| {
-                    btn("all-options", "All options")
-                        .compact()
-                        .tooltip(ui::i18n::t(
-                            "Every option this engine offers, in Settings › Engines",
-                        ))
-                        .on_click(move |window, cx| {
-                            if let Some(workspace) = workspace.upgrade() {
-                                workspace.update(cx, |workspace, cx| {
-                                    workspace.open_engine_settings(id, window, cx);
-                                });
-                            }
-                        })
-                })),
+                .child(limits),
         );
-        body = body.child(settings);
         // Restricting the root search is rare, so the move list stays folded until asked for.
         let pos = self.analysed_pos();
         let legal = pos.legal_moves();
@@ -979,17 +979,17 @@ impl AnalyseScreen {
         body.child(search).into_any_element()
     }
 
-    /// The Engine panel's first tab: how many lines each engine shows, and replacing a
-    /// cached result with a fresh search.
+    /// The Engine panel's first tab under its engine rows: replacing a cached result
+    /// with a fresh search, when the chosen engine's lines came from the cache.
     fn render_engines_tab(
         &mut self,
         body: Div,
         chosen: Option<EngineConfig>,
         cx: &mut Context<Self>,
-    ) -> AnyElement {
+    ) -> Div {
         let this = cx.entity();
         let Some(config) = chosen else {
-            return body.into_any_element();
+            return body;
         };
         let id = config.id;
         let has_cached = self
@@ -999,35 +999,30 @@ impl AnalyseScreen {
             .iter()
             .find(|engine| engine.config.id == id)
             .is_some_and(|engine| engine.lines.values().any(|line| line.cached));
-        let replace_this = this.clone();
-        body.child(
-            h_flex()
-                .flex_wrap()
-                .gap(px(10.))
-                .p(px(16.))
-                .child(
-                    div()
-                        .flex_1()
-                        .child(self.stepper(&config, "MultiPV", "Lines", "", cx)),
-                )
-                .when(has_cached, |row| {
-                    row.child(
+        body.when(has_cached, |body| {
+            body.child(
+                h_flex()
+                    .justify_end()
+                    .px(px(16.))
+                    .py(px(10.))
+                    .border_t_1()
+                    .border_color(rgb(T.divider))
+                    .child(
                         btn("replace-cached-analysis", "Replace cached analysis")
                             .compact()
                             .tooltip(ui::i18n::t(
                                 "Discard this saved result and run a fresh search",
                             ))
                             .on_click(move |_, cx| {
-                                replace_this.update(cx, |screen, cx| {
+                                this.update(cx, |screen, cx| {
                                     screen
                                         .live
                                         .update(cx, |live, cx| live.replace_cached(id, cx));
                                 });
                             }),
-                    )
-                }),
-        )
-        .into_any_element()
+                    ),
+            )
+        })
     }
 
     /// The log of the engine the panels show, if it is in analysis.

@@ -371,7 +371,7 @@ pub fn translate(language: Language, text: &str) -> &str {
             "Protocol" => "Protokoll",
             "RESULT" => "ERGEBNIS",
             "Replace cached analysis" => "Gespeicherte Analyse ersetzen",
-            "Reset panel sizes" => "Panelgrößen zurücksetzen",
+            "Search options" => "Suchoptionen",
             "Restart" => "Neu starten",
             "Retry saving settings and repertoire" => {
                 "Einstellungen und Repertoire erneut speichern"
@@ -448,9 +448,6 @@ pub fn translate(language: Language, text: &str) -> &str {
                 "Zur Standardanzahl der Varianten jeder Engine zurückkehren"
             }
             "Choose an enabled review engine" => "Eine aktivierte Prüf-Engine auswählen",
-            "Choose an engine and adjust its search settings" => {
-                "Eine Engine auswählen und ihre Sucheinstellungen anpassen"
-            }
             "Choose which player's moves to review" => "Auswählen, wessen Züge geprüft werden",
             "Close tab; reopen with Ctrl/Cmd+Shift+T" => {
                 "Tab schließen; mit Strg/Cmd+Umschalt+T wieder öffnen"

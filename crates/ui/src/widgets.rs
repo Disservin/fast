@@ -367,6 +367,75 @@ impl RenderOnce for Btn {
     }
 }
 
+/// A tab in a panel header. It fills the header's height, and the chosen one is in
+/// `fg` with a 2px `accent` line along its bottom edge; the others are `muted`.
+pub fn header_tab(
+    id: impl Into<ElementId>,
+    label: impl Into<SharedString>,
+    selected: bool,
+    on_select: impl Fn(&mut Window, &mut App) + 'static,
+) -> impl IntoElement {
+    HeaderTab {
+        id: id.into(),
+        label: crate::i18n::t(&label.into()).to_owned().into(),
+        selected,
+        on_select: Rc::new(on_select),
+    }
+}
+
+#[derive(IntoElement)]
+struct HeaderTab {
+    id: ElementId,
+    label: SharedString,
+    selected: bool,
+    on_select: ClickHandler,
+}
+
+impl RenderOnce for HeaderTab {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let focus = window
+            .use_keyed_state(self.id.clone(), cx, |_, cx| {
+                cx.focus_handle().tab_stop(true)
+            })
+            .read(cx)
+            .clone();
+        let (on_click, on_key) = (self.on_select.clone(), self.on_select);
+        let hover: Hsla = rgb(T.fg).into();
+        div()
+            .id(self.id)
+            .key_context("FastButton")
+            .track_focus(&focus)
+            .flex()
+            .flex_none()
+            .items_center()
+            .h_full()
+            .px(px(4.))
+            .border_b_2()
+            .border_color(if self.selected {
+                rgb(T.accent).into()
+            } else {
+                gpui::transparent_black()
+            })
+            .text_size(px(13.))
+            .font_weight(FontWeight::MEDIUM)
+            .text_color(rgb(if self.selected { T.fg } else { T.muted }))
+            .whitespace_nowrap()
+            .cursor_pointer()
+            .hover(move |style| style.text_color(hover))
+            .on_mouse_down(MouseButton::Left, |_, window, _| window.prevent_default())
+            .on_click(move |_, window, cx| on_click(window, cx))
+            .on_key_down(move |event, window, cx| {
+                let key = event.keystroke.key.as_str();
+                if (key == "enter" || key == "space") && !event.keystroke.modifiers.modified() {
+                    on_key(window, cx);
+                    cx.stop_propagation();
+                }
+            })
+            .focus_visible(|style| style.border_2().border_color(rgb(T.accent)).rounded(px(4.)))
+            .child(self.label)
+    }
+}
+
 /// A row of buttons where exactly one option is selected.
 pub fn segmented<V: Copy + PartialEq + 'static>(
     id: &'static str,

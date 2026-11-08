@@ -94,10 +94,12 @@ decoration is kept to a minimum.
 ### Controls
 
 - `btn()` comes in three sizes: 36px by default (forms and dialogs), `.compact()` at 28px (panel and
-  toolbar controls) and `.mini()` at 24px (tab strips inside a panel header). Use the
+  toolbar controls) and `.mini()` at 24px (small toggles inside a panel header). Use the
   smallest size that fits the context.
 - Use `.primary()` (an `accent` fill) for at most one main action per area. Most buttons are
   normal: `surface` with a `border_strong` outline.
+- Tabs in a panel header use `header_tab()`: full header height, the chosen one in `fg` with a
+  2px `accent` bottom line, the others `muted`.
 - Build segmented controls (`segmented()`) as rows of buttons. The chosen one is `.selected()`:
   a `selected` background with an `accent` border. Toggle buttons such as Engine, Log and
   Online use `.selected(open)` the same way.
@@ -118,8 +120,8 @@ decoration is kept to a minimum.
 - Progress is a thin 2px bar along the bottom of a row: `divider` track with `accent` fill.
 - Show a missing value as an em dash `—`, never as blank space or `0`.
 - Show each figure in one place. If a panel that shows it can be closed, show the figure
-  somewhere else while that panel is closed. For example, Line preview shows nodes, speed and
-  time only while the Engine panel is closed.
+  somewhere else while that panel is closed. For example, the Engine panel shows nodes, speed
+  and time, so Line preview shows only the depth.
 
 ### Board
 

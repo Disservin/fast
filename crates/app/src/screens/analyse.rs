@@ -292,7 +292,6 @@ pub struct AnalyseScreen {
     visible: bool,
     /// Show WDL when an engine requests or supplies it, regardless of window width.
     show_wdl: bool,
-    engine_panel_open: bool,
     /// Whether the Engine panel lists every legal move to restrict the search to.
     search_moves_open: bool,
     /// Which tab of settings the Engine panel shows under its engines.
@@ -458,7 +457,6 @@ impl AnalyseScreen {
             db_task: None,
             visible: false,
             show_wdl: true,
-            engine_panel_open: false,
             search_moves_open: false,
             engine_tab: panels::EngineTab::Engines,
             spin_edit: None,
@@ -2457,25 +2455,13 @@ impl AnalyseScreen {
             .flex_none()
             .overflow_hidden()
             .child(
-                v_flex()
-                    .px(px(16.))
-                    .py(px(10.))
-                    .gap(px(8.))
-                    .child(
-                        h_flex()
-                            .flex_wrap()
-                            .gap(px(8.))
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .min_w(px(140.))
-                                    .text_size(px(16.))
-                                    .font_weight(FontWeight::SEMIBOLD)
-                                    .child(ui::i18n::t("Moves from here")),
-                            )
-                            .child(toggles),
-                    )
-                    .child(settings),
+                v_flex().px(px(16.)).py(px(10.)).gap(px(8.)).child(
+                    h_flex()
+                        .flex_wrap()
+                        .gap(px(8.))
+                        .child(div().flex_1().child(settings))
+                        .child(toggles),
+                ),
             )
             .children(self.render_online_status())
             .child(
@@ -2499,8 +2485,7 @@ impl AnalyseScreen {
     }
 
     /// Who found the selected line and how deep: the engine's icon and name, then the
-    /// line's depth. With the Engine panel closed the search's other figures follow,
-    /// since the panel's rows are not there to show them.
+    /// line's depth.
     fn render_line_source(&self, row: &MoveRow, cx: &gpui::App) -> gpui::AnyElement {
         let live = self.live.read(cx);
         let engine = row
@@ -2511,47 +2496,23 @@ impl AnalyseScreen {
             Some(sel) if sel > row.depth => format!("{}/{sel}", row.depth),
             _ => row.depth.to_string(),
         };
-        let mut figures: Vec<(&'static str, String)> = vec![("Depth", depth)];
-        if !self.engine_panel_open
-            && let Some(stats) = stats
-        {
-            figures.extend(
-                stats
-                    .nodes
-                    .map(|nodes| ("Nodes", engine::format_nodes(nodes))),
-            );
-            figures.extend(stats.nps.map(|nps| ("Speed", engine::format_speed(nps))));
-            figures.extend(stats.time_ms.map(|ms| ("Time", search_time(ms))));
-            figures.extend(
-                stats
-                    .hashfull
-                    .filter(|full| *full > 0)
-                    .map(|full| ("Hash", format!("{:.0}%", f64::from(full) / 10.))),
-            );
-            figures.extend(
-                stats
-                    .tbhits
-                    .filter(|hits| *hits > 0)
-                    .map(|hits| ("TB", engine::format_nodes(hits).replace(" n", ""))),
-            );
-        }
+        // The Engine panel shows the search's other figures.
+        let figures: Vec<(&'static str, String)> = vec![("Depth", depth)];
         let name = engine.map(|engine| {
             let config = &engine.config;
             format!("{} {}", config.name, config.version)
                 .trim()
                 .to_owned()
         });
-        // Each figure is a small muted label and its value, spaced apart like the
-        // Engine panel's columns.
+        // Each figure is a tiny caption over its value, like the Engine panel's columns.
         let figure = |(label, value): (&'static str, String)| {
-            h_flex()
+            v_flex()
                 .flex_none()
-                .gap(px(4.))
                 .child(
                     div()
-                        .text_size(px(11.))
+                        .text_size(px(10.))
                         .text_color(rgb(T.faint))
-                        .child(ui::i18n::t(label).to_owned()),
+                        .child(ui::i18n::t(label).to_uppercase()),
                 )
                 .child(
                     mono(value)
@@ -3120,7 +3081,7 @@ impl Render for AnalyseScreen {
         let table = self.render_moves_table(cx);
         let preview = self.render_line_preview(cx);
         let editor = self.editor.is_some().then(|| self.render_editor(cx));
-        let engine_panel = self.engine_panel_open.then(|| self.render_engine_panel(cx));
+        let engine_panel = self.render_engine_panel(cx);
         let log_panel = self.log_panel_open.then(|| self.render_log_panel(cx));
         self.sync_online(cx);
         let note = self.note.clone();
@@ -3194,15 +3155,14 @@ impl Render for AnalyseScreen {
                     .h_full()
                     .overflow_y_scroll()
                     .pr(px(24.))
-                    .pt(px(24.))
                     .pb(px(16.))
                     .child(
                         v_flex()
                             .gap(px(18.))
                             // The search changes the height of everything below the table, so the
-                            // Engine panel goes above it to keep its buttons still.
+                            // Engine panel goes first to keep its buttons still.
                             .children(editor)
-                            .children(engine_panel)
+                            .child(engine_panel)
                             .child(table)
                             .child(preview)
                             .children(log_panel)
