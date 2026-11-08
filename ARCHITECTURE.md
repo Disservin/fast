@@ -201,6 +201,9 @@ The UI thread never blocks on engines or databases.
   table; duplicating uses `VACUUM INTO`.
 - **Games table:** ids for the filter are loaded once and rows are paged on demand as
   `uniform_list` reveals them, so memory and render cost follow the viewport, not the row count.
+  `Filter::sort` picks a fixed SQL expression per `SortKey` and always ends with `id` in the same
+  direction; ascending `id` is file order. The sort is saved per database in
+  `config.database_sorts`. While a query runs the old rows stay and a 2px bar shows.
 
 ## Rendering cost
 

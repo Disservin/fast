@@ -533,6 +533,12 @@ fn small_db(path: &Path, name: &str, count: usize, white: &str, line: &str, rng:
         );
     }
     import_named(path, &pgn, name);
+    // The model games read like a book, so they open in file order.
+    if line == ENGLISH_ATTACK
+        && let Ok(database) = Database::open(path)
+    {
+        let _ = database.set_source_file(Path::new("najdorf-model-games.pgn"));
+    }
 }
 
 fn import_named(path: &Path, pgn: &str, name: &str) {
@@ -873,7 +879,7 @@ pub fn prepare(paths: &Paths, config: &mut Config) {
     config.next_engine_id = 5;
 
     let databases = paths.databases_dir();
-    let stamp = databases.join(".generated-v2");
+    let stamp = databases.join(".generated-v3");
     if stamp.exists() {
         return;
     }

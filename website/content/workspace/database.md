@@ -14,6 +14,16 @@ Filter by:
 Tick **Reached the Analyse board position** to see only games that passed through the position
 on the Analyse board.
 
+## Sort the games
+
+Click a column heading to sort by it, and click it again to reverse the order. The sorted
+heading shows an arrow. The **#** column numbers the games in the order they were imported,
+which is their order in the PGN file, so a book's games keep the numbers you know.
+
+- Each database remembers its sort. A database imported from a file starts in file order;
+  others start newest first.
+- **Analyse all** reviews the games in the table's order.
+
 ## Read the results
 
 - The table shows where each game left your repertoire, and its accuracy.

@@ -5,7 +5,8 @@ use std::{collections::HashMap, ops::Range, path::PathBuf};
 use chess_core::{Chess, GameTree, Position, classify, position_hash};
 use db::{
     Database, Filter, FilterStats, GameDetails, GameInfo, GameRow, ImportControl, ImportOptions,
-    ImportProgress, ReviewPosition, ReviewSummary, SideFilter, TimeClass, import_games,
+    ImportProgress, ReviewPosition, ReviewSummary, SideFilter, Sort, SortKey, TimeClass,
+    import_games,
 };
 use gpui::{
     AnyElement, AppContext as _, Context, Entity, FontWeight, IntoElement, MouseButton, Render,
@@ -72,6 +73,7 @@ const PAGE: usize = 200;
 const ROW_H: f32 = 37.5;
 
 // Column widths for the games table.
+const W_NUMBER: f32 = 48.;
 const W_RESULT: f32 = 82.;
 const W_LEFT: f32 = 99.;
 const W_MOVES: f32 = 78.;
@@ -177,6 +179,12 @@ pub struct DatabaseScreen {
     only_left_rep: bool,
     /// Filter currently applied to the table.
     applied: Filter,
+    /// The table's order, remembered per database.
+    sort: Sort,
+    /// A query is running; the current rows stay until its results arrive.
+    querying: bool,
+    /// Keyboard focus for each sortable column heading, by `SortKey`.
+    sort_focus: Vec<gpui::FocusHandle>,
     summary: SharedString,
     /// Preview count for the "Show N games" button.
     pending_count: Option<u64>,
@@ -367,6 +375,12 @@ impl DatabaseScreen {
             reached_position,
             only_left_rep: false,
             applied: Filter::default(),
+            sort: Sort::default(),
+            querying: false,
+            sort_focus: SortKey::ALL
+                .iter()
+                .map(|_| cx.focus_handle().tab_stop(true))
+                .collect(),
             summary: "".into(),
             pending_count: None,
             ids: Vec::new(),
@@ -449,6 +463,7 @@ impl DatabaseScreen {
                 .map(|(hash, _)| *hash),
             only_left_repertoire: self.only_left_rep,
             only_annotated: false,
+            sort: self.sort,
         }
     }
 
@@ -472,6 +487,57 @@ impl DatabaseScreen {
             parts.push("left repertoire".to_owned());
         }
         parts.join(", ").into()
+    }
+
+    /// The sort saved for the selected database: its own, else file order for a
+    /// database imported from a file, else newest first.
+    fn saved_sort(&self, cx: &gpui::App) -> Sort {
+        let Some(entry) = &self.db_snapshot else {
+            return Sort::default();
+        };
+        let key = entry.path.to_string_lossy().into_owned();
+        let saved = self
+            .model
+            .read(cx)
+            .config
+            .database_sorts
+            .get(&key)
+            .and_then(|saved| {
+                Some(Sort {
+                    key: SortKey::from_name(&saved.key)?,
+                    descending: saved.descending,
+                })
+            });
+        saved.unwrap_or(if entry.source_file.is_some() {
+            Sort::FILE
+        } else {
+            Sort::default()
+        })
+    }
+
+    /// Sorts the table by `key`, reversing it when it is already sorted by that key,
+    /// and remembers the choice for this database.
+    fn sort_by(&mut self, key: SortKey, cx: &mut Context<Self>) {
+        let descending = if self.sort.key == key {
+            !self.sort.descending
+        } else {
+            // Names read A to Z; numbers, dates and accuracy biggest or newest first.
+            matches!(key, SortKey::Moves | SortKey::Date | SortKey::Accuracy)
+        };
+        if let Some(entry) = &self.db_snapshot {
+            let path = entry.path.to_string_lossy().into_owned();
+            self.model.update(cx, |model, cx| {
+                model.config.database_sorts.insert(
+                    path,
+                    crate::config::SavedSort {
+                        key: key.as_str().to_owned(),
+                        descending,
+                    },
+                );
+                model.save_config(cx);
+            });
+        }
+        self.apply_filter(cx);
     }
 
     /// Counts matches in the background for the "Show N games" button.
@@ -508,6 +574,7 @@ impl DatabaseScreen {
             .selected_db
             .as_ref()
             .and_then(|path| entries.iter().find(|entry| &entry.path == path).cloned());
+        self.sort = self.saved_sort(cx);
         let filter = self.build_filter(cx);
         self.summary = self.summary_for(&filter);
         self.applied = filter.clone();
@@ -516,9 +583,11 @@ impl DatabaseScreen {
             self.rows.clear();
             self.stats = FilterStats::default();
             self.pending_count = Some(0);
+            self.querying = false;
             cx.notify();
             return;
         };
+        self.querying = true;
         let task = cx.background_spawn(async move {
             let db = Database::open(path)?;
             let ids = db.filtered_ids(&filter)?;
@@ -532,6 +601,7 @@ impl DatabaseScreen {
         self.query_task = Some(cx.spawn(async move |this, cx| {
             let result = task.await;
             let _ = this.update(cx, |this, cx| {
+                this.querying = false;
                 match result {
                     Ok((ids, stats, leak)) => {
                         this.pending_count = Some(stats.games);
@@ -2070,50 +2140,101 @@ impl DatabaseScreen {
             ))
     }
 
+    /// A column heading that sorts the table by its column. The sorted one is `fg`
+    /// with an arrow in `accent`; the arrow's space is kept on every heading so
+    /// widths never change.
+    fn sort_heading(
+        &self,
+        key: SortKey,
+        label: &str,
+        width: Option<f32>,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement + use<> {
+        let this = cx.entity();
+        let sorted = self.sort.key == key;
+        let arrow = if self.sort.descending {
+            "icons/arrow-down.svg"
+        } else {
+            "icons/arrow-up.svg"
+        };
+        let (click, keys) = (this.clone(), this);
+        let label = ui::i18n::t(label).to_uppercase();
+        h_flex()
+            .id(("sort", key as usize))
+            .key_context("FastButton")
+            .track_focus(&self.sort_focus[key as usize])
+            .h(px(24.))
+            .gap(px(3.))
+            .px(px(3.))
+            .ml(px(-4.))
+            .rounded(px(4.))
+            .border_1()
+            .border_color(gpui::transparent_black())
+            .cursor_pointer()
+            .hover(|style| style.bg(rgb(T.hover)))
+            .focus_visible(|style| style.border_2().border_color(rgb(T.accent)))
+            .on_click(move |_, _, cx| {
+                click.update(cx, |screen, cx| screen.sort_by(key, cx));
+            })
+            .on_key_down(move |event: &gpui::KeyDownEvent, _, cx| {
+                let key_name = event.keystroke.key.as_str();
+                if key_name == "enter" || key_name == "space" {
+                    cx.stop_propagation();
+                    keys.update(cx, |screen, cx| screen.sort_by(key, cx));
+                }
+            })
+            .child(
+                div()
+                    .whitespace_nowrap()
+                    .text_size(px(11.))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(rgb(if sorted { T.fg } else { T.muted }))
+                    .child(label),
+            )
+            .child(div().size(px(12.)).flex_none().when(sorted, |slot| {
+                slot.child(ui::widgets::icon(arrow, px(12.), T.accent))
+            }))
+            .map(|heading| {
+                let cell = div().flex_none().pr(px(10.));
+                match width {
+                    Some(width) => cell.w(px(width)).child(heading),
+                    None => cell.flex_1().min_w_0().child(heading),
+                }
+            })
+    }
+
     fn render_table(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let busy = self.querying.then(|| {
+            div()
+                .absolute()
+                .left_0()
+                .right_0()
+                .bottom(px(-1.))
+                .child(ui::widgets::busy_bar("games-query"))
+        });
         let header = h_flex()
+            .relative()
             .h(px(35.))
             .flex_none()
             .px(px(12.))
             .bg(rgb(T.surface_2))
             .border_b_1()
             .border_color(rgb(T.border))
+            .children(busy)
+            .child(self.sort_heading(SortKey::FileOrder, "#", Some(W_NUMBER), cx))
+            .child(self.sort_heading(SortKey::White, "White", None, cx))
+            .child(self.sort_heading(SortKey::Black, "Black", None, cx))
+            .child(self.sort_heading(SortKey::Result, "Result", Some(W_RESULT), cx))
             .child(
                 div()
-                    .flex_1()
-                    .min_w_0()
-                    .pr(px(10.))
-                    .child(section_label(ui::i18n::t("White"))),
+                    .w(px(W_LEFT))
+                    .flex_none()
+                    .child(section_label("Left rep.")),
             )
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .pr(px(10.))
-                    .child(section_label(ui::i18n::t("Black"))),
-            )
-            .child(
-                div()
-                    .w(px(W_RESULT))
-                    .child(section_label(ui::i18n::t("Result"))),
-            )
-            .child(div().w(px(W_LEFT)).child(section_label("Left rep.")))
-            .child(
-                div()
-                    .w(px(W_MOVES))
-                    .child(section_label(ui::i18n::t("Moves"))),
-            )
-            .child(
-                div()
-                    .w(px(W_DATE))
-                    .child(section_label(ui::i18n::t("Date"))),
-            )
-            .child(
-                div()
-                    .w(px(W_SOURCE))
-                    .child(section_label(ui::i18n::t("Source"))),
-            )
-            .child(div().w(px(W_ACC)).flex_none().child(section_label("Acc.")));
+            .child(self.sort_heading(SortKey::Moves, "Moves", Some(W_MOVES), cx))
+            .child(self.sort_heading(SortKey::Date, "Date", Some(W_DATE), cx))
+            .child(self.sort_heading(SortKey::Source, "Source", Some(W_SOURCE), cx))
+            .child(self.sort_heading(SortKey::Accuracy, "Acc.", Some(W_ACC), cx));
         let count = self.ids.len();
         let list = uniform_list(
             "games-table",
@@ -2275,6 +2396,16 @@ impl DatabaseScreen {
                 .text_color(rgb(color))
         };
         row_el
+            .child(
+                mono(game.id.to_string())
+                    .w(px(W_NUMBER))
+                    .flex_none()
+                    .pr(px(14.))
+                    .flex()
+                    .justify_end()
+                    .text_size(px(12.))
+                    .text_color(rgb(T.faint)),
+            )
             .child(name(&game.white, game.white_elo, white_won, game.annotated))
             .child(name(&game.black, game.black_elo, black_won, false))
             .child(mono_cell(result_text(&game.result), W_RESULT, T.fg))

@@ -10,7 +10,7 @@ pub use import::{ImportControl, ImportOptions, ImportProgress, ImportSummary, im
 pub use notes::NoteStore;
 pub use queries::{
     Filter, FilterStats, GameDetails, GameRow, MoveStat, PlayerLine, ReviewPosition, ReviewSummary,
-    SideFilter, TimeClass,
+    SideFilter, Sort, SortKey, TimeClass,
 };
 
 use std::path::{Path, PathBuf};

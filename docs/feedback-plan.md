@@ -4,8 +4,8 @@ Reddit threads about En Croissant name the gaps that keep people on ChessBase, S
 Chess. Fast already covers many of them: tabs for any screen, saving annotations back to a
 database, Play from any position, engine tournaments, clearing arrows with a left click, native
 Mac and Linux builds. This plan covers the requests Fast does not meet yet, in the order
-they should be built. Comments, variations and NAGs now survive database import, and the opening tree can
-use any database.
+they should be built. Comments, variations and NAGs now survive database import, the opening tree can use any
+database, and the games table sorts by file order and by column.
 
 It refines items 4 and 6 of `docs/roadmap.md`. When an item ships, remove it here and from the
 roadmap, and update `ARCHITECTURE.md` where the item changes crates, threads, protocol or data
@@ -13,12 +13,11 @@ flow.
 
 | # | Item | Size | Touches |
 | --- | --- | --- | --- |
-| 3 | Sort the games list by file order and by column | S | `db`, Database tab |
 | 4 | Download games from Lichess and Chess.com | L | new app module, `db`, Database tab, Settings |
 | 5 | More search filters | M (phase A), L (phase B) | `db`, Database tab |
 | 6 | Chess960 in Analyse and Play | L | `chess_core`, `engine`, board, Analyse, Play |
 
-Item 3 is small and fixes a complaint people repeat often. Item 4 comes next because it
+Item 4 comes next because it
 needs a scope decision (see its section). Item 5's metadata filters can ship at any time.
 Item 6 touches the most code, so it goes last.
 
@@ -44,48 +43,6 @@ Each item follows `AGENTS.md`. In particular:
   still load.
 - **Measured, not assumed.** Before an item that touches import or queries ships, time it on a
   database of about one million games (a monthly Lichess dump) and record the numbers in the PR.
-
----
-
-## 3. Sort the games list by file order and by column
-
-**Problem.** `filtered_ids` always sorts by `date DESC, id DESC`. Books and tournament files
-with one date come out in reverse file order, and no column can be sorted.
-
-### Integration
-
-1. **`db`.** Add `Sort { key: SortKey, descending: bool }` to `Filter`. `SortKey` covers File
-   order, White, Black, Result, Moves, Date, Source and Accuracy. Each key maps to a fixed SQL
-   expression, so user input never reaches the SQL text. Every order ends with `id` in the same
-   direction, so the order is stable.
-2. **Indexes.** `date`, `white` and `black` are already indexed, and `id` is the primary key.
-   Measure sorting by `plies` and `accuracy` on one million rows. If it takes more than about
-   300 ms, add the index in the migration.
-3. **Remember per database.** Save the sort per database path in `config` (`database_sorts`).
-   New databases default to Date, newest first. A database imported from a single PGN file
-   defaults to File order.
-4. **Everything follows the table order.** Batch review and "open the next game" (when it
-   exists) use the table's current order.
-
-### UX
-
-- **Clicking a header sorts.** Clicking a column heading sorts by it, and clicking again
-  reverses it. The sorted heading turns `fg` with a 12px `arrow-up`/`arrow-down` icon in
-  `accent`. The others stay `muted`. Headings are focusable buttons (Enter sorts) with the
-  focus ring. The icon takes space reserved in advance, so column widths never change.
-- **A `#` column for file order.** A narrow first column (48px, mono, `faint`,
-  right-aligned) shows the game's number in the file. Clicking its heading sorts by file order.
-  Book readers see the game numbers they know from the book.
-- **Feedback.** While a large sort runs, the current rows stay visible and a 2px bar runs
-  under the header. The new rows replace them in one go.
-- **Selection.** The selected game stays selected and scrolls into view after a sort.
-
-### Verification
-
-- `db` tests: every `SortKey` in both directions, ties broken by `id`, and file order
-  matching the import order.
-- Manual: import a 300-game book, check that the games appear in book order, and switch sorts
-  at 1100×720 to check that nothing wraps or jumps.
 
 ---
 

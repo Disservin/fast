@@ -1,11 +1,11 @@
 //! Small flat widgets following the design system: buttons, segmented controls,
 //! section labels, panels, table cells.
 
-use std::rc::Rc;
+use std::{rc::Rc, time::Duration};
 
 use gpui::{
-    AnyElement, App, Div, ElementId, FontWeight, Hsla, IntoElement, MouseButton, Pixels,
-    RenderOnce, SharedString, Window, div, prelude::*, px, rgb, svg,
+    Animation, AnimationExt as _, AnyElement, App, Div, ElementId, FontWeight, Hsla, IntoElement,
+    MouseButton, Pixels, RenderOnce, SharedString, Window, div, prelude::*, px, relative, rgb, svg,
 };
 
 use crate::theme::{MONO, SANS, T};
@@ -95,6 +95,47 @@ pub fn panel() -> Div {
         .border_1()
         .border_color(rgb(T.border))
         .rounded(px(6.))
+}
+
+/// A thin 2px bar along the bottom of a row for work of unknown length: a `divider`
+/// track with an `accent` segment sliding along it.
+pub fn busy_bar(id: impl Into<ElementId>) -> impl IntoElement {
+    div()
+        .relative()
+        .w_full()
+        .h(px(2.))
+        .flex_none()
+        .overflow_hidden()
+        .bg(rgb(T.divider))
+        .child(
+            div()
+                .absolute()
+                .top_0()
+                .h_full()
+                .w(relative(0.3))
+                .bg(rgb(T.accent))
+                .with_animation(
+                    id.into(),
+                    Animation::new(Duration::from_millis(1200)).repeat(),
+                    |bar, delta| bar.left(relative(delta * 1.3 - 0.3)),
+                ),
+        )
+}
+
+/// A thin 2px progress bar: a `divider` track with an `accent` fill for `fraction`
+/// of the work, from 0 to 1.
+pub fn progress_bar(fraction: f32) -> impl IntoElement {
+    div()
+        .w_full()
+        .h(px(2.))
+        .flex_none()
+        .bg(rgb(T.divider))
+        .child(
+            div()
+                .h_full()
+                .w(relative(fraction.clamp(0., 1.)))
+                .bg(rgb(T.accent)),
+        )
 }
 
 pub fn icon(path: &'static str, size: Pixels, color: u32) -> impl IntoElement {

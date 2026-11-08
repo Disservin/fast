@@ -49,6 +49,101 @@ pub enum SideFilter {
     Black,
 }
 
+/// A column the games table can be sorted by.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum SortKey {
+    /// The order the games were imported in, which is their order in the file.
+    FileOrder,
+    White,
+    Black,
+    Result,
+    Moves,
+    #[default]
+    Date,
+    Source,
+    Accuracy,
+}
+
+impl SortKey {
+    pub const ALL: [Self; 8] = [
+        Self::FileOrder,
+        Self::White,
+        Self::Black,
+        Self::Result,
+        Self::Moves,
+        Self::Date,
+        Self::Source,
+        Self::Accuracy,
+    ];
+
+    /// The fixed SQL expression for this key, so user input never reaches the query.
+    fn sql(self) -> &'static str {
+        match self {
+            Self::FileOrder => "id",
+            Self::White => "white COLLATE NOCASE",
+            Self::Black => "black COLLATE NOCASE",
+            Self::Result => "result",
+            Self::Moves => "plies",
+            Self::Date => "date",
+            Self::Source => "source COLLATE NOCASE",
+            Self::Accuracy => "accuracy",
+        }
+    }
+
+    /// A stable name for saving the key in the config.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::FileOrder => "file",
+            Self::White => "white",
+            Self::Black => "black",
+            Self::Result => "result",
+            Self::Moves => "moves",
+            Self::Date => "date",
+            Self::Source => "source",
+            Self::Accuracy => "accuracy",
+        }
+    }
+
+    /// The key saved under `name`, if there is one.
+    pub fn from_name(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|key| key.as_str() == name)
+    }
+}
+
+/// The games table's order: a column and its direction. Ties keep file order in the
+/// same direction, so the order is stable.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Sort {
+    pub key: SortKey,
+    pub descending: bool,
+}
+
+impl Default for Sort {
+    /// Newest first.
+    fn default() -> Self {
+        Self {
+            key: SortKey::Date,
+            descending: true,
+        }
+    }
+}
+
+impl Sort {
+    /// File order, first game first: the default for a database imported from one file.
+    pub const FILE: Self = Self {
+        key: SortKey::FileOrder,
+        descending: false,
+    };
+
+    fn order_by(self) -> String {
+        let direction = if self.descending { "DESC" } else { "ASC" };
+        match self.key {
+            SortKey::FileOrder => format!("id {direction}"),
+            key => format!("{} {direction}, id {direction}", key.sql()),
+        }
+    }
+}
+
 /// Criteria for the games table. Unset fields do not restrict.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Filter {
@@ -63,6 +158,8 @@ pub struct Filter {
     pub only_left_repertoire: bool,
     /// Only games with comments, NAGs or variations.
     pub only_annotated: bool,
+    /// The order of the results.
+    pub sort: Sort,
 }
 
 impl Filter {
@@ -316,13 +413,14 @@ pub struct FilterStats {
 }
 
 impl Database {
-    /// Ids matching the filter, newest first. Cheap enough for 1M+ rows and lets the
-    /// table virtualize by fetching row data only for the visible range.
+    /// Ids matching the filter, in the filter's sort order. Cheap enough for 1M+ rows
+    /// and lets the table virtualize by fetching row data only for the visible range.
     pub fn filtered_ids(&self, filter: &Filter) -> Result<Vec<i64>> {
         let (clause, values) = filter.sql();
-        let mut statement = self.conn.prepare(&format!(
-            "SELECT id FROM games{clause} ORDER BY date DESC, id DESC"
-        ))?;
+        let order = filter.sort.order_by();
+        let mut statement = self
+            .conn
+            .prepare(&format!("SELECT id FROM games{clause} ORDER BY {order}"))?;
         let rows = statement.query_map(params_from_iter(values.iter()), |row| row.get(0))?;
         Ok(rows.collect::<rusqlite::Result<_>>()?)
     }
@@ -889,6 +987,50 @@ mod tests {
         assert_eq!(lines[0].3, 1.0);
         assert!(!lines[1].2);
         assert_eq!(lines[1].3, 0.5);
+    }
+
+    #[test]
+    fn every_sort_key_orders_both_ways_with_ties_by_id() {
+        let (_dir, db) = database();
+        let ids = |key: SortKey, descending: bool| {
+            db.filtered_ids(&Filter {
+                sort: Sort { key, descending },
+                ..Default::default()
+            })
+            .unwrap()
+        };
+        let mut file = ids(SortKey::FileOrder, false);
+        assert_eq!(file, vec![1, 2, 3]);
+        file.reverse();
+        assert_eq!(ids(SortKey::FileOrder, true), file);
+        let white = |ids: Vec<i64>| -> Vec<String> {
+            db.rows_by_ids(&ids)
+                .unwrap()
+                .into_iter()
+                .map(|row| row.white)
+                .collect()
+        };
+        assert_eq!(white(ids(SortKey::White, false)), ["bob", "me", "me"]);
+        // "me" ties: file order, reversed when descending.
+        assert_eq!(ids(SortKey::White, false), vec![2, 1, 3]);
+        assert_eq!(ids(SortKey::White, true), vec![3, 1, 2]);
+        assert_eq!(ids(SortKey::Black, false), vec![1, 3, 2]);
+        assert_eq!(ids(SortKey::Result, false), vec![3, 1, 2]);
+        assert_eq!(ids(SortKey::Date, false), vec![3, 1, 2]);
+        assert_eq!(ids(SortKey::Date, true), vec![2, 1, 3]);
+        assert_eq!(ids(SortKey::Source, true), vec![2, 1, 3]);
+        assert_eq!(ids(SortKey::Moves, false), vec![1, 2, 3]);
+        assert_eq!(ids(SortKey::Moves, true), vec![3, 2, 1]);
+        db.set_accuracy(2, 91.0).unwrap();
+        db.set_accuracy(3, 75.0).unwrap();
+        // Games without accuracy come first ascending and last descending.
+        assert_eq!(ids(SortKey::Accuracy, false), vec![1, 3, 2]);
+        assert_eq!(ids(SortKey::Accuracy, true), vec![2, 3, 1]);
+        for key in SortKey::ALL {
+            assert_eq!(SortKey::from_name(key.as_str()), Some(key));
+            assert_eq!(ids(key, false).len(), 3);
+            assert_eq!(ids(key, true).len(), 3);
+        }
     }
 
     #[test]

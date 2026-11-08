@@ -518,6 +518,15 @@ pub struct Config {
     pub import_keep_annotations: bool,
     /// The database last picked for the opening tree, used by tabs that have not chosen.
     pub explorer_default: Option<PathBuf>,
+    /// The games table's sort for each database, by the database file's path.
+    pub database_sorts: BTreeMap<String, SavedSort>,
+}
+
+/// A saved games-table sort: the column's name and its direction.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SavedSort {
+    pub key: String,
+    pub descending: bool,
 }
 
 /// The open tabs, in order, and which one was shown.
@@ -581,6 +590,7 @@ impl Default for Config {
             session: None,
             import_keep_annotations: true,
             explorer_default: None,
+            database_sorts: BTreeMap::new(),
         }
     }
 }
