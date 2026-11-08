@@ -465,6 +465,7 @@ impl Workspace {
             "settings:shortcuts" => (Mode::Settings, Some(SettingsPage::Shortcuts)),
             "settings:data" => (Mode::Settings, Some(SettingsPage::Data)),
             "settings:licenses" => (Mode::Settings, Some(SettingsPage::Licenses)),
+            "settings:thanks" => (Mode::Settings, Some(SettingsPage::Thanks)),
             _ => (Mode::Analyse, None),
         };
         train.update(cx, |train, cx| train.set_visible(mode == Mode::Train, cx));

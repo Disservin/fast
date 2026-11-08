@@ -120,6 +120,11 @@ pub fn translate(language: Language, text: &str) -> &str {
                 "Alles bleibt auf diesem Computer. Sichern Sie diese Ordner, um Partien, Repertoire und Analysen zu behalten."
             }
             "Licenses" => "Lizenzen",
+            "Thanks" => "Danksagung",
+            "Visit En Croissant" => "En Croissant besuchen",
+            "Thanks to En Croissant and its contributors for a carefully handcrafted chess GUI with a rich set of features. Its project history and community requests were valuable resources for the implementation of this GUI." => {
+                "Danke an En Croissant und alle Mitwirkenden für eine sorgfältig von Hand gestaltete Schachoberfläche mit vielen Funktionen. Die Projektgeschichte und die Wünsche der Community waren wertvolle Ressourcen für die Umsetzung dieser Oberfläche."
+            }
             "Licences" => "Lizenzen",
             "Appearance" => "Darstellung",
             "Theme" => "Design",

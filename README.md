@@ -238,3 +238,10 @@ Translations live in `crates/ui/src/i18n.rs`. Use `ui::i18n::t("English source")
 for interface labels; keep PGN tags, UCI option keys, file formats, and user data
 unchanged. To add another language, extend `Language`, its config code and native
 name, and the translation catalog.
+
+## Thanks
+
+Thanks to [En Croissant](https://github.com/franciscoBSalgueiro/en-croissant) and its
+contributors for a carefully handcrafted chess GUI with a rich set of features.
+Its project history and community requests were valuable resources for the implementation of this GUI.
+You can also find this acknowledgment in **Settings › Thanks**.

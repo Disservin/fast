@@ -1,5 +1,5 @@
 //! Settings: General, Board & pieces, Engines, Analysis, Databases, Keyboard shortcuts,
-//! Accounts, Data and Licenses.
+//! Accounts, Data, Licenses and Thanks.
 
 use std::{collections::HashMap, path::PathBuf, process::Command};
 
@@ -43,10 +43,11 @@ pub enum SettingsPage {
     Accounts,
     Data,
     Licenses,
+    Thanks,
 }
 
 impl SettingsPage {
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 10] = [
         Self::General,
         Self::Board,
         Self::Engines,
@@ -56,6 +57,7 @@ impl SettingsPage {
         Self::Accounts,
         Self::Data,
         Self::Licenses,
+        Self::Thanks,
     ];
 
     pub fn title(self) -> &'static str {
@@ -69,6 +71,7 @@ impl SettingsPage {
             Self::Accounts => ui::i18n::t("Accounts"),
             Self::Data => ui::i18n::t("Data"),
             Self::Licenses => ui::i18n::t("Licenses"),
+            Self::Thanks => ui::i18n::t("Thanks"),
         }
     }
 }
@@ -3059,6 +3062,28 @@ impl SettingsScreen {
             )
     }
 
+    /// Acknowledge the chess projects whose work and community help guide Fast.
+    fn render_thanks(&self) -> impl IntoElement + use<> {
+        v_flex()
+            .gap(px(16.))
+            .child(page_title(ui::i18n::t("Thanks")))
+            .child(
+                section("En Croissant")
+                    .child(div().text_color(rgb(T.fg_2)).child(ui::i18n::t(
+                        "Thanks to En Croissant and its contributors for a carefully handcrafted chess GUI with a rich set of features. Its project history and community requests were valuable resources for the implementation of this GUI.",
+                    )))
+                    .child(
+                        h_flex().mt(px(12.)).child(
+                            btn("en-croissant-project", "Visit En Croissant")
+                                .compact()
+                                .on_click(|_, cx| {
+                                    cx.open_url("https://github.com/franciscoBSalgueiro/en-croissant");
+                                }),
+                        ),
+                    ),
+            )
+    }
+
     fn render_accounts(&mut self) -> impl IntoElement + use<> {
         v_flex()
             .gap(px(16.))
@@ -3701,6 +3726,7 @@ impl Render for SettingsScreen {
             SettingsPage::Accounts => self.render_accounts().into_any_element(),
             SettingsPage::Data => self.render_data(cx).into_any_element(),
             SettingsPage::Licenses => self.render_licenses(cx).into_any_element(),
+            SettingsPage::Thanks => self.render_thanks().into_any_element(),
         };
         h_flex().items_start().size_full().child(nav).child(
             div()
