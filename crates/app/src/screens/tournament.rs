@@ -13,7 +13,7 @@ use chess_core::{Position as _, format_pv, pv_to_san};
 use engine::EngineId;
 use gpui::{
     AnyElement, AppContext as _, ClipboardItem, Context, Div, Entity, FontWeight, IntoElement,
-    Pixels, Render, SharedString, Subscription, Task, WeakEntity, Window, deferred, div,
+    Pixels, Render, SharedString, Subscription, Task, WeakEntity, Window, canvas, deferred, div,
     prelude::*, px, relative, rgb,
 };
 use gpui_component::{
@@ -93,6 +93,9 @@ impl GameFilter {
 
 /// Live boards are this many pixels square in the tournament tab.
 const LIVE_BOARD: f32 = 280.;
+/// Space between live cards, and what a card adds to its board's width.
+const LIVE_GAP: f32 = 12.;
+const LIVE_CARD_EXTRA: f32 = 40.;
 /// The finished games table scrolls past this height.
 const GAMES_TABLE_H: f32 = 520.;
 
@@ -285,6 +288,8 @@ pub struct TournamentScreen {
     focus_board: Entity<BoardView>,
     focus_shown: (u64, usize),
     live_all: bool,
+    /// Width of the live boards grid, measured at the last paint; zero until then.
+    live_width: Pixels,
     games_filter: GameFilter,
     /// The ⋯ menu above the run's header.
     menu_open: bool,
@@ -424,6 +429,7 @@ impl TournamentScreen {
             focus_board: cx.new(|_| BoardView::new("live-focus-board").read_only()),
             focus_shown: (0, usize::MAX),
             live_all: false,
+            live_width: px(0.),
             games_filter: GameFilter::All,
             menu_open: false,
             setup_open: false,
@@ -2180,7 +2186,19 @@ impl TournamentScreen {
         } else {
             LIVE_LIMIT
         };
-        let mut grid = h_flex().flex_wrap().items_start().gap(px(12.));
+        // As many columns as fit boards of at least LIVE_BOARD, with the boards grown to fill
+        // the row so the grid sits flush with both sides of the card.
+        let width = f32::from(self.live_width);
+        let min_card = LIVE_BOARD + LIVE_CARD_EXTRA;
+        let cols = ((width + LIVE_GAP) / (min_card + LIVE_GAP)).floor().max(1.);
+        let edge = if width > 0. {
+            ((width - LIVE_GAP * (cols - 1.)) / cols - LIVE_CARD_EXTRA)
+                .floor()
+                .max(LIVE_BOARD / 2.)
+        } else {
+            LIVE_BOARD
+        };
+        let mut grid = h_flex().flex_wrap().items_start().gap(px(LIVE_GAP));
         for game in self.live_games.iter().take(shown) {
             let Some((board, _, _)) = self.live_boards.get(&game.slot) else {
                 continue;
@@ -2195,9 +2213,28 @@ impl TournamentScreen {
                     .on_click(move |_, _, cx| {
                         this.update(cx, |screen, cx| screen.focus_live(slot, cx))
                     })
-                    .child(game_card(game, board, px(LIVE_BOARD), &run.names, focused)),
+                    .child(game_card(game, board, px(edge), &run.names, focused)),
             );
         }
+        let this = cx.entity().downgrade();
+        let measure = canvas(
+            move |bounds, _, cx| {
+                let width = bounds.size.width;
+                this.update(cx, |screen, cx| {
+                    if (f32::from(screen.live_width) - f32::from(width)).abs() >= 1. {
+                        screen.live_width = width;
+                        cx.notify();
+                    }
+                })
+                .ok();
+            },
+            |_, _, _, _| {},
+        )
+        .absolute()
+        .top_0()
+        .left_0()
+        .size_full();
+        let grid = div().relative().w_full().child(measure).child(grid);
         let focus = self
             .live_focus
             .and_then(|slot| self.live_games.iter().find(|game| game.slot == slot))
@@ -2243,7 +2280,7 @@ impl TournamentScreen {
         } else if rows.is_empty() {
             small("No games match this filter.").into_any_element()
         } else {
-            let mut table = v_flex().min_w(px(760.)).gap(px(2.)).child(
+            let mut table = v_flex().w_full().gap(px(2.)).child(
                 h_flex()
                     .gap(px(12.))
                     .px(px(10.))
@@ -2321,8 +2358,9 @@ impl TournamentScreen {
             }
             div()
                 .id("tournament-games-table")
+                .w_full()
                 .max_h(px(GAMES_TABLE_H))
-                .overflow_scrollbar()
+                .overflow_y_scrollbar()
                 .child(table)
                 .into_any_element()
         };
@@ -2459,7 +2497,7 @@ impl TournamentScreen {
                             })
                         }),
                 )
-        };
+            };
         v_flex()
             .gap(px(6.))
             .child(
