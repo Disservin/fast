@@ -41,6 +41,6 @@ The source shows several useful boundaries for the work above:
 - Practice currently compares the answer with one queued move, so feedback needs to distinguish a different prepared reply from an unknown move.
 - Configuration and repertoire persistence now use atomic replacement and retain a previous valid copy; continue extending those safeguards when adding new persistent data.
 
-Fast remains an offline, single-user desktop application. The proposed work uses local engines, databases and user-controlled files. Network accounts, cloud synchronization, online play, mobile clients and a plugin platform would require a separate scope decision.
+Fast remains an offline, single-user desktop application. The proposed work uses local engines, databases and user-controlled files. Like online lookups and engine downloads, downloading the user's own Lichess or Chess.com games connects only when the user asks. Network accounts, cloud synchronization, online play, mobile clients and a plugin platform would require a separate scope decision.
 
 Recommended implementation order: 1–6, then 7–14. Choose items 15–16 according to user feedback and release needs. Start with persistence contracts before building features that depend on them.

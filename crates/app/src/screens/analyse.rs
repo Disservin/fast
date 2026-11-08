@@ -803,7 +803,8 @@ impl AnalyseScreen {
         self.explorer_used = reference.clone();
         let model = self.model.read(cx);
         let mine = model.my_games().map(|entry| entry.path.clone());
-        let player = model.config.player_name.clone();
+        // All the user's names, one per line, as the cache key and the query's names.
+        let player = model.config.my_names().join("\n");
         // Answers already known come from the cache; only the rest are queried.
         let cached = |path: &Option<std::path::PathBuf>, player: &str| match path {
             None => Some(Vec::new()),
@@ -828,10 +829,15 @@ impl AnalyseScreen {
                 Some(
                     Database::open(path)
                         .and_then(|db| {
-                            if player.is_empty() {
+                            let names: Vec<String> = player
+                                .split('\n')
+                                .filter(|name| !name.is_empty())
+                                .map(str::to_owned)
+                                .collect();
+                            if names.is_empty() {
                                 db.moves_from(hash)
                             } else {
-                                db.moves_from_player(hash, player)
+                                db.moves_from_players(hash, &names)
                             }
                         })
                         .unwrap_or_else(|err| {

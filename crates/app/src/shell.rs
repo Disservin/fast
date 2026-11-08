@@ -401,7 +401,7 @@ impl Workspace {
         let database = cx.new(|cx| DatabaseScreen::new(model.clone(), this.clone(), window, cx));
         let train = cx.new(|cx| TrainScreen::new(model.clone(), this.clone(), window, cx));
         let play = cx.new(|cx| PlayScreen::new(model.clone(), this.clone(), window, cx));
-        let settings = cx.new(|cx| SettingsScreen::new(model.clone(), window, cx));
+        let settings = cx.new(|cx| SettingsScreen::new(model.clone(), this.clone(), window, cx));
         let search = cx.new(|cx| {
             InputState::new(window, cx)
                 .placeholder(ui::i18n::t("Search positions, games, openings"))
@@ -1618,6 +1618,14 @@ impl Workspace {
             self.set_mode(Mode::Database, cx);
         }
         self.focus.focus(window, cx);
+    }
+
+    /// Downloads the new games of a saved Lichess or Chess.com account, showing the
+    /// Database tab where its progress appears.
+    pub fn update_account(&mut self, index: usize, cx: &mut Context<Self>) {
+        self.set_mode(Mode::Database, cx);
+        self.database
+            .update(cx, |database, cx| database.update_account(index, cx));
     }
 
     /// Shows the Database tab on `path`, filtered to games reaching the position with

@@ -488,6 +488,9 @@ impl Default for TestPositionSettings {
 pub struct Config {
     /// The user's player name in game headers, for "My games" and leak detection.
     pub player_name: String,
+    /// The user's other names, such as Lichess and Chess.com accounts, counted as the
+    /// same player wherever `player_name` is.
+    pub player_aliases: Vec<String>,
     pub player_rating: Option<u32>,
     pub language: Language,
     pub ui_theme: ui::UiTheme,
@@ -520,6 +523,22 @@ pub struct Config {
     pub explorer_default: Option<PathBuf>,
     /// The games table's sort for each database, by the database file's path.
     pub database_sorts: BTreeMap<String, SavedSort>,
+    /// Lichess and Chess.com accounts whose games were downloaded, for updating them.
+    pub accounts: Vec<Account>,
+}
+
+/// An online account whose games Fast downloaded into a database.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Account {
+    pub site: crate::game_download::Site,
+    pub name: String,
+    pub database: PathBuf,
+    /// When the newest downloaded game started, in milliseconds since 1970 (UTC).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_game_ms: Option<i64>,
+    /// When the account was last updated, in seconds since 1970 (UTC).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<i64>,
 }
 
 /// A saved games-table sort: the column's name and its direction.
@@ -570,6 +589,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             player_name: "me".to_owned(),
+            player_aliases: Vec::new(),
             player_rating: None,
             language: Language::default(),
             ui_theme: ui::UiTheme::default(),
@@ -591,11 +611,49 @@ impl Default for Config {
             import_keep_annotations: true,
             explorer_default: None,
             database_sorts: BTreeMap::new(),
+            accounts: Vec::new(),
         }
     }
 }
 
 impl Config {
+    /// Every name the user plays under: the player name first, then the aliases,
+    /// without blanks or repeats.
+    pub fn my_names(&self) -> Vec<String> {
+        let mut names: Vec<String> = Vec::new();
+        for name in std::iter::once(&self.player_name).chain(&self.player_aliases) {
+            let name = name.trim();
+            if !name.is_empty() && !names.iter().any(|known| known.eq_ignore_ascii_case(name)) {
+                names.push(name.to_owned());
+            }
+        }
+        names
+    }
+
+    /// Adds a name the user plays under, unless it is already known.
+    pub fn add_player_alias(&mut self, name: &str) {
+        let name = name.trim();
+        if !name.is_empty()
+            && !self
+                .my_names()
+                .iter()
+                .any(|known| known.eq_ignore_ascii_case(name))
+        {
+            self.player_aliases.push(name.to_owned());
+        }
+    }
+
+    /// The saved account for this site and name, if there is one.
+    pub fn account_mut(
+        &mut self,
+        site: crate::game_download::Site,
+        name: &str,
+    ) -> Option<&mut Account> {
+        self.accounts
+            .iter_mut()
+            .find(|account| account.site == site && account.name.eq_ignore_ascii_case(name))
+    }
+
     /// Apply the interface palette together with its matching board default.
     pub fn set_ui_theme(&mut self, theme: ui::UiTheme) {
         self.ui_theme = theme;

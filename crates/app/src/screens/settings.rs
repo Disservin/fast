@@ -148,6 +148,25 @@ const SHORTCUT_GROUPS: [(&str, &[(&str, &str)]); 5] = [
     ),
 ];
 
+/// A day as YYYY-MM-DD from seconds since 1970 (UTC).
+pub fn date_of(seconds: i64) -> String {
+    let days = seconds.div_euclid(86_400) + 719_468;
+    let era = days.div_euclid(146_097);
+    let day_of_era = days - era * 146_097;
+    let year_of_era =
+        (day_of_era - day_of_era / 1460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
+    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let month_index = (5 * day_of_year + 2) / 153;
+    let day = day_of_year - (153 * month_index + 2) / 5 + 1;
+    let month = if month_index < 10 {
+        month_index + 3
+    } else {
+        month_index - 9
+    };
+    let year = year_of_era + era * 400 + i64::from(month <= 2);
+    format!("{year:04}-{month:02}-{day:02}")
+}
+
 /// The label of a rebindable action.
 fn shortcut_label(action: &str) -> &'static str {
     SHORTCUT_GROUPS
@@ -257,6 +276,8 @@ pub struct SettingsScreen {
     animation: Entity<SliderState>,
     volume: Entity<SliderState>,
     player_name: Entity<InputState>,
+    /// The window's workspace, for starting account updates on the Database tab.
+    workspace: gpui::WeakEntity<crate::shell::Workspace>,
     /// Nodes per position for backwards analysis; applied on Enter or leaving the field.
     backward_nodes: Entity<InputState>,
     /// The node count typed there could not be read.
@@ -289,7 +310,12 @@ impl Drop for SettingsScreen {
 }
 
 impl SettingsScreen {
-    pub fn new(model: Entity<AppModel>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        model: Entity<AppModel>,
+        workspace: gpui::WeakEntity<crate::shell::Workspace>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let current_language = model.read(cx).config.language;
         let language = new_select(
             ui::i18n::Language::ALL
@@ -431,6 +457,7 @@ impl SettingsScreen {
             animation,
             volume,
             player_name,
+            workspace,
             backward_nodes,
             backward_error: None,
             capture_focus: cx.focus_handle(),
@@ -2717,6 +2744,88 @@ impl SettingsScreen {
             );
         }
         let location = model.paths.databases_dir().display().to_string();
+        let mut accounts = v_flex();
+        for (index, account) in model.config.accounts.iter().enumerate() {
+            let database = model
+                .databases
+                .iter()
+                .find(|entry| entry.path == account.database)
+                .map_or_else(|| SharedString::from("—"), |entry| entry.name.clone());
+            let updated = account
+                .updated_at
+                .map_or_else(|| "—".to_owned(), crate::screens::settings::date_of);
+            let (update, forget) = (self.workspace.clone(), self.model.clone());
+            accounts = accounts.child(
+                h_flex()
+                    .h(px(43.))
+                    .gap(px(10.))
+                    .border_b_1()
+                    .border_color(rgb(T.divider))
+                    .child(
+                        div()
+                            .w(px(84.))
+                            .flex_none()
+                            .text_size(px(13.))
+                            .text_color(rgb(T.muted))
+                            .child(account.site.name()),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .truncate()
+                            .font_weight(FontWeight::MEDIUM)
+                            .child(account.name.clone()),
+                    )
+                    .child(
+                        div()
+                            .w(px(140.))
+                            .flex_none()
+                            .truncate()
+                            .text_size(px(13.))
+                            .text_color(rgb(T.fg_2))
+                            .child(database),
+                    )
+                    .child(
+                        mono(updated)
+                            .w(px(96.))
+                            .flex_none()
+                            .whitespace_nowrap()
+                            .text_size(px(13.))
+                            .text_color(rgb(T.fg_2)),
+                    )
+                    .child(btn(("account-update", index), "Update").compact().on_click(
+                        move |_, cx| {
+                            if let Some(workspace) = update.upgrade() {
+                                workspace.update(cx, |workspace, cx| {
+                                    workspace.update_account(index, cx)
+                                });
+                            }
+                        },
+                    ))
+                    .child(btn(("account-forget", index), "Forget").compact().on_click(
+                        move |_, cx| {
+                            forget.update(cx, |model, cx| {
+                                if index < model.config.accounts.len() {
+                                    model.config.accounts.remove(index);
+                                    model.save_config(cx);
+                                }
+                            });
+                        },
+                    )),
+            );
+        }
+        if model.config.accounts.is_empty() {
+            accounts = accounts.child(
+                div()
+                    .py(px(10.))
+                    .text_size(px(13.))
+                    .text_color(rgb(T.muted))
+                    .child(ui::i18n::t(
+                        "No accounts yet. Use Import › Lichess or Chess.com on the Database screen.",
+                    )),
+            );
+        }
         v_flex()
             .gap(px(16.))
             .child(page_title(ui::i18n::t("Databases")))
@@ -2727,6 +2836,19 @@ impl SettingsScreen {
                 )),
                 div().w(px(320.)).child(text_input(&self.player_name)),
             )))
+            .child(
+                section(ui::i18n::t("Accounts"))
+                    .child(accounts)
+                    .child(
+                        div()
+                            .mt(px(10.))
+                            .text_size(px(13.))
+                            .text_color(rgb(T.muted))
+                            .child(ui::i18n::t(
+                                "Updates only run when you ask. Each one fetches the games played since the last.",
+                            )),
+                    ),
+            )
             .child(
                 section(ui::i18n::t("Files")).child(rows).child(
                     div()

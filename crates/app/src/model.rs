@@ -464,9 +464,9 @@ impl AppModel {
             self.gaps.clear();
             return;
         }
-        let player = self.config.player_name.clone();
+        let players = self.config.my_names();
         let repertoire = self.repertoire.clone();
-        let task = cx.background_spawn(async move { compute_leaks(&path, &player, &repertoire) });
+        let task = cx.background_spawn(async move { compute_leaks(&path, &players, &repertoire) });
         self.leak_task = Some(cx.spawn(async move |this, cx| {
             let result = task.await;
             let _ = this.update(cx, |model, cx| {
@@ -556,11 +556,11 @@ fn file_key(path: &Path) -> String {
 /// Writes each game's deviation into the database and summarises the leaks.
 pub fn compute_leaks(
     path: &Path,
-    player: &str,
+    players: &[String],
     repertoire: &Repertoire,
 ) -> Result<(Vec<Leak>, Vec<BookGap>)> {
     let mut database = Database::open(path)?;
-    let lines = database.player_lines(player)?;
+    let lines = database.player_lines(players)?;
     database.in_transaction(|db| {
         for (id, sans, white, _) in &lines {
             let left = deviation(repertoire, sans, *white)
@@ -643,7 +643,7 @@ mod tests {
         .unwrap();
         let mut rep = Repertoire::new("r", true);
         rep.add_line(&["e4", "c5", "Nf3"]).unwrap();
-        let (leaks, _) = compute_leaks(&path, "me", &rep).unwrap();
+        let (leaks, _) = compute_leaks(&path, &["me".to_owned()], &rep).unwrap();
         assert_eq!(leaks.len(), 1);
         assert_eq!(leaks[0].played, "c3");
         let database = Database::open(&path).unwrap();

@@ -144,10 +144,18 @@ impl Sort {
     }
 }
 
+/// `?, ?, ?` for `count` values, for an SQL `IN` list.
+fn marks(count: usize) -> String {
+    vec!["?"; count].join(", ")
+}
+
 /// Criteria for the games table. Unset fields do not restrict.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Filter {
     pub player: String,
+    /// Other names of the same player, such as their Lichess and Chess.com accounts,
+    /// matched together with `player`.
+    pub player_aliases: Vec<String>,
     pub side: SideFilter,
     pub eco_min: String,
     pub eco_max: String,
@@ -163,35 +171,56 @@ pub struct Filter {
 }
 
 impl Filter {
+    /// The player's names: `player` and its aliases, trimmed, without empty ones.
+    fn player_names(&self) -> Vec<String> {
+        let player = self.player.trim();
+        if player.is_empty() {
+            return Vec::new();
+        }
+        let mut names = vec![player.to_owned()];
+        for alias in &self.player_aliases {
+            let alias = alias.trim();
+            if !alias.is_empty() && !names.iter().any(|name| name.eq_ignore_ascii_case(alias)) {
+                names.push(alias.to_owned());
+            }
+        }
+        names
+    }
+
     fn sql(&self) -> (String, Vec<Box<dyn ToSql>>) {
         let mut clauses: Vec<String> = Vec::new();
         let mut values: Vec<Box<dyn ToSql>> = Vec::new();
-        let player = self.player.trim();
-        if !player.is_empty() {
-            let white = "white = ? COLLATE NOCASE";
-            let black = "black = ? COLLATE NOCASE";
+        let names = self.player_names();
+        let push_names = |values: &mut Vec<Box<dyn ToSql>>| {
+            for name in &names {
+                values.push(Box::new(name.clone()));
+            }
+        };
+        if !names.is_empty() {
+            let list = marks(names.len());
+            let white = format!("white COLLATE NOCASE IN ({list})");
+            let black = format!("black COLLATE NOCASE IN ({list})");
             match self.side {
                 SideFilter::Any => {
                     clauses.push(format!("({white} OR {black})"));
-                    values.push(Box::new(player.to_owned()));
-                    values.push(Box::new(player.to_owned()));
+                    push_names(&mut values);
+                    push_names(&mut values);
                 }
                 SideFilter::White => {
-                    clauses.push(white.to_owned());
-                    values.push(Box::new(player.to_owned()));
+                    clauses.push(white);
+                    push_names(&mut values);
                 }
                 SideFilter::Black => {
-                    clauses.push(black.to_owned());
-                    values.push(Box::new(player.to_owned()));
+                    clauses.push(black);
+                    push_names(&mut values);
                 }
             }
             if let Some(rating) = self.min_opponent_rating {
-                clauses.push(
-                    "CASE WHEN white = ? COLLATE NOCASE THEN COALESCE(black_elo, 0)
+                clauses.push(format!(
+                    "CASE WHEN white COLLATE NOCASE IN ({list}) THEN COALESCE(black_elo, 0)
                           ELSE COALESCE(white_elo, 0) END >= ?"
-                        .to_owned(),
-                );
-                values.push(Box::new(player.to_owned()));
+                ));
+                push_names(&mut values);
                 values.push(Box::new(rating));
             }
         } else if let Some(rating) = self.min_opponent_rating {
@@ -610,20 +639,24 @@ impl Database {
 
     pub fn stats(&self, filter: &Filter) -> Result<FilterStats> {
         let (clause, values) = filter.sql();
-        let player = filter.player.trim();
+        let names = filter.player_names();
         // Score from the filtered player's perspective, else White's.
-        let (expression, player_values) = if player.is_empty() {
+        let (expression, player_values) = if names.is_empty() {
             (
-                "SUM(CASE result WHEN '1-0' THEN 1.0 WHEN '1/2-1/2' THEN 0.5 ELSE 0.0 END)",
+                "SUM(CASE result WHEN '1-0' THEN 1.0 WHEN '1/2-1/2' THEN 0.5 ELSE 0.0 END)"
+                    .to_owned(),
                 vec![],
             )
         } else {
+            let list = marks(names.len());
             (
-                "SUM(CASE WHEN result = '1/2-1/2' THEN 0.5
-                          WHEN result = '1-0' AND white = ? COLLATE NOCASE THEN 1.0
-                          WHEN result = '0-1' AND black = ? COLLATE NOCASE THEN 1.0
-                          ELSE 0.0 END)",
-                vec![player.to_owned(), player.to_owned()],
+                format!(
+                    "SUM(CASE WHEN result = '1/2-1/2' THEN 0.5
+                          WHEN result = '1-0' AND white COLLATE NOCASE IN ({list}) THEN 1.0
+                          WHEN result = '0-1' AND black COLLATE NOCASE IN ({list}) THEN 1.0
+                          ELSE 0.0 END)"
+                ),
+                names.iter().chain(names.iter()).cloned().collect(),
             )
         };
         let mut all: Vec<&dyn ToSql> = player_values.iter().map(|v| v as &dyn ToSql).collect();
@@ -655,19 +688,26 @@ impl Database {
 
     /// Moves played from a position, most popular first.
     pub fn moves_from(&self, hash: u64) -> Result<Vec<MoveStat>> {
-        self.moves_from_filtered(hash, "")
+        self.moves_from_filtered(hash, &[])
     }
 
-    /// Like [`Self::moves_from`] but only counting games where `player` took part.
-    pub fn moves_from_player(&self, hash: u64, player: &str) -> Result<Vec<MoveStat>> {
-        self.moves_from_filtered(hash, player)
+    /// Like [`Self::moves_from`] but only counting games where one of `players` (names
+    /// of the same person) took part.
+    pub fn moves_from_players(&self, hash: u64, players: &[String]) -> Result<Vec<MoveStat>> {
+        self.moves_from_filtered(hash, players)
     }
 
-    fn moves_from_filtered(&self, hash: u64, player: &str) -> Result<Vec<MoveStat>> {
-        let player_clause = if player.is_empty() {
-            ""
+    fn moves_from_filtered(&self, hash: u64, players: &[String]) -> Result<Vec<MoveStat>> {
+        let list = (2..players.len() + 2)
+            .map(|index| format!("?{index}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let player_clause = if players.is_empty() {
+            String::new()
         } else {
-            "AND (g.white = ?2 COLLATE NOCASE OR g.black = ?2 COLLATE NOCASE)"
+            format!(
+                "AND (g.white COLLATE NOCASE IN ({list}) OR g.black COLLATE NOCASE IN ({list}))"
+            )
         };
         let sql = format!(
             "SELECT p.next_san, COUNT(*) AS n,
@@ -686,13 +726,15 @@ impl Database {
                 black_wins: row.get::<_, i64>(4)? as u64,
             })
         };
-        let rows: rusqlite::Result<Vec<MoveStat>> = if player.is_empty() {
-            statement.query_map(params![hash as i64], map)?.collect()
-        } else {
-            statement
-                .query_map(params![hash as i64, player], map)?
-                .collect()
-        };
+        let mut values: Vec<&dyn ToSql> = Vec::new();
+        let hash = hash as i64;
+        values.push(&hash);
+        for player in players {
+            values.push(player);
+        }
+        let rows: rusqlite::Result<Vec<MoveStat>> = statement
+            .query_map(params_from_iter(values.iter()), map)?
+            .collect();
         Ok(rows?)
     }
 
@@ -725,13 +767,19 @@ impl Database {
         Ok(())
     }
 
-    /// Every game's id, moves and colour relative to `player`, for repertoire analysis.
-    pub fn player_lines(&self, player: &str) -> Result<Vec<PlayerLine>> {
-        let mut statement = self.conn.prepare(
-            "SELECT id, moves, white = ?1 COLLATE NOCASE, result FROM games
-             WHERE white = ?1 COLLATE NOCASE OR black = ?1 COLLATE NOCASE",
-        )?;
-        let rows = statement.query_map(params![player], |row| {
+    /// Every game's id, moves and colour relative to the player, for repertoire
+    /// analysis. `players` are names of the same person.
+    pub fn player_lines(&self, players: &[String]) -> Result<Vec<PlayerLine>> {
+        if players.is_empty() {
+            return Ok(Vec::new());
+        }
+        let list = marks(players.len());
+        let mut statement = self.conn.prepare(&format!(
+            "SELECT id, moves, white COLLATE NOCASE IN ({list}), result FROM games
+             WHERE white COLLATE NOCASE IN ({list}) OR black COLLATE NOCASE IN ({list})"
+        ))?;
+        let values: Vec<&String> = players.iter().chain(players).chain(players).collect();
+        let rows = statement.query_map(params_from_iter(values), |row| {
             let id: i64 = row.get(0)?;
             let moves: String = row.get(1)?;
             let white: bool = row.get(2)?;
@@ -884,6 +932,21 @@ mod tests {
             }),
             2
         );
+        let aliases = Filter {
+            player: "alice".to_owned(),
+            player_aliases: vec!["Bob".to_owned(), " ".to_owned()],
+            ..Default::default()
+        };
+        assert_eq!(count(aliases.clone()), 2);
+        assert_eq!(
+            count(Filter {
+                side: SideFilter::White,
+                ..aliases.clone()
+            }),
+            1
+        );
+        let stats = db.stats(&aliases).unwrap();
+        assert!((stats.score_percent - 25.0).abs() < 0.01);
         assert_eq!(
             count(Filter {
                 eco_min: "B90".to_owned(),
@@ -923,8 +986,14 @@ mod tests {
         assert_eq!(start[0].san, "e4");
         assert_eq!(start[0].games, 3);
         assert!((start[0].score_percent(true) - 50.0).abs() < f32::EPSILON);
-        let bob = db.moves_from_player(hash_after(&[]), "bob").unwrap();
+        let bob = db
+            .moves_from_players(hash_after(&[]), &["bob".to_owned()])
+            .unwrap();
         assert_eq!(bob[0].games, 1);
+        let both = db
+            .moves_from_players(hash_after(&[]), &["bob".to_owned(), "CAROL".to_owned()])
+            .unwrap();
+        assert_eq!(both[0].games, 2);
     }
 
     #[test]
@@ -981,7 +1050,7 @@ mod tests {
     #[test]
     fn player_lines_report_colour_and_score() {
         let (_dir, db) = database();
-        let mut lines = db.player_lines("me").unwrap();
+        let mut lines = db.player_lines(&["me".to_owned()]).unwrap();
         lines.sort_by_key(|(id, ..)| *id);
         assert!(lines[0].2);
         assert_eq!(lines[0].3, 1.0);

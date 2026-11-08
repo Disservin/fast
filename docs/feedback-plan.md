@@ -5,7 +5,8 @@ Chess. Fast already covers many of them: tabs for any screen, saving annotations
 database, Play from any position, engine tournaments, clearing arrows with a left click, native
 Mac and Linux builds. This plan covers the requests Fast does not meet yet, in the order
 they should be built. Comments, variations and NAGs now survive database import, the opening tree can use any
-database, and the games table sorts by file order and by column.
+database, the games table sorts by file order and by column, and your Lichess and
+Chess.com games download on request.
 
 It refines items 4 and 6 of `docs/roadmap.md`. When an item ships, remove it here and from the
 roadmap, and update `ARCHITECTURE.md` where the item changes crates, threads, protocol or data
@@ -13,12 +14,10 @@ flow.
 
 | # | Item | Size | Touches |
 | --- | --- | --- | --- |
-| 4 | Download games from Lichess and Chess.com | L | new app module, `db`, Database tab, Settings |
 | 5 | More search filters | M (phase A), L (phase B) | `db`, Database tab |
 | 6 | Chess960 in Analyse and Play | L | `chess_core`, `engine`, board, Analyse, Play |
 
-Item 4 comes next because it
-needs a scope decision (see its section). Item 5's metadata filters can ship at any time.
+Item 5's metadata filters can ship at any time.
 Item 6 touches the most code, so it goes last.
 
 ## Rules for every item
@@ -43,74 +42,6 @@ Each item follows `AGENTS.md`. In particular:
   still load.
 - **Measured, not assumed.** Before an item that touches import or queries ships, time it on a
   database of about one million games (a monthly Lichess dump) and record the numbers in the PR.
-
----
-
-## 4. Download games from Lichess and Chess.com
-
-**Problem.** En Croissant users value automatic downloads of their own games. Fast has no
-account import, so users export and import PGN by hand.
-
-**Scope decision needed.** `docs/roadmap.md` describes Fast as offline. Fast already talks to
-the network when the user asks: the Online panel, engine downloads and the update check. This
-item follows the same rule. It only connects after an explicit click, never at startup, and the
-dialog says that it connects to the site. Confirm this before building.
-
-### Integration
-
-1. **New module `crates/app/src/game_download.rs`.** This keeps the network out of `db`. It
-   uses blocking `ureq` (already a dependency) on a background task, with a generic
-   User-Agent (`Fast chess app (github.com/Disservin/fast)`) and no personal data.
-   - **Lichess:** `GET https://lichess.org/api/games/user/{name}` with
-     `Accept: application/x-chess-pgn` and `since`, `clocks=true`, `evals=true`,
-     `opening=true`. The response streams, so it is passed straight into
-     `db::import_games` as its `Read`, with the same progress and cancellation as file
-     import. On HTTP 429, wait 60 s, show a countdown and retry once.
-   - **Chess.com:** `GET https://api.chess.com/pub/player/{name}/games/archives`, then one
-     `/games/{yyyy}/{mm}/pgn` request per month, one at a time. Progress counts months and
-     games.
-2. **No duplicates.** Add a `site` column (already parsed in `Tags`, not stored yet) and a
-   unique partial index on it for URLs (`WHERE site LIKE 'http%'`). The import uses
-   `INSERT OR IGNORE` for those games and counts "already in the database" separately from
-   "skipped".
-3. **Incremental updates.** `config.accounts: Vec<Account { site, name, database, last_game_ms }>`.
-   "Update" asks only for games after `last_game_ms`. The value is saved after each committed
-   batch, so a cancelled update keeps what it fetched.
-4. **Several usernames.** Today `config.player_name` is one string, and Lichess and Chess.com
-   names often differ. Change it to `player_names: Vec<String>` (migrating the old value), and
-   make `moves_from_player` and the Player filter match any of them. Adding an account offers
-   to add its name.
-5. **Where games go.** My games by default, so the My games column and repertoire leak
-   detection pick the games up at once. Any database can be chosen instead.
-
-### UX
-
-- **Entry point.** The Database tab's Import button opens a small menu: "PGN file…",
-  "From Lichess…" and "From Chess.com…".
-- **Dialog.** One line: a site `segmented()` (Lichess / Chess.com), Username, and Since
-  (All / Last year / Last month / Since last update). Below it, the target database select and
-  a `check()` "Include clocks and evaluations" (Lichess only). The primary button is
-  "Download games". The dialog states plainly: "Fast connects to lichess.org to fetch the
-  games. Nothing else is sent."
-- **Progress.** Inside the dialog: games so far in mono, a 2px bar (for Chess.com by months
-  done, for Lichess an indeterminate bar), and Cancel. Closing the dialog keeps the download
-  running in the background with a status line in the Database tab's databases list.
-- **Errors** are shown inline, short, with what to do next: "No Lichess user named
-  'magnuss'", "You're offline. Try again later.", "Lichess asks us to wait. Retrying in 42 s."
-- **Remembered accounts.** Settings › Databases lists accounts with their last update date and
-  "Update" and "Forget" buttons. The databases list's context menu also has "Update from
-  Lichess" for a database that has an account. Updates never run on their own.
-- **Result.** A toast: "Downloaded 86 new games (412 already in My games)", with a
-  "Show games" action that sorts the table by date.
-
-### Verification
-
-- Unit tests with a local `TcpListener` HTTP stub: streamed PGN, 429 then success, an unknown
-  user (404), a dropped connection halfway, the archive list parsed, and duplicates ignored on
-  a second run. CI never contacts the real sites.
-- Manual: download a real account with a few thousand games, cancel halfway, update, and
-  check that the counts add up.
-- Update `ARCHITECTURE.md` (Online lookups) with the new endpoints and their rules.
 
 ---
 

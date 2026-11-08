@@ -28,6 +28,11 @@ pub struct ImportProgress {
     pub annotated: u64,
     /// Variations left out because they held an illegal move.
     pub variations_dropped: u64,
+    /// Games skipped because a game with the same URL is already stored.
+    pub duplicates: u64,
+    /// When the newest game read started, in milliseconds since 1970 (UTC), for
+    /// asking a site only for newer games next time.
+    pub latest_game_ms: Option<i64>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -41,6 +46,10 @@ pub struct ImportSummary {
     pub variations_dropped: u64,
     /// The number in the file (counting from 1) of each game that lost a variation.
     pub games_with_dropped: Vec<u64>,
+    /// Games skipped because a game with the same URL is already stored.
+    pub duplicates: u64,
+    /// When the newest game read started, in milliseconds since 1970 (UTC).
+    pub latest_game_ms: Option<i64>,
 }
 
 /// How games are read and stored by [`import_games`].
@@ -50,6 +59,9 @@ pub struct ImportOptions {
     pub source: String,
     /// Keep comments, NAGs and variations in the stored movetext.
     pub keep_annotations: bool,
+    /// Skip games whose URL (Site or Link tag) is already stored, as when downloading
+    /// an account's games again.
+    pub skip_known_urls: bool,
 }
 
 impl Default for ImportOptions {
@@ -57,6 +69,7 @@ impl Default for ImportOptions {
         Self {
             source: String::new(),
             keep_annotations: true,
+            skip_known_urls: false,
         }
     }
 }
@@ -70,7 +83,8 @@ impl ImportControl {
         self.0.store(true, Ordering::Relaxed);
     }
 
-    fn is_cancelled(&self) -> bool {
+    /// Whether Cancel was pressed.
+    pub fn is_cancelled(&self) -> bool {
         self.0.load(Ordering::Relaxed)
     }
 }
@@ -87,8 +101,50 @@ pub(crate) struct Tags {
     pub(crate) event: String,
     pub(crate) round: String,
     site: String,
+    /// Chess.com puts the game's URL here and "Chess.com" in Site.
+    link: String,
+    utc_date: String,
+    utc_time: String,
     pub(crate) time_control: String,
     fen: String,
+}
+
+impl Tags {
+    /// The game's URL, when its Site or Link tag holds one.
+    fn url(&self) -> &str {
+        [&self.site, &self.link]
+            .into_iter()
+            .find(|value| value.starts_with("http"))
+            .map_or("", String::as_str)
+    }
+
+    /// When the game started, from UTCDate and UTCTime, in milliseconds since 1970.
+    fn start_ms(&self) -> Option<i64> {
+        let mut date = self.utc_date.split('.').map(str::parse::<i64>);
+        let (year, month, day) = (date.next()?.ok()?, date.next()?.ok()?, date.next()?.ok()?);
+        let mut time = self.utc_time.split(':').map(str::parse::<i64>);
+        let (hour, minute, second) = (
+            time.next().and_then(|part| part.ok()).unwrap_or(0),
+            time.next().and_then(|part| part.ok()).unwrap_or(0),
+            time.next().and_then(|part| part.ok()).unwrap_or(0),
+        );
+        if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
+            return None;
+        }
+        let days = days_from_civil(year, month, day);
+        Some(((days * 24 + hour) * 60 + minute) * 60_000 + second * 1000)
+    }
+}
+
+/// Days from 1970-01-01 to a date in the proleptic Gregorian calendar.
+fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
+    let year = if month <= 2 { year - 1 } else { year };
+    let era = year.div_euclid(400);
+    let year_of_era = year - era * 400;
+    let month_index = (month + 9) % 12;
+    let day_of_year = (153 * month_index + 2) / 5 + day - 1;
+    let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+    era * 146_097 + day_of_era - 719_468
 }
 
 /// One game read from a PGN, ready to store.
@@ -184,6 +240,9 @@ impl Visitor for ImportVisitor {
             b"BlackElo" => tags.black_elo = text().parse().ok(),
             b"Result" => tags.result = text(),
             b"Date" | b"UTCDate" => {
+                if name == b"UTCDate" {
+                    tags.utc_date = text();
+                }
                 if tags.date.is_empty() || name == b"Date" {
                     tags.date = text().replace('.', "-");
                 }
@@ -192,6 +251,8 @@ impl Visitor for ImportVisitor {
             b"Event" => tags.event = text(),
             b"Round" => tags.round = text(),
             b"Site" => tags.site = text(),
+            b"Link" => tags.link = text(),
+            b"UTCTime" => tags.utc_time = text(),
             b"TimeControl" => tags.time_control = text(),
             b"FEN" => tags.fen = text(),
             _ => {}
@@ -425,8 +486,8 @@ fn insert_game(tx: &Transaction<'_>, game: &Game, source: &str) -> Result<()> {
     let eco = game_eco(game);
     let mut insert_game = tx.prepare_cached(
         "INSERT INTO games (white, black, white_elo, black_elo, result, date, eco, event, round,
-            start_fen, source, time_class, plies, moves, annotated)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+            start_fen, source, time_class, plies, moves, annotated, site)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
     )?;
     let source = if source.is_empty() {
         guess_source(&tags.site)
@@ -453,6 +514,7 @@ fn insert_game(tx: &Transaction<'_>, game: &Game, source: &str) -> Result<()> {
         game.sans.len() as i64,
         game.sans.join(" "),
         game.annotated,
+        tags.url(),
     ])?;
     let game_id = tx.last_insert_rowid();
     let mut insert_position = tx.prepare_cached(
@@ -467,6 +529,17 @@ fn insert_game(tx: &Transaction<'_>, game: &Game, source: &str) -> Result<()> {
         ])?;
     }
     Ok(())
+}
+
+/// Whether a game with this URL is already stored.
+fn url_known(tx: &Transaction<'_>, url: &str) -> Result<bool> {
+    if url.is_empty() {
+        return Ok(false);
+    }
+    let mut statement = tx.prepare_cached(
+        "SELECT EXISTS (SELECT 1 FROM games WHERE site = ?1 AND site LIKE 'http%')",
+    )?;
+    Ok(statement.query_row(params![url], |row| row.get(0))?)
 }
 
 fn guess_source(site: &str) -> &'static str {
@@ -514,7 +587,19 @@ pub fn import_games(
                 break 'outer;
             };
             read += 1;
+            if let Some(game) = &game
+                && let Some(start) = game.tags.start_ms()
+            {
+                progress.latest_game_ms = Some(
+                    progress
+                        .latest_game_ms
+                        .map_or(start, |latest| latest.max(start)),
+                );
+            }
             match game {
+                Some(game) if options.skip_known_urls && url_known(&tx, game.tags.url())? => {
+                    progress.duplicates += 1;
+                }
                 Some(game) => {
                     insert_game(&tx, &game, &options.source)?;
                     progress.games += 1;
@@ -539,6 +624,8 @@ pub fn import_games(
         annotated: progress.annotated,
         variations_dropped: progress.variations_dropped,
         games_with_dropped,
+        duplicates: progress.duplicates,
+        latest_game_ms: progress.latest_game_ms,
     })
 }
 
@@ -704,6 +791,52 @@ mod tests {
             stored.header("FEN"),
             Some("4k3/8/8/8/8/8/4P3/4K3 b - - 0 1")
         );
+    }
+
+    const DOWNLOADED: &str = "[Site \"https://lichess.org/aaa\"]\n[UTCDate \"2024.03.01\"]\n[UTCTime \"10:00:00\"]\n\n1. e4 *\n\n\
+        [Site \"Chess.com\"]\n[Link \"https://www.chess.com/game/live/1\"]\n[UTCDate \"2024.03.02\"]\n[UTCTime \"00:00:01\"]\n\n1. d4 *\n";
+
+    #[test]
+    fn downloads_skip_games_already_stored() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("x.sqlite");
+        let options = ImportOptions {
+            skip_known_urls: true,
+            ..Default::default()
+        };
+        let run = || {
+            import_games(
+                &path,
+                DOWNLOADED.as_bytes(),
+                &options,
+                &ImportControl::default(),
+                |_| {},
+            )
+            .unwrap()
+        };
+        let first = run();
+        assert_eq!((first.games, first.duplicates), (2, 0));
+        // 2024-03-02 00:00:01 UTC.
+        assert_eq!(first.latest_game_ms, Some(1_709_337_601_000));
+        let second = run();
+        assert_eq!((second.games, second.duplicates), (0, 2));
+        // A file import keeps games that share a URL.
+        let plain = import_games(
+            &path,
+            DOWNLOADED.as_bytes(),
+            &ImportOptions::default(),
+            &ImportControl::default(),
+            |_| {},
+        )
+        .unwrap();
+        assert_eq!(plain.games, 2);
+    }
+
+    #[test]
+    fn civil_dates_count_days_from_1970() {
+        assert_eq!(days_from_civil(1970, 1, 1), 0);
+        assert_eq!(days_from_civil(2000, 3, 1), 11_017);
+        assert_eq!(days_from_civil(1969, 12, 31), -1);
     }
 
     #[test]

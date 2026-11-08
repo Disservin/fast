@@ -179,6 +179,25 @@ chessdb.cn (`queryall`) with blocking `ureq` calls on background tasks. Analyse'
 is the only caller and sends nothing while closed. Lookups wait 300 ms so quick navigation only
 queries where it stops, results are cached per FEN for the session, and clicking a move plays it.
 
+`game_download.rs` downloads a player's games, only after the user clicks Download games or
+Update. It sends the username and a `since` time and nothing else, with the User-Agent
+`Fast chess app (github.com/Disservin/fast)`.
+
+- **Lichess:** `GET /api/games/user/{name}` with `Accept: application/x-chess-pgn`,
+  `sort=dateAsc`, `clocks`, `evals`, `opening` and `since`. The streamed body is the `Read`
+  passed to `db::import_games`, so progress and Cancel work as for a file. Oldest-first order
+  means the newest committed game is always safe to resume from.
+- **Chess.com:** `GET /pub/player/{name}/games/archives`, then each month's `/pgn` one at a
+  time, from the month of the last game on. Only archive links on the API host are followed.
+- An HTTP 429 waits 60 s with a countdown and retries once; 404 means no such user.
+- Downloads import with `skip_known_urls`: a game whose Site or Link URL is already stored
+  (the `games.site` column with a partial index) is counted as already there, not stored
+  again. File imports keep every game.
+- `config.accounts` remembers site, name, database and the newest game's start time, saved
+  after every committed batch, so Update asks only for newer games. Account names are added to
+  `config.player_aliases`, which My games, the opening tree, leak detection and the Player
+  filter match together with `player_name`.
+
 ## Threads
 
 The UI thread never blocks on engines or databases.

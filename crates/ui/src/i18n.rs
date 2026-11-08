@@ -859,6 +859,56 @@ pub fn translate(language: Language, text: &str) -> &str {
             "This game's database" => "Datenbank dieser Partie",
             "Next opening-tree database" => "Nächste Datenbank für den Eröffnungsbaum",
             "Reference" => "Referenz",
+            "No {} user named '{}'" => "Kein {}-Konto namens '{}'",
+            "You're offline. Try again later." => {
+                "Keine Verbindung. Bitte später erneut versuchen."
+            }
+            "{} asks us to wait. Try again in a few minutes." => {
+                "{} bittet zu warten. In ein paar Minuten erneut versuchen."
+            }
+            "The connection broke after {} games. Update to fetch the rest." => {
+                "Die Verbindung brach nach {} Partien ab. Aktualisieren lädt den Rest."
+            }
+            "The site answered with error {}. Try again later." => {
+                "Die Seite antwortete mit Fehler {}. Bitte später erneut versuchen."
+            }
+            "Could not store the games: {}" => "Partien konnten nicht gespeichert werden: {}",
+            "Could not read the site's answer: {}" => "Antwort der Seite nicht lesbar: {}",
+            "Type a username first." => "Zuerst einen Benutzernamen eingeben.",
+            "Downloaded {} new games ({} already in {})" => {
+                "{} neue Partien geladen ({} schon in {})"
+            }
+            "Show games" => "Partien zeigen",
+            "{} asks us to wait. Retrying in {} s." => {
+                "{} bittet zu warten. Neuer Versuch in {} s."
+            }
+            "Downloading {} from {}: {} games" => "Lade {} von {}: {} Partien",
+            "Username" => "Benutzername",
+            "PGN file" => "PGN-Datei",
+            "Last year" => "Letztes Jahr",
+            "Last month" => "Letzter Monat",
+            "Since last update" => "Seit letzter Aktualisierung",
+            "Since" => "Seit",
+            "Include clocks and evaluations" => "Uhrzeiten und Bewertungen einschließen",
+            "This is my account" => "Das ist mein Konto",
+            "Fast connects to {} to fetch the games. Nothing else is sent." => {
+                "Fast verbindet sich mit {}, um die Partien zu laden. Sonst wird nichts gesendet."
+            }
+            "The download keeps running" => "Der Download läuft weiter",
+            "Download games" => "Partien laden",
+            "{} of {} months" => "{} von {} Monaten",
+            "Downloading {}…" => "Lade {}…",
+            "GAMES" => "PARTIEN",
+            "ALREADY STORED" => "SCHON GESPEICHERT",
+            "Update {} from {}" => "{} von {} aktualisieren",
+            "Update" => "Aktualisieren",
+            "Forget" => "Vergessen",
+            "No accounts yet. Use Import › Lichess or Chess.com on the Database screen." => {
+                "Noch keine Konten. Im Datenbank-Tab Import › Lichess oder Chess.com verwenden."
+            }
+            "Updates only run when you ask. Each one fetches the games played since the last." => {
+                "Aktualisierungen laufen nur auf Wunsch. Jede lädt die Partien seit der letzten."
+            }
             _ => text,
         }
     } else {

@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS games (
     round TEXT NOT NULL,
     start_fen TEXT NOT NULL DEFAULT '',
     annotated TEXT,
+    site TEXT NOT NULL DEFAULT '',
     source TEXT NOT NULL,
     time_class TEXT NOT NULL,
     plies INTEGER NOT NULL,
@@ -129,6 +130,25 @@ impl Database {
         if !has_annotated {
             conn.execute("ALTER TABLE games ADD COLUMN annotated TEXT", [])?;
         }
+        let has_site = {
+            let mut columns = conn.prepare("PRAGMA table_info(games)")?;
+            columns
+                .query_map([], |row| row.get::<_, String>(1))?
+                .collect::<rusqlite::Result<Vec<_>>>()?
+                .iter()
+                .any(|column| column == "site")
+        };
+        if !has_site {
+            conn.execute(
+                "ALTER TABLE games ADD COLUMN site TEXT NOT NULL DEFAULT ''",
+                [],
+            )?;
+        }
+        // Finds a downloaded game by its URL, so downloading again skips it.
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS games_site ON games (site) WHERE site LIKE 'http%'",
+            [],
+        )?;
         let has_mate_distance = {
             let mut columns = conn.prepare("PRAGMA table_info(review_positions)")?;
             columns

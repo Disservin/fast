@@ -16,6 +16,7 @@ mod demo;
 mod engine_catalog;
 mod explorer;
 mod fastchess;
+mod game_download;
 mod licenses;
 mod live;
 mod model;

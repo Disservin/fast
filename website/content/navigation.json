@@ -2,7 +2,7 @@
   {
     "title": "Getting started",
     "directory": "getting-started",
-    "pages": ["installation", "engines", "import"]
+    "pages": ["installation", "engines", "import", "download"]
   },
   {
     "title": "Workspace",

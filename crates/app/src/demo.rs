@@ -834,6 +834,16 @@ fn spin(name: &str, default: i64, min: i64, max: i64) -> UciOption {
 pub fn prepare(paths: &Paths, config: &mut Config) {
     let today = today();
     config.player_name = "me".to_owned();
+    // A remembered Lichess account, so Settings › Databases and Import show one.
+    config.player_aliases = vec!["me_on_lichess".to_owned()];
+    config.accounts = vec![crate::config::Account {
+        site: crate::game_download::Site::Lichess,
+        name: "me_on_lichess".to_owned(),
+        database: paths.databases_dir().join("my_games.sqlite"),
+        // 2026-11-02 18:00 UTC and the day after.
+        last_game_ms: Some(1_793_642_400_000),
+        updated_at: Some(1_793_700_000),
+    }];
     config.player_rating = Some(2061);
     let opts = [
         ("Threads", "16"),
