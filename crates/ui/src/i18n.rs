@@ -39,6 +39,13 @@ pub fn set_language(language: Language) {
 pub fn translate(language: Language, text: &str) -> &str {
     if language == Language::German {
         match text {
+            "{} new games, {} already stored" => "{} neue Partien, {} bereits gespeichert",
+            "Connecting to {}…" => "Verbindung zu {} wird hergestellt…",
+            "Fetching archive list from {}…" => "Archivliste von {} wird abgerufen…",
+            "Receiving games from {}…" => "Partien von {} werden empfangen…",
+            "Saving downloaded games…" => "Heruntergeladene Partien werden gespeichert…",
+            "Cancelling download…" => "Download wird abgebrochen…",
+
             "Enter a valid starting position." => "Eine gültige Startstellung eingeben.",
             "Reference FEN" => "Referenz-FEN",
             "Position patterns" => "Stellungsmuster",

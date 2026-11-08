@@ -63,3 +63,8 @@ first matching position. You can save these criteria with other filters.
 
 These are exact matches. Similar pawn structures and representative-game ranking are planned
 separately. Chess960 PGNs keep their variant during import, export and engine review.
+
+When downloading account games, the dialog shows whether Fast is connecting, fetching the
+archive list, receiving games or saving them. Counts appear as batches are stored. You can
+close the dialog and follow the same status above the games table. **Cancel download** shows
+**Cancelling download…** immediately; an outstanding network request may need time to finish.

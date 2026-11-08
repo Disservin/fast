@@ -189,6 +189,9 @@ Update. It sends the username and a `since` time and nothing else, with the User
   means the newest committed game is always safe to resume from.
 - **Chess.com:** `GET /pub/player/{name}/games/archives`, then each month's `/pgn` one at a
   time, from the month of the last game on. Only archive links on the API host are followed.
+- The dialog enters Connecting immediately. Worker events distinguish fetching the archive
+  list, receiving games and saving them, before the first import batch has committed. Both
+  dialog and banner acknowledge Cancel immediately while an outstanding request unwinds.
 - An HTTP 429 waits 60 s with a countdown and retries once; 404 means no such user.
 - Downloads import with `skip_known_urls`: a game whose Site or Link URL is already stored
   (the `games.site` column with a partial index) is counted as already there, not stored
@@ -255,6 +258,11 @@ needless frames: the board positions pieces proportionally so a resize needs onl
 Profile and PGN replacement stages a file beside its destination, syncs it and atomically
 replaces the destination. A `.previous` sibling retains the preceding version; config and
 repertoire saves preserve only valid previous data and startup falls back to that version.
+Config serialization, replacement and disk flushes run on `background_spawn` workers.
+`ConfigWriter` serializes those writes; revision tokens skip stale queued snapshots and keep
+an older completion from clearing the unsaved state of newer settings. Resize debounce also
+invalidates the previous revision immediately. Shutdown awaits a save of the latest snapshot;
+profile restore invalidates pending writes and shares the writer lock before replacing files.
 Settings exposes storage paths, and a retry control only while a save has failed.
 Settings › Data lists each kind of saved data with its files (`storage::STORES`) and
 measures their disk use, and the size and free space of the drive holding them, in

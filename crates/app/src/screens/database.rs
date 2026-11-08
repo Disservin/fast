@@ -28,7 +28,7 @@ use ui::{
 
 use crate::{
     controls::{TextSelect, field, new_input, new_select, select_el, text_input},
-    game_download::{DownloadEvent, DownloadRequest, Endpoints, Site},
+    game_download::{DownloadEvent, DownloadPhase, DownloadRequest, Endpoints, Site},
     model::{AppModel, DbEntry, ModelEvent, ToastExt as _, pick_path},
     shell::Workspace,
 };
@@ -122,6 +122,23 @@ struct Downloading {
     months: Option<(usize, usize)>,
     /// Seconds until the site's requested wait is over.
     waiting: Option<u64>,
+    phase: DownloadPhase,
+}
+
+impl Downloading {
+    /// Reports a waiting or cancellation state immediately, including before the first game.
+    fn status(&self) -> String {
+        if self.control.is_cancelled() {
+            return ui::i18n::t("Cancelling download…").to_owned();
+        }
+        if let Some(seconds) = self.waiting {
+            return ui::i18n::tf(
+                "{} asks us to wait. Retrying in {} s.",
+                &[self.site.name(), &seconds.to_string()],
+            );
+        }
+        self.phase.label(self.site)
+    }
 }
 
 /// Progress of the "Analyse all" batch engine review.
@@ -1395,6 +1412,7 @@ impl DatabaseScreen {
             duplicates: 0,
             months: None,
             waiting: None,
+            phase: DownloadPhase::Connecting,
         });
         self.model.update(cx, |model, cx| {
             if model.config.account_mut(site, &user).is_none() {
@@ -1435,6 +1453,10 @@ impl DatabaseScreen {
                         return;
                     };
                     match event {
+                        DownloadEvent::Phase(phase) => {
+                            running.phase = phase;
+                            running.waiting = None;
+                        }
                         DownloadEvent::Progress {
                             games,
                             duplicates,
@@ -4025,13 +4047,20 @@ impl DatabaseScreen {
                         })
                     }))
                     .child(if running {
-                        btn("download-stop", "Cancel download").on_click(move |_, cx| {
-                            act.update(cx, |screen, _| {
-                                if let Some(running) = &screen.downloading {
-                                    running.control.cancel();
-                                }
+                        btn("download-stop", "Cancel download")
+                            .disabled(
+                                self.downloading
+                                    .as_ref()
+                                    .is_some_and(|running| running.control.is_cancelled()),
+                            )
+                            .on_click(move |_, cx| {
+                                act.update(cx, |screen, cx| {
+                                    if let Some(running) = &screen.downloading {
+                                        running.control.cancel();
+                                    }
+                                    cx.notify();
+                                })
                             })
-                        })
                     } else {
                         btn("download-start", "Download games")
                             .primary()
@@ -4060,16 +4089,7 @@ impl DatabaseScreen {
             }
             _ => ui::widgets::busy_bar("download-dialog-bar").into_any_element(),
         };
-        let status = match (running.waiting, running.months) {
-            (Some(seconds), _) => ui::i18n::tf(
-                "{} asks us to wait. Retrying in {} s.",
-                &[running.site.name(), &seconds.to_string()],
-            ),
-            (None, Some((done, total))) => {
-                ui::i18n::tf("{} of {} months", &[&done.to_string(), &total.to_string()])
-            }
-            (None, None) => ui::i18n::tf("Downloading {}…", &[&running.user]),
-        };
+        let status = running.status();
         v_flex()
             .gap(px(8.))
             .child(
@@ -4105,12 +4125,16 @@ impl DatabaseScreen {
                     ),
             )
             .child(bar)
-            .child(
+            .child(div().text_size(px(13.)).text_color(rgb(T.fg)).child(status))
+            .children(running.months.map(|(done, total)| {
                 div()
                     .text_size(px(13.))
                     .text_color(rgb(T.muted))
-                    .child(status),
-            )
+                    .child(ui::i18n::tf(
+                        "{} of {} months",
+                        &[&done.to_string(), &total.to_string()],
+                    ))
+            }))
     }
 
     /// Asks before emptying a database to import its source file again.
@@ -4216,20 +4240,14 @@ impl DatabaseScreen {
     fn render_download_bar(&self, cx: &mut Context<Self>) -> Option<impl IntoElement + use<>> {
         let running = self.downloading.as_ref()?;
         let this = cx.entity();
-        let text = match running.waiting {
-            Some(seconds) => ui::i18n::tf(
-                "{} asks us to wait. Retrying in {} s.",
-                &[running.site.name(), &seconds.to_string()],
-            ),
-            None => ui::i18n::tf(
-                "Downloading {} from {}: {} games",
-                &[
-                    &running.user,
-                    running.site.name(),
-                    &format_count(running.games),
-                ],
-            ),
-        };
+        let text = format!("{}: {}", running.user, running.status());
+        let counts = ui::i18n::tf(
+            "{} new games, {} already stored",
+            &[
+                &format_count(running.games),
+                &format_count(running.duplicates),
+            ],
+        );
         let bar = match running.months {
             Some((done, total)) if total > 0 => {
                 ui::widgets::progress_bar(done as f32 / total as f32).into_any_element()
@@ -4244,15 +4262,22 @@ impl DatabaseScreen {
                             .justify_between()
                             .px(px(16.))
                             .py(px(8.))
-                            .child(div().text_size(px(14.)).child(text))
+                            .child(
+                                v_flex()
+                                    .gap(px(4.))
+                                    .child(div().text_size(px(14.)).child(text))
+                                    .child(mono(counts).text_size(px(12.)).text_color(rgb(T.fg_2))),
+                            )
                             .child(
                                 btn("cancel-download", ui::i18n::t("Cancel"))
                                     .compact()
+                                    .disabled(running.control.is_cancelled())
                                     .on_click(move |_, cx| {
-                                        this.update(cx, |screen, _| {
+                                        this.update(cx, |screen, cx| {
                                             if let Some(running) = &screen.downloading {
                                                 running.control.cancel();
                                             }
+                                            cx.notify();
                                         });
                                     }),
                             ),

@@ -10,6 +10,7 @@ mod app_update;
 mod assets;
 mod backup;
 mod config;
+mod config_writer;
 mod controls;
 mod debug_window;
 mod demo;
@@ -110,12 +111,12 @@ fn open_main_window(cli: Cli, cx: &mut App) -> anyhow::Result<()> {
     };
     let save_model = model.clone();
     cx.on_app_quit(move |cx| {
-        save_model.update(cx, |model, cx| {
-            if model.unsaved_config {
-                model.save_config(cx);
+        let pending = save_model.update(cx, |model, cx| model.finish_config_save(cx));
+        async move {
+            if let Some(pending) = pending {
+                pending.await;
             }
-        });
-        async {}
+        }
     })
     .detach();
     cx.open_window(options, move |window, cx| {

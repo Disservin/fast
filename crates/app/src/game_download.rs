@@ -74,9 +74,35 @@ pub struct DownloadRequest {
     pub keep_annotations: bool,
 }
 
+/// The current step, including work before any games have arrived.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum DownloadPhase {
+    #[default]
+    Connecting,
+    FetchingArchives,
+    ReceivingGames,
+    SavingGames,
+}
+
+impl DownloadPhase {
+    /// Explains the current step without suggesting that a stalled request has finished.
+    pub fn label(self, site: Site) -> String {
+        match self {
+            Self::Connecting => ui::i18n::tf("Connecting to {}…", &[site.name()]),
+            Self::FetchingArchives => {
+                ui::i18n::tf("Fetching archive list from {}…", &[site.name()])
+            }
+            Self::ReceivingGames => ui::i18n::tf("Receiving games from {}…", &[site.name()]),
+            Self::SavingGames => ui::i18n::t("Saving downloaded games…").to_owned(),
+        }
+    }
+}
+
 /// News from a running download.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DownloadEvent {
+    /// A new step started, before its network or database work runs.
+    Phase(DownloadPhase),
     /// Games stored so far, those already in the database, and for Chess.com the
     /// months fetched out of all months asked for.
     Progress {
@@ -230,7 +256,7 @@ pub fn download(
     request: &DownloadRequest,
     endpoints: &Endpoints,
     control: &ImportControl,
-    on_event: impl FnMut(DownloadEvent),
+    mut on_event: impl FnMut(DownloadEvent),
 ) -> Result<DownloadSummary, DownloadError> {
     let user = request.user.trim();
     if user.is_empty()
@@ -240,6 +266,7 @@ pub fn download(
     {
         return Err(DownloadError::UnknownUser(request.site, user.to_owned()));
     }
+    on_event(DownloadEvent::Phase(DownloadPhase::Connecting));
     let fetch = Fetch {
         agent: agent(endpoints),
         site: request.site,
@@ -283,6 +310,7 @@ fn lichess(
             ..Default::default()
         });
     };
+    on_event(DownloadEvent::Phase(DownloadPhase::ReceivingGames));
     let mut committed = ImportProgress::default();
     let reader = response.into_body().into_reader();
     let result = import_games(&request.database, reader, options, control, |progress| {
@@ -361,12 +389,14 @@ fn chess_com(
     let (user, endpoints, control) = (fetch.user, fetch.endpoints, fetch.control);
     let base = &endpoints.chess_com;
     let url = format!("{base}/pub/player/{}/games/archives", user.to_lowercase());
+    on_event(DownloadEvent::Phase(DownloadPhase::FetchingArchives));
     let Some(response) = fetch.get(&url, &[], "application/json", &mut on_event)? else {
         return Ok(DownloadSummary {
             cancelled: true,
             ..Default::default()
         });
     };
+    on_event(DownloadEvent::Phase(DownloadPhase::FetchingArchives));
     let text = response
         .into_body()
         .read_to_string()
@@ -390,6 +420,7 @@ fn chess_com(
         let Some(path) = archive.strip_prefix(base.as_str()) else {
             continue;
         };
+        on_event(DownloadEvent::Phase(DownloadPhase::ReceivingGames));
         let Some(response) = fetch.get(
             &format!("{base}{path}/pgn"),
             &[],
@@ -400,12 +431,14 @@ fn chess_com(
             total.cancelled = true;
             break;
         };
+        on_event(DownloadEvent::Phase(DownloadPhase::ReceivingGames));
         let mut pgn = Vec::new();
         response
             .into_body()
             .into_reader()
             .read_to_end(&mut pgn)
             .map_err(|_| DownloadError::Interrupted(total.games))?;
+        on_event(DownloadEvent::Phase(DownloadPhase::SavingGames));
         let summary = import_games(&request.database, pgn.as_slice(), options, control, |_| {})
             .map_err(|err| DownloadError::Database(err.to_string()))?;
         total.games += summary.games;
@@ -620,11 +653,15 @@ mod tests {
         ]);
         let dir = tempfile::tempdir().unwrap();
         let mut months = Vec::new();
+        let mut phases = Vec::new();
         let summary = download(
             &request(Site::ChessCom, &dir),
             &endpoints(&base),
             &ImportControl::default(),
             |event| {
+                if let DownloadEvent::Phase(phase) = event {
+                    phases.push(phase);
+                }
                 if let DownloadEvent::Progress {
                     months: Some(done), ..
                 } = event
@@ -635,12 +672,73 @@ mod tests {
         )
         .unwrap();
         assert_eq!(summary.games, 2);
+        assert_eq!(phases.first(), Some(&DownloadPhase::Connecting));
+        assert!(phases.contains(&DownloadPhase::ReceivingGames));
+        assert!(phases.contains(&DownloadPhase::SavingGames));
         assert_eq!(months, vec![(0, 3), (1, 3), (2, 3)]);
         let lines = seen.lock().unwrap();
         assert!(lines[0].contains("/pub/player/me_1/games/archives"));
         assert!(lines[2].contains("/games/2024/01/pgn"));
         // The link to another host is never followed.
         assert_eq!(lines.len(), 3);
+    }
+
+    /// Both sites report startup while a server is still withholding its response.
+    #[test]
+    fn startup_progress_arrives_before_a_slow_server_responds() {
+        for site in [Site::Lichess, Site::ChessCom] {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let base = format!("http://{}", listener.local_addr().unwrap());
+            let (release, wait) = std::sync::mpsc::channel();
+            let server = std::thread::spawn(move || {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut reader = BufReader::new(stream.try_clone().unwrap());
+                loop {
+                    let mut line = String::new();
+                    reader.read_line(&mut line).unwrap();
+                    if line.trim().is_empty() {
+                        break;
+                    }
+                }
+                wait.recv_timeout(Duration::from_secs(5)).unwrap();
+                let body = if site == Site::ChessCom {
+                    "{\"archives\":[]}".to_owned()
+                } else {
+                    game(1, 1)
+                };
+                write!(
+                    stream,
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .unwrap();
+            });
+            let dir = tempfile::tempdir().unwrap();
+            let request = request(site, &dir);
+            let endpoints = endpoints(&base);
+            let (send, events) = std::sync::mpsc::channel();
+            let worker = std::thread::spawn(move || {
+                download(&request, &endpoints, &ImportControl::default(), |event| {
+                    let _ = send.send(event);
+                })
+            });
+            assert_eq!(
+                events.recv_timeout(Duration::from_secs(5)).unwrap(),
+                DownloadEvent::Phase(DownloadPhase::Connecting)
+            );
+            if site == Site::ChessCom {
+                assert_eq!(
+                    events.recv_timeout(Duration::from_secs(5)).unwrap(),
+                    DownloadEvent::Phase(DownloadPhase::FetchingArchives)
+                );
+            }
+            release.send(()).unwrap();
+            assert_eq!(
+                worker.join().unwrap().unwrap().games,
+                if site == Site::Lichess { 1 } else { 0 }
+            );
+            server.join().unwrap();
+        }
     }
 
     #[test]

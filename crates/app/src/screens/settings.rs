@@ -1744,7 +1744,7 @@ impl SettingsScreen {
                 let model = model.clone();
                 body = body.child(btn(id, label).on_click(move |_, cx| model.update(cx, |model, cx| {
                     if let Some(archive) = model.pending_backup.take() {
-                        match archive.restore(&model.paths, replace) {
+                        match model.restore_backup(&archive, replace, cx) {
                             Ok(()) => {
                                 model.config = crate::config::Config::load(&model.paths.config_file);
                                 if let Ok(bytes) = std::fs::read(model.paths.repertoire_file()) && let Ok(rep) = serde_json::from_slice(&bytes) { model.repertoire = rep; }

@@ -2,6 +2,7 @@
 
 use std::{
     path::{Path, PathBuf},
+    sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
@@ -79,6 +80,7 @@ pub struct AppModel {
     pub pending_path: Option<PendingPath>,
     leak_task: Option<Task<()>>,
     config_save_task: Option<Task<()>>,
+    config_writer: Arc<crate::config_writer::ConfigWriter>,
     pub manager: EngineManager,
     pub engine_status: std::collections::BTreeMap<EngineId, EngineStatus>,
 }
@@ -247,6 +249,7 @@ impl AppModel {
             pending_path: None,
             leak_task: None,
             config_save_task: None,
+            config_writer: Arc::default(),
             manager: EngineManager::default(),
             engine_status,
         };
@@ -392,6 +395,7 @@ impl AppModel {
     /// Coalesce live resize events into one write after the drag settles.
     pub fn schedule_config_save(&mut self, cx: &mut Context<Self>) {
         self.unsaved_config = !self.demo;
+        self.config_writer.changed();
         self.config_save_task = Some(cx.spawn(async move |this, cx| {
             cx.background_executor()
                 .timer(Duration::from_millis(250))
@@ -401,19 +405,62 @@ impl AppModel {
         cx.notify();
     }
 
+    /// Saves a settings snapshot on a worker so disk flushes never pause interaction.
     pub fn save_config(&mut self, cx: &mut Context<Self>) {
-        // Demo mode never overwrites its generated profile on disk.
         if self.demo {
             cx.notify();
             return;
         }
         self.unsaved_config = true;
-        if let Err(err) = self.config.save(&self.paths.config_file) {
-            self.toast(format!("Settings remain unsaved: {err:#}. Check storage permissions and retry by changing the setting."), cx);
-        } else {
-            self.unsaved_config = false;
-        }
+        let writer = self.config_writer.clone();
+        let revision = writer.changed();
+        let config = self.config.clone();
+        let path = self.paths.config_file.clone();
+        let worker = cx.background_spawn(async move { writer.save(revision, &config, &path) });
+        self.config_save_task = Some(cx.spawn(async move |this, cx| {
+            let result = worker.await;
+            let _ = this.update(cx, |model, cx| {
+                if !model.config_writer.is_current(revision) { return; }
+                match result {
+                    Ok(true) => model.unsaved_config = false,
+                    Ok(false) => {},
+                    Err(err) => model.toast(format!("Settings remain unsaved: {err:#}. Check storage permissions and retry by changing the setting."), cx),
+                }
+                cx.notify();
+            });
+        }));
         cx.notify();
+    }
+
+    /// Lets app shutdown wait for the latest settings, including a pending debounce.
+    pub fn finish_config_save(&mut self, cx: &mut Context<Self>) -> Option<Task<()>> {
+        if self.unsaved_config {
+            self.save_config(cx);
+        }
+        self.config_save_task.take()
+    }
+
+    /// Prevents an older pending settings snapshot from overwriting a restored profile.
+    pub fn restore_backup(
+        &mut self,
+        archive: &crate::backup::Archive,
+        replace: bool,
+        cx: &mut Context<Self>,
+    ) -> Result<()> {
+        self.config_save_task = None;
+        self.config_writer.changed();
+        let result = self.config_writer.exclusive(|| {
+            if self.unsaved_config {
+                self.config.save(&self.paths.config_file)?;
+            }
+            archive.restore(&self.paths, replace)
+        });
+        if result.is_ok() {
+            self.unsaved_config = false;
+        } else if self.unsaved_config {
+            self.save_config(cx);
+        }
+        result
     }
 
     pub fn save_repertoire(&mut self, cx: &mut Context<Self>) {
