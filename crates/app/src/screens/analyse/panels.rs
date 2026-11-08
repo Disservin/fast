@@ -1436,14 +1436,23 @@ impl AnalyseScreen {
                 )
                 .with_priority(1)
             });
+        // Long lines scroll inside the fixed-height inset, so the buttons below stay put.
         v_flex()
-            .child(flow)
+            .size_full()
+            .child(
+                div()
+                    .id("pv-scroll")
+                    .flex_1()
+                    .min_h_0()
+                    .overflow_y_scrollbar()
+                    .child(flow),
+            )
             .children(peek)
             .when(self.pv_view.is_some(), |column| {
                 column.child(
                     h_flex()
+                        .flex_none()
                         .mt(px(6.))
-                        .mb(px(4.))
                         .gap(px(10.))
                         .child(
                             div()

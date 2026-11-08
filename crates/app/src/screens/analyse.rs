@@ -261,6 +261,8 @@ type MenuHandler = Box<dyn Fn(&mut Window, &mut gpui::App)>;
 
 /// Width of the folded scoresheet.
 const SCORESHEET_RAIL: f32 = 44.;
+/// Height of the Line preview's move box: four lines of moves. Longer lines scroll.
+const PV_INSET_H: f32 = 4. * 26. + 14.;
 
 /// The stored game this board was opened from, so saving writes the changes back to it.
 #[derive(Clone, Debug)]
@@ -3080,6 +3082,8 @@ impl AnalyseScreen {
             .child(
                 div()
                     .mt(px(12.))
+                    .h(px(PV_INSET_H))
+                    .flex_none()
                     .px(px(10.))
                     .py(px(6.))
                     .bg(rgb(T.bg))
