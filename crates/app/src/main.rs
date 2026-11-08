@@ -1,5 +1,10 @@
 //! Fast: a desktop chess workstation.
 
+#![cfg_attr(
+    all(target_os = "windows", not(debug_assertions)),
+    windows_subsystem = "windows"
+)]
+
 mod analysis_store;
 mod app_update;
 mod assets;

@@ -48,6 +48,9 @@ windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Securit
 
 [dev-dependencies]
 
+[build-dependencies]
+embed-resource = "3.0.12"
+
 [package.metadata.bundle]
 name = "Fast"
 identifier = "dev.fast.app"

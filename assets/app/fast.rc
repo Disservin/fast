@@ -1,0 +1,2 @@
+// Keep the application icon first so Windows uses it for the executable.
+1 ICON "fast.ico"

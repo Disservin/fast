@@ -1784,6 +1784,7 @@ dependencies = [
  "chess_core",
  "db",
  "dirs 6.0.0",
+ "embed-resource",
  "engine",
  "env_logger",
  "flate2",

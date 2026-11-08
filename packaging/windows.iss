@@ -13,6 +13,7 @@ OutputBaseFilename=Fast-{#AppVersion}-windows-x86_64-setup
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+SetupIconFile=..\assets\app\fast.ico
 UninstallDisplayIcon={app}\fast.exe
 LicenseFile=..\LICENSE
 

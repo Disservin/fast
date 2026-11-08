@@ -28,6 +28,11 @@ Mac packages require Developer ID signing and notarization in a temporary CI
 keychain. Packaging does not include chess engines or modify user profiles.
 See `packaging/README.md` for signing secrets and release validation.
 
+The app build script embeds `assets/app/fast.ico` through `fast.rc` in Windows
+executables, including plain CI downloads. The installer uses the same icon.
+Windows release builds use the GUI subsystem so opening Fast does not create a
+console; debug builds retain the console for development logs.
+
 `app_update.rs` exposes the Cargo package version in Settings › General and
 checks the latest stable release of `Disservin/fast` only on user request.
 Settings runs release requests, bounded downloads, SHA-256 verification and
