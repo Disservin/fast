@@ -4,7 +4,8 @@ Reddit threads about En Croissant name the gaps that keep people on ChessBase, S
 Chess. Fast already covers many of them: tabs for any screen, saving annotations back to a
 database, Play from any position, engine tournaments, clearing arrows with a left click, native
 Mac and Linux builds. This plan covers the requests Fast does not meet yet, in the order
-they should be built. Comments, variations and NAGs now survive database import.
+they should be built. Comments, variations and NAGs now survive database import, and the opening tree can
+use any database.
 
 It refines items 4 and 6 of `docs/roadmap.md`. When an item ships, remove it here and from the
 roadmap, and update `ARCHITECTURE.md` where the item changes crates, threads, protocol or data
@@ -12,13 +13,12 @@ flow.
 
 | # | Item | Size | Touches |
 | --- | --- | --- | --- |
-| 2 | Opening tree from any database | S | Analyse, config |
 | 3 | Sort the games list by file order and by column | S | `db`, Database tab |
 | 4 | Download games from Lichess and Chess.com | L | new app module, `db`, Database tab, Settings |
 | 5 | More search filters | M (phase A), L (phase B) | `db`, Database tab |
 | 6 | Chess960 in Analyse and Play | L | `chess_core`, `engine`, board, Analyse, Play |
 
-Items 2 and 3 are small and fix the complaints people repeat most. Item 4 comes next because it
+Item 3 is small and fixes a complaint people repeat often. Item 4 comes next because it
 needs a scope decision (see its section). Item 5's metadata filters can ship at any time.
 Item 6 touches the most code, so it goes last.
 
@@ -44,56 +44,6 @@ Each item follows `AGENTS.md`. In particular:
   still load.
 - **Measured, not assumed.** Before an item that touches import or queries ships, time it on a
   database of about one million games (a monthly Lichess dump) and record the numbers in the PR.
-
----
-
-## 2. Opening tree from any database
-
-**Problem.** `AppModel::reference_db()` picks the first database that is not My games. Users
-cannot ask whether they already played a line in their repertoire database or in the database
-the open game came from, short of reordering databases.
-
-**What already exists.** The "Moves from here" table has a Reference column and a My games
-column. `query_databases` (`crates/app/src/screens/analyse.rs:671`) queries both in one
-background task. The `DbGame` link knows which database the open game came from.
-
-### Integration
-
-1. **A choice per tab.** `AnalyseScreen` gets `explorer_db: Option<PathBuf>`.
-   `query_databases` uses it instead of `reference_db()`.
-2. **Default order.** Use the tab's saved choice first. If there is none, use the open game's
-   `DbGame` database. Otherwise use `config.explorer_default` (the last database picked
-   anywhere), then the current rule.
-3. **Persistence.** Save the choice per tab in `config.session`, and save the last choice in
-   `config.explorer_default`. Restore the session choice only if that database still exists.
-   Otherwise fall back silently.
-4. **Removed databases.** When the chosen database is removed, the column falls back with a
-   toast: "Opening tree now uses Masters".
-5. **Cache.** Keep a small LRU of `(database, hash) → Vec<MoveStat>` per tab (about 512
-   entries), so moving back and forth costs nothing. Clear the entries for a database when
-   that database changes (import, edit, delete).
-
-### UX
-
-- **The column header is the picker.** The Reference column's `section_label` becomes a
-  compact dropdown: the database name, truncated, with a 12px `chevron-down`, focusable, and
-  opened with Enter. The list shows each database with its game count in mono. The open game's
-  database comes first, marked "This game's database". The header width stays the same as
-  today (`COL_REF`), so nothing shifts.
-- **Shortcut.** An action to step through the databases, "Next opening-tree database"
-  (unbound by default, configurable in Settings › Shortcuts).
-- **Empty states.** "No games reach this position" in `muted` instead of a blank column, and
-  `—` in the counts.
-- **From the count to the games.** Clicking a move's count opens the Database tab on that
-  database, filtered to the position after that move. This uses the existing
-  `Filter::position`.
-
-### Verification
-
-- Tests for the default order: a `DbGame` link, a saved choice, a deleted database, no
-  databases at all.
-- Manual: open a game from My games and check that the tree shows My games without any clicks.
-  Switch databases while moving quickly through a game and check that no stale counts flash.
 
 ---
 

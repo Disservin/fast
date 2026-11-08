@@ -67,6 +67,7 @@ actions!(
         ShowTrain,
         ShowPlay,
         ShowSettings,
+        NextExplorerDb,
         Quit
     ]
 );
@@ -182,6 +183,7 @@ pub fn action_for(name: &str) -> Option<(Box<dyn Action>, &'static str)> {
         "show_train" => (Box::new(ShowTrain), SHORTCUT_CONTEXT),
         "show_play" => (Box::new(ShowPlay), SHORTCUT_CONTEXT),
         "show_settings" => (Box::new(ShowSettings), TAB_CONTEXT),
+        "next_explorer_db" => (Box::new(NextExplorerDb), SHORTCUT_CONTEXT),
         "quit" => (Box::new(Quit), SHORTCUT_CONTEXT),
         _ => return None,
     })
@@ -956,6 +958,10 @@ impl Workspace {
                 },
                 None => self.make_tab(mode, saved.id, path, window, cx),
             };
+            if let TabContent::Analyse(screen) = &tab.content {
+                let choice = saved.explorer_db.clone();
+                screen.update(cx, |screen, cx| screen.restore_explorer_choice(choice, cx));
+            }
             tab.name = saved
                 .name
                 .as_deref()
@@ -1022,6 +1028,13 @@ impl Workspace {
                 recovery: match &tab.content {
                     TabContent::Analyse(screen) => file_name(screen.read(cx).recovery_path()),
                     TabContent::Play(screen) => file_name(screen.read(cx).recovery_path()),
+                    _ => None,
+                },
+                explorer_db: match &tab.content {
+                    TabContent::Analyse(screen) => screen
+                        .read(cx)
+                        .explorer_choice()
+                        .map(|path| path.to_path_buf()),
                     _ => None,
                 },
             })
@@ -1605,6 +1618,22 @@ impl Workspace {
             self.set_mode(Mode::Database, cx);
         }
         self.focus.focus(window, cx);
+    }
+
+    /// Shows the Database tab on `path`, filtered to games reaching the position with
+    /// this hash, as when a count in the opening tree is clicked.
+    pub fn show_position_in_database(
+        &mut self,
+        path: std::path::PathBuf,
+        hash: u64,
+        label: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.set_mode(Mode::Database, cx);
+        self.database.update(cx, |database, cx| {
+            database.show_position(path, hash, label, window, cx)
+        });
     }
 
     /// Opens Settings on one engine's full option list.
@@ -2347,6 +2376,9 @@ impl Render for Workspace {
             }))
             .on_action(cx.listener(|this, _: &ToggleSortLines, _, cx| {
                 this.in_analyse(cx, |screen, cx| screen.toggle_sort(cx));
+            }))
+            .on_action(cx.listener(|this, _: &NextExplorerDb, _, cx| {
+                this.in_analyse(cx, |screen, cx| screen.next_explorer_db(cx));
             }))
             .on_action(cx.listener(|this, _: &NextGraph, _, cx| {
                 this.in_analyse(cx, |screen, cx| screen.next_graph(cx));

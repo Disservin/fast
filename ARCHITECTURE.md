@@ -166,6 +166,12 @@ survive navigation and transpositions share them. Restored lines are marked `cac
 until the new search reaches their depth. Changing an engine's options or configuration
 forgets its entries; the cache starts over past 50,000 positions.
 
+Each Analyse tab also keeps a `MoveCache` (`explorer.rs`) of its opening-tree answers, keyed by
+database, position hash and player, holding the 512 most recent. Only answers missing from it
+are queried, in one background task. Any `ModelEvent::Databases` (import, edit, delete, rename)
+clears it. `explorer::pick_database` chooses the Reference column's database: the tab's
+choice, the `DbGame` database, `config.explorer_default`, then `AppModel::reference_db()`.
+
 ## Online lookups
 
 `online.rs` queries the ChessTB Explorer tablebase (`POST /probe`, up to 8 pieces) and
@@ -287,7 +293,8 @@ text entry without enabling move-navigation keys inside inputs.
 Tabs can be renamed (double-click, or the context menu); an empty name restores the
 screen's own title. Every change to the open tabs, their order, names or the active tab
 writes `config.session`: one entry per tab with its kind, id, name and, for Analyse and
-Play, the bare file name of its recovery file. At startup without `--screen`,
+Play, the bare file name of its recovery file. Analyse tabs also save their opening-tree
+database, restored only if that database still exists. At startup without `--screen`,
 `restore_session` rebuilds that list, reusing the screens made at start for the first
 tab of each kind, and shows the saved active tab. Without a session, startup falls back
 to scanning the recovery directory. Recovery files of tabs closed before quitting are

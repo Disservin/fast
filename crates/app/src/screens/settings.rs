@@ -120,6 +120,7 @@ const SHORTCUT_GROUPS: [(&str, &[(&str, &str)]); 5] = [
             ("all_moves", "All moves"),
             ("quality_arrows", "Quality arrows"),
             ("sort_lines", "Sort by eval / depth"),
+            ("next_explorer_db", "Next opening-tree database"),
             ("next_graph", "Next graph"),
             ("scoresheet_style", "Table / inline scoresheet"),
         ],

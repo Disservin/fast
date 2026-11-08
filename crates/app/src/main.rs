@@ -14,6 +14,7 @@ mod controls;
 mod debug_window;
 mod demo;
 mod engine_catalog;
+mod explorer;
 mod fastchess;
 mod licenses;
 mod live;

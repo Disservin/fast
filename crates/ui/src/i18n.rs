@@ -851,6 +851,14 @@ pub fn translate(language: Language, text: &str) -> &str {
             "Re-import" => "Neu importieren",
             "Re-import from file" => "Aus Datei neu importieren",
             "Re-import from file…" => "Aus Datei neu importieren…",
+            "Opening tree now uses {}" => "Eröffnungsbaum nutzt jetzt {}",
+            "Show these games in the Database tab" => "Diese Partien im Datenbank-Tab zeigen",
+            "After {}" => "Nach {}",
+            "No games reach this position" => "Keine Partie erreicht diese Stellung",
+            "Choose the database for the opening tree" => "Datenbank für den Eröffnungsbaum wählen",
+            "This game's database" => "Datenbank dieser Partie",
+            "Next opening-tree database" => "Nächste Datenbank für den Eröffnungsbaum",
+            "Reference" => "Referenz",
             _ => text,
         }
     } else {

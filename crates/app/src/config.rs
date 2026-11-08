@@ -305,6 +305,7 @@ pub fn default_shortcuts() -> BTreeMap<String, String> {
         ("show_train", primary("3")),
         ("show_play", primary("4")),
         ("show_settings", primary(",")),
+        ("next_explorer_db", String::new()),
         ("quit", primary("q")),
     ]
     .into_iter()
@@ -515,6 +516,8 @@ pub struct Config {
     pub session: Option<SavedSession>,
     /// Keep comments, NAGs and variations when importing a PGN into a database.
     pub import_keep_annotations: bool,
+    /// The database last picked for the opening tree, used by tabs that have not chosen.
+    pub explorer_default: Option<PathBuf>,
 }
 
 /// The open tabs, in order, and which one was shown.
@@ -537,6 +540,9 @@ pub struct SavedTab {
     /// File name inside the recovery directory.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub recovery: Option<String>,
+    /// The database an Analyse tab's opening tree counts, when the user picked one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub explorer_db: Option<PathBuf>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -574,6 +580,7 @@ impl Default for Config {
             review_engines: 1,
             session: None,
             import_keep_annotations: true,
+            explorer_default: None,
         }
     }
 }
@@ -764,18 +771,21 @@ mod tests {
                     id: 1,
                     name: Some("Najdorf prep".into()),
                     recovery: Some("game-recovery.json".into()),
+                    explorer_db: None,
                 },
                 SavedTab {
                     kind: SavedTabKind::Database,
                     id: 4,
                     name: None,
                     recovery: None,
+                    explorer_db: None,
                 },
                 SavedTab {
                     kind: SavedTabKind::TestPositions,
                     id: 7,
                     name: None,
                     recovery: None,
+                    explorer_db: None,
                 },
             ],
             active: 1,

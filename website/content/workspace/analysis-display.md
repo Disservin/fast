@@ -8,6 +8,21 @@ The **Moves from here** table lists engine lines (MultiPV), database moves and r
 - **Lines − +** sets MultiPV for every analysis engine and saves it in the engine's options.
   The **Engine** panel sets it per engine.
 
+## Opening tree
+
+The Reference column counts the games in one database that reached the position, with the
+score for the side to move. Its heading names the database; click it, or focus it and press
+Enter, to count another one. The list puts the database of the open game first.
+
+- Each tab keeps its own choice, and Fast reopens tabs with it.
+- A tab that has not chosen uses the database the open game came from, then the database you
+  picked last in any tab, then the first database that is not My games.
+- **Next opening-tree database** in **Settings › Shortcuts** steps through the databases. It
+  has no key until you give it one.
+- Click a count to open the Database tab on that database, showing the games that reached
+  the position after that move.
+- Only moves actually played count. Moves that appear only in variations do not.
+
 ## Arrows
 
 **Arrows** draws one arrow per engine line, coloured by move quality:

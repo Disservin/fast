@@ -643,6 +643,42 @@ impl DatabaseScreen {
             .update(cx, |board, cx| board.set_position(pos, last, false, cx));
     }
 
+    /// Shows the games in `path` that reach the position with this hash, labelled
+    /// with the move that leads there.
+    pub fn show_position(
+        &mut self,
+        path: PathBuf,
+        hash: u64,
+        label: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.clear_filter_fields(window, cx);
+        if self.selected_db.as_ref() != Some(&path) {
+            self.selected = None;
+        }
+        self.selected_db = Some(path);
+        self.reached_position = Some((hash, label));
+        self.reached = true;
+        self.apply_filter(cx);
+    }
+
+    /// Empties every filter field and option, without running the query.
+    fn clear_filter_fields(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        for input in [&self.player, &self.eco, &self.opp_rating] {
+            input.update(cx, |input, cx| input.set_value("", window, cx));
+        }
+        for select in [&self.colour, &self.time_control] {
+            select.update(cx, |select, cx| {
+                select.set_selected_index(Some(gpui_component::IndexPath::new(0)), window, cx)
+            });
+        }
+        self.player_picked = Some(String::new());
+        self.reached = false;
+        self.only_left_rep = false;
+        self.close_suggestions(cx);
+    }
+
     pub fn search_player(&mut self, query: &str, window: &mut Window, cx: &mut Context<Self>) {
         let text = query.to_owned();
         self.player_picked = Some(text.trim().to_owned());
