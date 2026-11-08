@@ -785,9 +785,13 @@ impl PlayScreen {
         };
         tree.set_header("White", &white);
         tree.set_header("Black", &black);
+        // Deferred: opening a tab saves the session, which reads every Play tab,
+        // including this one while it is still being updated.
         if let Some(workspace) = self.workspace.upgrade() {
-            workspace.update(cx, |workspace, cx| {
-                workspace.open_analysis(tree, window, cx);
+            window.defer(cx, move |window, cx| {
+                workspace.update(cx, |workspace, cx| {
+                    workspace.open_analysis(tree, window, cx);
+                });
             });
         }
     }
