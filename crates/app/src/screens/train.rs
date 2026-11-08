@@ -295,12 +295,13 @@ impl TrainScreen {
                 .chain([drill.answer.clone()])
                 .collect()
         });
-        let (pos, _) = drill
+        let (pos, last) = drill
             .as_ref()
             .and_then(|drill| Self::position_for(&drill.path))
             .unwrap_or_else(|| (Chess::default(), None));
+        let last = last.and_then(|mv| mv.from().map(|from| (from, mv.to())));
         self.board.update(cx, |board, cx| {
-            board.set_position(pos, None, false, cx);
+            board.set_position(pos, last, false, cx);
             board.set_arrows(Vec::new(), cx);
             board.set_player(Some(color), cx);
             board.set_flipped(!white, cx);
