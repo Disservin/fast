@@ -889,7 +889,9 @@ impl Workspace {
         let mut tabs = h_flex()
             .id("workspace-tabs")
             .min_w_0()
-            .gap(px(4.))
+            .h_full()
+            .items_end()
+            .gap(px(2.))
             .overflow_x_scroll()
             .track_scroll(&self.tab_scroll)
             // A plain mouse wheel scrolls up and down; in the strip it moves along the tabs.
@@ -916,6 +918,7 @@ impl Workspace {
             let close = select.clone();
             let duplicate = select.clone();
             let analysis = matches!(tab.content, TabContent::Analyse(_));
+            let active = id == self.active_tab;
             tabs = tabs.child(
                 h_flex()
                     .id(("tab", id as usize))
@@ -945,26 +948,29 @@ impl Workspace {
                     }))
                     .flex_none()
                     .gap(px(2.))
-                    .h(px(30.))
-                    .pl(px(9.))
-                    .pr(px(3.))
-                    .rounded(px(6.))
-                    .bg(rgb(if id == self.active_tab {
-                        T.selected
-                    } else {
-                        T.surface
-                    }))
-                    .border_1()
-                    .border_color(rgb(if id == self.active_tab {
-                        T.border_strong
-                    } else {
-                        T.border
-                    }))
+                    .h(px(33.))
+                    .pl(px(11.))
+                    .pr(px(4.))
+                    .rounded_t(px(6.))
+                    .border_t_1()
+                    .border_l_1()
+                    .border_r_1()
+                    // The open tab takes the screen's background and has no bottom edge, so it
+                    // runs straight into the screen below it.
+                    .map(|tab| {
+                        if active {
+                            tab.bg(rgb(T.bg)).border_color(rgb(T.border))
+                        } else {
+                            tab.border_color(gpui::transparent_black())
+                                .hover(|tab| tab.bg(rgb(T.hover)))
+                        }
+                    })
                     .child(
                         div()
                             .id(("tab-select", id as usize))
                             .cursor_pointer()
-                            .text_size(px(12.))
+                            .text_size(px(13.))
+                            .text_color(rgb(if active { T.fg } else { T.muted }))
                             .on_click(move |_, _, cx| {
                                 select.update(cx, |this, cx| this.activate_tab(id, cx))
                             })
@@ -975,12 +981,20 @@ impl Workspace {
                                     .child(
                                         ui::widgets::mono(id.to_string()).text_color(rgb(T.faint)),
                                     )
-                                    .child(div().font_weight(FontWeight::SEMIBOLD).child(screen))
-                                    .children(
-                                        detail.map(|detail| {
-                                            div().text_color(rgb(T.muted)).child(detail)
-                                        }),
+                                    .child(
+                                        div()
+                                            .font_weight(if active {
+                                                FontWeight::SEMIBOLD
+                                            } else {
+                                                FontWeight::MEDIUM
+                                            })
+                                            .child(screen),
                                     )
+                                    .children(detail.map(|detail| {
+                                        div()
+                                            .when(active, |d| d.text_color(rgb(T.muted)))
+                                            .child(detail)
+                                    }))
                             }),
                     )
                     .child(
@@ -1033,21 +1047,31 @@ impl Workspace {
             _ => ui::i18n::t("Open a new tab").to_owned(),
         };
         h_flex()
+            .relative()
             .flex_none()
             .h(px(38.))
             .px(px(10.))
             .gap(px(6.))
             .bg(rgb(T.surface))
-            .border_b_1()
-            .border_color(rgb(T.border))
+            // The bottom rule is drawn first so the open tab, painted over it, can hide it.
+            .child(
+                div()
+                    .absolute()
+                    .left_0()
+                    .right_0()
+                    .bottom_0()
+                    .h(px(1.))
+                    .bg(rgb(T.border)),
+            )
             // The strip only takes the width its tabs need, so New tab sits right after the
             // last one; with many tabs the strip scrolls and the button stays in view.
             .child(tabs)
             .child(
                 btn("new-tab", "New tab")
+                    .kind(BtnKind::Ghost)
                     .icon("icons/plus.svg")
-                    .h(30.)
-                    .pad(10.)
+                    .h(28.)
+                    .pad(8.)
                     .tooltip(tip)
                     .selected(self.new_tab_menu_open)
                     .on_click(move |_, cx| {
