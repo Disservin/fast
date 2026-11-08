@@ -91,6 +91,37 @@ impl GameFilter {
     }
 }
 
+/// A column the finished games table can be ordered by.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum GameSort {
+    Number,
+    White,
+    Black,
+    Result,
+    Termination,
+}
+
+impl GameSort {
+    fn compare(self, a: &GameRow, b: &GameRow) -> std::cmp::Ordering {
+        // White's score, so 1-0 > 1/2-1/2 > 0-1; anything else (an unfinished `*`) last.
+        let score = |row: &GameRow| match row.result.as_str() {
+            "1-0" => 2,
+            "1/2-1/2" => 1,
+            "0-1" => 0,
+            _ => -1,
+        };
+        let text = |a: &str, b: &str| a.to_lowercase().cmp(&b.to_lowercase());
+        match self {
+            Self::Number => a.game.cmp(&b.game),
+            Self::White => text(&a.white, &b.white),
+            Self::Black => text(&a.black, &b.black),
+            Self::Result => score(a).cmp(&score(b)),
+            Self::Termination => text(&a.reason, &b.reason),
+        }
+        .then(a.game.cmp(&b.game))
+    }
+}
+
 /// Live boards are this many pixels square in the tournament tab.
 const LIVE_BOARD: f32 = 280.;
 /// Space between live cards, and what a card adds to its board's width.
@@ -291,6 +322,9 @@ pub struct TournamentScreen {
     /// Width of the live boards grid, measured at the last paint; zero until then.
     live_width: Pixels,
     games_filter: GameFilter,
+    /// The column the finished games are ordered by and whether descending; `None` keeps
+    /// them newest first.
+    games_sort: Option<(GameSort, bool)>,
     /// The ⋯ menu above the run's header.
     menu_open: bool,
     /// The New tournament dialog.
@@ -431,6 +465,7 @@ impl TournamentScreen {
             live_all: false,
             live_width: px(0.),
             games_filter: GameFilter::All,
+            games_sort: None,
             menu_open: false,
             setup_open: false,
             advanced_open: false,
@@ -2246,6 +2281,39 @@ impl TournamentScreen {
             .into_any_element()
     }
 
+    /// A games table heading that orders the table by its column: ascending, then
+    /// descending, then back to newest first.
+    fn sort_header(
+        &self,
+        column: GameSort,
+        label: &'static str,
+        cx: &mut Context<Self>,
+    ) -> gpui::Stateful<Div> {
+        let arrow = match self.games_sort {
+            Some((c, false)) if c == column => " ▲",
+            Some((c, true)) if c == column => " ▼",
+            _ => "",
+        };
+        let this = cx.entity();
+        div()
+            .id(("games-sort", column as usize))
+            .cursor_pointer()
+            .whitespace_nowrap()
+            .hover(|h| h.text_color(rgb(T.fg_2)))
+            .when(!arrow.is_empty(), |h| h.text_color(rgb(T.fg_2)))
+            .on_click(move |_, _, cx| {
+                this.update(cx, |screen, cx| {
+                    screen.games_sort = match screen.games_sort {
+                        Some((c, false)) if c == column => Some((column, true)),
+                        Some((c, true)) if c == column => None,
+                        _ => Some((column, false)),
+                    };
+                    cx.notify();
+                })
+            })
+            .child(SharedString::from(format!("{label}{arrow}")))
+    }
+
     /// The finished games, filterable, with a row per game that opens it in Analyse.
     fn render_games(&self, run: &Run, cx: &mut Context<Self>) -> Div {
         let filter = self.games_filter;
@@ -2269,12 +2337,14 @@ impl TournamentScreen {
                 })
             },
         );
-        let rows: Vec<&GameRow> = run
-            .games
-            .iter()
-            .filter(|row| filter.matches(row))
-            .take(200)
-            .collect();
+        let mut rows: Vec<&GameRow> = run.games.iter().filter(|row| filter.matches(row)).collect();
+        if let Some((column, descending)) = self.games_sort {
+            rows.sort_by(|a, b| {
+                let order = column.compare(a, b);
+                if descending { order.reverse() } else { order }
+            });
+        }
+        rows.truncate(200);
         let body = if run.games.is_empty() {
             small("No finished games yet.").into_any_element()
         } else if rows.is_empty() {
@@ -2288,11 +2358,26 @@ impl TournamentScreen {
                     .text_size(px(12.))
                     .font_weight(FontWeight::SEMIBOLD)
                     .text_color(rgb(T.faint))
-                    .child(div().w(px(72.)).child("#"))
-                    .child(div().flex_1().min_w_0().child(ui::i18n::t("WHITE")))
-                    .child(div().flex_1().min_w_0().child(ui::i18n::t("BLACK")))
-                    .child(div().w(px(96.)).child(ui::i18n::t("RESULT")))
-                    .child(div().flex_1().min_w_0().child(ui::i18n::t("TERMINATION")))
+                    .child(self.sort_header(GameSort::Number, "#", cx).w(px(72.)))
+                    .child(
+                        self.sort_header(GameSort::White, ui::i18n::t("WHITE"), cx)
+                            .flex_1()
+                            .min_w_0(),
+                    )
+                    .child(
+                        self.sort_header(GameSort::Black, ui::i18n::t("BLACK"), cx)
+                            .flex_1()
+                            .min_w_0(),
+                    )
+                    .child(
+                        self.sort_header(GameSort::Result, ui::i18n::t("RESULT"), cx)
+                            .w(px(96.)),
+                    )
+                    .child(
+                        self.sort_header(GameSort::Termination, ui::i18n::t("TERMINATION"), cx)
+                            .flex_1()
+                            .min_w_0(),
+                    )
                     .child(div().w(px(96.)).child("")),
             );
             for row in rows {
