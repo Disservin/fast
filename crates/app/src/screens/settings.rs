@@ -1947,8 +1947,7 @@ impl SettingsScreen {
         // Fractions of the table so it fits any window width.
         let col_engine = gpui::relative(0.40);
         let col_protocol = gpui::relative(0.115);
-        let col_runs = gpui::relative(0.10);
-        let col_used = gpui::relative(0.295);
+        let col_used = gpui::relative(0.395);
         let mut table = panel().overflow_hidden().child(
             h_flex()
                 .h(px(32.))
@@ -1962,7 +1961,6 @@ impl SettingsScreen {
                         .child(section_label(ui::i18n::t("Engine"))),
                 )
                 .child(div().w(col_protocol).child(section_label("Protocol")))
-                .child(div().w(col_runs).child(section_label("Runs on")))
                 .child(div().w(col_used).child(section_label("Used for")))
                 .child(section_label(ui::i18n::t("Status"))),
         );
@@ -2032,12 +2030,6 @@ impl SettingsScreen {
                             .w(col_protocol)
                             .text_size(px(13.))
                             .text_color(rgb(T.fg_2)),
-                    )
-                    .child(
-                        div()
-                            .w(col_runs)
-                            .text_color(rgb(T.fg_2))
-                            .child(if engine.runs_on_gpu { "GPU" } else { "CPU" }),
                     )
                     .child(
                         div()

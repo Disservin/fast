@@ -384,7 +384,6 @@ pub fn translate(language: Language, text: &str) -> &str {
             "Review" => "Prüfung",
             "Review findings" => "Prüfergebnisse",
             "Run benchmark" => "Benchmark starten",
-            "Runs on" => "Läuft auf",
             "Save comment" => "Kommentar speichern",
             "Save current" => "Aktuelle speichern",
             "Scoresheet" => "Partieformular",
