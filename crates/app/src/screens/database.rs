@@ -34,7 +34,6 @@ const PAGE: usize = 200;
 const ROW_H: f32 = 37.5;
 
 // Column widths for the games table.
-const W_WHITE: f32 = 94.;
 const W_RESULT: f32 = 82.;
 const W_LEFT: f32 = 99.;
 const W_MOVES: f32 = 78.;
@@ -1266,13 +1265,16 @@ impl DatabaseScreen {
             .border_color(rgb(T.border))
             .child(
                 div()
-                    .w(px(W_WHITE))
+                    .flex_1()
+                    .min_w_0()
+                    .pr(px(10.))
                     .child(section_label(ui::i18n::t("White"))),
             )
             .child(
                 div()
                     .flex_1()
                     .min_w_0()
+                    .pr(px(10.))
                     .child(section_label(ui::i18n::t("Black"))),
             )
             .child(
@@ -1357,16 +1359,22 @@ impl DatabaseScreen {
         };
         let name = |name: &str, elo: Option<i64>, winner: bool| {
             h_flex()
+                .flex_1()
+                .min_w_0()
+                .pr(px(10.))
                 .gap(px(5.))
                 .overflow_hidden()
                 .child(
                     div()
+                        .min_w_0()
+                        .truncate()
                         .text_color(rgb(T.fg))
                         .when(winner, |text| text.font_weight(FontWeight::BOLD))
                         .child(SharedString::from(name.to_owned())),
                 )
                 .children(elo.map(|elo| {
                     mono(elo.to_string())
+                        .flex_none()
                         .text_color(rgb(T.muted))
                         .text_size(px(14.))
                 }))
@@ -1381,16 +1389,8 @@ impl DatabaseScreen {
                 .text_color(rgb(color))
         };
         row_el
-            .child(
-                name(&game.white, game.white_elo, white_won)
-                    .w(px(W_WHITE))
-                    .flex_none(),
-            )
-            .child(
-                name(&game.black, game.black_elo, black_won)
-                    .flex_1()
-                    .min_w_0(),
-            )
+            .child(name(&game.white, game.white_elo, white_won))
+            .child(name(&game.black, game.black_elo, black_won))
             .child(mono_cell(result_text(&game.result), W_RESULT, T.fg))
             .child(match &game.left_rep {
                 Some(left) => mono_cell(left.clone(), W_LEFT, T.warn),
