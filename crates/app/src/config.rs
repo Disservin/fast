@@ -216,13 +216,42 @@ fn primary(key: &str) -> String {
     format!("{modifier}-{key}")
 }
 
-/// The browser's Back or Forward key: Alt plus an arrow, or Cmd plus a bracket on macOS.
-fn history_key(arrow: &str, bracket: &str) -> String {
+/// The key that moves to the neighbouring tab: Alt plus an arrow, or Cmd+Shift plus a
+/// bracket on macOS, where Cmd+Tab belongs to the system.
+fn cycle_key(arrow: &str, bracket: &str) -> String {
     if cfg!(target_os = "macos") {
-        format!("cmd-{bracket}")
+        format!("cmd-shift-{bracket}")
     } else {
         format!("alt-{arrow}")
     }
+}
+
+/// The browser's Back or Forward key: Cmd plus a bracket on macOS. Elsewhere Alt plus an
+/// arrow cycles tabs, so Back and Forward stay on the mouse buttons and the menu.
+fn history_key(bracket: &str) -> String {
+    if cfg!(target_os = "macos") {
+        format!("cmd-{bracket}")
+    } else {
+        String::new()
+    }
+}
+
+/// Shortcuts whose default changed. A saved key that still equals the old default is
+/// moved to the new one, so users who never rebound it get the new behaviour.
+fn replaced_defaults() -> Vec<(&'static str, String)> {
+    let old_history = |arrow: &str, bracket: &str| {
+        if cfg!(target_os = "macos") {
+            format!("cmd-{bracket}")
+        } else {
+            format!("alt-{arrow}")
+        }
+    };
+    vec![
+        ("next_tab", primary("tab")),
+        ("prev_tab", primary("shift-tab")),
+        ("tab_back", old_history("left", "[")),
+        ("tab_forward", old_history("right", "]")),
+    ]
 }
 
 /// Default keystrokes per action name. Users can rebind them in Settings; an empty
@@ -260,10 +289,10 @@ pub fn default_shortcuts() -> BTreeMap<String, String> {
         ("new_tab", primary("t")),
         ("close_tab", primary("w")),
         ("reopen_tab", primary("shift-t")),
-        ("next_tab", primary("tab")),
-        ("prev_tab", primary("shift-tab")),
-        ("tab_back", history_key("left", "[")),
-        ("tab_forward", history_key("right", "]")),
+        ("next_tab", cycle_key("right", "]")),
+        ("prev_tab", cycle_key("left", "[")),
+        ("tab_back", history_key("[")),
+        ("tab_forward", history_key("]")),
         ("search", primary("k")),
         ("show_analyse", primary("1")),
         ("show_database", primary("2")),
@@ -563,7 +592,15 @@ impl Config {
         match toml::from_str::<Self>(&text) {
             Ok(mut config) => {
                 // New shortcuts added in later versions get their defaults.
-                for (action, key) in default_shortcuts() {
+                let defaults = default_shortcuts();
+                for (action, old) in replaced_defaults() {
+                    if config.shortcuts.get(action) == Some(&old) {
+                        config
+                            .shortcuts
+                            .insert(action.to_owned(), defaults[action].clone());
+                    }
+                }
+                for (action, key) in defaults {
                     config.shortcuts.entry(action).or_insert(key);
                 }
                 config
@@ -783,7 +820,7 @@ mod tests {
     #[test]
     fn default_shortcuts_are_unique_and_all_bindable() {
         let defaults = default_shortcuts();
-        let mut keys: Vec<&String> = defaults.values().collect();
+        let mut keys: Vec<&String> = defaults.values().filter(|key| !key.is_empty()).collect();
         let count = keys.len();
         keys.sort();
         keys.dedup();
@@ -818,5 +855,23 @@ mod tests {
         assert_eq!(config.player_name, "x");
         assert_eq!(config.shortcuts["flip_board"], "g");
         assert_eq!(config.shortcuts["prev_move"], "left");
+    }
+
+    #[test]
+    fn old_default_tab_keys_move_to_the_new_ones() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        let mut text = String::from("[shortcuts]\n");
+        for (action, old) in replaced_defaults() {
+            text.push_str(&format!("{action} = {old:?}\n"));
+        }
+        text.push_str("flip_board = \"g\"\n");
+        std::fs::write(&path, text).unwrap();
+        let config = Config::load(&path);
+        let defaults = default_shortcuts();
+        for (action, _) in replaced_defaults() {
+            assert_eq!(config.shortcuts[action], defaults[action], "{action}");
+        }
+        assert_eq!(config.shortcuts["flip_board"], "g");
     }
 }

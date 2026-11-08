@@ -108,6 +108,8 @@ pub struct PlayScreen {
     custom_time: Entity<gpui_component::input::InputState>,
     colour: ColourChoice,
     start_from: TextSelect,
+    /// The position typed or pasted when the game starts from a FEN.
+    start_fen: Entity<gpui_component::input::InputState>,
     hide_eval: bool,
     allow_takebacks: bool,
     allow_premoves: bool,
@@ -146,6 +148,7 @@ impl PlayScreen {
                 "Starting position",
                 "Current Analyse position",
                 "Repertoire line",
+                "FEN",
             ]
             .map(SharedString::from)
             .to_vec(),
@@ -161,6 +164,7 @@ impl PlayScreen {
                 .default_value(1800.)
         });
         let custom_time = new_input("", "12+3", window, cx);
+        let start_fen = new_input("", "Paste a FEN", window, cx);
         let subscriptions = vec![
             cx.subscribe_in(&board, window, |this, _, event, _, cx| match event {
                 BoardEvent::Moved(mv) => this.user_move(*mv, cx),
@@ -181,6 +185,7 @@ impl PlayScreen {
                 }
             }),
             cx.subscribe(&opponent, |_, _, _: &SelectEvent<_>, cx| cx.notify()),
+            cx.subscribe(&start_from, |_, _, _: &SelectEvent<_>, cx| cx.notify()),
             cx.subscribe_in(
                 &model,
                 window,
@@ -217,6 +222,7 @@ impl PlayScreen {
             custom_time,
             colour: ColourChoice::White,
             start_from,
+            start_fen,
             hide_eval: true,
             allow_takebacks: false,
             allow_premoves: true,
@@ -327,14 +333,15 @@ impl PlayScreen {
         self.opponents.get(index).cloned()
     }
 
-    fn start_tree(&self, window: &mut Window, cx: &mut Context<Self>) -> GameTree {
+    /// The position the new game starts from, or `None` when the pasted FEN is not valid.
+    fn start_tree(&self, window: &mut Window, cx: &mut Context<Self>) -> Option<GameTree> {
         let choice = self
             .start_from
             .read(cx)
             .selected_index(cx)
             .map_or(0, |index| index.row);
         let _ = window;
-        match choice {
+        Some(match choice {
             1 => self
                 .workspace
                 .upgrade()
@@ -358,8 +365,9 @@ impl PlayScreen {
                 }
                 tree
             }
+            3 => GameTree::from_fen(self.start_fen.read(cx).value().trim()).ok()?,
             _ => GameTree::new(),
-        }
+        })
     }
 
     fn start_game(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -374,7 +382,10 @@ impl PlayScreen {
                 .toast("Add an engine for Play in Settings › Engines first.", cx);
             return;
         };
-        let tree = self.start_tree(window, cx);
+        let Some(tree) = self.start_tree(window, cx) else {
+            self.model.toast("Paste a valid FEN to start from.", cx);
+            return;
+        };
         let current = tree
             .line_from(GameTree::ROOT)
             .last()
@@ -441,6 +452,13 @@ impl PlayScreen {
         self.board
             .update(cx, |board, cx| board.set_flipped(user == Color::Black, cx));
         self.sync_board(false, cx);
+        // A pasted position may already be mate, stalemate or a dead draw.
+        if let Some(game) = &self.game
+            && let Some(end) = game.tree.game_end(game.current)
+        {
+            self.finish(end.describe().to_owned(), cx);
+            return;
+        }
         self.start_clock(cx);
         self.maybe_request_engine_move(cx);
         cx.notify();
@@ -825,6 +843,11 @@ impl PlayScreen {
         let start_this = this.clone();
         let can_start = !self.opponents.is_empty();
         let self_play = self.mode == Mode::SelfPlay;
+        let from_fen = self
+            .start_from
+            .read(cx)
+            .selected_index(cx)
+            .is_some_and(|index| index.row == 3);
         let mode_this = this.clone();
         let mode = segmented(
             "play-mode",
@@ -905,7 +928,16 @@ impl PlayScreen {
                     .mb(px(14.)),
                 )
             })
-            .child(field("Start from", select_el(&self.start_from)).mb(px(20.)))
+            .child(
+                field("Start from", select_el(&self.start_from)).mb(px(if from_fen {
+                    6.
+                } else {
+                    20.
+                })),
+            )
+            .when(from_fen, |column| {
+                column.child(div().mb(px(20.)).child(text_input(&self.start_fen)))
+            })
             .when(!self_play, |column| {
                 column
                     .child(

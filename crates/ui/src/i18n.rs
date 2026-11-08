@@ -623,6 +623,10 @@ pub fn translate(language: Language, text: &str) -> &str {
             "Starting position" => "Grundstellung",
             "Current Analyse position" => "Aktuelle Analysestellung",
             "Repertoire line" => "Repertoirevariante",
+            "Paste a FEN" => "FEN einfügen",
+            "Paste a valid FEN to start from." => {
+                "Fügen Sie eine gültige FEN als Ausgangsstellung ein."
+            }
             "Hide evaluation during the game" => "Bewertung während der Partie ausblenden",
             "Allow premoves" => "Vorauszüge erlauben",
             "Allow takebacks" => "Zugrücknahmen erlauben",

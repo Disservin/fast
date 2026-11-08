@@ -28,11 +28,12 @@ tab. Each tab keeps its own position and game state. Analysis runs only in the
 selected tab; games in other open Play tabs keep their clocks running.
 
 **Ctrl/Cmd+T** opens another tab of the current type (Analyse from Train/Settings),
-**Ctrl/Cmd+Tab** and **Ctrl/Cmd+Shift+Tab** switch tabs, **Ctrl/Cmd+W** closes a tab,
+**Alt+Left** and **Alt+Right** (**Cmd+Shift+[** and **Cmd+Shift+]** on macOS) move to the
+previous or next tab, wrapping around at either end, **Ctrl/Cmd+W** closes a tab,
 and **Ctrl/Cmd+Shift+T** or **Reopen** restores the most recently closed tab (up to
 ten kept in memory). Closing a Play tab pauses that game; reopening resumes it.
-**Alt+Left** and **Alt+Right** (**Cmd+[** and **Cmd+]** on macOS), or the back and
-forward buttons on a mouse, return to the tabs you visited before, as in a browser.
+The back and forward buttons on a mouse (and **Cmd+[** and **Cmd+]** on macOS) return
+to the tabs you visited before, as in a browser.
 Every open game saves automatically and is back in its tab after a restart.
 Train and Settings each have a single shared tab.
 
