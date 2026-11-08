@@ -22,6 +22,7 @@ mod screens;
 mod shell;
 mod snapshot;
 mod sound;
+mod test_suite;
 mod tournament_live;
 mod tournament_wall;
 

@@ -109,6 +109,19 @@ commands that set their own `-events` run without live boards. fastchess does no
 event options into `config.json`. `docs/fastchess-integration.md` lists fastchess changes that
 would replace the output parsing and other workarounds.
 
+## Test positions
+
+The optional Test positions tab (new-tab menu, or `--screen test-positions`) runs engines over
+an EPD suite. `chess_core::epd` parses each line and keeps a reason for any that fail: bad FEN,
+illegal position, a `bm`/`am` move that is not legal there, a bad `dm`. Lines that fail, or that
+lack the operation the chosen goal checks (`bm`/`am` for best move, `dm` for mate), are shown in
+red and never sent to an engine. `test_suite.rs` runs the rest on worker threads, each owning one
+engine process with `MultiPV 1` and the tab's Hash and `SyzygyPath`. In parallel mode every engine
+runs at once, split over N processes sharing a queue; otherwise one process runs, engine after
+engine. Clearing the hash gives each position its own game id, so it gets `ucinewgame`, and
+presses `Clear Hash` where the engine has it. Mate searches send `go mate N` with the limit as a
+cap, and count a mate no longer than N.
+
 ## Analysis cache
 
 `LiveAnalysis` keeps a `LineCache` of each engine's lines per position hash (Zobrist), so lines

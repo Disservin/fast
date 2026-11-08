@@ -22,6 +22,7 @@ use crate::{
         database::DatabaseScreen,
         play::PlayScreen,
         settings::{SettingsPage, SettingsScreen},
+        test_positions::TestPositionsScreen,
         tournament::TournamentScreen,
         train::TrainScreen,
     },
@@ -232,6 +233,8 @@ pub enum Mode {
     Settings,
     /// Optional: only opened from the new-tab menu.
     Tournament,
+    /// Optional: only opened from the new-tab menu.
+    TestPositions,
 }
 
 #[derive(Clone)]
@@ -242,6 +245,7 @@ enum TabContent {
     Play(Entity<PlayScreen>),
     Settings(Entity<SettingsScreen>),
     Tournament(Entity<TournamentScreen>),
+    TestPositions(Entity<TestPositionsScreen>),
 }
 impl TabContent {
     fn mode(&self) -> Mode {
@@ -252,6 +256,7 @@ impl TabContent {
             Self::Play(_) => Mode::Play,
             Self::Settings(_) => Mode::Settings,
             Self::Tournament(_) => Mode::Tournament,
+            Self::TestPositions(_) => Mode::TestPositions,
         }
     }
     /// The tab's screen and, where it has one, what that screen is showing.
@@ -263,6 +268,9 @@ impl TabContent {
             Self::Settings(_) => (ui::i18n::t("Settings"), None),
             Self::Play(screen) => (ui::i18n::t("Play"), Some(screen.read(cx).breadcrumb())),
             Self::Tournament(screen) => (ui::i18n::t("Tournament"), screen.read(cx).tab_detail()),
+            Self::TestPositions(screen) => {
+                (ui::i18n::t("Test positions"), screen.read(cx).tab_detail())
+            }
         }
     }
 }
@@ -299,6 +307,8 @@ pub struct Workspace {
     pub settings: Entity<SettingsScreen>,
     /// The tournament tab shown last, if one was ever opened.
     tournament: Option<Entity<TournamentScreen>>,
+    /// The test positions tab shown last, if one was ever opened.
+    test_positions: Option<Entity<TestPositionsScreen>>,
     tabs: Vec<WorkspaceTab>,
     closed_tabs: Vec<WorkspaceTab>,
     active_tab: u64,
@@ -406,7 +416,9 @@ impl Workspace {
             Mode::Train => TabContent::Train(train.clone()),
             Mode::Play => TabContent::Play(play.clone()),
             // `--screen` never names the optional tournament tab.
-            Mode::Settings | Mode::Tournament => TabContent::Settings(settings.clone()),
+            Mode::Settings | Mode::Tournament | Mode::TestPositions => {
+                TabContent::Settings(settings.clone())
+            }
         };
         let mut workspace = Self {
             tabs: vec![WorkspaceTab {
@@ -426,6 +438,7 @@ impl Workspace {
             play,
             settings,
             tournament: None,
+            test_positions: None,
             search,
             path_input,
             paths_input,
@@ -460,6 +473,9 @@ impl Workspace {
         if screen == Some("tournament") {
             workspace.new_tab(Mode::Tournament, window, cx);
         }
+        if screen == Some("test-positions") {
+            workspace.new_tab(Mode::TestPositions, window, cx);
+        }
         workspace
     }
 
@@ -471,6 +487,7 @@ impl Workspace {
             Mode::Play => TabContent::Play(self.play.clone()),
             Mode::Settings => TabContent::Settings(self.settings.clone()),
             Mode::Tournament => TabContent::Tournament(self.tournament.clone()?),
+            Mode::TestPositions => TabContent::TestPositions(self.test_positions.clone()?),
         })
     }
 
@@ -561,6 +578,7 @@ impl Workspace {
             }
             TabContent::Settings(screen) => self.settings = screen,
             TabContent::Tournament(screen) => self.tournament = Some(screen),
+            TabContent::TestPositions(screen) => self.test_positions = Some(screen),
         }
         cx.notify();
     }
@@ -601,9 +619,12 @@ impl Workspace {
             Mode::Tournament => TabContent::Tournament(
                 cx.new(|cx| TournamentScreen::new(model, workspace, window, cx)),
             ),
+            Mode::TestPositions => TabContent::TestPositions(
+                cx.new(|cx| TestPositionsScreen::new(model, workspace, window, cx)),
+            ),
             _ => self
                 .existing_content(mode)
-                .expect("only tournament tabs are created on demand"),
+                .expect("only optional tabs are created on demand"),
         };
         WorkspaceTab { id, content }
     }
@@ -736,7 +757,7 @@ impl Workspace {
 
     /// Covers the content area when the + button is open: one card per kind of tab.
     fn new_tab_picker(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let choices: [(Mode, &str, &str); 4] = [
+        let choices: [(Mode, &str, &str); 5] = [
             (
                 Mode::Analyse,
                 ui::i18n::t("Analyse"),
@@ -758,6 +779,11 @@ impl Workspace {
                 Mode::Tournament,
                 ui::i18n::t("Tournament"),
                 ui::i18n::t("Engine-vs-engine matches run with fastchess."),
+            ),
+            (
+                Mode::TestPositions,
+                ui::i18n::t("Test positions"),
+                ui::i18n::t("Run engines over an EPD suite to find best moves or mates."),
             ),
         ];
         // Two by two, in one column with the header so their edges line up.
@@ -1138,6 +1164,10 @@ impl Workspace {
                 || ui::i18n::t("Tournament").into(),
                 |screen| screen.read(cx).breadcrumb(),
             ),
+            Mode::TestPositions => self.test_positions.as_ref().map_or_else(
+                || ui::i18n::t("Test positions").into(),
+                |screen| screen.read(cx).breadcrumb(),
+            ),
         }
     }
 
@@ -1465,6 +1495,10 @@ impl Render for Workspace {
             Mode::Play => self.play.clone().into_any_element(),
             Mode::Settings => self.settings.clone().into_any_element(),
             Mode::Tournament => match &self.tournament {
+                Some(screen) => screen.clone().into_any_element(),
+                None => div().into_any_element(),
+            },
+            Mode::TestPositions => match &self.test_positions {
                 Some(screen) => screen.clone().into_any_element(),
                 None => div().into_any_element(),
             },

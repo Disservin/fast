@@ -32,6 +32,8 @@ pub struct Limits {
     pub movetime_ms: Option<u64>,
     pub depth: Option<u32>,
     pub nodes: Option<u64>,
+    /// `go mate N`: search for a mate in N moves.
+    pub mate: Option<u32>,
 }
 
 impl Limits {
@@ -45,6 +47,9 @@ impl Limits {
         }
         if let Some(nodes) = self.nodes {
             go.push_str(&format!(" nodes {nodes}"));
+        }
+        if let Some(mate) = self.mate {
+            go.push_str(&format!(" mate {mate}"));
         }
         if let (Some(white), Some(black)) = (self.white_ms, self.black_ms) {
             go.push_str(&format!(
@@ -576,6 +581,16 @@ fn set_option_line(name: &str, value: Option<&str>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mate_searches_can_be_capped() {
+        let limits = Limits {
+            mate: Some(3),
+            movetime_ms: Some(500),
+            ..Default::default()
+        };
+        assert_eq!(limits.go_command(), "go movetime 500 mate 3");
+    }
 
     #[test]
     fn the_start_position_is_sent_as_startpos() {

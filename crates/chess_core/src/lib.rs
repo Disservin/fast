@@ -3,6 +3,7 @@
 
 pub mod annotation;
 pub mod eco;
+pub mod epd;
 pub mod material;
 pub mod notation;
 pub mod pgn;
@@ -14,6 +15,7 @@ pub use annotation::{
     MoveAnnotation, move_times, parse_annotation, parse_move_annotation, strip_commands,
 };
 pub use eco::{Opening, classify};
+pub use epd::{EpdLine, EpdPosition, parse_epd};
 pub use material::{MaterialBalance, material_balance};
 pub use notation::{Notation, display_san, format_pv, nag_symbol, pv_to_san};
 pub use pgn::{PgnError, parse_pgn, write_pgn, write_pgn_from};

@@ -2,6 +2,7 @@ pub mod analyse;
 pub mod database;
 pub mod play;
 pub mod settings;
+pub mod test_positions;
 pub mod tournament;
 pub mod train;
 

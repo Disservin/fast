@@ -7,7 +7,7 @@ use std::{
 
 use anyhow::{Context as _, Result};
 use chess_core::Notation;
-use engine::EngineConfig;
+use engine::{EngineConfig, EngineId};
 use serde::{Deserialize, Serialize};
 use ui::{BoardPrefs, BoardTheme, CoordinateStyle, PieceSet, i18n::Language};
 
@@ -375,6 +375,64 @@ impl Default for PanelSizes {
     }
 }
 
+/// What a test suite run looks for in each position.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TestGoal {
+    /// Play a `bm` move and avoid any `am` move.
+    #[default]
+    BestMove,
+    /// Find the `dm` mate, or a shorter one.
+    Mate,
+}
+
+/// How long an engine searches each test position.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TestLimitKind {
+    Depth,
+    Nodes,
+    #[default]
+    Time,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct TestPositionSettings {
+    pub goal: TestGoal,
+    pub engines: Vec<EngineId>,
+    pub limit: TestLimitKind,
+    pub depth: u32,
+    pub nodes: u64,
+    /// Milliseconds per position.
+    pub time_ms: u64,
+    /// None keeps each engine's own Hash setting.
+    pub hash_mb: Option<u32>,
+    pub clear_hash: bool,
+    pub parallel: bool,
+    /// Processes per engine when running in parallel.
+    pub processes: u32,
+    pub syzygy: bool,
+    pub syzygy_path: Option<PathBuf>,
+}
+
+impl Default for TestPositionSettings {
+    fn default() -> Self {
+        Self {
+            goal: TestGoal::default(),
+            engines: Vec::new(),
+            limit: TestLimitKind::default(),
+            depth: 20,
+            nodes: 1_000_000,
+            time_ms: 1000,
+            hash_mb: Some(64),
+            clear_hash: true,
+            parallel: false,
+            processes: 1,
+            syzygy: false,
+            syzygy_path: None,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
@@ -400,6 +458,8 @@ pub struct Config {
     pub fastchess_path: Option<PathBuf>,
     pub window: Option<SavedWindow>,
     pub panels: PanelSizes,
+    /// The Test positions tab's last settings.
+    pub test_positions: TestPositionSettings,
 }
 
 impl Default for Config {
@@ -421,6 +481,7 @@ impl Default for Config {
             fastchess_path: None,
             window: None,
             panels: PanelSizes::default(),
+            test_positions: TestPositionSettings::default(),
         }
     }
 }
