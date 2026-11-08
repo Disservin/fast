@@ -375,6 +375,9 @@ pub fn translate(language: Language, text: &str) -> &str {
             "RESULT" => "ERGEBNIS",
             "Replace cached analysis" => "Gespeicherte Analyse ersetzen",
             "Search options" => "Suchoptionen",
+            "Import a PGN file into the selected database" => {
+                "Eine PGN-Datei in die gewählte Datenbank importieren"
+            }
             "Restart engine" => "Engine neu starten",
             "Quit this engine and start it again" => "Diese Engine beenden und neu starten",
             "Restart" => "Neu starten",

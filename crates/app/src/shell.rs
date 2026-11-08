@@ -1656,7 +1656,6 @@ impl Workspace {
             .map_or(0., |label| 60. + label.len() as f32 * 7.);
         let others = match self.mode {
             Mode::Analyse => engine_w + 10.,
-            Mode::Database => 72. + 10.,
             _ => 0.,
         } + 48.
             + 10.
@@ -1686,14 +1685,6 @@ impl Workspace {
                 if let Some(button) = self.engine_button(cx) {
                     row = row.child(button);
                 }
-            }
-            Mode::Database => {
-                let db = self.database.clone();
-                row = row.child(btn("import", ui::i18n::t("Import")).on_click(
-                    move |window, cx| {
-                        db.update(cx, |database, cx| database.prompt_import(window, cx));
-                    },
-                ));
             }
             Mode::Train => {
                 let settings_this = this.clone();

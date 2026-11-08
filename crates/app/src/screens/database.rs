@@ -897,7 +897,24 @@ impl DatabaseScreen {
             .bg(rgb(T.surface))
             .border_r_1()
             .border_color(rgb(T.border))
-            .child(section_label(ui::i18n::t("Databases")).mb(px(5.)))
+            .child(
+                h_flex()
+                    .justify_between()
+                    .items_center()
+                    .mb(px(5.))
+                    .child(section_label(ui::i18n::t("Databases")))
+                    .child({
+                        let import_this = this.clone();
+                        btn("import", ui::i18n::t("Import"))
+                            .mini()
+                            .icon("icons/plus.svg")
+                            .tooltip(ui::i18n::t("Import a PGN file into the selected database"))
+                            .on_click(move |window, cx| {
+                                import_this
+                                    .update(cx, |screen, cx| screen.prompt_import(window, cx));
+                            })
+                    }),
+            )
             .child(list)
             .child(section_label("Filter").mb(px(8.)))
             .child(field("Player", text_input(&self.player)).mb(px(7.)))
