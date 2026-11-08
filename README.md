@@ -4,6 +4,16 @@ A native desktop chess workstation for analysis, game databases, opening trainin
 playing against engines. Offline and single-user. Built with Rust and
 [GPUI](https://www.gpui.rs).
 
+![Analyse: Stockfish and Lc0 side by side, with database and repertoire moves](docs/screenshots/analyse.png)
+
+| Database | Train |
+| --- | --- |
+| ![Database: filtered games with score, repertoire leaks and a preview](docs/screenshots/database.png) | ![Train: repertoire drill with spaced repetition and leaks from your games](docs/screenshots/train.png) |
+| **Play** | **Settings › Engines** |
+| ![Play: a game against Stockfish at limited strength](docs/screenshots/play.png) | ![Settings: installed engines and their options](docs/screenshots/settings.png) |
+
+The screenshots come from the demo profile (`cargo run --release -p fast -- --demo`).
+
 ## Workspace tabs
 
 Click **+** in the tab bar to open a picker with a card for each kind of view (Analyse, Play,
@@ -29,14 +39,6 @@ first use and are cached for offline reuse. Choose **No book** for the initial p
 or **Custom file…** to supply a local EPD or PGN.
 
 ## Run it
-
-Opening names and all 500 ECO codes are bundled at build time from Lichess.
-To refresh them, run `python3 scripts/update_openings.py`, then rebuild Fast.
-The command downloads, validates, records the upstream revision, and tests the data.
-Installed users can choose **Settings → General → Opening data → Update opening data**.
-Updates apply immediately and persist for offline use across restarts. Failed updates
-keep the existing data; bundled openings remain the fallback. Existing database games
-keep their stored ECO tags; new imports use the updated classifier.
 
 ```sh
 cargo run --release -p fast            # your real profile
@@ -67,6 +69,16 @@ On a shell without a Wayland session variable set correctly (some WSLg terminals
 sudo apt install libfontconfig-dev libfreetype-dev libxkbcommon-dev \
   libxkbcommon-x11-dev libwayland-dev libxcb1-dev libasound2-dev
 ```
+
+### Opening data
+
+Opening names and all 500 ECO codes are bundled at build time from Lichess.
+To refresh them, run `python3 scripts/update_openings.py`, then rebuild Fast.
+The command downloads, validates, records the upstream revision, and tests the data.
+Installed users can choose **Settings › General › Opening data › Update opening data**.
+Updates apply immediately and persist for offline use across restarts. Failed updates
+keep the existing data; bundled openings remain the fallback. Existing database games
+keep their stored ECO tags; new imports use the updated classifier.
 
 ## Engine controls in Analyse
 
@@ -116,6 +128,23 @@ when the engine is added. The engine's `UCI_EngineAbout` text is shown as its de
 
 File, Edit, View, Go and Engine menus are native on macOS and drawn in the top bar elsewhere.
 **File** opens and saves PGN files (FEN too), and **Edit** copies or pastes FEN and PGN.
+
+## Database
+
+Each database is listed on the left with its game count. Filter by player, colour, ECO range,
+opponent rating and time control, or tick **Reached the Analyse board position** to see only
+games that passed through the position on the Analyse board. The table shows where each game
+left your repertoire and its accuracy, and the panel above it shows your score and your most common
+leak. **Analyse all** reviews the filtered games with the engine (**Review settings** sets the
+limits), and **Export PGN** saves them.
+
+## Train
+
+Train drills your repertoire with spaced repetition. Each line is marked **Known**, **Learning**,
+**Due** or **New**. After each move, grade it **Again**, **Hard**, **Good** or **Easy**: the
+button shows when the move will come back. **Leaks from your games** lists where your own games
+left the repertoire and how you scored compared with the prepared move. **Drill these lines**
+practises just those lines.
 
 ## Play
 
@@ -187,7 +216,7 @@ for adding pinned, checksummed platform builds without changing app code.
 
 ### Interface languages
 
-Choose **Settings → General → Language → Deutsch** for German. The choice is
+Choose **Settings › General › Language › Deutsch** for German. The choice is
 saved and applies immediately to translated labels and menus. English remains
 the fallback for messages that do not yet have translations. Configuration files
 store languages as `en` or `de`.
