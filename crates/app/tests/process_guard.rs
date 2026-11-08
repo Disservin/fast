@@ -53,6 +53,8 @@ fn wait(child: &mut Child) -> i32 {
     }
 }
 
+/// Waits until the stand-in child has written its "stopped" marker.
+#[cfg(target_os = "linux")]
 fn wait_for(path: &Path) {
     let start = Instant::now();
     while !path.exists() {

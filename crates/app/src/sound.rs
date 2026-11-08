@@ -245,8 +245,10 @@ fn tone(out: &mut [f32], at: usize, freq: f32, loudness: f32, decay: f32) {
 /// Turns embedded signed 16-bit little-endian mono PCM into samples.
 fn decode(bytes: &[u8]) -> Vec<f32> {
     bytes
-        .chunks_exact(2)
-        .map(|sample| i16::from_le_bytes([sample[0], sample[1]]) as f32 / 32768.0)
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|&sample| i16::from_le_bytes(sample) as f32 / 32768.0)
         .collect()
 }
 
