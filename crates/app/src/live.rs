@@ -378,16 +378,11 @@ impl LiveAnalysis {
         cx.notify();
     }
 
-    /// Quits every analysis engine and starts it again, e.g. when one hangs or its
-    /// hash should be cleared. Lines already found stay on screen.
-    pub fn relaunch(&mut self, cx: &mut Context<Self>) {
+    /// Quits one analysis engine and starts it again, e.g. when it hangs or its hash
+    /// should be cleared. Lines already found stay on screen.
+    pub fn relaunch(&mut self, id: EngineId, cx: &mut Context<Self>) {
         if self.active {
-            let ids: Vec<_> = self.engines.iter().map(|live| live.config.id).collect();
-            self.model.update(cx, |model, _| {
-                for id in ids {
-                    model.manager.shutdown(id);
-                }
-            });
+            self.model.update(cx, |model, _| model.manager.shutdown(id));
         }
         self.restart(cx);
     }

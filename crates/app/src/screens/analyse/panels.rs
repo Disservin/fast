@@ -842,14 +842,12 @@ impl AnalyseScreen {
                     .child(div().flex_1())
                     .child({
                         let this = this.clone();
-                        btn("restart-engines", "Restart engines")
+                        btn("restart-engine", "Restart engine")
                             .compact()
-                            .tooltip(ui::i18n::t(
-                                "Quit the analysis engines and start them again",
-                            ))
+                            .tooltip(ui::i18n::t("Quit this engine and start it again"))
                             .on_click(move |_, cx| {
                                 this.update(cx, |screen, cx| {
-                                    screen.live.update(cx, |live, cx| live.relaunch(cx));
+                                    screen.live.update(cx, |live, cx| live.relaunch(id, cx));
                                 });
                             })
                     })

@@ -375,10 +375,8 @@ pub fn translate(language: Language, text: &str) -> &str {
             "RESULT" => "ERGEBNIS",
             "Replace cached analysis" => "Gespeicherte Analyse ersetzen",
             "Search options" => "Suchoptionen",
-            "Restart engines" => "Engines neu starten",
-            "Quit the analysis engines and start them again" => {
-                "Analyse-Engines beenden und neu starten"
-            }
+            "Restart engine" => "Engine neu starten",
+            "Quit this engine and start it again" => "Diese Engine beenden und neu starten",
             "Restart" => "Neu starten",
             "Retry saving settings and repertoire" => {
                 "Einstellungen und Repertoire erneut speichern"
