@@ -3075,6 +3075,10 @@ impl SettingsScreen {
                 ),
         );
         table = table.child(rows);
+        let drive = usage
+            .as_ref()
+            .and_then(|usage| Some((usage.disk?, usage.total())))
+            .map(|(disk, fast)| drive_strip(disk, fast));
         let folder_row = |id: &'static str, label: &'static str, path: PathBuf| {
             h_flex()
                 .h(px(44.))
@@ -3153,9 +3157,101 @@ impl SettingsScreen {
                                 }),
                             ),
                     )
+                    .children(drive)
                     .child(table),
             )
     }
+}
+
+/// The drive holding Fast's data: a bar of space used by other files, by Fast and free,
+/// with the figures beside it.
+fn drive_strip(disk: crate::storage::DiskSpace, fast: u64) -> Div {
+    use crate::storage::format_bytes;
+    let total = disk.total.max(1) as f32;
+    let used = disk.total.saturating_sub(disk.free);
+    let others = used.saturating_sub(fast);
+    let figure = |caption: &'static str, value: String, color: u32| {
+        v_flex()
+            .flex_none()
+            .gap(px(1.))
+            .child(
+                h_flex()
+                    .gap(px(5.))
+                    .child(
+                        div()
+                            .size(px(8.))
+                            .rounded(px(2.))
+                            .bg(rgb(color))
+                            .border_1()
+                            .border_color(rgb(if color == T.divider {
+                                T.border_strong
+                            } else {
+                                color
+                            })),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(10.))
+                            .text_color(rgb(T.faint))
+                            .child(ui::i18n::t(caption)),
+                    ),
+            )
+            .child(
+                mono(value)
+                    .whitespace_nowrap()
+                    .text_size(px(12.))
+                    .text_color(rgb(T.fg_2)),
+            )
+    };
+    h_flex()
+        .px(px(16.))
+        .py(px(12.))
+        .gap(px(20.))
+        .border_b_1()
+        .border_color(rgb(T.divider))
+        .child(
+            h_flex()
+                .flex_1()
+                .min_w(px(120.))
+                .h(px(8.))
+                .rounded(px(2.))
+                .overflow_hidden()
+                .bg(rgb(T.divider))
+                .child(
+                    div()
+                        .h_full()
+                        .w(gpui::relative(others as f32 / total))
+                        .bg(rgb(T.muted)),
+                )
+                // Fast's share is often tiny, so it always shows at least a sliver.
+                .child(
+                    div()
+                        .h_full()
+                        .min_w(px(3.))
+                        .w(gpui::relative(fast as f32 / total))
+                        .bg(rgb(T.accent)),
+                ),
+        )
+        .child(figure("FAST", format_bytes(fast), T.accent))
+        .child(figure("OTHER FILES", format_bytes(others), T.muted))
+        .child(figure("FREE", format_bytes(disk.free), T.divider))
+        .child(
+            v_flex()
+                .flex_none()
+                .gap(px(1.))
+                .child(
+                    div()
+                        .text_size(px(10.))
+                        .text_color(rgb(T.faint))
+                        .child(ui::i18n::t("DRIVE")),
+                )
+                .child(
+                    mono(format_bytes(disk.total))
+                        .whitespace_nowrap()
+                        .text_size(px(12.))
+                        .text_color(rgb(T.fg_2)),
+                ),
+        )
 }
 
 /// Node presets for backwards analysis.

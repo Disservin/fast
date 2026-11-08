@@ -96,6 +96,15 @@ pub const STORES: [Store; 10] = [
 pub struct Usage {
     pub stores: Vec<u64>,
     pub other: u64,
+    /// The drive holding the data folder, when the system reports it.
+    pub disk: Option<DiskSpace>,
+}
+
+/// Size and free space of a drive, in bytes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DiskSpace {
+    pub total: u64,
+    pub free: u64,
 }
 
 impl Usage {
@@ -140,7 +149,69 @@ pub fn measure(paths: &Paths) -> Usage {
         })
         .map(|entry| size(&entry.path()))
         .sum();
-    Usage { stores, other }
+    Usage {
+        stores,
+        other,
+        disk: disk_space(&paths.data_dir),
+    }
+}
+
+/// Size and free space of the drive holding `path`. A folder not created yet is
+/// looked up through its nearest existing parent.
+pub fn disk_space(path: &Path) -> Option<DiskSpace> {
+    let existing = path.ancestors().find(|dir| dir.exists())?;
+    query_disk(existing)
+}
+
+#[cfg(unix)]
+fn query_disk(path: &Path) -> Option<DiskSpace> {
+    use std::os::unix::ffi::OsStrExt as _;
+    let path = std::ffi::CString::new(path.as_os_str().as_bytes()).ok()?;
+    let mut stat = std::mem::MaybeUninit::<libc::statvfs>::uninit();
+    // SAFETY: `path` is a NUL-terminated string and `stat` is written by the call
+    // before it is read.
+    let stat = unsafe {
+        if libc::statvfs(path.as_ptr(), stat.as_mut_ptr()) != 0 {
+            return None;
+        }
+        stat.assume_init()
+    };
+    // The field types differ between platforms; all fit in u64.
+    #[allow(clippy::unnecessary_cast)]
+    let (fragment, blocks, available) = (
+        stat.f_frsize as u64,
+        stat.f_blocks as u64,
+        stat.f_bavail as u64,
+    );
+    Some(DiskSpace {
+        total: blocks.saturating_mul(fragment),
+        free: available.saturating_mul(fragment),
+    })
+}
+
+#[cfg(windows)]
+fn query_disk(path: &Path) -> Option<DiskSpace> {
+    use std::os::windows::ffi::OsStrExt as _;
+    let wide: Vec<u16> = path.as_os_str().encode_wide().chain([0]).collect();
+    let (mut available, mut total) = (0u64, 0u64);
+    // SAFETY: `wide` is NUL-terminated and both outputs point to live u64s.
+    let ok = unsafe {
+        windows_sys::Win32::Storage::FileSystem::GetDiskFreeSpaceExW(
+            wide.as_ptr(),
+            &mut available,
+            &mut total,
+            std::ptr::null_mut(),
+        )
+    };
+    (ok != 0).then_some(DiskSpace {
+        total,
+        free: available,
+    })
+}
+
+#[cfg(not(any(unix, windows)))]
+fn query_disk(_path: &Path) -> Option<DiskSpace> {
+    None
 }
 
 /// The folder holding `config.toml`.
@@ -242,6 +313,14 @@ mod tests {
             data_dir: dir.path().join("none"),
         };
         assert_eq!(measure(&paths).total(), 0);
+    }
+
+    #[test]
+    fn reports_the_drive_of_a_missing_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let disk = disk_space(&dir.path().join("not/yet/created")).unwrap();
+        assert!(disk.total > 0);
+        assert!(disk.free <= disk.total);
     }
 
     #[test]
