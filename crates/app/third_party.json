@@ -606,6 +606,12 @@
   "repository": "https://github.com/tkaitchuck/constrandom"
  },
  {
+  "name": "constant_time_eq",
+  "version": "0.6.1",
+  "license": "CC0-1.0 OR MIT-0 OR Apache-2.0",
+  "repository": "https://codeberg.org/cesarb/constant_time_eq"
+ },
+ {
   "name": "convert_case",
   "version": "0.10.0",
   "license": "MIT",
@@ -772,12 +778,6 @@
   "version": "0.5.9",
   "license": "MIT OR Apache-2.0",
   "repository": "https://github.com/jhpratt/deranged"
- },
- {
-  "name": "derive_arbitrary",
-  "version": "1.5.0",
-  "license": "MIT OR Apache-2.0",
-  "repository": "https://github.com/rust-fuzz/arbitrary"
  },
  {
   "name": "derive_more",
@@ -2218,6 +2218,12 @@
   "version": "1.0.6",
   "license": "MIT",
   "repository": "https://github.com/mbrubeck/rust-debug-unreachable"
+ },
+ {
+  "name": "nix",
+  "version": "0.31.3",
+  "license": "MIT",
+  "repository": "https://github.com/nix-rust/nix"
  },
  {
   "name": "no_std_io2",
@@ -3966,6 +3972,12 @@
   "repository": "https://github.com/harfbuzz/ttf-parser"
  },
  {
+  "name": "typed-path",
+  "version": "0.13.0",
+  "license": "MIT OR Apache-2.0",
+  "repository": "https://github.com/chipsenkbeil/typed-path"
+ },
+ {
   "name": "typenum",
   "version": "1.20.1",
   "license": "MIT OR Apache-2.0",
@@ -5053,9 +5065,9 @@
  },
  {
   "name": "zip",
-  "version": "4.6.1",
+  "version": "9.4.2",
   "license": "MIT",
-  "repository": "https://github.com/zip-rs/zip2.git"
+  "repository": "https://github.com/zip-rs/zip2"
  },
  {
   "name": "zlib-rs",

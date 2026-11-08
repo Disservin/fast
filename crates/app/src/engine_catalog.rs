@@ -234,7 +234,7 @@ fn unpack(asset: &Download, archive: &Path, destination: &Path, cancel: &AtomicB
             for index in 0..archive.len() {
                 cancelled(cancel)?;
                 let mut entry = archive.by_index(index)?;
-                let path = destination.join(safe_relative(entry.name().trim_end_matches('/'))?);
+                let path = destination.join(safe_relative(entry.name()?.trim_end_matches('/'))?);
                 ensure!(!entry.is_symlink(), "Archive contains a symbolic link");
                 if entry.is_dir() {
                     fs::create_dir_all(path)?;

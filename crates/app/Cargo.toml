@@ -22,7 +22,7 @@ trainer.workspace = true
 ui.workspace = true
 anyhow.workspace = true
 ureq = { version = "3", default-features = false, features = ["rustls"] }
-zip = { version = "4", default-features = false, features = ["deflate"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
 tar = "0.4"
 flate2 = "1"
 sha2 = "0.10"
