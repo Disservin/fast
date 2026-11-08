@@ -14,6 +14,7 @@ use gpui::{
 };
 use gpui_component::{
     input::{InputEvent, InputState},
+    scroll::ScrollableElement as _,
     select::SelectEvent,
 };
 use ui::{
@@ -1388,8 +1389,13 @@ impl DatabaseScreen {
             }),
         )
         .track_scroll(&self.scroll)
-        .flex_1()
-        .min_h_0();
+        .size_full();
+        let list = div()
+            .relative()
+            .flex_1()
+            .min_h_0()
+            .child(list)
+            .vertical_scrollbar(&self.scroll);
         let rows_height = (count as f32 * ROW_H).min(450.) + 35.;
         panel()
             .flex()
