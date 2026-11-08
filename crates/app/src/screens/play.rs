@@ -240,6 +240,11 @@ impl PlayScreen {
         }
     }
 
+    /// The file this tab keeps its game in, so the tab can be reopened on the next start.
+    pub fn recovery_path(&self) -> &std::path::Path {
+        &self.recovery_path
+    }
+
     pub fn breadcrumb(&self) -> SharedString {
         match &self.game {
             Some(game) => format!("vs {}, {}", game.opponent_name, game.label).into(),

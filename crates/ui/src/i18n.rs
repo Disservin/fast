@@ -438,6 +438,8 @@ pub fn translate(language: Language, text: &str) -> &str {
                 "Eine Variante für jeden legalen Zug in jeder Stellung (bis zu 256, soweit die Engine dies unterstützt)"
             }
             "Open a new tab" => "Neuen Tab öffnen",
+            "Rename tab" => "Tab umbenennen",
+            "Double-click to rename" => "Doppelklick zum Umbenennen",
             "An arrow per engine line, coloured from best (blue) to blunder (red)" => {
                 "Ein Pfeil pro Engine-Variante, vom besten Zug (blau) bis zum groben Fehler (rot)"
             }

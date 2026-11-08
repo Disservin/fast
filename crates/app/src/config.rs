@@ -460,6 +460,42 @@ pub struct Config {
     pub panels: PanelSizes,
     /// The Test positions tab's last settings.
     pub test_positions: TestPositionSettings,
+    /// The tabs open when Fast last closed, reopened on the next start.
+    pub session: Option<SavedSession>,
+}
+
+/// The open tabs, in order, and which one was shown.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SavedSession {
+    pub tabs: Vec<SavedTab>,
+    /// Index into `tabs` of the tab that was shown.
+    pub active: usize,
+}
+
+/// One open tab: its screen, the name the user gave it and, for Analyse and Play,
+/// the recovery file that holds its game.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SavedTab {
+    pub kind: SavedTabKind,
+    pub id: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// File name inside the recovery directory.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recovery: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SavedTabKind {
+    Analyse,
+    Database,
+    Train,
+    Play,
+    Settings,
+    Tournament,
+    TestPositions,
 }
 
 impl Default for Config {
@@ -482,6 +518,7 @@ impl Default for Config {
             window: None,
             panels: PanelSizes::default(),
             test_positions: TestPositionSettings::default(),
+            session: None,
         }
     }
 }
@@ -650,6 +687,43 @@ mod tests {
         assert_eq!(
             toml::from_str::<Config>(&text).unwrap().analysis_limit,
             limit
+        );
+    }
+
+    #[test]
+    fn open_tabs_and_their_names_round_trip() {
+        assert_eq!(toml::from_str::<Config>("").unwrap().session, None);
+        let session = SavedSession {
+            tabs: vec![
+                SavedTab {
+                    kind: SavedTabKind::Analyse,
+                    id: 1,
+                    name: Some("Najdorf prep".into()),
+                    recovery: Some("game-recovery.json".into()),
+                },
+                SavedTab {
+                    kind: SavedTabKind::Database,
+                    id: 4,
+                    name: None,
+                    recovery: None,
+                },
+                SavedTab {
+                    kind: SavedTabKind::TestPositions,
+                    id: 7,
+                    name: None,
+                    recovery: None,
+                },
+            ],
+            active: 1,
+        };
+        let text = toml::to_string(&Config {
+            session: Some(session.clone()),
+            ..Default::default()
+        })
+        .unwrap();
+        assert_eq!(
+            toml::from_str::<Config>(&text).unwrap().session,
+            Some(session)
         );
     }
 

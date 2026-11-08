@@ -274,10 +274,41 @@ impl TabContent {
         }
     }
 }
+impl Mode {
+    /// The screen as it is written in the saved session.
+    fn saved(self) -> crate::config::SavedTabKind {
+        use crate::config::SavedTabKind as Kind;
+        match self {
+            Self::Analyse => Kind::Analyse,
+            Self::Database => Kind::Database,
+            Self::Train => Kind::Train,
+            Self::Play => Kind::Play,
+            Self::Settings => Kind::Settings,
+            Self::Tournament => Kind::Tournament,
+            Self::TestPositions => Kind::TestPositions,
+        }
+    }
+
+    fn from_saved(kind: crate::config::SavedTabKind) -> Self {
+        use crate::config::SavedTabKind as Kind;
+        match kind {
+            Kind::Analyse => Self::Analyse,
+            Kind::Database => Self::Database,
+            Kind::Train => Self::Train,
+            Kind::Play => Self::Play,
+            Kind::Settings => Self::Settings,
+            Kind::Tournament => Self::Tournament,
+            Kind::TestPositions => Self::TestPositions,
+        }
+    }
+}
+
 #[derive(Clone)]
 struct WorkspaceTab {
     id: u64,
     content: TabContent,
+    /// The name the user gave the tab, shown instead of its screen and detail.
+    name: Option<SharedString>,
 }
 
 #[derive(Clone)]
@@ -315,6 +346,9 @@ pub struct Workspace {
     next_tab_id: u64,
     last_tab: BTreeMap<Mode, u64>,
     new_tab_menu_open: bool,
+    /// The tab being renamed and the field holding its new name.
+    renaming: Option<(u64, Entity<InputState>)>,
+    _rename_sub: Option<Subscription>,
     /// The tab strip's horizontal scroll.
     tab_scroll: ScrollHandle,
     /// The tab last scrolled into view, so the strip follows a change of tab but not every
@@ -429,12 +463,15 @@ impl Workspace {
             tabs: vec![WorkspaceTab {
                 id: 1,
                 content: initial_content,
+                name: None,
             }],
             closed_tabs: Vec::new(),
             active_tab: 1,
             next_tab_id: 2,
             last_tab: [(mode, 1)].into(),
             new_tab_menu_open: false,
+            renaming: None,
+            _rename_sub: None,
             tab_scroll: ScrollHandle::new(),
             tab_in_view: std::cell::Cell::new(u64::MAX),
             model,
@@ -455,7 +492,15 @@ impl Workspace {
             force_window_controls: false,
             _subscriptions: vec![search_sub, path_sub, model_sub],
         };
-        workspace.restore_recovery_tabs(window, cx);
+        // `--screen` asks for one screen, so the saved tabs only come back without it.
+        let session = (screen.is_none())
+            .then(|| workspace.model.read(cx).config.session.clone())
+            .flatten()
+            .filter(|session| !session.tabs.is_empty());
+        match session {
+            Some(session) => workspace.restore_session(session, window, cx),
+            None => workspace.restore_recovery_tabs(window, cx),
+        }
         workspace
             ._subscriptions
             .push(cx.observe_window_bounds(window, |workspace, window, cx| {
@@ -525,7 +570,11 @@ impl Workspace {
         } else if let Some(content) = self.existing_content(mode) {
             let id = self.next_tab_id;
             self.next_tab_id += 1;
-            self.tabs.push(WorkspaceTab { id, content });
+            self.tabs.push(WorkspaceTab {
+                id,
+                content,
+                name: None,
+            });
             self.activate_tab(id, cx);
         }
     }
@@ -587,6 +636,7 @@ impl Workspace {
             TabContent::Tournament(screen) => self.tournament = Some(screen),
             TabContent::TestPositions(screen) => self.test_positions = Some(screen),
         }
+        self.save_session(cx);
         cx.notify();
     }
 
@@ -633,7 +683,11 @@ impl Workspace {
                 .existing_content(mode)
                 .expect("only optional tabs are created on demand"),
         };
-        WorkspaceTab { id, content }
+        WorkspaceTab {
+            id,
+            content,
+            name: None,
+        }
     }
 
     fn new_tab(&mut self, mode: Mode, window: &mut Window, cx: &mut Context<Self>) {
@@ -697,6 +751,7 @@ impl Workspace {
                 self.activate_tab(self.tabs[index.min(self.tabs.len() - 1)].id, cx);
             }
         }
+        self.save_session(cx);
         cx.notify();
     }
 
@@ -760,6 +815,188 @@ impl Workspace {
             let tab = self.make_tab(mode, id, Some(path), window, cx);
             self.tabs.push(tab);
         }
+    }
+
+    /// Reopens the tabs that were open when Fast last closed, in their order and with
+    /// their names, and shows the one that was shown.
+    fn restore_session(
+        &mut self,
+        session: crate::config::SavedSession,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let directory = self.model.read(cx).paths.data_dir.join("recovery");
+        let default_analyse = self.analyse.read(cx).recovery_path().to_path_buf();
+        let default_play = self.play.read(cx).recovery_path().to_path_buf();
+        // The first tab of each kind takes the screen made at start; later ones get their own.
+        let mut used: Vec<Mode> = Vec::new();
+        let mut tabs: Vec<WorkspaceTab> = Vec::new();
+        for saved in &session.tabs {
+            let mode = Mode::from_saved(saved.kind);
+            if saved.id == 0 || saved.id == u64::MAX || tabs.iter().any(|tab| tab.id == saved.id) {
+                continue;
+            }
+            // Only a bare file name is accepted, so a damaged config cannot point elsewhere.
+            let path = saved
+                .recovery
+                .as_deref()
+                .and_then(|name| std::path::Path::new(name).file_name())
+                .map(|name| {
+                    let default = match mode {
+                        Mode::Analyse => &default_analyse,
+                        _ => &default_play,
+                    };
+                    if default.file_name() == Some(name) {
+                        default.clone()
+                    } else {
+                        directory.join(name)
+                    }
+                });
+            let first = !used.contains(&mode);
+            let reuse = match mode {
+                Mode::Analyse => first && path.as_ref() == Some(&default_analyse),
+                Mode::Play => first && path.as_ref() == Some(&default_play),
+                Mode::Database | Mode::Train | Mode::Settings => first,
+                Mode::Tournament | Mode::TestPositions => false,
+            };
+            if matches!(mode, Mode::Train | Mode::Settings) && !first {
+                continue;
+            }
+            let mut tab = match reuse.then(|| self.existing_content(mode)).flatten() {
+                Some(content) => WorkspaceTab {
+                    id: saved.id,
+                    content,
+                    name: None,
+                },
+                None => self.make_tab(mode, saved.id, path, window, cx),
+            };
+            tab.name = saved
+                .name
+                .as_deref()
+                .map(str::trim)
+                .filter(|name| !name.is_empty())
+                .map(|name| SharedString::from(name.to_owned()));
+            used.push(mode);
+            tabs.push(tab);
+        }
+        if tabs.is_empty() {
+            return;
+        }
+        // New tabs must not pick up a recovery file left by a tab closed earlier.
+        let highest_file = std::fs::read_dir(&directory)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter_map(|entry| {
+                let name = entry.file_name();
+                let stem = std::path::Path::new(&name)
+                    .file_stem()?
+                    .to_str()?
+                    .to_owned();
+                stem.rsplit('-').next()?.parse::<u64>().ok()
+            })
+            .filter(|id| *id < u64::MAX)
+            .max()
+            .unwrap_or(0);
+        let highest_tab = tabs.iter().map(|tab| tab.id).max().unwrap_or(0);
+        self.next_tab_id = highest_file.max(highest_tab) + 1;
+        let active = tabs
+            .get(session.active)
+            .or(tabs.first())
+            .map(|tab| tab.id)
+            .unwrap_or(1);
+        self.last_tab = tabs
+            .iter()
+            .map(|tab| (tab.content.mode(), tab.id))
+            .collect();
+        self.tabs = tabs;
+        // The screens made at start may not be in any tab, so none keeps running unseen.
+        self.analyse
+            .update(cx, |screen, cx| screen.set_visible(false, cx));
+        self.train
+            .update(cx, |screen, cx| screen.set_visible(false, cx));
+        self.active_tab = u64::MAX;
+        self.activate_tab(active, cx);
+    }
+
+    /// Records the open tabs in the config, so the next start reopens them.
+    fn save_session(&self, cx: &mut Context<Self>) {
+        let file_name = |path: &std::path::Path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .map(str::to_owned)
+        };
+        let tabs = self
+            .tabs
+            .iter()
+            .map(|tab| crate::config::SavedTab {
+                kind: tab.content.mode().saved(),
+                id: tab.id,
+                name: tab.name.as_ref().map(|name| name.to_string()),
+                recovery: match &tab.content {
+                    TabContent::Analyse(screen) => file_name(screen.read(cx).recovery_path()),
+                    TabContent::Play(screen) => file_name(screen.read(cx).recovery_path()),
+                    _ => None,
+                },
+            })
+            .collect();
+        let active = self
+            .tabs
+            .iter()
+            .position(|tab| tab.id == self.active_tab)
+            .unwrap_or(0);
+        let session = Some(crate::config::SavedSession { tabs, active });
+        self.model.update(cx, |model, cx| {
+            if model.config.session != session {
+                model.config.session = session;
+                model.schedule_config_save(cx);
+            }
+        });
+    }
+
+    /// Opens a field in the tab's place to type a new name for it.
+    fn start_rename(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(tab) = self.tabs.iter().find(|tab| tab.id == id) else {
+            return;
+        };
+        let current = match &tab.name {
+            Some(name) => name.to_string(),
+            None => tab.content.title(cx).0.to_owned(),
+        };
+        let input = cx.new(|cx| InputState::new(window, cx));
+        input.update(cx, |input, cx| {
+            input.set_value(current, window, cx);
+            input.focus(window, cx);
+        });
+        self._rename_sub =
+            Some(
+                cx.subscribe_in(&input, window, move |this, _, event, window, cx| {
+                    if matches!(event, InputEvent::PressEnter { .. } | InputEvent::Blur) {
+                        this.finish_rename(true, window, cx);
+                    }
+                }),
+            );
+        self.renaming = Some((id, input));
+        cx.notify();
+    }
+
+    /// Closes the rename field, keeping the typed name when `keep` is set. An empty
+    /// name gives the tab back its usual title.
+    fn finish_rename(&mut self, keep: bool, window: &mut Window, cx: &mut Context<Self>) {
+        let Some((id, input)) = self.renaming.take() else {
+            return;
+        };
+        self._rename_sub = None;
+        if keep {
+            let typed = input.read(cx).value().trim().to_owned();
+            if let Some(tab) = self.tabs.iter_mut().find(|tab| tab.id == id) {
+                let default = tab.content.title(cx).0;
+                tab.name = (!typed.is_empty() && typed != default).then(|| typed.into());
+            }
+            self.save_session(cx);
+        }
+        self.focus.focus(window, cx);
+        cx.notify();
     }
 
     /// Covers the content area when the + button is open: one card per kind of tab.
@@ -917,8 +1154,17 @@ impl Workspace {
             let select = cx.entity();
             let close = select.clone();
             let duplicate = select.clone();
+            let rename = select.clone();
             let analysis = matches!(tab.content, TabContent::Analyse(_));
             let active = id == self.active_tab;
+            let rename_input = self
+                .renaming
+                .as_ref()
+                .filter(|(renaming, _)| *renaming == id)
+                .map(|(_, input)| input.clone());
+            let (screen, detail) = tab.content.title(cx);
+            let label: SharedString = tab.name.clone().unwrap_or_else(|| screen.into());
+            let detail = if tab.name.is_some() { None } else { detail };
             tabs = tabs.child(
                 h_flex()
                     .id(("tab", id as usize))
@@ -932,7 +1178,7 @@ impl Workspace {
                     .on_drag(
                         DraggedTab {
                             id,
-                            title: tab.content.title(cx).0.into(),
+                            title: label.clone(),
                         },
                         |drag, _, _, cx| cx.new(|_| drag.clone()),
                     )
@@ -943,6 +1189,7 @@ impl Workspace {
                         if let (Some(source), Some(target)) = (source, target) {
                             let tab = this.tabs.remove(source);
                             this.tabs.insert(target, tab);
+                            this.save_session(cx);
                             cx.notify();
                         }
                     }))
@@ -965,37 +1212,71 @@ impl Workspace {
                                 .hover(|tab| tab.bg(rgb(T.hover)))
                         }
                     })
-                    .child(
-                        div()
-                            .id(("tab-select", id as usize))
-                            .cursor_pointer()
-                            .text_size(px(13.))
-                            .text_color(rgb(if active { T.fg } else { T.muted }))
-                            .on_click(move |_, _, cx| {
-                                select.update(cx, |this, cx| this.activate_tab(id, cx))
-                            })
-                            .child({
-                                let (screen, detail) = tab.content.title(cx);
-                                h_flex()
-                                    .gap(px(6.))
-                                    .child(
-                                        ui::widgets::mono(id.to_string()).text_color(rgb(T.faint)),
-                                    )
-                                    .child(
-                                        div()
-                                            .font_weight(if active {
-                                                FontWeight::SEMIBOLD
-                                            } else {
-                                                FontWeight::MEDIUM
-                                            })
-                                            .child(screen),
-                                    )
-                                    .children(detail.map(|detail| {
-                                        div()
-                                            .when(active, |d| d.text_color(rgb(T.muted)))
-                                            .child(detail)
-                                    }))
-                            }),
+                    .when_some(rename_input, |tab, input| {
+                        let cancel = cx.entity();
+                        tab.child(
+                            div()
+                                .w(px(180.))
+                                .on_key_down(move |event: &gpui::KeyDownEvent, window, cx| {
+                                    if event.keystroke.key == "escape" {
+                                        cx.stop_propagation();
+                                        cancel.update(cx, |this, cx| {
+                                            this.finish_rename(false, window, cx)
+                                        });
+                                    }
+                                })
+                                .child(crate::controls::text_input(&input).height(26.)),
+                        )
+                    })
+                    .when(
+                        self.renaming
+                            .as_ref()
+                            .is_none_or(|(renaming, _)| *renaming != id),
+                        |tab| {
+                            tab.child(
+                                div()
+                                    .id(("tab-select", id as usize))
+                                    .cursor_pointer()
+                                    .text_size(px(13.))
+                                    .text_color(rgb(if active { T.fg } else { T.muted }))
+                                    .tooltip(|window, cx| {
+                                        gpui_component::tooltip::Tooltip::new(ui::i18n::t(
+                                            "Double-click to rename",
+                                        ))
+                                        .build(window, cx)
+                                    })
+                                    .on_click(move |event, window, cx| {
+                                        select.update(cx, |this, cx| {
+                                            this.activate_tab(id, cx);
+                                            if event.click_count() == 2 {
+                                                this.start_rename(id, window, cx);
+                                            }
+                                        })
+                                    })
+                                    .child({
+                                        h_flex()
+                                            .gap(px(6.))
+                                            .child(
+                                                ui::widgets::mono(id.to_string())
+                                                    .text_color(rgb(T.faint)),
+                                            )
+                                            .child(
+                                                div()
+                                                    .font_weight(if active {
+                                                        FontWeight::SEMIBOLD
+                                                    } else {
+                                                        FontWeight::MEDIUM
+                                                    })
+                                                    .child(label),
+                                            )
+                                            .children(detail.map(|detail| {
+                                                div()
+                                                    .when(active, |d| d.text_color(rgb(T.muted)))
+                                                    .child(detail)
+                                            }))
+                                    }),
+                            )
+                        },
                     )
                     .child(
                         btn(("close-tab", id as usize), "×")
@@ -1009,6 +1290,13 @@ impl Workspace {
                             }),
                     )
                     .context_menu(move |menu, _, _| {
+                        let rename = rename.clone();
+                        let menu =
+                            menu.item(PopupMenuItem::new(ui::i18n::t("Rename tab")).on_click(
+                                move |_, window, cx| {
+                                    rename.update(cx, |this, cx| this.start_rename(id, window, cx))
+                                },
+                            ));
                         if !analysis {
                             return menu;
                         }

@@ -229,6 +229,16 @@ Settings remain singletons. Database/game-to-analysis actions create a new tab.
 The tab strip scrolls horizontally; tab keyboard actions remain available during
 text entry without enabling move-navigation keys inside inputs.
 
+Tabs can be renamed (double-click, or the context menu); an empty name restores the
+screen's own title. Every change to the open tabs, their order, names or the active tab
+writes `config.session`: one entry per tab with its kind, id, name and, for Analyse and
+Play, the bare file name of its recovery file. At startup without `--screen`,
+`restore_session` rebuilds that list, reusing the screens made at start for the first
+tab of each kind, and shows the saved active tab. Without a session, startup falls back
+to scanning the recovery directory. Recovery files of tabs closed before quitting are
+left on disk but not reopened, and new tab ids start above every id found there so a
+new tab never picks up an old file.
+
 Only the visible `LiveAnalysis` searches through the shared engine registry.
 Deactivation stops searches and cancels readers while retaining its position cache;
 idle registry handles remain available to Settings and log windows. Activation

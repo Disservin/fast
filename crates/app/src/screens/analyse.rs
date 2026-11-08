@@ -13,7 +13,10 @@ use gpui::{
     MouseButton, Pixels, Point, Render, ScrollHandle, SharedString, Subscription, Task, TextLayout,
     UniformListScrollHandle, WeakEntity, Window, anchored, deferred, div, prelude::*, px, rgb,
 };
-use gpui_component::input::{InputEvent, InputState, TextareaState};
+use gpui_component::{
+    input::{InputEvent, InputState, TextareaState},
+    scroll::ScrollableElement as _,
+};
 use ui::{
     Arrow, BoardEvent, BoardView, MONO, T,
     scoresheet::{ScoresheetProps, scoresheet_body, scoresheet_inline},
@@ -523,6 +526,11 @@ impl AnalyseScreen {
         if !visible {
             self.stop_backward(None, cx);
         }
+    }
+
+    /// The file this tab keeps its game in, so the tab can be reopened on the next start.
+    pub fn recovery_path(&self) -> &std::path::Path {
+        &self.recovery_path
     }
 
     pub fn checkpoint(&self) -> anyhow::Result<()> {
@@ -1618,13 +1626,19 @@ impl AnalyseScreen {
             )
             .child(
                 div()
-                    .id("scoresheet-scroll")
+                    .relative()
                     .flex_1()
                     .min_h_0()
-                    .overflow_y_scroll()
-                    .track_scroll(&self.scoresheet_scroll)
-                    .py(px(4.))
-                    .child(sheet),
+                    .child(
+                        div()
+                            .id("scoresheet-scroll")
+                            .size_full()
+                            .overflow_y_scroll()
+                            .track_scroll(&self.scoresheet_scroll)
+                            .py(px(4.))
+                            .child(sheet),
+                    )
+                    .vertical_scrollbar(&self.scoresheet_scroll),
             )
             .when(self.editing_comment, |column| {
                 let comment = self.comment.clone();
