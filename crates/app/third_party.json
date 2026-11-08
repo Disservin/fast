@@ -151,7 +151,7 @@
  },
  {
   "name": "arc-swap",
-  "version": "1.9.3",
+  "version": "1.9.4",
   "license": "MIT OR Apache-2.0",
   "repository": "https://github.com/vorner/arc-swap"
  },
@@ -571,7 +571,7 @@
  },
  {
   "name": "combine",
-  "version": "4.6.7",
+  "version": "4.6.9",
   "license": "MIT",
   "repository": "https://github.com/Marwes/combine"
  },
@@ -766,24 +766,6 @@
   "version": "0.3.2",
   "license": "MIT OR Apache-2.0",
   "repository": "https://github.com/servo/rust-url"
- },
- {
-  "name": "defmt",
-  "version": "1.2.0",
-  "license": "MIT OR Apache-2.0",
-  "repository": "https://github.com/knurling-rs/defmt"
- },
- {
-  "name": "defmt-macros",
-  "version": "1.2.0",
-  "license": "MIT OR Apache-2.0",
-  "repository": "https://github.com/knurling-rs/defmt"
- },
- {
-  "name": "defmt-parser",
-  "version": "1.1.0",
-  "license": "MIT OR Apache-2.0",
-  "repository": "https://github.com/knurling-rs/defmt"
  },
  {
   "name": "deranged",
@@ -1849,19 +1831,19 @@
  },
  {
   "name": "jiff",
-  "version": "0.2.39",
+  "version": "0.2.40",
   "license": "Unlicense OR MIT",
   "repository": "https://github.com/BurntSushi/jiff"
  },
  {
   "name": "jiff-core",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "license": "Unlicense OR MIT",
   "repository": "https://github.com/BurntSushi/jiff"
  },
  {
   "name": "jiff-static",
-  "version": "0.2.39",
+  "version": "0.2.40",
   "license": "Unlicense OR MIT",
   "repository": "https://github.com/BurntSushi/jiff"
  },
@@ -2269,13 +2251,13 @@
  },
  {
   "name": "notify",
-  "version": "8.2.1",
+  "version": "8.2.2",
   "license": "CC0-1.0",
   "repository": "https://github.com/notify-rs/notify.git"
  },
  {
   "name": "notify-rust",
-  "version": "4.18.2",
+  "version": "4.19.0",
   "license": "MIT OR Apache-2.0",
   "repository": "https://github.com/hoodie/notify-rust"
  },
@@ -4135,7 +4117,7 @@
  },
  {
   "name": "uuid",
-  "version": "1.29.0",
+  "version": "1.29.1",
   "license": "Apache-2.0 OR MIT",
   "repository": "https://github.com/uuid-rs/uuid"
  },
@@ -4938,6 +4920,12 @@
   "repository": "https://github.com/z-galaxy/zbus/"
  },
  {
+  "name": "zbus",
+  "version": "6.2.1",
+  "license": "MIT",
+  "repository": "https://github.com/z-galaxy/zbus/"
+ },
+ {
   "name": "zbus-lockstep",
   "version": "0.5.2",
   "license": "MIT",
@@ -4956,8 +4944,20 @@
   "repository": "https://github.com/z-galaxy/zbus/"
  },
  {
+  "name": "zbus_macros",
+  "version": "6.2.1",
+  "license": "MIT",
+  "repository": "https://github.com/z-galaxy/zbus/"
+ },
+ {
   "name": "zbus_names",
   "version": "4.3.5",
+  "license": "MIT",
+  "repository": "https://github.com/z-galaxy/zbus/"
+ },
+ {
+  "name": "zbus_utils",
+  "version": "6.1.0",
   "license": "MIT",
   "repository": "https://github.com/z-galaxy/zbus/"
  },
@@ -5074,6 +5074,12 @@
   "version": "0.8.4",
   "license": "Apache-2.0",
   "repository": "https://github.com/zopfli-rs/zopfli"
+ },
+ {
+  "name": "zruntime",
+  "version": "0.2.2",
+  "license": "MIT",
+  "repository": "https://github.com/z-galaxy/zruntime"
  },
  {
   "name": "zune-core",
