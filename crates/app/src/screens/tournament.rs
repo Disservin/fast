@@ -3315,7 +3315,7 @@ pub(crate) fn eval_graph(game: &LiveGame, names: &[String], height: f32) -> Div 
             .into_iter()
             .filter(|(cp, _)| cp.abs() != 100.0)
             .collect(),
-        height,
+        height: Some(height),
         on_scrub: std::rc::Rc::new(|_, _, _| {}),
         empty: "No evaluations yet. Each engine's score appears after its move.",
     });

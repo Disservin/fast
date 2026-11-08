@@ -414,3 +414,8 @@ publishes a complete index or rolls back; readers retain the previous complete i
 WAL. Closing the tab cancels the build. Exact-search fields persist in saved searches;
 matching games preview and open at the first matching ply. Approximate structure matching
 and model-game ranking remain roadmap work.
+
+The Analyse board column fills its available height. The game graph below the board
+and navigation grows into the remaining space, retaining a minimum height when
+the column needs to scroll. Eval, time, depth and bar views share this layout;
+tournament graphs keep their explicit heights.

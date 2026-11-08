@@ -55,9 +55,9 @@ pub fn timeline(props: TimelineProps) -> impl IntoElement {
     } = props;
     let dragging = Rc::new(Cell::new(false));
     div()
-        .h(px(64.))
+        .min_h(px(64.))
         .w_full()
-        .flex_none()
+        .flex_1()
         .bg(rgb(T.surface))
         .border_1()
         .border_color(rgb(T.border))

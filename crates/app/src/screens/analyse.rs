@@ -2331,6 +2331,8 @@ impl AnalyseScreen {
         v_flex()
             .flex_none()
             .w(board_size)
+            .min_h_full()
+            .pb(px(16.))
             .child(
                 h_flex()
                     .h(px(39.))
@@ -2548,7 +2550,7 @@ impl AnalyseScreen {
                     unit: 100.0,
                 },
                 ticks: ui::graph::eval_ticks(),
-                height: 80.,
+                height: None,
                 on_scrub,
                 empty: "No evaluations yet. Turn the engine on or load an annotated game.",
             })
@@ -2577,7 +2579,7 @@ impl AnalyseScreen {
                         max: (max * 1.1).max(1.0),
                     },
                     ticks: ui::graph::linear_ticks(max, "s"),
-                    height: 80.,
+                    height: None,
                     on_scrub,
                     empty: "No clock data. Games with [%clk] or [%emt] comments show time per move.",
                 })
@@ -2598,7 +2600,7 @@ impl AnalyseScreen {
                         max: (max * 1.1).max(1.0),
                     },
                     ticks: ui::graph::linear_ticks(max, ""),
-                    height: 80.,
+                    height: None,
                     on_scrub,
                     empty: "No search depths yet.",
                 })
@@ -2606,8 +2608,10 @@ impl AnalyseScreen {
             }
         };
         v_flex()
+            .flex_1()
             .child(
                 h_flex()
+                    .flex_none()
                     .flex_wrap()
                     .gap(px(6.))
                     .mt(px(14.))

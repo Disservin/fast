@@ -56,6 +56,7 @@ pub struct Series {
     pub connect: bool,
 }
 
+/// Data and sizing for an interactive game graph.
 pub struct GraphProps {
     pub series: Vec<Series>,
     /// Plies on the x axis.
@@ -64,7 +65,8 @@ pub struct GraphProps {
     pub scale: Scale,
     /// Horizontal guides: value and label.
     pub ticks: Vec<(f32, String)>,
-    pub height: f32,
+    /// Fixed height, or fill the available space with an 80px minimum.
+    pub height: Option<f32>,
     pub on_scrub: ScrubHandler,
     /// Shown when no series has a value yet.
     pub empty: &'static str,
@@ -130,6 +132,7 @@ fn index_at(x: f32, count: usize, bounds: Bounds<Pixels>) -> usize {
     ((offset / width * (count - 1) as f32).round() as usize).min(count - 1)
 }
 
+/// Draws a resizable game graph that supports scrubbing through moves.
 pub fn graph(props: GraphProps) -> impl IntoElement {
     let GraphProps {
         series,
@@ -164,9 +167,9 @@ pub fn graph(props: GraphProps) -> impl IntoElement {
     let dragging = Rc::new(Cell::new(false));
     div()
         .relative()
-        .h(px(height))
         .w_full()
-        .flex_none()
+        .when_some(height, |el, height| el.h(px(height)).flex_none())
+        .when(height.is_none(), |el| el.flex_1().min_h(px(80.)))
         .bg(rgb(T.surface))
         .border_1()
         .border_color(rgb(T.border))
