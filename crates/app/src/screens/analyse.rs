@@ -18,7 +18,7 @@ use ui::{
     Arrow, BoardEvent, BoardView, MONO, T,
     scoresheet::{ScoresheetProps, scoresheet_body, scoresheet_inline},
     timeline::{TimelineProps, timeline},
-    widgets::{btn, divider, h_flex, icon_btn, mono, panel, section_label, stat, v_flex},
+    widgets::{btn, h_flex, icon_btn, mono, panel, section_label, v_flex},
 };
 
 use crate::{
@@ -266,6 +266,8 @@ pub struct AnalyseScreen {
     /// Show WDL when an engine requests or supplies it, regardless of window width.
     show_wdl: bool,
     engine_panel_open: bool,
+    /// Whether the Engine panel lists every legal move to restrict the search to.
+    search_moves_open: bool,
     spin_edit: Option<(EngineId, &'static str, Entity<InputState>, Subscription)>,
     log_panel_open: bool,
     /// The Online panel and its tablebase and cloud lookups.
@@ -426,6 +428,7 @@ impl AnalyseScreen {
             visible: false,
             show_wdl: true,
             engine_panel_open: false,
+            search_moves_open: false,
             spin_edit: None,
             log_panel_open: false,
             online: online::OnlineState::default(),
@@ -2377,24 +2380,30 @@ impl AnalyseScreen {
                     }),
             );
         }
+        let (toggles, settings) = self.render_table_tools(cx);
         panel()
             .flex_none()
             .overflow_hidden()
             .child(
-                h_flex()
-                    .flex_wrap()
-                    .min_h(px(50.))
+                v_flex()
                     .px(px(16.))
-                    .py(px(8.))
+                    .py(px(10.))
                     .gap(px(8.))
-                    .justify_between()
                     .child(
-                        div()
-                            .text_size(px(16.))
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .child(ui::i18n::t("Moves from here")),
+                        h_flex()
+                            .flex_wrap()
+                            .gap(px(8.))
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w(px(140.))
+                                    .text_size(px(16.))
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .child(ui::i18n::t("Moves from here")),
+                            )
+                            .child(toggles),
                     )
-                    .child(self.render_table_tools(cx)),
+                    .child(settings),
             )
             .children(self.render_online_status())
             .child(
@@ -2478,85 +2487,223 @@ impl AnalyseScreen {
 
     fn render_line_preview(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let this = cx.entity();
-        let demo = self.model.read(cx).demo;
+        let model = self.model.read(cx);
+        let demo = model.demo;
+        // Database names are often lowercase; this label is not uppercased like the table's.
+        let reference_title = model
+            .reference_db()
+            .map(|entry| {
+                let title = reference_column_title(&entry.name);
+                let mut chars = title.chars();
+                chars
+                    .next()
+                    .map(|first| first.to_uppercase().chain(chars).collect())
+                    .unwrap_or(title)
+            })
+            .unwrap_or_else(|| ui::i18n::t("Reference").to_owned());
         let ply = self.analysed_ply();
+        let white_to_move = self.analysed_pos().turn().is_white();
         let selected = self.selected_row().cloned();
-        let selected_label = selected
-            .as_ref()
-            .map(|row| chess_core::notation::numbered(ply + 1, &row.san))
-            .unwrap_or_default();
         let meta = selected
             .as_ref()
             .filter(|row| row.depth > 0)
             .map(|row| self.render_search_stats(row, cx));
-        let wdl = self.live.read(cx).wdl_engine().map(|engine| {
-            let values = wdl_percentages(selected.as_ref().and_then(|row| row.wdl));
-            let header = h_flex()
-                .flex_wrap()
-                .gap(px(6.))
-                .text_size(px(12.))
-                .text_color(rgb(T.fg_2))
+        // The move itself, large, with its score and how it compares with the best line.
+        let headline = selected.as_ref().map(|row| {
+            let score = row.score.map(|score| {
+                h_flex()
+                    .flex_none()
+                    .h(px(26.))
+                    .px(px(8.))
+                    .rounded(px(4.))
+                    .bg(rgb(T.fg))
+                    .text_color(rgb(T.bg))
+                    .child(
+                        mono(score.display())
+                            .text_size(px(13.))
+                            .font_weight(FontWeight::SEMIBOLD),
+                    )
+            });
+            let verdict = row.quality.map(|quality| {
+                let text = match quality {
+                    Quality::Best => "Best move",
+                    Quality::Good => "Good",
+                    Quality::Inaccuracy => "Inaccuracy",
+                    Quality::Mistake => "Mistake",
+                    Quality::Blunder => "Blunder",
+                };
+                div()
+                    .flex_none()
+                    .text_size(px(12.))
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(rgb(if quality == Quality::Best {
+                        T.muted
+                    } else {
+                        quality_color(quality)
+                    }))
+                    .child(ui::i18n::t(text).to_owned())
+            });
+            h_flex()
+                .mt(px(14.))
+                .gap(px(10.))
+                .children(score)
                 .child(
-                    div()
-                        .mr(px(4.))
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .child(engine.config.name.clone()),
-                );
-            let header = match values {
-                Some([w, d, l]) => header
-                    .child(stat("White win", format!("{w:.1}%")))
-                    .child(stat("Draw", format!("{d:.1}%")))
-                    .child(stat("Black win", format!("{l:.1}%"))),
-                None => header.child(ui::i18n::t("Waiting for WDL data")),
+                    mono(chess_core::notation::numbered(ply + 1, &row.san))
+                        .flex_1()
+                        .min_w_0()
+                        .text_size(px(18.))
+                        .font_weight(FontWeight::SEMIBOLD),
+                )
+                .children(verdict)
+        });
+        let wdl = self.live.read(cx).wdl_engine().map(|_| {
+            let wdl = selected.as_ref().and_then(|row| row.wdl);
+            let labels = match wdl_percentages(wdl) {
+                Some([w, d, l]) => h_flex()
+                    .justify_between()
+                    .child(format!("{} {w:.1}%", ui::i18n::t("White")))
+                    .child(format!("{} {d:.1}%", ui::i18n::t("Draw")))
+                    .child(format!("{} {l:.1}%", ui::i18n::t("Black"))),
+                None => h_flex().child(ui::i18n::t("Waiting for WDL data")),
+            };
+            let bar = if wdl_percentages(wdl).is_some() {
+                wdl_bar(wdl)
+            } else {
+                div()
+                    .h(px(10.))
+                    .w_full()
+                    .rounded(px(1.))
+                    .bg(rgb(T.divider))
+                    .into_any_element()
             };
             v_flex()
                 .gap(px(6.))
-                .mt(px(10.))
-                .child(header)
-                .child(wdl_bar(selected.as_ref().and_then(|row| row.wdl)))
+                .mt(px(12.))
+                .child(bar)
+                .child(labels.text_size(px(12.)).text_color(rgb(T.muted)))
         });
         // Hook for future move explanations; only demo mode has text today.
         let explanation = selected
             .as_ref()
             .filter(|_| demo)
-            .and_then(|row| crate::demo::explanation(&row.san));
+            .and_then(|row| crate::demo::explanation(&row.san))
+            .map(|text| {
+                div()
+                    .mt(px(12.))
+                    .text_size(px(13.))
+                    .line_height(px(19.))
+                    .text_color(rgb(T.fg_2))
+                    .child(text)
+            });
+        // What the databases and the repertoire say about the selected move.
+        let stat_text = |stat: Option<&MoveStat>| {
+            stat.map_or_else(
+                || ui::i18n::t("No games").to_owned(),
+                |stat| format!("{} · {:.0}%", stat.games, stat.score_percent(white_to_move)),
+            )
+        };
+        let (rep_text, rep_color) = match selected.as_ref().map_or(RepTag::None, |row| row.rep) {
+            RepTag::Main => ("Main", T.good),
+            RepTag::Side => ("Side line", T.fg_2),
+            RepTag::Deviate => ("You deviate", T.warn),
+            RepTag::None => ("Not in repertoire", T.fg_2),
+        };
+        let fact = |title: String, value: String, color: u32| {
+            v_flex()
+                .flex_1()
+                .min_w_0()
+                .gap(px(3.))
+                .child(
+                    div()
+                        .text_size(px(12.))
+                        .text_color(rgb(T.muted))
+                        .overflow_hidden()
+                        .text_ellipsis()
+                        .whitespace_nowrap()
+                        .child(title),
+                )
+                .child(
+                    div()
+                        .text_size(px(13.))
+                        .text_color(rgb(color))
+                        .whitespace_nowrap()
+                        .child(value),
+                )
+        };
+        let facts = selected.as_ref().map(|row| {
+            h_flex()
+                .mt(px(16.))
+                .pt(px(12.))
+                .gap(px(12.))
+                .border_t_1()
+                .border_color(rgb(T.divider))
+                .child(fact(
+                    reference_title.clone(),
+                    stat_text(row.reference.as_ref()),
+                    T.fg_2,
+                ))
+                .child(fact(
+                    ui::i18n::t("My games").to_owned(),
+                    stat_text(row.mine.as_ref()),
+                    T.fg_2,
+                ))
+                .child(fact(
+                    ui::i18n::t("Repertoire").to_owned(),
+                    ui::i18n::t(rep_text).to_owned(),
+                    rep_color,
+                ))
+        });
         // A previewed line counts even where the table is empty, such as after the
         // mating move, so the whole line can still be played.
         let has_row = self.action_line().is_some();
+        let pv = (selected.is_some() || self.pv_view.is_some())
+            .then(|| self.render_pv(selected.as_ref(), cx));
         panel()
             .flex_none()
             .p(px(16.))
             .child(
                 h_flex()
+                    .flex_wrap()
+                    .gap(px(8.))
                     .justify_between()
-                    .child(
-                        h_flex()
-                            .gap(px(10.))
-                            .child(section_label("Line preview"))
-                            .child(mono(selected_label).font_weight(FontWeight::SEMIBOLD)),
-                    )
+                    .child(section_label("Line preview"))
                     .children(meta),
             )
+            .children(headline)
             .children(wdl)
-            .child(self.render_pv(selected.as_ref(), cx))
-            .child(divider().bg(rgb(T.border)))
             .child(
                 div()
                     .mt(px(12.))
-                    .mb(px(12.))
-                    .text_size(px(13.))
-                    .line_height(px(19.))
-                    .text_color(rgb(T.fg_2))
-                    .children(explanation),
+                    .px(px(10.))
+                    .py(px(6.))
+                    .bg(rgb(T.bg))
+                    .border_1()
+                    .border_color(rgb(T.divider))
+                    .rounded(px(6.))
+                    .when(pv.is_none(), |inset| {
+                        inset.child(
+                            div()
+                                .py(px(4.))
+                                .text_size(px(13.))
+                                .text_color(rgb(T.muted))
+                                .child(ui::i18n::t(
+                                    "Click a move in the table to preview its line",
+                                )),
+                        )
+                    })
+                    .children(pv),
             )
+            .children(explanation)
             .child(
                 h_flex()
-                    .flex_wrap()
+                    .mt(px(12.))
                     .gap(px(6.))
                     .child(
-                        btn("play-line", "Play line on board")
+                        btn("play-line", "Play on board")
+                            .flex_1()
                             .pad(9.)
                             .disabled(!has_row)
+                            .tooltip(ui::i18n::t("Play line on board"))
                             .on_click({
                                 let this = this.clone();
                                 move |window, cx| {
@@ -2565,18 +2712,22 @@ impl AnalyseScreen {
                             }),
                     )
                     .child(
-                        btn("add-variation", "Add as variation")
+                        btn("add-variation", "Add variation")
+                            .flex_1()
                             .pad(9.)
                             .disabled(!has_row)
+                            .tooltip(ui::i18n::t("Add as variation"))
                             .on_click({
                                 let this = this.clone();
                                 move |_, cx| this.update(cx, |screen, cx| screen.add_variation(cx))
                             }),
                     )
                     .child(
-                        btn("add-rep", "Add to repertoire")
+                        btn("add-rep", "To repertoire")
+                            .flex_1()
                             .pad(9.)
                             .disabled(!has_row)
+                            .tooltip(ui::i18n::t("Add to repertoire"))
                             .on_click({
                                 let this = this.clone();
                                 move |_, cx| {
@@ -2585,15 +2736,18 @@ impl AnalyseScreen {
                             }),
                     )
                     .child(
-                        btn("copy-line", ui::i18n::t("Copy"))
-                            .pad(9.)
+                        icon_btn("copy-line", "icons/copy.svg")
+                            .w(36.)
+                            .pad(0.)
                             .disabled(!has_row)
+                            .tooltip(ui::i18n::t("Copy line"))
                             .on_click({
                                 let this = this.clone();
                                 move |_, cx| this.update(cx, |screen, cx| screen.copy_pv(cx))
                             }),
                     ),
             )
+            .children(facts)
     }
 
     fn render_context_menu(&self, cx: &mut Context<Self>) -> Option<impl IntoElement + use<>> {

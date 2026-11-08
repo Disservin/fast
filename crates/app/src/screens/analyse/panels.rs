@@ -238,7 +238,9 @@ impl AnalyseScreen {
     }
 
     /// Depth, nodes and speed, with the buttons that open the panels.
-    pub(super) fn render_table_tools(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+    /// The Moves header's controls: the panel toggles, which share the title's row,
+    /// and the line and view settings, which get a row of their own below it.
+    pub(super) fn render_table_tools(&self, cx: &mut Context<Self>) -> (AnyElement, AnyElement) {
         let this = cx.entity();
         let live = self.live.read(cx);
         let (on, paused) = (live.on, live.paused);
@@ -334,11 +336,13 @@ impl AnalyseScreen {
         let engine_this = this.clone();
         let log_this = this.clone();
         let online_this = this;
-        v_flex()
+        let settings = h_flex()
+            .flex_wrap()
             .gap(px(8.))
             .children(lines_stepper)
             .child(view_tools)
-            .child(h_flex()
+            .into_any_element();
+        let toggles = h_flex()
             .flex_wrap()
             .gap(px(6.))
             .when(on, |row| {
@@ -368,7 +372,9 @@ impl AnalyseScreen {
                 btn("engine-panel", ui::i18n::t("Engine"))
                     .compact()
                     .selected(self.engine_panel_open)
-                    .tooltip(ui::i18n::t("Choose an engine and adjust its search settings"))
+                    .tooltip(ui::i18n::t(
+                        "Choose an engine and adjust its search settings",
+                    ))
                     .on_click(move |_, cx| {
                         engine_this.update(cx, |screen, cx| {
                             screen.engine_panel_open = !screen.engine_panel_open;
@@ -399,7 +405,9 @@ impl AnalyseScreen {
                     .on_click(move |_, cx| {
                         online_this.update(cx, |screen, cx| screen.toggle_online(cx));
                     }),
-            ))
+            )
+            .into_any_element();
+        (toggles, settings)
     }
 
     /// Lines shown by the analysis engines: the first one's MultiPV.
@@ -515,11 +523,11 @@ impl AnalyseScreen {
             && *edit_id == id
             && *edit_name == name
         {
-            Input::new(input).w(px(88.)).into_any_element()
+            Input::new(input).w_full().into_any_element()
         } else {
             let text = spin.map_or_else(|| "—".to_owned(), |(value, ..)| format!("{value}{unit}"));
             btn(SharedString::from(format!("{name}-value")), text)
-                .w(88.)
+                .full()
                 .h(28.)
                 .pad(0.)
                 .disabled(spin.is_none())
@@ -554,6 +562,8 @@ impl AnalyseScreen {
                 .into_any_element()
         };
         v_flex()
+            .flex_1()
+            .min_w(px(150.))
             .gap(px(4.))
             .child(
                 div()
@@ -565,7 +575,7 @@ impl AnalyseScreen {
                 h_flex()
                     .gap(px(4.))
                     .child(button(false, this.clone()))
-                    .child(value_element)
+                    .child(div().flex_1().min_w(px(64.)).child(value_element))
                     .child(button(true, this)),
             )
     }
@@ -616,12 +626,6 @@ impl AnalyseScreen {
         let speed = stats
             .and_then(|stats| stats.nps)
             .map_or_else(dash, engine::format_speed);
-        let hash = stats
-            .and_then(|stats| stats.hashfull)
-            .map_or_else(dash, |full| format!("{:.0}%", f64::from(full) / 10.));
-        let tb = stats
-            .and_then(|stats| stats.tbhits)
-            .map_or_else(dash, |hits| hits.to_string());
         let name = if config.version.is_empty() || config.version.len() > 8 {
             config.name.clone()
         } else {
@@ -668,8 +672,106 @@ impl AnalyseScreen {
             .child(cell(depth, 44., "DEPTH"))
             .child(cell(nodes, 62., "NODES"))
             .child(cell(speed, 72., "SPEED"))
-            .child(cell(hash, 36., "HASH"))
-            .child(cell(tb, 40., "TB"))
+    }
+
+    /// The chosen engine's search in large figures, with progress toward the search limit.
+    fn engine_stats_strip(&self, id: EngineId, limit: AnalysisLimit, cx: &gpui::App) -> Div {
+        let live = self.live.read(cx);
+        let stats = live
+            .engines
+            .iter()
+            .find(|engine| engine.config.id == id)
+            .and_then(|engine| engine.stats());
+        let dash = || "—".to_owned();
+        let mut figures: Vec<(&'static str, String)> = vec![
+            (
+                "Depth",
+                stats.map_or_else(dash, |stats| match stats.seldepth {
+                    Some(sel) => format!("{}/{sel}", stats.depth),
+                    None => stats.depth.to_string(),
+                }),
+            ),
+            (
+                "Nodes",
+                stats
+                    .and_then(|stats| stats.nodes)
+                    .map_or_else(dash, engine::format_nodes),
+            ),
+            (
+                "Speed",
+                stats
+                    .and_then(|stats| stats.nps)
+                    .map_or_else(dash, engine::format_speed),
+            ),
+            (
+                "Time",
+                stats
+                    .and_then(|stats| stats.time_ms)
+                    .map_or_else(dash, super::search_time),
+            ),
+            (
+                "Hash",
+                stats
+                    .and_then(|stats| stats.hashfull)
+                    .map_or_else(dash, |full| format!("{:.0}%", f64::from(full) / 10.)),
+            ),
+        ];
+        if let Some(hits) = stats
+            .and_then(|stats| stats.tbhits)
+            .filter(|hits| *hits > 0)
+        {
+            figures.push(("TB", engine::format_nodes(hits).replace(" n", "")));
+        }
+        // How far the search is toward the limit; an infinite search has no end to show.
+        let progress = stats.and_then(|stats| {
+            let fraction = match limit {
+                AnalysisLimit::Infinite => return None,
+                AnalysisLimit::Depth(depth) => stats.depth as f64 / f64::from(depth.max(1)),
+                AnalysisLimit::Seconds(seconds) => {
+                    stats.time_ms? as f64 / (f64::from(seconds.max(1)) * 1000.)
+                }
+                AnalysisLimit::Nodes(nodes) => stats.nodes? as f64 / nodes.max(1) as f64,
+            };
+            Some(fraction.clamp(0., 1.) as f32)
+        });
+        v_flex()
+            .border_b_1()
+            .border_color(rgb(T.divider))
+            .child(
+                div()
+                    .flex()
+                    .flex_row()
+                    .flex_wrap()
+                    .gap_x(px(24.))
+                    .gap_y(px(10.))
+                    .px(px(16.))
+                    .py(px(12.))
+                    .children(figures.into_iter().map(|(label, value)| {
+                        v_flex()
+                            .min_w(px(64.))
+                            .gap(px(2.))
+                            .child(
+                                div()
+                                    .text_size(px(10.))
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .text_color(rgb(T.faint))
+                                    .child(ui::i18n::t(label).to_uppercase()),
+                            )
+                            .child(
+                                mono(value)
+                                    .text_size(px(16.))
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .text_color(rgb(T.fg)),
+                            )
+                    })),
+            )
+            .child(
+                div().h(px(2.)).w_full().bg(rgb(T.divider)).children(
+                    progress.map(|fraction| {
+                        div().h_full().w(gpui::relative(fraction)).bg(rgb(T.accent))
+                    }),
+                ),
+            )
     }
 
     pub(super) fn render_engine_panel(&mut self, cx: &mut Context<Self>) -> AnyElement {
@@ -681,12 +783,12 @@ impl AnalyseScreen {
         let reset_layout = this.clone();
         let mut body = panel().flex_none().overflow_hidden().child(
             h_flex()
-                .h(px(40.))
+                .h(px(44.))
                 .px(px(16.))
-                .justify_between()
+                .gap(px(6.))
                 .border_b_1()
                 .border_color(rgb(T.border))
-                .child(section_label(ui::i18n::t("Engine")))
+                .child(div().flex_1().child(section_label(ui::i18n::t("Engine"))))
                 .child(
                     btn("reset-panel-sizes", "Reset panel sizes")
                         .compact()
@@ -710,6 +812,7 @@ impl AnalyseScreen {
                         },
                     )
                     .compact()
+                    .selected(on)
                     .on_click({
                         let this = this.clone();
                         move |_, cx| this.update(cx, |screen, cx| screen.toggle_engine(cx))
@@ -733,72 +836,9 @@ impl AnalyseScreen {
             let is_chosen = chosen.as_ref().is_some_and(|chosen| chosen.id == config.id);
             body = body.child(self.engine_row(config, is_chosen, cx));
         }
-        let pos = self.analysed_pos();
-        let restricted = self.live.read(cx).search_moves.clone();
-        let reset = this.clone();
-        body = body.child(
-            v_flex()
-                .p(px(16.))
-                .gap(px(8.))
-                .child(
-                    h_flex()
-                        .justify_between()
-                        .child(section_label(if restricted.is_empty() {
-                            "Search moves · all"
-                        } else {
-                            "Search moves · selected only"
-                        }))
-                        .child(
-                            btn("search-all-moves", ui::i18n::t("All moves"))
-                                .compact()
-                                .disabled(restricted.is_empty())
-                                .on_click(move |_, cx| {
-                                    reset.update(cx, |screen, cx| {
-                                        screen
-                                            .live
-                                            .update(cx, |live, cx| live.clear_search_moves(cx));
-                                    })
-                                }),
-                        ),
-                )
-                .child(
-                    div()
-                        .id("search-move-choices")
-                        .max_h(px(110.))
-                        .overflow_y_scroll()
-                        .child(
-                            h_flex().flex_wrap().gap(px(4.)).children(
-                                pos.legal_moves()
-                                    .into_iter()
-                                    .enumerate()
-                                    .map(|(index, mv)| {
-                                        let san =
-                                            chess_core::shakmaty::san::San::from_move(&pos, mv)
-                                                .to_string();
-                                        let uci =
-                                            chess_core::shakmaty::uci::UciMove::from_standard(mv)
-                                                .to_string();
-                                        let this = this.clone();
-                                        btn(("search-move", index), san)
-                                            .h(26.)
-                                            .pad(7.)
-                                            .mono()
-                                            .selected(restricted.contains(&uci))
-                                            .tooltip(ui::i18n::t(
-                                                "Toggle this move in the engine's root search",
-                                            ))
-                                            .on_click(move |_, cx| {
-                                                this.update(cx, |screen, cx| {
-                                                    screen.live.update(cx, |live, cx| {
-                                                        live.toggle_search_move(mv, cx)
-                                                    });
-                                                })
-                                            })
-                                    }),
-                            ),
-                        ),
-                ),
-        );
+        if let Some(config) = &chosen {
+            body = body.child(self.engine_stats_strip(config.id, limit, cx));
+        }
         let mut limits = h_flex().gap(px(4.));
         for (index, (value, label)) in LIMITS.into_iter().enumerate() {
             let this = this.clone();
@@ -814,6 +854,151 @@ impl AnalyseScreen {
                     }),
             );
         }
+        let workspace = self.workspace.clone();
+        let mut settings = v_flex().gap(px(14.)).p(px(16.));
+        if let Some(config) = &chosen {
+            settings = settings.child(
+                div()
+                    .flex()
+                    .flex_row()
+                    .flex_wrap()
+                    .gap_x(px(14.))
+                    .gap_y(px(10.))
+                    .child(self.stepper(config, "MultiPV", "Lines", "", cx))
+                    .child(self.stepper(config, "Threads", "Threads", "", cx))
+                    .child(self.stepper(config, "Hash", "Hash", " MB", cx)),
+            );
+        }
+        let options_id = chosen.as_ref().map(|config| config.id);
+        settings = settings.child(
+            h_flex()
+                .flex_wrap()
+                .gap(px(10.))
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w(px(90.))
+                        .text_size(px(12.))
+                        .text_color(rgb(T.muted))
+                        .child(ui::i18n::t("Search limit")),
+                )
+                .child(limits)
+                .children(options_id.map(|id| {
+                    btn("all-options", "All options")
+                        .compact()
+                        .tooltip(ui::i18n::t(
+                            "Every option this engine offers, in Settings › Engines",
+                        ))
+                        .on_click(move |window, cx| {
+                            if let Some(workspace) = workspace.upgrade() {
+                                workspace.update(cx, |workspace, cx| {
+                                    workspace.open_engine_settings(id, window, cx);
+                                });
+                            }
+                        })
+                })),
+        );
+        body = body.child(settings);
+        // Restricting the root search is rare, so the move list stays folded until asked for.
+        let pos = self.analysed_pos();
+        let legal = pos.legal_moves();
+        let restricted = self.live.read(cx).search_moves.clone();
+        let open = self.search_moves_open || !restricted.is_empty();
+        let reset = this.clone();
+        let toggle = this.clone();
+        let summary = if restricted.is_empty() {
+            format!("{} {}", ui::i18n::t("Search moves · all"), legal.len())
+        } else {
+            format!(
+                "{} · {}/{}",
+                ui::i18n::t("Search moves · selected only"),
+                restricted.len(),
+                legal.len()
+            )
+        };
+        let mut search = v_flex()
+            .px(px(16.))
+            .py(px(10.))
+            .gap(px(8.))
+            .border_t_1()
+            .border_color(rgb(T.divider))
+            .child(
+                h_flex()
+                    .gap(px(6.))
+                    .child(
+                        div()
+                            .flex_1()
+                            .text_size(px(13.))
+                            .text_color(rgb(T.fg_2))
+                            .child(summary),
+                    )
+                    .when(!restricted.is_empty(), |row| {
+                        row.child(
+                            btn("search-all-moves", ui::i18n::t("All moves"))
+                                .compact()
+                                .on_click(move |_, cx| {
+                                    reset.update(cx, |screen, cx| {
+                                        screen.search_moves_open = false;
+                                        screen
+                                            .live
+                                            .update(cx, |live, cx| live.clear_search_moves(cx));
+                                    })
+                                }),
+                        )
+                    })
+                    .when(restricted.is_empty(), |row| {
+                        row.child(
+                            btn(
+                                "search-moves-toggle",
+                                if open { "Hide" } else { "Restrict ›" },
+                            )
+                            .compact()
+                            .kind(ui::widgets::BtnKind::Ghost)
+                            .tooltip(ui::i18n::t(
+                                "Choose the moves the engine searches from this position",
+                            ))
+                            .on_click(move |_, cx| {
+                                toggle.update(cx, |screen, cx| {
+                                    screen.search_moves_open = !screen.search_moves_open;
+                                    cx.notify();
+                                })
+                            }),
+                        )
+                    }),
+            );
+        if open {
+            search = search.child(
+                div()
+                    .id("search-move-choices")
+                    .max_h(px(110.))
+                    .overflow_y_scroll()
+                    .child(h_flex().flex_wrap().gap(px(4.)).children(
+                        legal.into_iter().enumerate().map(|(index, mv)| {
+                            let san =
+                                chess_core::shakmaty::san::San::from_move(&pos, mv).to_string();
+                            let uci =
+                                chess_core::shakmaty::uci::UciMove::from_standard(mv).to_string();
+                            let this = this.clone();
+                            btn(("search-move", index), san)
+                                .h(26.)
+                                .pad(7.)
+                                .mono()
+                                .selected(restricted.contains(&uci))
+                                .tooltip(ui::i18n::t(
+                                    "Toggle this move in the engine's root search",
+                                ))
+                                .on_click(move |_, cx| {
+                                    this.update(cx, |screen, cx| {
+                                        screen
+                                            .live
+                                            .update(cx, |live, cx| live.toggle_search_move(mv, cx));
+                                    })
+                                })
+                        }),
+                    )),
+            );
+        }
+        body = body.child(search);
         let Some(config) = chosen else {
             return body.into_any_element();
         };
@@ -826,58 +1011,22 @@ impl AnalyseScreen {
             .find(|engine| engine.config.id == id)
             .is_some_and(|engine| engine.lines.values().any(|line| line.cached));
         let replace_this = this.clone();
-        let workspace = self.workspace.clone();
-        body.child(
-            div()
-                .flex()
-                .flex_row()
-                .flex_wrap()
-                .items_end()
-                .gap_x(px(14.))
-                .gap_y(px(10.))
-                .p(px(16.))
-                .child(self.stepper(&config, "MultiPV", "Lines", "", cx))
-                .child(self.stepper(&config, "Threads", "Threads", "", cx))
-                .child(self.stepper(&config, "Hash", "Hash", " MB", cx))
-                .child(
-                    v_flex()
-                        .gap(px(4.))
-                        .child(
-                            div()
-                                .text_size(px(12.))
-                                .text_color(rgb(T.muted))
-                                .child(ui::i18n::t("Search limit")),
-                        )
-                        .child(limits),
-                )
-                .child(
-                    btn("all-options", "All options")
+        body.when(has_cached, |panel| {
+            panel.child(
+                div().px(px(16.)).pb(px(12.)).child(
+                    btn("replace-cached-analysis", "Replace cached analysis")
                         .compact()
                         .tooltip(ui::i18n::t(
-                            "Every option this engine offers, in Settings › Engines",
+                            "Discard this saved result and run a fresh search",
                         ))
-                        .on_click(move |window, cx| {
-                            if let Some(workspace) = workspace.upgrade() {
-                                workspace.update(cx, |workspace, cx| {
-                                    workspace.open_engine_settings(id, window, cx);
-                                });
-                            }
+                        .on_click(move |_, cx| {
+                            replace_this.update(cx, |screen, cx| {
+                                screen
+                                    .live
+                                    .update(cx, |live, cx| live.replace_cached(id, cx));
+                            });
                         }),
                 ),
-        )
-        .when(has_cached, |panel| {
-            panel.child(
-                btn("replace-cached-analysis", "Replace cached analysis")
-                    .tooltip(ui::i18n::t(
-                        "Discard this saved result and run a fresh search",
-                    ))
-                    .on_click(move |_, cx| {
-                        replace_this.update(cx, |screen, cx| {
-                            screen
-                                .live
-                                .update(cx, |live, cx| live.replace_cached(id, cx));
-                        });
-                    }),
             )
         })
         .into_any_element()
@@ -1240,8 +1389,6 @@ impl AnalyseScreen {
             .flex()
             .flex_row()
             .flex_wrap()
-            .mt(px(10.))
-            .mb(px(12.))
             .min_h(px(26.))
             .font_family(MONO)
             .text_size(px(14.))
@@ -1320,7 +1467,8 @@ impl AnalyseScreen {
             .when(self.pv_view.is_some(), |column| {
                 column.child(
                     h_flex()
-                        .mb(px(12.))
+                        .mt(px(6.))
+                        .mb(px(4.))
                         .gap(px(10.))
                         .child(
                             div()

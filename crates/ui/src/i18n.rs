@@ -350,6 +350,19 @@ pub fn translate(language: Language, text: &str) -> &str {
             "Other" => "Sonstiges",
             "Pairing" => "Paarung",
             "Play line on board" => "Variante auf dem Brett spielen",
+            "Play on board" => "Auf dem Brett spielen",
+            "Add variation" => "Als Variante",
+            "To repertoire" => "Ins Repertoire",
+            "Copy line" => "Variante kopieren",
+            "Click a move in the table to preview its line" => {
+                "Einen Zug in der Tabelle anklicken, um seine Variante zu sehen"
+            }
+            "Not in repertoire" => "Nicht im Repertoire",
+            "Restrict ›" => "Einschränken ›",
+            "Hide" => "Ausblenden",
+            "Choose the moves the engine searches from this position" => {
+                "Züge wählen, die die Engine in dieser Stellung untersucht"
+            }
             "Position note" => "Stellungsnotiz",
             "Preview backup to restore" => "Sicherung zur Wiederherstellung ansehen",
             "Promote" => "Zur Hauptvariante machen",
