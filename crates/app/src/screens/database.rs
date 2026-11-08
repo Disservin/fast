@@ -8,9 +8,9 @@ use db::{
     ReviewPosition, ReviewSummary, SideFilter, TimeClass, import_games,
 };
 use gpui::{
-    AppContext as _, Context, Entity, FontWeight, IntoElement, Render, ScrollStrategy,
-    SharedString, Subscription, Task, UniformListScrollHandle, WeakEntity, Window, div, prelude::*,
-    px, rgb, uniform_list,
+    AnyElement, AppContext as _, Context, Entity, FontWeight, IntoElement, MouseButton, Render,
+    ScrollStrategy, SharedString, Subscription, Task, UniformListScrollHandle, WeakEntity, Window,
+    div, prelude::*, px, rgb, uniform_list,
 };
 use gpui_component::{
     input::{InputEvent, InputState},
@@ -18,7 +18,9 @@ use gpui_component::{
 };
 use ui::{
     BoardView, MONO, T,
-    widgets::{badge, btn, check, h_flex, mono, panel, section_label, stat, v_flex},
+    widgets::{
+        badge, btn, check, h_flex, icon_btn, mono, panel, section_label, segmented, stat, v_flex,
+    },
 };
 
 use crate::{
@@ -158,6 +160,8 @@ pub struct DatabaseScreen {
     review_limit: usize,
     review_side: usize,
     review_selected_only: bool,
+    /// Whether the batch review settings dialog is open.
+    review_settings_open: bool,
     query_task: Option<Task<()>>,
     count_task: Option<Task<()>>,
     preview_task: Option<Task<()>>,
@@ -306,6 +310,7 @@ impl DatabaseScreen {
             review_limit: 0,
             review_side: 0,
             review_selected_only: false,
+            review_settings_open: false,
             query_task: None,
             count_task: None,
             preview_task: None,
@@ -686,42 +691,19 @@ impl DatabaseScreen {
         );
     }
 
-    /// Batch engine review: scores each filtered game and stores its accuracy.
-    fn cycle_review_engine(&mut self, cx: &mut Context<Self>) {
-        let available: Vec<_> = self
-            .model
-            .read(cx)
-            .config
-            .engines
-            .iter()
-            .filter(|engine| engine.enabled && engine.use_review)
-            .map(|engine| (engine.id, engine.name.clone()))
-            .collect();
-        if available.is_empty() {
-            self.review_engine = None;
-        } else {
-            let current = available
-                .iter()
-                .position(|(id, _)| Some(*id) == self.review_engine)
-                .unwrap_or(0);
-            self.review_engine = Some(available[(current + 1) % available.len()].0);
+    /// Opens or closes the batch review settings dialog.
+    fn set_review_settings_open(&mut self, open: bool, cx: &mut Context<Self>) {
+        self.review_settings_open = open;
+        cx.notify();
+    }
+
+    /// Escape closes the review settings dialog. Returns whether it was open.
+    pub fn escape(&mut self, cx: &mut Context<Self>) -> bool {
+        let open = self.review_settings_open;
+        if open {
+            self.set_review_settings_open(false, cx);
         }
-        cx.notify();
-    }
-
-    fn cycle_review_limit(&mut self, cx: &mut Context<Self>) {
-        self.review_limit = (self.review_limit + 1) % ReviewLimit::ALL.len();
-        cx.notify();
-    }
-
-    fn cycle_review_side(&mut self, cx: &mut Context<Self>) {
-        self.review_side = (self.review_side + 1) % 4;
-        cx.notify();
-    }
-
-    fn toggle_review_scope(&mut self, cx: &mut Context<Self>) {
-        self.review_selected_only = !self.review_selected_only;
-        cx.notify();
+        open
     }
 
     fn toggle_review_pause(&mut self, cx: &mut Context<Self>) {
@@ -1034,6 +1016,7 @@ impl DatabaseScreen {
             None => "Analyse all".into(),
         };
         let analyse_this = this.clone();
+        let settings_this = this.clone();
         h_flex()
             .flex_wrap()
             .justify_between()
@@ -1059,7 +1042,40 @@ impl DatabaseScreen {
             )
             .child(
                 h_flex()
-                    .gap(px(12.))
+                    .gap(px(8.))
+                    .when_some(self.reviewing.as_ref(), |row, reviewing| {
+                        let pause_this = cx.entity();
+                        row.when(reviewing.engines == 1, |row| {
+                            row.child(
+                                mono(format!("Position {}/{}", reviewing.ply, reviewing.plies))
+                                    .text_size(px(12.))
+                                    .text_color(rgb(T.muted)),
+                            )
+                        })
+                        .child(
+                            btn(
+                                "review-pause",
+                                if reviewing.paused.load(std::sync::atomic::Ordering::Relaxed) {
+                                    ui::i18n::t("Resume")
+                                } else {
+                                    ui::i18n::t("Pause")
+                                },
+                            )
+                            .on_click(move |_, cx| {
+                                pause_this.update(cx, |screen, cx| screen.toggle_review_pause(cx))
+                            }),
+                        )
+                    })
+                    .child(
+                        btn("review-settings-open", "Review settings")
+                            .icon("icons/settings.svg")
+                            .tooltip(ui::i18n::t("Engine, limit and side for Analyse all"))
+                            .on_click(move |_, cx| {
+                                settings_this.update(cx, |screen, cx| {
+                                    screen.set_review_settings_open(true, cx)
+                                })
+                            }),
+                    )
                     .child(
                         btn("analyse-all", analyse_label)
                             .disabled(self.review_selected_only && self.selected.is_none())
@@ -1073,28 +1089,31 @@ impl DatabaseScreen {
             )
     }
 
-    fn render_review_controls(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let engines = self.model.read(cx).config.engines.clone();
-        let engine_name = engines
+    /// The batch review settings over the tab: engine, limit, side, scope and how many
+    /// engines run at once.
+    fn render_review_dialog(&self, cx: &mut Context<Self>) -> AnyElement {
+        let available: Vec<(engine::EngineId, SharedString)> = self
+            .model
+            .read(cx)
+            .config
+            .engines
             .iter()
-            .find(|engine| {
-                Some(engine.id) == self.review_engine && engine.enabled && engine.use_review
-            })
-            .or_else(|| {
-                engines
-                    .iter()
-                    .find(|engine| engine.enabled && engine.use_review)
-            })
-            .map_or("No review engine", |engine| engine.name.as_str());
-        let this = cx.entity();
-        let engine_this = this.clone();
-        let limit_this = this.clone();
-        let side_this = this.clone();
+            .filter(|engine| engine.enabled && engine.use_review)
+            .map(|engine| (engine.id, engine.name.clone().into()))
+            .collect();
+        let chosen_engine = available
+            .iter()
+            .find(|(id, _)| Some(*id) == self.review_engine)
+            .or(available.first())
+            .map(|(id, _)| *id);
         let engines = self.model.read(cx).config.review_engines.max(1);
         let max_engines = max_review_engines();
         let running = self.reviewing.is_some();
+        let (close, backdrop) = (cx.entity(), cx.entity());
+        let (engine_this, limit_this, side_this, scope_this) =
+            (cx.entity(), cx.entity(), cx.entity(), cx.entity());
         let step = |up: bool| {
-            let this = this.clone();
+            let this = cx.entity();
             let next = if up {
                 (engines + 1).min(max_engines)
             } else {
@@ -1108,7 +1127,8 @@ impl DatabaseScreen {
                 },
                 if up { "+" } else { "−" },
             )
-            .w(36.)
+            .compact()
+            .w(28.)
             .pad(0.)
             .disabled(running || next == engines)
             .on_click(move |_, cx| {
@@ -1121,15 +1141,92 @@ impl DatabaseScreen {
                 })
             })
         };
+        let row = |label: &'static str, control: AnyElement| {
+            h_flex()
+                .gap(px(10.))
+                .child(
+                    div()
+                        .w(px(130.))
+                        .flex_none()
+                        .text_size(px(13.))
+                        .text_color(rgb(T.muted))
+                        .child(ui::i18n::t(label)),
+                )
+                .child(div().flex_1().min_w_0().child(control))
+        };
+        let engine_control = match chosen_engine {
+            Some(chosen) => segmented(
+                "review-engine",
+                available
+                    .iter()
+                    .map(|(id, name)| (*id, name.clone(), false))
+                    .collect(),
+                chosen,
+                move |id, _, cx| {
+                    engine_this.update(cx, |screen, cx| {
+                        screen.review_engine = Some(id);
+                        cx.notify();
+                    })
+                },
+            )
+            .flex_wrap()
+            .into_any_element(),
+            None => div()
+                .text_size(px(13.))
+                .text_color(rgb(T.warn))
+                .child(ui::i18n::t(
+                    "Choose an engine for batch review in Settings › Engines.",
+                ))
+                .into_any_element(),
+        };
+        let limit_control = segmented(
+            "review-limit",
+            ReviewLimit::ALL
+                .iter()
+                .enumerate()
+                .map(|(index, limit)| (index, limit.label().into(), false))
+                .collect(),
+            self.review_limit,
+            move |index, _, cx| {
+                limit_this.update(cx, |screen, cx| {
+                    screen.review_limit = index;
+                    cx.notify();
+                })
+            },
+        )
+        .flex_wrap();
+        let side_control = segmented(
+            "review-side",
+            ["Filtered player", "White", "Black", "Both"]
+                .into_iter()
+                .enumerate()
+                .map(|(index, label)| (index, label.into(), false))
+                .collect(),
+            self.review_side,
+            move |index, _, cx| {
+                side_this.update(cx, |screen, cx| {
+                    screen.review_side = index;
+                    cx.notify();
+                })
+            },
+        )
+        .flex_wrap();
+        let scope_control = segmented(
+            "review-scope",
+            vec![
+                (false, "Filtered games".into(), false),
+                (true, "Selected game".into(), false),
+            ],
+            self.review_selected_only,
+            move |selected_only, _, cx| {
+                scope_this.update(cx, |screen, cx| {
+                    screen.review_selected_only = selected_only;
+                    cx.notify();
+                })
+            },
+        );
         let parallel = h_flex()
             .gap(px(4.))
-            .child(
-                div()
-                    .text_size(px(13.))
-                    .text_color(rgb(T.muted))
-                    .mr(px(2.))
-                    .child(ui::i18n::t("Engines at once")),
-            )
             .child(step(false))
             .child(
                 mono(engines.to_string())
@@ -1140,84 +1237,64 @@ impl DatabaseScreen {
                     .whitespace_nowrap(),
             )
             .child(step(true));
-        h_flex()
-            .flex_wrap()
-            .gap(px(8.))
-            .child(section_label("Batch review"))
+        let dialog = v_flex()
+            .id("review-settings")
+            .w(px(560.))
+            .max_w_full()
+            .max_h_full()
+            .overflow_y_scroll()
+            .rounded(px(6.))
+            .bg(rgb(T.surface))
+            .border_1()
+            .border_color(rgb(T.border_strong))
+            // Clicks inside the dialog stay out of the backdrop.
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .child(
-                btn("review-engine", format!("Engine: {engine_name}  ›"))
-                    .tooltip(ui::i18n::t("Choose an enabled review engine"))
-                    .on_click(move |_, cx| {
-                        engine_this.update(cx, |screen, cx| screen.cycle_review_engine(cx))
-                    }),
-            )
-            .child(
-                btn(
-                    "review-limit",
-                    format!("Limit: {}  ›", ReviewLimit::ALL[self.review_limit].label()),
-                )
-                .tooltip(ui::i18n::t("Cycle between time, depth, and node limits"))
-                .on_click(move |_, cx| {
-                    limit_this.update(cx, |screen, cx| screen.cycle_review_limit(cx))
-                }),
-            )
-            .child(
-                btn(
-                    "review-side",
-                    format!(
-                        "Side: {}  ›",
-                        [
-                            "Filtered player",
-                            ui::i18n::t("White"),
-                            ui::i18n::t("Black"),
-                            "Both"
-                        ][self.review_side]
+                h_flex()
+                    .h(px(44.))
+                    .flex_none()
+                    .px(px(16.))
+                    .justify_between()
+                    .border_b_1()
+                    .border_color(rgb(T.border))
+                    .child(section_label("Batch review"))
+                    .child(
+                        icon_btn("review-settings-close", "icons/x.svg")
+                            .mini()
+                            .tooltip(ui::i18n::t("Close"))
+                            .on_click(move |_, cx| {
+                                close.update(cx, |screen, cx| {
+                                    screen.set_review_settings_open(false, cx)
+                                })
+                            }),
                     ),
-                )
-                .tooltip(ui::i18n::t("Choose which player's moves to review"))
-                .on_click(move |_, cx| {
-                    side_this.update(cx, |screen, cx| screen.cycle_review_side(cx))
-                }),
             )
-            .child(parallel)
             .child(
-                btn(
-                    "review-scope",
-                    if self.review_selected_only {
-                        "Scope: Selected"
-                    } else {
-                        "Scope: Filtered"
-                    },
-                )
-                .tooltip(ui::i18n::t(
-                    "Review the selected game or all filtered games",
-                ))
-                .on_click(move |_, cx| {
-                    this.update(cx, |screen, cx| screen.toggle_review_scope(cx))
-                }),
-            )
-            .when_some(self.reviewing.as_ref(), |row, reviewing| {
-                let pause_this = cx.entity();
-                row.child(
-                    btn(
-                        "review-pause",
-                        if reviewing.paused.load(std::sync::atomic::Ordering::Relaxed) {
-                            ui::i18n::t("Resume")
-                        } else {
-                            ui::i18n::t("Pause")
-                        },
-                    )
-                    .on_click(move |_, cx| {
-                        pause_this.update(cx, |screen, cx| screen.toggle_review_pause(cx))
-                    }),
-                )
-                .when(reviewing.engines == 1, |row| {
-                    row.child(
-                        mono(format!("Position {}/{}", reviewing.ply, reviewing.plies))
-                            .text_size(px(12.)),
-                    )
-                })
+                v_flex()
+                    .px(px(16.))
+                    .py(px(14.))
+                    .gap(px(12.))
+                    .child(row("Engine", engine_control))
+                    .child(row("Limit", limit_control.into_any_element()))
+                    .child(row("Side", side_control.into_any_element()))
+                    .child(row("Games", scope_control.into_any_element()))
+                    .child(row("Engines at once", parallel.into_any_element())),
+            );
+        div()
+            .id("review-settings-backdrop")
+            .absolute()
+            .inset_0()
+            .occlude()
+            .flex()
+            .items_center()
+            .justify_center()
+            .p(px(24.))
+            .bg(gpui::rgba(0x0000_0099))
+            .on_mouse_down(MouseButton::Left, move |_, _, cx| {
+                backdrop.update(cx, |screen, cx| screen.set_review_settings_open(false, cx))
             })
+            .child(dialog)
+            .into_any_element()
     }
 
     fn render_stats(&self) -> impl IntoElement + use<> {
@@ -2127,31 +2204,39 @@ impl Render for DatabaseScreen {
         let table = self.render_table(cx);
         let preview = self.render_preview(window.scale_factor(), cx);
         let import_bar = self.render_import_bar(cx);
-        h_flex().items_start().size_full().child(left).child(
-            v_flex()
-                .flex_1()
-                .min_w_0()
-                .h_full()
-                .px(px(24.))
-                .pt(px(24.))
-                .pb(px(16.))
-                .gap(px(16.))
-                .child(header)
-                .child(self.render_review_controls(cx))
-                .children(import_bar)
-                .child(stats)
-                .child(
-                    h_flex()
-                        .items_start()
-                        .flex_1()
-                        .min_h_0()
-                        .gap(px(16.))
-                        .child(div().flex_1().min_w_0().h_full().child(table))
-                        .when(show_preview, |row| {
-                            row.child(panel().w(px(293.)).flex_none().child(preview))
-                        }),
-                ),
-        )
+        let review_dialog = self
+            .review_settings_open
+            .then(|| self.render_review_dialog(cx));
+        h_flex()
+            .relative()
+            .items_start()
+            .size_full()
+            .child(left)
+            .child(
+                v_flex()
+                    .flex_1()
+                    .min_w_0()
+                    .h_full()
+                    .px(px(24.))
+                    .pt(px(24.))
+                    .pb(px(16.))
+                    .gap(px(16.))
+                    .child(header)
+                    .children(import_bar)
+                    .child(stats)
+                    .child(
+                        h_flex()
+                            .items_start()
+                            .flex_1()
+                            .min_h_0()
+                            .gap(px(16.))
+                            .child(div().flex_1().min_w_0().h_full().child(table))
+                            .when(show_preview, |row| {
+                                row.child(panel().w(px(293.)).flex_none().child(preview))
+                            }),
+                    ),
+            )
+            .children(review_dialog)
     }
 }
 

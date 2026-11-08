@@ -389,6 +389,19 @@ pub fn translate(language: Language, text: &str) -> &str {
             "Review" => "Prüfung",
             "Review findings" => "Prüfergebnisse",
             "Engines at once" => "Engines gleichzeitig",
+            "Review settings" => "Prüfeinstellungen",
+            "Engine, limit and side for Analyse all" => {
+                "Engine, Limit und Seite für Alle analysieren"
+            }
+            "Filtered games" => "Gefilterte Partien",
+            "Selected game" => "Ausgewählte Partie",
+            "Filtered player" => "Gefilterter Spieler",
+            "Both" => "Beide",
+            "Limit" => "Limit",
+            "Side" => "Seite",
+            "Choose an engine for batch review in Settings › Engines." => {
+                "Wählen Sie unter Einstellungen › Engines eine Engine für die Stapelprüfung."
+            }
             "Mate lost" => "Matt verpasst",
             "Run benchmark" => "Benchmark starten",
             "Save comment" => "Kommentar speichern",
@@ -460,16 +473,11 @@ pub fn translate(language: Language, text: &str) -> &str {
             "Back to each engine's default number of lines" => {
                 "Zur Standardanzahl der Varianten jeder Engine zurückkehren"
             }
-            "Choose an enabled review engine" => "Eine aktivierte Prüf-Engine auswählen",
-            "Choose which player's moves to review" => "Auswählen, wessen Züge geprüft werden",
             "Close tab; reopen with Ctrl/Cmd+Shift+T" => {
                 "Tab schließen; mit Strg/Cmd+Umschalt+T wieder öffnen"
             }
             "Copy FEN or PGN" => "FEN oder PGN kopieren",
             "Copy the board as an image and save it" => "Brett als Bild kopieren und speichern",
-            "Cycle between time, depth, and node limits" => {
-                "Zwischen Zeit-, Tiefen- und Knotenlimit wechseln"
-            }
             "Discard this saved result and run a fresh search" => {
                 "Dieses gespeicherte Ergebnis verwerfen und neu suchen"
             }
@@ -498,9 +506,6 @@ pub fn translate(language: Language, text: &str) -> &str {
             }
             "Recommended: UHO_Lichess_4852_v1.epd. Stockfish books download on first use. Choose Custom file to use a local book." => {
                 "Empfohlen: UHO_Lichess_4852_v1.epd. Stockfish-Bücher werden bei der ersten Verwendung heruntergeladen. Wählen Sie Eigene Datei für ein lokales Buch."
-            }
-            "Review the selected game or all filtered games" => {
-                "Die ausgewählte Partie oder alle gefilterten Partien prüfen"
             }
             "Run another process of this engine as an opponent" => {
                 "Einen weiteren Prozess dieser Engine als Gegner starten"

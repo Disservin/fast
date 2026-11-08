@@ -1988,6 +1988,13 @@ impl Render for Workspace {
                     cx.stop_propagation();
                     return;
                 }
+                if event.keystroke.key == "escape"
+                    && this.mode == Mode::Database
+                    && this.database.update(cx, |screen, cx| screen.escape(cx))
+                {
+                    cx.stop_propagation();
+                    return;
+                }
                 if !typing
                     && this.mode == Mode::Analyse
                     && this
