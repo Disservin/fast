@@ -1,5 +1,5 @@
 //! Settings: General, Board & pieces, Engines, Analysis, Databases, Keyboard shortcuts,
-//! Accounts, Data, Licenses and Thanks.
+//! Accounts, Data, Licenses, Thanks and Changelog.
 
 use std::{collections::HashMap, path::PathBuf, process::Command};
 
@@ -44,10 +44,11 @@ pub enum SettingsPage {
     Data,
     Licenses,
     Thanks,
+    Changelog,
 }
 
 impl SettingsPage {
-    pub const ALL: [Self; 10] = [
+    pub const ALL: [Self; 11] = [
         Self::General,
         Self::Board,
         Self::Engines,
@@ -58,6 +59,7 @@ impl SettingsPage {
         Self::Data,
         Self::Licenses,
         Self::Thanks,
+        Self::Changelog,
     ];
 
     pub fn title(self) -> &'static str {
@@ -72,6 +74,7 @@ impl SettingsPage {
             Self::Data => ui::i18n::t("Data"),
             Self::Licenses => ui::i18n::t("Licenses"),
             Self::Thanks => ui::i18n::t("Thanks"),
+            Self::Changelog => ui::i18n::t("Changelog"),
         }
     }
 }
@@ -3483,6 +3486,35 @@ impl SettingsScreen {
     }
 }
 
+/// The Changelog page: `CHANGELOG.md`, one panel per release with its changes listed.
+fn render_changelog() -> Div {
+    let mut page = v_flex()
+        .gap(px(16.))
+        .child(page_title(ui::i18n::t("Changelog")));
+    let mut release: Option<Div> = None;
+    for line in include_str!("../../../../CHANGELOG.md").lines() {
+        if let Some(heading) = line.strip_prefix("## ") {
+            page = page.children(release.take());
+            release = Some(section(heading.trim()));
+        } else if let Some(entry) = line.strip_prefix("- ")
+            && let Some(current) = release.take()
+        {
+            release = Some(
+                current.child(
+                    div()
+                        .py(px(6.))
+                        .border_b_1()
+                        .border_color(rgb(T.divider))
+                        .text_size(px(13.))
+                        .text_color(rgb(T.fg_2))
+                        .child(entry.trim()),
+                ),
+            );
+        }
+    }
+    page.children(release)
+}
+
 fn section(title: &'static str) -> Div {
     panel().flex().flex_col().p(px(16.)).child(
         div()
@@ -3729,6 +3761,7 @@ impl Render for SettingsScreen {
             SettingsPage::Data => self.render_data(cx).into_any_element(),
             SettingsPage::Licenses => self.render_licenses(cx).into_any_element(),
             SettingsPage::Thanks => self.render_thanks().into_any_element(),
+            SettingsPage::Changelog => render_changelog().into_any_element(),
         };
         h_flex().items_start().size_full().child(nav).child(
             div()

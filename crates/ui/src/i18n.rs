@@ -121,6 +121,7 @@ pub fn translate(language: Language, text: &str) -> &str {
             }
             "Licenses" => "Lizenzen",
             "Thanks" => "Danksagung",
+            "Changelog" => "Änderungen",
             "Variant" => "Variante",
             "Chess960 needs a book of Chess960 start positions." => {
                 "Chess960 braucht ein Buch mit Chess960-Startstellungen."
