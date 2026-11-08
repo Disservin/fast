@@ -309,6 +309,30 @@ impl Database {
         Ok(rows.collect::<rusqlite::Result<_>>()?)
     }
 
+    /// Finds a small set of games by player, event or opening code for global search.
+    pub fn search_games(&self, query: &str, limit: usize) -> Result<Vec<GameRow>> {
+        if query.trim().is_empty() || limit == 0 {
+            return Ok(Vec::new());
+        }
+        let pattern = format!(
+            "%{}%",
+            query
+                .trim()
+                .replace('\\', "\\\\")
+                .replace('%', "\\%")
+                .replace('_', "\\_")
+        );
+        let mut statement = self.conn.prepare(&format!(
+            "SELECT {ROW_COLUMNS} FROM games
+             WHERE white LIKE ?1 ESCAPE '\\' OR black LIKE ?1 ESCAPE '\\'
+                OR event LIKE ?1 ESCAPE '\\' OR eco LIKE ?1 ESCAPE '\\'
+             ORDER BY date DESC, id DESC LIMIT ?2"
+        ))?;
+        Ok(statement
+            .query_map(params![pattern, limit as i64], GameRow::from_row)?
+            .collect::<rusqlite::Result<_>>()?)
+    }
+
     pub fn rows_by_ids(&self, ids: &[i64]) -> Result<Vec<GameRow>> {
         if ids.is_empty() {
             return Ok(Vec::new());
@@ -653,6 +677,19 @@ mod tests {
             pos.play_unchecked(mv);
         }
         position_hash(&pos)
+    }
+
+    /// Global search accepts partial names and opening codes without treating wildcards as input syntax.
+    #[test]
+    fn global_search_matches_partial_names_and_codes() {
+        let (_dir, db) = database();
+        assert_eq!(db.search_games("ALI", 8).unwrap()[0].black, "alice");
+        assert_eq!(db.search_games("B9", 8).unwrap().len(), 2);
+        assert_eq!(db.search_games("me", 1).unwrap().len(), 1);
+        assert!(db.search_games("%", 8).unwrap().is_empty());
+        assert!(db.search_games("_", 8).unwrap().is_empty());
+        assert!(db.search_games("  ", 8).unwrap().is_empty());
+        assert!(db.search_games("me", 0).unwrap().is_empty());
     }
 
     #[test]

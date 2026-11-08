@@ -39,6 +39,13 @@ pub fn set_language(language: Language) {
 pub fn translate(language: Language, text: &str) -> &str {
     if language == Language::German {
         match text {
+            "Searching…" => "Suche…",
+            "Some databases could not be searched" => {
+                "Einige Datenbanken konnten nicht durchsucht werden"
+            }
+            "No matching games" => "Keine passenden Partien",
+            "Matching games" => "Passende Partien",
+            "Could not open game" => "Partie konnte nicht geöffnet werden",
             "Analyse" => "Analyse",
             "Database" => "Datenbank",
             "Train" => "Training",

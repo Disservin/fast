@@ -365,6 +365,13 @@ pub struct Workspace {
     /// render.
     tab_in_view: std::cell::Cell<u64>,
     search: Entity<InputState>,
+    /// Live matches from the local game collections.
+    search_results: Vec<(std::path::PathBuf, db::GameRow)>,
+    search_open: bool,
+    search_selected: Option<usize>,
+    search_pending: bool,
+    search_failed: bool,
+    search_task: Option<gpui::Task<()>>,
     path_input: Entity<InputState>,
     paths_input: Entity<TextareaState>,
     menu_bar: Option<Entity<gpui_component::menu::AppMenuBar>>,
@@ -403,9 +410,16 @@ impl Workspace {
             }
         });
         let search_sub = cx.subscribe_in(&search, window, |this, state, event, window, cx| {
+            if matches!(event, InputEvent::Change) {
+                this.update_search(cx);
+            }
             if let InputEvent::PressEnter { .. } = event {
-                let query = state.read(cx).value().to_string();
-                this.run_search(query.trim(), window, cx);
+                if let Some(index) = this.search_selected.filter(|_| this.search_open) {
+                    this.open_search_result(index, cx);
+                } else {
+                    let query = state.read(cx).value().to_string();
+                    this.run_search(query.trim(), window, cx);
+                }
             }
         });
         let mut path_prompt_open = false;
@@ -497,6 +511,12 @@ impl Workspace {
             tournament: None,
             test_positions: None,
             search,
+            search_results: Vec::new(),
+            search_open: false,
+            search_selected: None,
+            search_pending: false,
+            search_failed: false,
+            search_task: None,
             path_input,
             paths_input,
             menu_bar: draws_own_menus().then(|| gpui_component::menu::AppMenuBar::new(cx)),
@@ -1451,10 +1471,82 @@ impl Workspace {
         }
     }
 
+    /// Refreshes local game suggestions without blocking typing or the board.
+    fn update_search(&mut self, cx: &mut Context<Self>) {
+        let query = self.search.read(cx).value().trim().to_owned();
+        self.search_task = None;
+        self.search_results.clear();
+        self.search_selected = None;
+        self.search_open = !query.is_empty();
+        self.search_pending = self.search_open;
+        self.search_failed = false;
+        if query.is_empty() {
+            cx.notify();
+            return;
+        }
+        let entries = self.model.read(cx).databases.clone();
+        self.search_task = Some(cx.spawn(async move |this, cx| {
+            cx.background_executor()
+                .timer(std::time::Duration::from_millis(200))
+                .await;
+            let result = cx
+                .background_spawn(async move {
+                    let mut found = Vec::new();
+                    let mut failed = false;
+                    for entry in entries {
+                        match db::Database::open(&entry.path)
+                            .and_then(|db| db.search_games(&query, 8 - found.len()))
+                        {
+                            Ok(rows) => {
+                                found.extend(rows.into_iter().map(|row| (entry.path.clone(), row)))
+                            }
+                            Err(_) => failed = true,
+                        }
+                        if found.len() == 8 {
+                            break;
+                        }
+                    }
+                    (found, failed)
+                })
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                this.search_results = result.0;
+                this.search_failed = result.1;
+                this.search_pending = false;
+                cx.notify();
+            });
+        }));
+        cx.notify();
+    }
+
+    /// Opens a suggested game after reading its moves in the background.
+    fn open_search_result(&mut self, index: usize, cx: &mut Context<Self>) {
+        let Some((path, row)) = self.search_results.get(index) else {
+            return;
+        };
+        let (path, id) = (path.clone(), row.id);
+        self.search_open = false;
+        let task =
+            cx.background_spawn(async move { db::Database::open(path).and_then(|db| db.game(id)) });
+        cx.spawn(async move |this, cx| {
+            let result = task.await;
+            let _ = this.update_in(cx, |this, window, cx| match result {
+                Ok(Some(game)) => this.open_pgn(&game.to_pgn(), 0, window, cx),
+                _ => this
+                    .model
+                    .update(cx, |model, cx| model.toast("Could not open game", cx)),
+            });
+        })
+        .detach();
+        cx.notify();
+    }
+
+    /// Runs the typed position or player search when Enter is pressed.
     fn run_search(&mut self, query: &str, window: &mut Window, cx: &mut Context<Self>) {
         if query.is_empty() {
             return;
         }
+        self.search_open = false;
         // A FEN opens in Analyse; anything else searches players in the database.
         if chess_core::GameTree::from_fen(query).is_ok() {
             let fen = query.to_owned();
@@ -1724,7 +1816,103 @@ impl Workspace {
             if let Some(key) = shortcut.filter(|key| !key.is_empty() && width >= 220.) {
                 field = field.hint(crate::screens::settings::shortcut_hint(&key));
             }
-            row = row.child(div().w(px(width)).child(field));
+            let mut search_box =
+                div()
+                    .relative()
+                    .w(px(width))
+                    .child(field)
+                    .capture_key_down(cx.listener(
+                        |this, event: &gpui::KeyDownEvent, window, cx| {
+                            if !this.search_open {
+                                return;
+                            }
+                            match event.keystroke.key.as_str() {
+                                "escape" => {
+                                    this.search_open = false;
+                                    this.focus.focus(window, cx);
+                                }
+                                "enter" if this.search_selected.is_some() => {
+                                    this.open_search_result(this.search_selected.unwrap(), cx);
+                                }
+                                "down" if !this.search_results.is_empty() => {
+                                    this.search_selected =
+                                        Some(this.search_selected.map_or(0, |index| {
+                                            (index + 1) % this.search_results.len()
+                                        }));
+                                }
+                                "up" if !this.search_results.is_empty() => {
+                                    this.search_selected = Some(
+                                        this.search_selected
+                                            .unwrap_or(0)
+                                            .checked_sub(1)
+                                            .unwrap_or(this.search_results.len() - 1),
+                                    );
+                                }
+                                _ => return,
+                            }
+                            cx.stop_propagation();
+                            cx.notify();
+                        },
+                    ));
+            if self.search_open {
+                let mut results = v_flex()
+                    .absolute()
+                    .top(px(38.))
+                    .right_0()
+                    .w(px(440.))
+                    .rounded(px(6.))
+                    .bg(rgb(T.surface))
+                    .border_1()
+                    .border_color(rgb(T.border))
+                    .text_size(px(13.))
+                    .text_color(rgb(T.fg))
+                    .occlude()
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    .on_mouse_down_out(cx.listener(|this, _, _, cx| {
+                        this.search_open = false;
+                        cx.notify();
+                    }));
+                let status = if self.search_pending {
+                    "Searching…"
+                } else if self.search_failed {
+                    "Some databases could not be searched"
+                } else if self.search_results.is_empty() {
+                    "No matching games"
+                } else {
+                    "Matching games"
+                };
+                results = results.child(
+                    div()
+                        .px(px(16.))
+                        .py(px(8.))
+                        .text_color(rgb(T.muted))
+                        .child(ui::i18n::t(status)),
+                );
+                for (index, (_, game)) in self.search_results.iter().enumerate() {
+                    let target = this.clone();
+                    results = results.child(
+                        div().border_t_1().border_color(rgb(T.divider)).child(
+                            btn(
+                                ("search-result", index),
+                                format!(
+                                    "{} — {}  {}  {}",
+                                    game.white, game.black, game.result, game.date
+                                ),
+                            )
+                            .compact()
+                            .kind(BtnKind::Ghost)
+                            .mono()
+                            .full()
+                            .selected(self.search_selected == Some(index))
+                            .on_click(move |_, cx| {
+                                target.update(cx, |this, cx| this.open_search_result(index, cx));
+                            }),
+                        ),
+                    );
+                }
+                search_box = search_box.child(deferred(results));
+            }
+            row = row.child(search_box);
         }
         match self.mode {
             Mode::Analyse => {
@@ -2037,6 +2225,7 @@ impl Render for Workspace {
                 }
                 this.search
                     .update(cx, |search, cx| search.focus(window, cx));
+                this.update_search(cx);
             }))
             .on_action(cx.listener(|this, _: &SaveGame, _, cx| {
                 this.analyse.update(cx, |screen, cx| screen.save_game(cx));

@@ -285,3 +285,13 @@ Each Play game already owns its own engine and clock. Open games continue when
 switching tabs; closing suspends them and reopening resets the clock tick origin
 and resumes the search. Dropping a game quits its process. The last ten closed
 entities can be reopened; autosave files keep every document independently.
+
+## Global search
+
+The shell's Ctrl K field shows up to eight local game matches while typing.
+After a 200 ms debounce, it searches player names, events and ECO codes in the
+registered databases through `db::Database::search_games`. Queries and loading
+selected games run in `cx.background_spawn`; replacing the pending UI task
+prevents an older query from replacing current suggestions. Arrow keys select a
+suggestion and Enter opens it in Analyse. Without a selected suggestion, Enter
+keeps the FEN-opening and database player-filter behavior.
