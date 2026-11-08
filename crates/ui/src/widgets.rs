@@ -257,6 +257,12 @@ impl Btn {
     }
 
     /// A small status dot before the label.
+    /// Shows an icon before the label, as in "+ New tab".
+    pub fn icon(mut self, path: &'static str) -> Self {
+        self.icon = Some(path);
+        self
+    }
+
     pub fn dot(mut self, color: u32) -> Self {
         self.dot = Some(color);
         self
@@ -345,7 +351,7 @@ impl RenderOnce for Btn {
                 .child(div().size(px(8.)).rounded_full().bg(rgb(color)));
         }
         if let Some(path) = self.icon {
-            el = el.child(icon(path, px(16.), fg));
+            el = el.gap(px(6.)).child(icon(path, px(16.), fg));
         }
         if let Some(label) = self.label
             && !label.is_empty()

@@ -5,8 +5,8 @@ use std::collections::BTreeMap;
 use engine::EngineStatus;
 use gpui::{
     Action, App, Context, CursorStyle, Decorations, Entity, FocusHandle, FontWeight, IntoElement,
-    KeyBinding, MouseButton, Pixels, Render, ResizeEdge, SharedString, Subscription, Window,
-    WindowControlArea, actions, deferred, div, prelude::*, px, rgb,
+    KeyBinding, MouseButton, Pixels, Render, ResizeEdge, ScrollEvent, ScrollHandle, SharedString,
+    Subscription, Window, WindowControlArea, actions, deferred, div, prelude::*, px, rgb,
 };
 use gpui_component::input::{InputEvent, InputState, TextareaState};
 use gpui_component::menu::{ContextMenuExt, PopupMenuItem};
@@ -315,6 +315,11 @@ pub struct Workspace {
     next_tab_id: u64,
     last_tab: BTreeMap<Mode, u64>,
     new_tab_menu_open: bool,
+    /// The tab strip's horizontal scroll.
+    tab_scroll: ScrollHandle,
+    /// The tab last scrolled into view, so the strip follows a change of tab but not every
+    /// render.
+    tab_in_view: std::cell::Cell<u64>,
     search: Entity<InputState>,
     path_input: Entity<InputState>,
     paths_input: Entity<TextareaState>,
@@ -430,6 +435,8 @@ impl Workspace {
             next_tab_id: 2,
             last_tab: [(mode, 1)].into(),
             new_tab_menu_open: false,
+            tab_scroll: ScrollHandle::new(),
+            tab_in_view: std::cell::Cell::new(u64::MAX),
             model,
             mode,
             analyse,
@@ -871,7 +878,38 @@ impl Workspace {
     }
 
     fn tab_bar(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let mut tabs = h_flex().gap(px(4.));
+        // A new or newly chosen tab scrolls into view.
+        if self.tab_in_view.get() != self.active_tab
+            && let Some(index) = self.tabs.iter().position(|tab| tab.id == self.active_tab)
+        {
+            self.tab_in_view.set(self.active_tab);
+            self.tab_scroll.scroll_to_item(index);
+        }
+        let scroll = self.tab_scroll.clone();
+        let mut tabs = h_flex()
+            .id("workspace-tabs")
+            .min_w_0()
+            .gap(px(4.))
+            .overflow_x_scroll()
+            .track_scroll(&self.tab_scroll)
+            // A plain mouse wheel scrolls up and down; in the strip it moves along the tabs.
+            .on_scroll(move |event: &ScrollEvent, window, cx| {
+                let delta = event.delta.pixel_delta(window.line_height());
+                let step = if delta.x.abs() > delta.y.abs() {
+                    delta.x
+                } else {
+                    delta.y
+                };
+                let max = scroll.max_offset().x;
+                if max <= px(0.) || step == px(0.) {
+                    return;
+                }
+                let mut offset = scroll.offset();
+                offset.x = (offset.x + step).clamp(-max, px(0.));
+                scroll.set_offset(offset);
+                cx.stop_propagation();
+                window.refresh();
+            });
         for tab in &self.tabs {
             let id = tab.id;
             let select = cx.entity();
@@ -984,36 +1022,40 @@ impl Workspace {
             );
         }
         let add = cx.entity();
+        let tip = match self.model.read(cx).config.shortcuts.get("new_tab") {
+            Some(key) if !key.is_empty() => {
+                format!(
+                    "{} ({})",
+                    ui::i18n::t("Open a new tab"),
+                    crate::screens::settings::key_names(key).join("+")
+                )
+            }
+            _ => ui::i18n::t("Open a new tab").to_owned(),
+        };
         h_flex()
             .flex_none()
             .h(px(38.))
             .px(px(10.))
-            .gap(px(8.))
+            .gap(px(6.))
             .bg(rgb(T.surface))
             .border_b_1()
             .border_color(rgb(T.border))
+            // The strip only takes the width its tabs need, so New tab sits right after the
+            // last one; with many tabs the strip scrolls and the button stays in view.
+            .child(tabs)
             .child(
-                div()
-                    .id("workspace-tabs")
-                    .flex_1()
-                    .min_w_0()
-                    .overflow_x_scroll()
-                    .child(tabs),
-            )
-            .child(
-                h_flex().gap(px(4.)).child(
-                    btn("new-tab", "+")
-                        .h(26.)
-                        .w(28.)
-                        .pad(4.)
-                        .tooltip(ui::i18n::t("Add a tab"))
-                        .on_click(move |_, cx| {
-                            add.update(cx, |this, cx| {
-                                this.new_tab_menu_open = !this.new_tab_menu_open;
-                                cx.notify();
-                            })
-                        }),
-                ),
+                btn("new-tab", "New tab")
+                    .icon("icons/plus.svg")
+                    .h(30.)
+                    .pad(10.)
+                    .tooltip(tip)
+                    .selected(self.new_tab_menu_open)
+                    .on_click(move |_, cx| {
+                        add.update(cx, |this, cx| {
+                            this.new_tab_menu_open = !this.new_tab_menu_open;
+                            cx.notify();
+                        })
+                    }),
             )
     }
 

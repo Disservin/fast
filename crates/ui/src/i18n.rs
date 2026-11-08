@@ -437,7 +437,7 @@ pub fn translate(language: Language, text: &str) -> &str {
             "A line for every legal move in every position (up to 256, as far as the engine allows)" => {
                 "Eine Variante für jeden legalen Zug in jeder Stellung (bis zu 256, soweit die Engine dies unterstützt)"
             }
-            "Add a tab" => "Tab hinzufügen",
+            "Open a new tab" => "Neuen Tab öffnen",
             "An arrow per engine line, coloured from best (blue) to blunder (red)" => {
                 "Ein Pfeil pro Engine-Variante, vom besten Zug (blau) bis zum groben Fehler (rot)"
             }

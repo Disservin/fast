@@ -3178,7 +3178,7 @@ fn board_check(
 }
 
 /// The keys of a shortcut such as "ctrl-k", with friendly names ("Ctrl", "K").
-fn key_names(keystroke: &str) -> Vec<String> {
+pub(crate) fn key_names(keystroke: &str) -> Vec<String> {
     keystroke
         .split('-')
         .map(|part| match part {
