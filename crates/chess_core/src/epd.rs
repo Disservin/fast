@@ -3,7 +3,7 @@
 //! `dm` (direct mate in N) and `id`.
 
 use shakmaty::{
-    CastlingMode, Chess, EnPassantMode, Move,
+    CastlingMode, Chess, EnPassantMode, Move, PositionError,
     fen::Fen,
     san::{San, SanPlus},
     uci::UciMove,
@@ -85,7 +85,10 @@ pub fn parse_epd(text: &str) -> Vec<EpdLine> {
     text.lines()
         .enumerate()
         .filter_map(|(index, raw)| {
-            let trimmed = raw.trim().trim_start_matches('\u{feff}');
+            // Some suites end lines with stray control characters such as NUL.
+            let trimmed = raw
+                .trim_matches(|ch: char| ch.is_whitespace() || ch.is_control())
+                .trim_start_matches('\u{feff}');
             if trimmed.is_empty() || trimmed.starts_with('#') || trimmed.starts_with('%') {
                 return None;
             }
@@ -100,10 +103,14 @@ pub fn parse_epd(text: &str) -> Vec<EpdLine> {
 
 /// Parses one EPD record.
 pub fn parse_record(line: &str) -> Result<EpdPosition, String> {
+    let line: String = line
+        .chars()
+        .map(|ch| if ch.is_control() { ' ' } else { ch })
+        .collect();
     let mut rest = line.trim();
     let mut fields = Vec::with_capacity(4);
     for _ in 0..4 {
-        let (field, tail) = split_token(rest);
+        let (field, tail) = split_field(rest);
         if field.is_empty() {
             return Err("needs board, side to move, castling and en passant fields".into());
         }
@@ -113,11 +120,11 @@ pub fn parse_record(line: &str) -> Result<EpdPosition, String> {
     // Some suites are full FENs followed by operations: take the two counters too.
     let mut halfmove = None;
     let mut fullmove = None;
-    let (first, after_first) = split_token(rest);
+    let (first, after_first) = split_field(rest);
     if let Ok(value) = first.parse::<u32>() {
         halfmove = Some(value);
         rest = after_first;
-        let (second, after_second) = split_token(rest);
+        let (second, after_second) = split_field(rest);
         if let Ok(value) = second.parse::<u32>() {
             fullmove = Some(value);
             rest = after_second;
@@ -151,8 +158,16 @@ pub fn parse_record(line: &str) -> Result<EpdPosition, String> {
         fullmove.unwrap_or(1).max(1)
     );
     let parsed: Fen = fen.parse().map_err(|err| format!("invalid FEN: {err}"))?;
+    // EPD records an en passant square after every double push, and some suites carry one
+    // that no pawn could have made. It only matters for an en passant capture, so a square
+    // that cannot be right is dropped rather than rejecting the position. Composed studies
+    // and fortresses may have more material or checks than a game could reach; engines
+    // search them all the same.
     let pos: Chess = parsed
         .into_position(CastlingMode::Standard)
+        .or_else(PositionError::ignore_invalid_ep_square)
+        .or_else(PositionError::ignore_too_much_material)
+        .or_else(PositionError::ignore_impossible_check)
         .map_err(|err| format!("illegal position: {err}"))?;
     let fen = Fen::from_position(&pos, EnPassantMode::Legal).to_string();
 
@@ -168,14 +183,32 @@ pub fn parse_record(line: &str) -> Result<EpdPosition, String> {
     for (opcode, operands) in operations {
         match opcode.as_str() {
             "bm" | "am" => {
-                if operands.is_empty() {
-                    return Err(format!("{opcode} has no moves"));
-                }
                 let mut moves = Vec::with_capacity(operands.len());
-                for text in &operands {
+                let mut mate_score = false;
+                for text in &join_promotions(&operands) {
+                    // Annotations written apart from the move, as in "am Nxb6 + ?".
+                    if text.chars().all(|ch| matches!(ch, '+' | '#' | '!' | '?')) {
+                        continue;
+                    }
+                    // Mate suites such as matetrack write "bm #3" for mate in 3 and "bm #-3"
+                    // for being mated in 3.
+                    if opcode == "bm"
+                        && let Some(moves) = text
+                            .strip_prefix('#')
+                            .and_then(|value| value.parse::<i32>().ok())
+                    {
+                        mate_score = true;
+                        if moves > 0 && record.mate.is_none() {
+                            record.mate = Some(moves.unsigned_abs());
+                        }
+                        continue;
+                    }
                     let mv = parse_move(&record.pos, text)
                         .ok_or_else(|| format!("{opcode} {text} is not a legal move here"))?;
                     moves.push(mv);
+                }
+                if moves.is_empty() && !mate_score {
+                    return Err(format!("{opcode} has no moves"));
                 }
                 if opcode == "bm" {
                     record.best = moves;
@@ -202,6 +235,21 @@ pub fn parse_record(line: &str) -> Result<EpdPosition, String> {
 /// A SAN move such as "Qxf7+" or "Nf3!", or a UCI move such as "e2e4".
 fn parse_move(pos: &Chess, text: &str) -> Option<Move> {
     let cleaned = text.trim_end_matches(['!', '?']);
+    // "c8N" for "c8=N": a promotion written without its equals sign.
+    let spelled;
+    let cleaned = match cleaned
+        .char_indices()
+        .rev()
+        .find(|(_, ch)| !matches!(ch, '+' | '#'))
+    {
+        Some((at, 'Q' | 'R' | 'B' | 'N'))
+            if at > 0 && matches!(cleaned.as_bytes()[at - 1], b'1' | b'8') =>
+        {
+            spelled = format!("{}={}", &cleaned[..at], &cleaned[at..]);
+            spelled.as_str()
+        }
+        _ => cleaned,
+    };
     if let Ok(san) = cleaned.parse::<SanPlus>()
         && let Ok(mv) = san.san.to_move(pos)
     {
@@ -213,6 +261,34 @@ fn parse_move(pos: &Chess, text: &str) -> Option<Move> {
         return Some(mv);
     }
     cleaned.parse::<UciMove>().ok()?.to_move(pos).ok()
+}
+
+/// Joins a promotion written with spaces, "f8 = Q", back into one move.
+fn join_promotions(operands: &[String]) -> Vec<String> {
+    let mut joined: Vec<String> = Vec::with_capacity(operands.len());
+    let mut iter = operands.iter();
+    while let Some(text) = iter.next() {
+        if text == "=" && !joined.is_empty() {
+            let piece = iter.next().map_or("", String::as_str);
+            if let Some(last) = joined.last_mut() {
+                last.push('=');
+                last.push_str(piece);
+            }
+        } else {
+            joined.push(text.clone());
+        }
+    }
+    joined
+}
+
+/// The next position field or move counter. A `;` ends it too, since some suites write
+/// "w - -; bm e4" with no space before the first operation.
+fn split_field(text: &str) -> (&str, &str) {
+    let text = text.trim_start();
+    match text.find(|ch: char| ch.is_whitespace() || ch == ';') {
+        Some(end) => (&text[..end], &text[end..]),
+        None => (text, ""),
+    }
 }
 
 fn split_token(text: &str) -> (&str, &str) {
@@ -228,9 +304,14 @@ fn split_operations(text: &str) -> Result<Vec<String>, String> {
     let mut operations = Vec::new();
     let mut current = String::new();
     let mut quoted = false;
+    let mut previous = ' ';
     for ch in text.chars() {
+        let starts_word = previous.is_whitespace() || previous == ';';
+        previous = ch;
         match ch {
-            '"' => {
+            // A quote opens a string only at the start of a word, so the inch mark in a
+            // note such as 00'40" stays plain text.
+            '"' if quoted || starts_word => {
                 quoted = !quoted;
                 current.push(ch);
             }
@@ -316,6 +397,63 @@ mod tests {
             parse_record("4k3/8/4K3/8/8/8/8/R7 w - - bm a1a8 Ra8#; hmvc 3; fmvn 40;").unwrap();
         assert_eq!(uci.best.len(), 2);
         assert_eq!(uci.fen, "4k3/8/4K3/8/8/8/8/R7 w - - 3 40");
+    }
+
+    #[test]
+    fn reads_loosely_written_suites() {
+        // The first operation right after the en passant field, spaced-out annotations and a
+        // trailing NUL, as in the fortress suites.
+        let glued = parse_epd(
+            "2k5/2p5/1q1p4/pPpPp1p1/N1P1Pp1p/P4PbP/KQ4P1/8 w - -; am Nxb6 + ? ; c1 diff=10\0\n",
+        );
+        let record = glued[0].parsed.as_ref().unwrap();
+        assert_eq!(record.avoid.len(), 1);
+        assert_eq!(record.san(&record.avoid[0]), "Nxb6+");
+        assert!(!glued[0].text.contains('\0'));
+
+        let counters = parse_record("4k3/8/4K3/8/8/8/8/R7 w - - 5 30; bm Ra8;").unwrap();
+        assert_eq!(counters.fen, "4k3/8/4K3/8/8/8/8/R7 w - - 5 30");
+
+        // An en passant square no double push could have made is dropped.
+        let ep = parse_record("4k3/8/8/8/8/8/8/R3K3 w - e6 bm Ra8;").unwrap();
+        assert_eq!(ep.fen, "4k3/8/8/8/8/8/8/R3K3 w - - 0 1");
+        // A real one is kept for the capture.
+        let real = parse_record("5K2/8/2qk4/2nPp3/3r4/6B1/B7/3R4 w - e6 bm dxe6#;").unwrap();
+        assert_eq!(real.san(&real.best[0]), "dxe6#");
+    }
+
+    #[test]
+    fn reads_mate_scores_written_as_best_moves() {
+        let mate = parse_record("5K2/8/2qk4/2nPp3/3r4/6B1/B7/3R4 w - e6 bm #1; PV: d5e6;").unwrap();
+        assert_eq!(mate.mate, Some(1));
+        assert!(mate.best.is_empty());
+        let mated =
+            parse_record("6Qk/PP1PP1np/1N1BN2P/7R/4B3/2Q5/P3KP2/6R1 b - - bm #-1;").unwrap();
+        assert_eq!(mated.mate, None);
+        let note = parse_record(
+            "rnb1k2r/pppp3p/6q1/7Q/8/8/PP2BKPP/R1B4R w kq - bm #11; 00'40\" (Gustav); c0 \"a; b\";",
+        )
+        .unwrap();
+        assert_eq!(note.mate, Some(11));
+        assert_eq!(note.comment.as_deref(), Some("a; b"));
+    }
+
+    #[test]
+    fn reads_promotions_written_loosely() {
+        let plain = parse_record("5nr1/2Pp2pk/3Pp1p1/4P1P1/6P1/5K2/8/7n w - - ; bm c8N").unwrap();
+        assert_eq!(plain.san(&plain.best[0]), "c8=N");
+        let spaced =
+            parse_record("8/2pPpP2/1P1qk1p1/1p4P1/1P4p1/1p1QK1P1/2PpPp2/8 w - -; bm f8 = Q;")
+                .unwrap();
+        assert!(spaced.san(&spaced.best[0]).starts_with("f8=Q"));
+    }
+
+    #[test]
+    fn accepts_composed_positions() {
+        let study = parse_record(
+            "k7/1p1p1p1p/pPpPpPpP/P1P1P1P1/1B1B1B1B/B1B1B1B1/1B1B1B1B/K1B1B1B1 w - - 0 1; draw",
+        );
+        assert!(study.is_ok());
     }
 
     #[test]
