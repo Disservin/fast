@@ -1,11 +1,11 @@
 //! OTB-style scoresheet rendering of a [`GameTree`].
 
-use std::rc::Rc;
+use std::{cell::Cell, rc::Rc};
 
 use chess_core::{GameTree, NodeId, Notation, display_san, nag_symbol};
 use gpui::{
-    App, Div, FontWeight, Hsla, IntoElement, MouseButton, MouseDownEvent, SharedString,
-    StatefulInteractiveElement, Window, div, prelude::*, px, rgb,
+    App, Bounds, Div, FontWeight, Hsla, IntoElement, MouseButton, MouseDownEvent, Pixels,
+    SharedString, StatefulInteractiveElement, Window, canvas, div, prelude::*, px, rgb,
 };
 
 use crate::{
@@ -25,6 +25,18 @@ pub struct ScoresheetProps {
     pub notation: Notation,
     pub on_select: SelectHandler,
     pub on_context: ContextHandler,
+    /// Where the current move was last drawn, so the sheet can be scrolled to keep it in view.
+    pub current_bounds: Rc<Cell<Option<Bounds<Pixels>>>>,
+}
+
+/// An invisible layer over the current move that records where it is drawn.
+fn bounds_probe(slot: &Rc<Cell<Option<Bounds<Pixels>>>>) -> impl IntoElement + use<> {
+    let slot = slot.clone();
+    canvas(move |bounds, _, _| slot.set(Some(bounds)), |_, _, _, _| {})
+        .absolute()
+        .top_0()
+        .left_0()
+        .size_full()
 }
 
 fn nag_text(nags: &[u8]) -> Option<String> {
@@ -62,8 +74,11 @@ fn move_cell(tree: &GameTree, id: NodeId, props: &ScoresheetProps) -> impl IntoE
                 .flex()
                 .items_center()
                 .rounded(px(4.))
+                .relative()
                 .when(current, |pill| {
-                    pill.bg(rgb(T.accent)).text_color(rgb(T.accent_fg))
+                    pill.bg(rgb(T.accent))
+                        .text_color(rgb(T.accent_fg))
+                        .child(bounds_probe(&props.current_bounds))
                 })
                 .when(!current, |pill| pill.hover(move |style| style.bg(hover)))
                 .child(text),
@@ -100,8 +115,11 @@ fn inline_move(
         .cursor_pointer()
         .px(px(2.))
         .rounded(px(3.))
+        .relative()
         .when(current, |pill| {
-            pill.bg(rgb(T.accent)).text_color(rgb(T.accent_fg))
+            pill.bg(rgb(T.accent))
+                .text_color(rgb(T.accent_fg))
+                .child(bounds_probe(&props.current_bounds))
         })
         .when(!current, |pill| pill.hover(|style| style.bg(rgb(T.hover))))
         .on_click(move |_, window, cx| select(id, window, cx))
@@ -395,8 +413,11 @@ pub fn scoresheet_inline(tree: &GameTree, props: &ScoresheetProps) -> impl IntoE
                         .text_color(rgb(depth_color(depth)))
                         .when(depth == 0, |el| el.font_weight(FontWeight::SEMIBOLD))
                         .when(depth > 0, |el| el.text_size(px(13.)))
+                        .relative()
                         .when(current, |pill| {
-                            pill.bg(rgb(T.accent)).text_color(rgb(T.accent_fg))
+                            pill.bg(rgb(T.accent))
+                                .text_color(rgb(T.accent_fg))
+                                .child(bounds_probe(&props.current_bounds))
                         })
                         .when(!current, |pill| pill.hover(|style| style.bg(rgb(T.hover))))
                         .on_click(move |_, window, cx| select(id, window, cx))

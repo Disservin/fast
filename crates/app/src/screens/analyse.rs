@@ -1,6 +1,10 @@
 //! Analyse: scoresheet, board with timeline, and the merged "Moves from here" table.
 
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::{
+    cell::{Cell, RefCell},
+    collections::HashMap,
+    rc::Rc,
+};
 
 use chess_core::{
     GameTree, Move, NodeId, Position, classify, display_san, parse_pgn, position_hash, write_pgn,
@@ -291,6 +295,10 @@ pub struct AnalyseScreen {
     /// The board toolbar's copy menu is open.
     copy_menu: bool,
     scoresheet_scroll: ScrollHandle,
+    /// Where the current move was drawn in the scoresheet.
+    scoresheet_current: Rc<Cell<Option<gpui::Bounds<Pixels>>>>,
+    /// The current move changed, so the scoresheet should scroll it into view once.
+    scoresheet_follow: Rc<Cell<bool>>,
     db_task: Option<Task<()>>,
     visible: bool,
     /// Show WDL when an engine requests or supplies it, regardless of window width.
@@ -457,6 +465,8 @@ impl AnalyseScreen {
             context_menu: None,
             copy_menu: false,
             scoresheet_scroll: ScrollHandle::new(),
+            scoresheet_current: Rc::default(),
+            scoresheet_follow: Rc::new(Cell::new(true)),
             db_task: None,
             visible: false,
             show_wdl: true,
@@ -620,7 +630,7 @@ impl AnalyseScreen {
         self.note
             .update(cx, |note, cx| note.set_value(text, window, cx));
         self.query_databases(cx);
-        self.scoresheet_scroll.scroll_to_item(0);
+        self.scoresheet_follow.set(true);
         cx.notify();
     }
 
@@ -1542,8 +1552,11 @@ impl AnalyseScreen {
         let notation = self.model.read(cx).config.board.notation;
         let select_this = this.clone();
         let context_this = this.clone();
+        // Only a move drawn in this frame counts; the start position has none.
+        self.scoresheet_current.set(None);
         let props = ScoresheetProps {
             current: self.current,
+            current_bounds: self.scoresheet_current.clone(),
             notation,
             on_select: Rc::new(move |id, window, cx| {
                 select_this.update(cx, |screen, cx| screen.jump(id, window, cx));
@@ -1638,6 +1651,7 @@ impl AnalyseScreen {
                             .py(px(4.))
                             .child(sheet),
                     )
+                    .child(self.scoresheet_follower())
                     .vertical_scrollbar(&self.scoresheet_scroll),
             )
             .when(self.editing_comment, |column| {
@@ -2496,6 +2510,49 @@ impl AnalyseScreen {
                             .child(rows),
                     ),
             )
+    }
+
+    /// After the scoresheet is laid out, scrolls just far enough to show the current move
+    /// when it has changed, and leaves the scroll position alone otherwise.
+    fn scoresheet_follower(&self) -> impl IntoElement + use<> {
+        let scroll = self.scoresheet_scroll.clone();
+        let current = self.scoresheet_current.clone();
+        let follow = self.scoresheet_follow.clone();
+        gpui::canvas(
+            move |_, window, _| {
+                if !follow.replace(false) {
+                    return;
+                }
+                let mut offset = scroll.offset();
+                let Some(pill) = current.get() else {
+                    // The start position: show the top of the sheet.
+                    if offset.y != px(0.) {
+                        scroll.set_offset(gpui::point(offset.x, px(0.)));
+                        window.refresh();
+                    }
+                    return;
+                };
+                let view = scroll.bounds();
+                // Keep a row of context above and below the current move.
+                let margin = px(28.);
+                let top = view.top() + margin;
+                let bottom = view.bottom() - margin;
+                let shift = if pill.top() < top {
+                    top - pill.top()
+                } else if pill.bottom() > bottom {
+                    bottom - pill.bottom()
+                } else {
+                    return;
+                };
+                let max = scroll.max_offset().y;
+                offset.y = (offset.y + shift).clamp(-max, px(0.));
+                scroll.set_offset(offset);
+                window.refresh();
+            },
+            |_, _, _, _| {},
+        )
+        .absolute()
+        .size_0()
     }
 
     /// Who found the selected line and how deep: the engine's icon and name, then the
