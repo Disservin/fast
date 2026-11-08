@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Fast is an offline, native chess workstation. Explore the interface and learn analysis, databases, opening training and engine tournaments."
+    />
+    <meta name="theme-color" content="#121614" />
+    <title>Fast — Chess workstation</title>
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <header class="topbar wrap">
+      <a class="wordmark" href="#"
+        >fast<span class="brand-square" aria-hidden="true"></span
+      ></a>
+      <nav aria-label="Main navigation">
+        <a href="#workspace">Interface</a><a href="./docs.html">Docs</a
+        ><a href="https://github.com/Disservin/fast">GitHub ↗</a>
+      </nav>
+    </header>
+    <main id="main" class="wrap">
+      <section class="intro">
+        <p class="eyebrow">Native chess workstation</p>
+        <h1>Your board.<br />Your analysis.</h1>
+        <div class="intro-bottom">
+          <p>
+            Analyse positions, manage games and train your repertoire.<br
+              class="desktop-break"
+            />
+            A desktop workspace built with Rust and GPUI. Runs offline.
+          </p>
+          <a class="button" href="https://github.com/Disservin/fast/releases"
+            >Get Fast <span aria-hidden="true">↗</span></a
+          >
+        </div>
+      </section>
+      <section id="workspace" aria-label="Explore the interface">
+        <div class="section-line">
+          <h2>The workspace</h2>
+          <span class="meta">01 / INTERFACE</span>
+        </div>
+        <div
+          class="screen-tabs"
+          role="tablist"
+          aria-label="Workspace screens"
+        ></div>
+        <div id="screen-panel" role="tabpanel" tabindex="0">
+          <a
+            id="screenshot-link"
+            class="screenshot-link"
+            target="_blank"
+            rel="noopener"
+            aria-label="Open full-size Analyse screenshot"
+            ><img
+              id="screenshot"
+              width="1600"
+              height="1000"
+              alt=""
+              fetchpriority="high"
+          /></a>
+          <div class="screen-caption">
+            <h3 id="screen-title"></h3>
+            <p id="screen-description"></p>
+            <a href="./docs.html#analyse" class="text-link">Read the docs ↗</a>
+          </div>
+        </div>
+      </section>
+      <div class="source-links">
+        <span>Project reference</span
+        ><a href="https://github.com/Disservin/fast#run-it"
+          >Build instructions ↗</a
+        ><a href="https://github.com/Disservin/fast/blob/master/ARCHITECTURE.md"
+          >Architecture ↗</a
+        ><a href="https://github.com/Disservin/fast/issues"
+          >Report an issue ↗</a
+        >
+      </div>
+    </main>
+    <footer class="wrap">
+      <a class="wordmark" href="#">fast</a
+      ><span>Rust + GPUI / Offline / Open source</span
+      ><a href="https://github.com/Disservin/fast">Source ↗</a>
+    </footer>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

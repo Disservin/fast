@@ -16,8 +16,9 @@ playing against engines. Offline and single-user. Built with Rust and
 
 ![Tournament: a fastchess match between two Stockfish setups with six live boards](docs/screenshots/tournament.png)
 
-The screenshots come from the demo profile (`cargo run --release -p fast -- --demo`). The
-Tournament one shows a real fastchess run in that profile.
+The screenshots use the Forest interface and green Moss board in the demo profile
+(`cargo run --release -p fast -- --demo`). Tournament shows the live overview of a real
+fastchess run in that profile.
 
 ## Workspace tabs
 
@@ -245,3 +246,9 @@ Thanks to [En Croissant](https://github.com/franciscoBSalgueiro/en-croissant) an
 contributors for a carefully handcrafted chess GUI with a rich set of features.
 Its project history and community requests were valuable resources for the implementation of this GUI.
 You can also find this acknowledgment in **Settings › Thanks**.
+
+## Documentation website
+
+The GUI guide and screenshot gallery live in [`website/`](website/README.md).
+Run `npm ci` and `npm run dev` there to preview it. The GitHub Pages workflow deploys
+changes from `master` after **Settings › Pages › Source** is set to **GitHub Actions**.

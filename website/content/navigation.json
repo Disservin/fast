@@ -1,0 +1,30 @@
+[
+  {
+    "title": "Getting started",
+    "directory": "getting-started",
+    "pages": ["installation", "engines", "import"]
+  },
+  {
+    "title": "Workspace",
+    "directory": "workspace",
+    "pages": [
+      "tabs",
+      "analyse",
+      "analysis-display",
+      "database",
+      "train",
+      "play",
+      "tournament"
+    ]
+  },
+  {
+    "title": "Reference",
+    "directory": "reference",
+    "pages": ["settings", "menus", "shortcuts", "opening-data", "updates"]
+  },
+  {
+    "title": "Project",
+    "directory": "project",
+    "pages": ["development", "thanks"]
+  }
+]

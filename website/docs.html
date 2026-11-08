@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Fast documentation: installation, engines, analysis, databases, repertoire training and keyboard shortcuts."
+    />
+    <meta name="theme-color" content="#121614" />
+    <title>Documentation — Fast</title>
+  </head>
+  <body class="docs-shell">
+    <a class="skip" href="#main">Skip to content</a>
+    <header class="topbar wrap docs-topbar">
+      <a class="wordmark" href="./"
+        >fast<span class="brand-square" aria-hidden="true"></span
+      ></a>
+      <nav aria-label="Main navigation">
+        <a href="./#workspace">Interface</a
+        ><a href="./docs.html" aria-current="page">Docs</a
+        ><a href="https://github.com/Disservin/fast">GitHub ↗</a>
+      </nav>
+      <div class="docs-search">
+        <label class="sr-only" for="docs-search">Search documentation</label
+        ><input
+          id="docs-search"
+          type="search"
+          placeholder="Search docs…"
+          aria-controls="docs-content"
+          aria-keyshortcuts="Control+k Meta+k"
+          autocomplete="off"
+        /><kbd aria-hidden="true">⌘ / Ctrl K</kbd>
+      </div>
+    </header>
+    <main id="main" class="wrap docs-layout">
+      <aside class="docs-sidebar">
+        <!-- docs-navigation -->
+        <a class="sidebar-source" href="https://github.com/Disservin/fast"
+          >View source ↗</a
+        >
+      </aside>
+      <div class="docs-reader">
+        <p
+          id="search-status"
+          class="small"
+          role="status"
+          aria-live="polite"
+        ></p>
+        <noscript
+          ><p>
+            Search requires JavaScript. All documentation is available below.
+          </p></noscript
+        >
+        <div id="docs-content"><!-- docs-content --></div>
+        <p id="no-results" hidden>No matching topics. Try another search.</p>
+      </div>
+    </main>
+    <footer class="wrap">
+      <a class="wordmark" href="./">fast</a
+      ><span>Rust + GPUI / Offline / Open source</span
+      ><a href="https://github.com/Disservin/fast">Source ↗</a>
+    </footer>
+    <script type="module" src="/src/docs.js"></script>
+  </body>
+</html>

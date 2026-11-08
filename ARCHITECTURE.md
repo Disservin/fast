@@ -298,3 +298,26 @@ selected games run in `cx.background_spawn`; replacing the pending UI task
 prevents an older query from replacing current suggestions. Arrow keys select a
 suggestion and Enter opens it in Analyse. Without a selected suggestion, Enter
 keeps the FEN-opening and database player-filter behavior.
+
+## Documentation website
+
+`website/` is a standalone static Vite site with no dependency on the Rust build or app
+runtime. It imports the six demo screenshots from `docs/screenshots/`. Vite builds two
+HTML entry points: the screenshot gallery (`index.html`) and documentation (`docs.html`).
+
+Guides are Markdown files under `website/content/`, organized by category.
+`content/navigation.json` defines category names and page order. The Vite plugin in
+`build/docs.js` uses Marked to render guides and inject their articles and sidebar into
+the docs HTML template during development and production builds. It validates titles,
+unique topic slugs and relative guide links, resolving those links to URL hashes.
+Guide titles and section headings have permalink anchors. Section IDs include the topic
+slug and disambiguate repeated headings; the browser reveals the containing guide before
+scrolling to a linked section.
+Content edits reload the development preview; Markdown parsing stays out of the browser.
+
+The docs use categorized sidebar links and hash-based topic navigation. Top-right search
+filters the rendered topics locally by all entered words; Ctrl/Cmd+K focuses it and Escape
+clears it. There is no backend, account state or database access. Vite emits relative asset
+paths so the build works under the GitHub Pages `/fast/` project path or a custom domain.
+`.github/workflows/pages.yml` tests and builds the site on relevant pull requests and deploys
+`website/dist` to GitHub Pages on pushes to `master` or manual runs.
