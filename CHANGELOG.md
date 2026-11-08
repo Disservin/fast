@@ -4,6 +4,7 @@ Settings › Changelog shows this file. Keep entries to one short line each.
 
 ## Since 0.1.0
 
+- Database Creation
 - Analyse and Play: Chess960 starts by position number or Random, with PGN and FEN support.
 - Analyse: Chess960 badges, castling controls and warnings for unsupported engines.
 - Database: preserve PGN comments, variations and NAGs, with details for dropped variations.

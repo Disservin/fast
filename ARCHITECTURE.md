@@ -220,7 +220,9 @@ The UI thread never blocks on engines or databases.
   source file is kept in `meta` for re-importing.
   Editing or deleting a game removes its position-index rows by recomputing its own hashes, so
   it never scans the whole `positions` table. A database's display name lives in its `meta`
-  table; duplicating uses `VACUUM INTO`.
+  table; duplicating uses `VACUUM INTO`. The Database sidebar can create an empty
+  database on a background task, reserving a unique file with `create_new`, then selecting
+  it and opening the inline name editor.
 - **Games table:** ids for the filter are loaded once and rows are paged on demand as
   `uniform_list` reveals them, so memory and render cost follow the viewport, not the row count.
   `Filter::sort` picks a fixed SQL expression per `SortKey` and always ends with `id` in the same

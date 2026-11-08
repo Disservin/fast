@@ -470,8 +470,8 @@ pub fn translate(language: Language, text: &str) -> &str {
             "Start self-play" => "Selbstspiel starten",
             "Game stopped" => "Partie abgebrochen",
             "your move" => "am Zug",
-            "No databases yet. Use Import to add a PGN." => {
-                "Noch keine Datenbanken. Fügen Sie mit Importieren eine PGN-Datei hinzu."
+            "No databases yet. Create one with New or import a PGN." => {
+                "Noch keine Datenbanken. Erstellen Sie eine mit Neu oder importieren Sie eine PGN-Datei."
             }
             "No engines yet. Add one in Settings › Engines." => {
                 "Noch keine Engines. Fügen Sie unter Einstellungen › Engines eine hinzu."
@@ -595,6 +595,8 @@ pub fn translate(language: Language, text: &str) -> &str {
             "Open a new tab" => "Neuen Tab öffnen",
             "Rename tab" => "Tab umbenennen",
             "Double-click to rename" => "Doppelklick zum Umbenennen",
+            "Create an empty database" => "Eine leere Datenbank erstellen",
+            "Could not create the database" => "Die Datenbank konnte nicht erstellt werden",
             "Rename database" => "Datenbank umbenennen",
             "Duplicate database" => "Datenbank duplizieren",
             "copy" => "Kopie",

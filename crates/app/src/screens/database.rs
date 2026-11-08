@@ -1967,6 +1967,47 @@ impl DatabaseScreen {
         .detach();
     }
 
+    /// Creates an empty database, selects it and opens its name for editing.
+    fn create_db(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let dir = self.model.read(cx).paths.databases_dir();
+        let task = cx.background_spawn(async move {
+            std::fs::create_dir_all(&dir)?;
+            for number in 1_u64.. {
+                let path = dir.join(format!("custom-{number}.sqlite"));
+                match std::fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(&path)
+                {
+                    Ok(_) => {}
+                    Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                    Err(err) => return Err(err.into()),
+                }
+                let name = ui::i18n::t("New database");
+                Database::open(&path)?.set_name(name)?;
+                return Ok::<_, anyhow::Error>(path);
+            }
+            unreachable!("an unused database file name")
+        });
+        cx.spawn_in(window, async move |this, cx| {
+            let result = task.await;
+            let _ = this.update_in(cx, |this, window, cx| match result {
+                Ok(path) => {
+                    this.model.update(cx, |model, _| model.refresh_databases());
+                    this.show_newest(path.clone(), window, cx);
+                    this.start_rename(path, window, cx);
+                    this.model
+                        .update(cx, |_, cx| cx.emit(ModelEvent::Databases));
+                }
+                Err(err) => this.model.toast(
+                    format!("{}: {err}", ui::i18n::t("Could not create the database")),
+                    cx,
+                ),
+            });
+        })
+        .detach();
+    }
+
     /// Copies a database to a new file next to it, named "<name> copy", and selects
     /// the copy.
     fn duplicate_db(&mut self, path: PathBuf, cx: &mut Context<Self>) {
@@ -2477,7 +2518,9 @@ impl DatabaseScreen {
                     .py(px(8.))
                     .text_size(px(13.))
                     .text_color(rgb(T.muted))
-                    .child(ui::i18n::t("No databases yet. Use Import to add a PGN.")),
+                    .child(ui::i18n::t(
+                        "No databases yet. Create one with New or import a PGN.",
+                    )),
             );
         }
         let reached = self.reached;
@@ -2628,6 +2671,15 @@ impl DatabaseScreen {
                     .items_center()
                     .mb(px(5.))
                     .child(section_label(ui::i18n::t("Databases")))
+                    .child({
+                        let create_this = this.clone();
+                        btn("new-database", "New")
+                            .mini()
+                            .tooltip(ui::i18n::t("Create an empty database"))
+                            .on_click(move |window, cx| {
+                                create_this.update(cx, |screen, cx| screen.create_db(window, cx));
+                            })
+                    })
                     .child({
                         let import_this = this.clone();
                         btn("import", ui::i18n::t("Import"))
