@@ -299,6 +299,16 @@ impl TrainScreen {
             .as_ref()
             .and_then(|drill| Self::position_for(&drill.path))
             .unwrap_or_else(|| (Chess::default(), None));
+        // The opponent's move that leads to the question sounds like a move on the board.
+        if self.visible
+            && let Some(mv) = last
+        {
+            self.model
+                .read(cx)
+                .config
+                .board
+                .play_move_sound(&mv, &pos, None);
+        }
         let last = last.and_then(|mv| mv.from().map(|from| (from, mv.to())));
         self.board.update(cx, |board, cx| {
             board.set_position(pos, last, false, cx);
@@ -355,6 +365,7 @@ impl TrainScreen {
                 self.evidence().failures += 1;
             }
             self.phase = Phase::Wrong;
+            self.model.read(cx).config.board.play_wrong_sound();
             self.message = Some(if prepared {
                 format!("{played} is a valid repertoire move. This exercise asks for another prepared reply. Try again.").into()
             } else {
@@ -872,6 +883,7 @@ impl TrainScreen {
                     ),
             )
             .child(div().size(board_size).flex_none().child(self.board.clone()))
+            .children(self.render_message(board_size))
             .child(
                 h_flex()
                     .mt(px(14.))
@@ -923,17 +935,40 @@ impl TrainScreen {
                         this.clone(),
                     )),
             )
-            .children(self.message.clone().map(|message| {
-                div()
-                    .mt(px(10.))
-                    .text_size(px(13.))
-                    .text_color(rgb(if self.phase == Phase::Wrong {
-                        T.warn
-                    } else {
-                        T.fg_2
-                    }))
-                    .child(message)
-            }))
+    }
+
+    /// What the trainer says about the last answer, in a box right under the board: a
+    /// wrong move gets a `warn` outline and a cross, a right one `good` and a tick. The
+    /// text itself stays in `fg` so it reads well in every palette.
+    fn render_message(&self, width: gpui::Pixels) -> Option<impl IntoElement + use<>> {
+        let message = self.message.clone()?;
+        let (outline, mark) = match self.phase {
+            Phase::Wrong => (T.warn, Some("icons/x.svg")),
+            Phase::Correct => (T.good, Some("icons/check.svg")),
+            Phase::Asking | Phase::Revealed => (T.border_strong, None),
+        };
+        Some(
+            h_flex()
+                .mt(px(12.))
+                .max_w(width)
+                .gap(px(8.))
+                .px(px(12.))
+                .py(px(9.))
+                .rounded(px(6.))
+                .bg(rgb(T.surface))
+                .border_1()
+                .border_color(rgb(outline))
+                .children(mark.map(|path| ui::widgets::icon(path, px(16.), outline)))
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .text_size(px(14.))
+                        .font_weight(FontWeight::MEDIUM)
+                        .text_color(rgb(T.fg))
+                        .child(message),
+                ),
+        )
     }
 
     fn render_leaks(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {

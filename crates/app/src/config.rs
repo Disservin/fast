@@ -162,6 +162,15 @@ impl BoardConfig {
         crate::sound::play_move(self.sound_profile, self.sound_level(), mv, after, end);
     }
 
+    /// The cue for a wrong answer in training, at the saved loudness.
+    pub fn play_wrong_sound(&self) {
+        crate::sound::play(
+            self.sound_profile,
+            &[crate::sound::Sound::Wrong],
+            self.sound_level(),
+        );
+    }
+
     /// A single move sound, to preview the profile and loudness.
     pub fn play_sample(&self) {
         crate::sound::play(

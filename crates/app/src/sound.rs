@@ -25,6 +25,8 @@ pub enum Sound {
     Castle,
     Check,
     GameEnd,
+    /// A move that is not the answer, in training. Every profile uses the same cue.
+    Wrong,
 }
 
 /// Persisted sound character, shared by all move events and previews.
@@ -306,6 +308,7 @@ fn lichess(profile: SoundProfile, sound: Sound) -> Vec<f32> {
         Sound::Capture => 1,
         Sound::Check => 2,
         Sound::GameEnd => 3,
+        Sound::Wrong => return synthesise(Sound::Wrong),
     };
     DECODED[set][index]
         .get_or_init(|| decode(SETS[set][index]))
@@ -340,6 +343,7 @@ fn classic(sound: Sound) -> Vec<f32> {
         }
         // The piece impact already announces check; avoid adding electronic tones.
         Sound::Check => Vec::new(),
+        Sound::Wrong => synthesise(Sound::Wrong),
         Sound::GameEnd => RESET
             .get_or_init(|| decode(include_bytes!("../../../assets/sounds/classic/reset.pcm")))
             .clone(),
@@ -348,6 +352,9 @@ fn classic(sound: Sound) -> Vec<f32> {
 
 /// Alternate profiles use distinct envelopes and timbres, including event cues.
 pub fn synthesise_profile(profile: SoundProfile, sound: Sound) -> Vec<f32> {
+    if sound == Sound::Wrong {
+        return synthesise(sound);
+    }
     match profile {
         SoundProfile::Classic => return classic(sound),
         SoundProfile::Wood => return synthesise(sound),
@@ -362,6 +369,7 @@ pub fn synthesise_profile(profile: SoundProfile, sound: Sound) -> Vec<f32> {
         Sound::Castle => 200,
         Sound::Check => 200,
         Sound::GameEnd => 650,
+        Sound::Wrong => 260,
     };
     let mut out = vec![0.0; ms(length)];
     let pitch = match sound {
@@ -370,6 +378,7 @@ pub fn synthesise_profile(profile: SoundProfile, sound: Sound) -> Vec<f32> {
         Sound::Castle => 275.0,
         Sound::Check => 440.0,
         Sound::GameEnd => 330.0,
+        Sound::Wrong => 233.0,
     };
     match profile {
         SoundProfile::Soft => {
@@ -434,6 +443,7 @@ pub fn synthesise(sound: Sound) -> Vec<f32> {
         Sound::Castle => ms(170),
         Sound::Check => ms(160),
         Sound::GameEnd => ms(900),
+        Sound::Wrong => ms(280),
     };
     let mut out = vec![0.0f32; length];
     match sound {
@@ -456,6 +466,11 @@ pub fn synthesise(sound: Sound) -> Vec<f32> {
         Sound::GameEnd => {
             tone(&mut out, 0, 261.63, 0.3, 0.25);
             tone(&mut out, ms(160), 349.23, 0.3, 0.35);
+        }
+        // Two soft, falling notes: clearly "no", without a harsh buzz.
+        Sound::Wrong => {
+            tone(&mut out, 0, 311.13, 0.26, 0.06);
+            tone(&mut out, ms(110), 233.08, 0.30, 0.09);
         }
     }
     out.iter_mut().for_each(|s| *s *= LEVEL);
@@ -569,6 +584,7 @@ mod tests {
             (Sound::Castle, "castle"),
             (Sound::Check, "check"),
             (Sound::GameEnd, "game-end"),
+            (Sound::Wrong, "wrong"),
         ] {
             let samples: Vec<i16> = synthesise(sound)
                 .iter()
@@ -638,6 +654,19 @@ mod tests {
     }
 
     #[test]
+    fn every_profile_plays_the_same_wrong_answer_cue() {
+        let cue = synthesise(Sound::Wrong);
+        assert!(cue.iter().any(|sample| sample.abs() > 0.1));
+        for profile in SoundProfile::ALL {
+            assert_eq!(
+                synthesise_profile(profile, Sound::Wrong),
+                cue,
+                "{profile:?}"
+            );
+        }
+    }
+
+    #[test]
     fn darker_profiles_keep_all_event_cues_in_the_low_register() {
         for profile in [SoundProfile::DeepWood, SoundProfile::Thud] {
             for sound in [
@@ -694,6 +723,7 @@ mod tests {
             Sound::Castle,
             Sound::Check,
             Sound::GameEnd,
+            Sound::Wrong,
         ] {
             let samples = synthesise(sound);
             let peak = samples.iter().fold(0.0f32, |max, s| max.max(s.abs()));
