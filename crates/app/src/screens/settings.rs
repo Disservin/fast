@@ -1841,6 +1841,19 @@ impl SettingsScreen {
         cx.notify();
     }
 
+    /// Stops listening to the install at once. The worker may be blocked on the network
+    /// for a while; it sees the flag at its next step, and its staging folder is removed
+    /// without anything being installed.
+    fn cancel_install(&mut self, cx: &mut Context<Self>) {
+        let Some(cancel) = self.install_cancel.take() else {
+            return;
+        };
+        cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+        self.install_task = None;
+        self.install_status = Some(ui::i18n::t("Download cancelled.").into());
+        cx.notify();
+    }
+
     fn render_catalog(&self, cx: &mut Context<Self>) -> Div {
         let mut body = v_flex()
             .gap(px(12.))
@@ -1888,10 +1901,12 @@ impl SettingsScreen {
         if let Some(status) = &self.install_status {
             body = body.child(div().text_size(px(13.)).child(status.clone()));
         }
-        if let Some(cancel) = self.install_cancel.clone() {
+        if self.install_cancel.is_some() {
+            let this = cx.entity();
             body = body.child(
-                btn("cancel-engine-install", ui::i18n::t("Cancel download"))
-                    .on_click(move |_, _| cancel.store(true, std::sync::atomic::Ordering::Relaxed)),
+                btn("cancel-engine-install", ui::i18n::t("Cancel download")).on_click(
+                    move |_, cx| this.update(cx, |screen, cx| screen.cancel_install(cx)),
+                ),
             );
         }
         panel().p(px(16.)).child(body)

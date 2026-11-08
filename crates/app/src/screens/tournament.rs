@@ -1009,9 +1009,13 @@ impl TournamentScreen {
         cx.notify();
     }
 
+    /// Stops listening to the download at once; the worker notices the flag at its next
+    /// step and installs nothing.
     fn cancel_download(&mut self, cx: &mut Context<Self>) {
-        if let Some(cancel) = &self.install_cancel {
+        if let Some(cancel) = self.install_cancel.take() {
             cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+            self.install_task = None;
+            self.install_status = Some(ui::i18n::t("Download cancelled.").into());
         }
         self.pending = None;
         cx.notify();

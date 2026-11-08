@@ -251,6 +251,7 @@ pub fn translate(language: Language, text: &str) -> &str {
             "Use" => "Verwenden",
             "Download now" => "Jetzt herunterladen",
             "Cancel download" => "Download abbrechen",
+            "Download cancelled." => "Download abgebrochen.",
             "Command copied" => "Befehl kopiert",
             "Engine executable" => "Engine-Programm",
             "Decisive" => "Entschieden",
