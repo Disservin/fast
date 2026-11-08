@@ -408,6 +408,8 @@ pub struct SavedWindow {
 #[serde(default)]
 pub struct PanelSizes {
     pub scoresheet_width: u32,
+    /// The Analyse scoresheet is folded to a narrow strip, giving its width to the board.
+    pub scoresheet_collapsed: bool,
     /// None keeps the board fitted to the available space.
     pub board_size: Option<u32>,
 }
@@ -416,6 +418,7 @@ impl Default for PanelSizes {
     fn default() -> Self {
         Self {
             scoresheet_width: 300,
+            scoresheet_collapsed: false,
             board_size: None,
         }
     }
@@ -675,6 +678,7 @@ mod tests {
         });
         config.panels = PanelSizes {
             scoresheet_width: 360,
+            scoresheet_collapsed: false,
             board_size: Some(480),
         };
         config.engines.push(EngineConfig {

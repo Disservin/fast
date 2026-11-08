@@ -562,6 +562,8 @@ pub fn translate(language: Language, text: &str) -> &str {
                 "Ihre Auswertungen werden ebenfalls gelöscht. Das lässt sich nicht rückgängig machen."
             }
             "Unsaved changes" => "Ungespeicherte Änderungen",
+            "Hide the scoresheet" => "Partieformular ausblenden",
+            "Show the scoresheet" => "Partieformular einblenden",
             "Saved in this database" => "In dieser Datenbank gespeichert",
             "Save moves, comments and variations to the database (Ctrl+S)" => {
                 "Züge, Kommentare und Varianten in der Datenbank speichern (Strg+S)"

@@ -259,6 +259,9 @@ use panels::{LOG_POLL, LogSelection, PvView};
 
 type MenuHandler = Box<dyn Fn(&mut Window, &mut gpui::App)>;
 
+/// Width of the folded scoresheet.
+const SCORESHEET_RAIL: f32 = 44.;
+
 /// The stored game this board was opened from, so saving writes the changes back to it.
 #[derive(Clone, Debug)]
 pub struct DbGame {
@@ -1658,6 +1661,55 @@ impl AnalyseScreen {
         )
     }
 
+    /// Folds the scoresheet to a narrow strip or opens it again, and remembers it.
+    fn set_scoresheet_collapsed(&mut self, collapsed: bool, cx: &mut Context<Self>) {
+        self.model.update(cx, |model, cx| {
+            model.config.panels.scoresheet_collapsed = collapsed;
+            model.schedule_config_save(cx);
+        });
+        cx.notify();
+    }
+
+    /// The folded scoresheet: a button to open it again and, for a game from a
+    /// database, a Save button that shows when there are unsaved changes.
+    fn render_scoresheet_rail(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let this = cx.entity();
+        let expand = this.clone();
+        v_flex()
+            .w_full()
+            .h_full()
+            .items_center()
+            .pt(px(12.))
+            .gap(px(6.))
+            .bg(rgb(T.surface))
+            .border_r_1()
+            .border_color(rgb(T.border))
+            .child(
+                icon_btn("sheet-expand", "icons/chevron-right.svg")
+                    .compact()
+                    .tooltip(ui::i18n::t("Show the scoresheet"))
+                    .on_click(move |_, cx| {
+                        expand.update(cx, |screen, cx| screen.set_scoresheet_collapsed(false, cx))
+                    }),
+            )
+            .when_some(self.db_game.as_ref(), |rail, origin| {
+                let dirty = self.db_game_dirty();
+                let tip = if dirty {
+                    format!("{}: {}", origin.name, ui::i18n::t("Unsaved changes"))
+                } else {
+                    format!("{}: {}", origin.name, ui::i18n::t("Saved in this database"))
+                };
+                rail.child(
+                    icon_btn("sheet-rail-save", "icons/database.svg")
+                        .compact()
+                        .when(dirty, |button| button.dot(T.warn))
+                        .disabled(!dirty)
+                        .tooltip(tip)
+                        .on_click(move |_, cx| this.update(cx, |screen, cx| screen.save_game(cx))),
+                )
+            })
+    }
+
     /// Under the scoresheet header while the game came from a database: which database,
     /// whether there are unsaved changes, a Save button, and the review findings.
     fn render_db_game_strip(&self, cx: &mut Context<Self>) -> Option<gpui::AnyElement> {
@@ -1835,7 +1887,17 @@ impl AnalyseScreen {
                             .justify_between()
                             .mb(px(9.))
                             .child(section_label("Scoresheet"))
-                            .child(style_toggle),
+                            .child(h_flex().gap(px(4.)).child(style_toggle).child({
+                                let this = this.clone();
+                                icon_btn("sheet-collapse", "icons/chevron-left.svg")
+                                    .mini()
+                                    .tooltip(ui::i18n::t("Hide the scoresheet"))
+                                    .on_click(move |_, cx| {
+                                        this.update(cx, |screen, cx| {
+                                            screen.set_scoresheet_collapsed(true, cx)
+                                        })
+                                    })
+                            })),
                     )
                     .child(
                         div()
@@ -3342,9 +3404,14 @@ impl Render for AnalyseScreen {
             .update(cx, |board, cx| board.set_move_tag(tag, cx));
         let viewport = window.viewport_size();
         let panels = self.model.read(cx).config.panels.clone();
-        let scoresheet_width = (panels.scoresheet_width as f32)
-            .clamp(180., 480.)
-            .min((f32::from(viewport.width) - 720.).max(180.));
+        let collapsed = panels.scoresheet_collapsed;
+        let scoresheet_width = if collapsed {
+            SCORESHEET_RAIL
+        } else {
+            (panels.scoresheet_width as f32)
+                .clamp(180., 480.)
+                .min((f32::from(viewport.width) - 720.).max(180.))
+        };
         // The side column keeps room for its table, so the board gives way first.
         self.scale = window.scale_factor();
         let board_size = ui::board::snap_board_size(
@@ -3355,7 +3422,14 @@ impl Render for AnalyseScreen {
             self.scale,
         );
         self.show_wdl = self.live.read(cx).wdl_engine().is_some();
-        let scoresheet = v_flex().h_full().child(self.render_scoresheet(cx));
+        let scoresheet = if collapsed {
+            self.render_scoresheet_rail(cx).into_any_element()
+        } else {
+            v_flex()
+                .h_full()
+                .child(self.render_scoresheet(cx))
+                .into_any_element()
+        };
         let board_column = self.render_board_column(board_size, cx);
         let table = self.render_moves_table(cx);
         let preview = self.render_line_preview(cx);
@@ -3391,10 +3465,12 @@ impl Render for AnalyseScreen {
                         },
                     ))
                     .child(scoresheet)
-                    .child(panel_resize_handle(
-                        "scoresheet-resize",
-                        AnalysisPanel::Scoresheet,
-                    )),
+                    .when(!collapsed, |panel| {
+                        panel.child(panel_resize_handle(
+                            "scoresheet-resize",
+                            AnalysisPanel::Scoresheet,
+                        ))
+                    }),
             )
             .child(
                 div()
