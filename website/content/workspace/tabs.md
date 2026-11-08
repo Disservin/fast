@@ -2,7 +2,7 @@
 
 ## Open tabs
 
-Click **+** in the tab bar to choose a view: Analyse, Play, Database or Tournament. Each tab is
+Click **+** in the tab bar to choose a view: Analyse, Play, Database, Tournament or Test positions. Each tab is
 independent and keeps its own position and game.
 
 New Analyse tabs also open when you:
@@ -16,7 +16,8 @@ Train and Settings each have a single shared tab.
 
 - Analysis runs only in the selected tab.
 - Games in other Play tabs keep their clocks running.
-- Every open game saves automatically and is back in its tab after a restart.
+- Analyse games save automatically and restore after a restart. Unfinished engine games reopen
+  in Analyse without restarting the engine.
 
 ## Tab shortcuts
 

@@ -18,7 +18,7 @@ cargo build --release -p fast
 
 `cargo run -p fast -- --demo` starts a separate generated profile with every screen filled in and
 scripted engine output. Use it to look at UI changes without touching real data.
-`--screen analyse|database|train|play|settings[:engines|board|databases|shortcuts]` picks the
+`--screen analyse|database|train|play|tournament|test-positions|settings[:engines|board|databases|shortcuts|data]` picks the
 first screen.
 
 ## Code layout

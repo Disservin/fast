@@ -4,7 +4,7 @@ A standalone product backlog for the native, offline chess workstation. Prioriti
 
 ## First: improve the daily workspace
 
-1. **Add — workspace restoration and recent games.** Remember the active screen, open study documents, selected positions, orientation and panel sizes. Restore saved engine selections, with an explicit preference controlling whether computation restarts. Keep recent games easy to find.
+1. **Change — extend workspace restoration and recent games.** Tabs, names, the active tab, recovered games and opening-tree database choices already restore across restarts. Extend restoration to selected positions and saved engine selections, with an explicit preference controlling whether computation restarts. Keep recent games easy to find.
 2. **Change — make navigation and editing predictable.** Add a clear branch picker, searchable move/variation navigation and inline comment editing. Keep text-entry focus separate from move-navigation shortcuts. Offer undo for destructive edits and a way to return from exploratory analysis to the original game.
 3. **Change — make layouts work across window sizes.** Save panel sizes per screen, provide a reset action, and allow panels to stack when space is tight. Keep the board square, tables aligned and essential actions reachable with keyboard navigation and visible focus.
 4. **Change — make PGN imports tolerant and transparent.** Accept unknown ratings, common encoding artifacts and valid annotation variants. Report imported, skipped and failed games with useful diagnostics; cancellation must retain committed work and report partial completion accurately.
@@ -21,13 +21,13 @@ A standalone product backlog for the native, offline chess workstation. Prioriti
 10. **Add — opening and player reports.** Summarize candidate moves, results, opponent strength and trends from local databases. Show sample sizes, filters and the underlying games so users can assess the statistics.
 11. **Add — model-game ranking and approximate structure search.** Exact pawn-structure and material searches now use an optional local index and open matching positions in Analyse. Extend this foundation with representative-game ranking, clearly labelled approximate matches and opening results in training.
 12. **Add — local endgame guidance.** Display tablebase outcomes and distance-to-zeroing information when suitable local files are configured. Explain unavailable coverage and distinguish theoretical results from practical fifty-move-rule outcomes.
-13. **Add — engine opening books.** Configure books per engine, book depth and move variety for engine practice. Practice games already use separate tabs and have recovery snapshots; workspace restoration across app restarts remains on the workspace roadmap item.
+13. **Add — engine opening books.** Configure books per engine, book depth and move variety for engine practice. Practice games already use separate tabs and have recovery snapshots; unfinished games reopen in Analyse after a restart.
 14. **Add — persistent exploration trees.** Let users queue candidate positions, deepen selected branches and resume exploration across sessions. Make CPU, memory and disk budgets explicit. Evaluate parallel workers only after measuring throughput and preserving a clear analysis-quality policy.
 
 ## Release readiness
 
 15. **Change — validate native distribution on each supported platform.** Exercise installation, first launch, file dialogs, audio, engine startup, high-DPI layout and keyboard navigation on Windows, macOS and Linux. Linux development checks exist; complete equivalent checks on Windows and macOS and publish clear compatibility requirements, signed packages where available and a manual offline update path.
-16. **Add — localization support when the core workflow is stable.** Move visible strings into translation resources and localize dates, numbers and review intervals. Keep notation and shortcuts readable across languages and longer labels.
+16. **Change — complete localization coverage.** English and German labels already use the shared translation catalog. Translate remaining visible strings and localize dates, numbers and review intervals. Keep notation and shortcuts readable across languages and longer labels.
 
 ## Existing foundations to extend
 
@@ -37,8 +37,8 @@ The source shows several useful boundaries for the work above:
 
 - Live analysis now has durable records keyed by full game move history, engine identity/options and search limit. Stale records are labeled and can be explicitly replaced.
 - Batch review can be limited by time, depth or nodes; it honors custom starting positions and resumes from completed per-position scores.
-- Repertoire analysis has a position index, while practice cards, drill queues, gap traversal and grading remain attached to move-tree paths.
-- Practice currently compares the answer with one queued move, so feedback needs to distinguish a different prepared reply from an unknown move.
+- Repertoire lookup, coverage, drills, gaps and leak grouping share position identity across transpositions.
+- Any-reply practice accepts prepared alternatives; every-reply practice asks for the queued answer and distinguishes other prepared moves from unknown replies.
 - Configuration and repertoire persistence now use atomic replacement and retain a previous valid copy; continue extending those safeguards when adding new persistent data.
 
 Fast remains an offline, single-user desktop application. The proposed work uses local engines, databases and user-controlled files. Like online lookups and engine downloads, downloading the user's own Lichess or Chess.com games connects only when the user asks. Network accounts, cloud synchronization, online play, mobile clients and a plugin platform would require a separate scope decision.

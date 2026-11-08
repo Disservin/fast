@@ -9,7 +9,7 @@
 | `db` | no | One SQLite file per database, streaming PGN import, filters, position search, editing and deleting games, copying a database, notes |
 | `trainer` | no | Repertoire tree, SM-2 scheduler, leak and gap detection |
 | `ui` | yes | Design tokens and shared views: `BoardView`, scoresheet, timeline, buttons |
-| `fast` (`crates/app`) | yes | Window, routing, shortcuts, the five screens, configuration, demo mode |
+| `fast` (`crates/app`) | yes | Window, routing, shortcuts, screens, configuration, demo mode |
 
 The four domain crates are pure and unit-tested, including a fake UCI engine for process tests
 (`crates/engine/tests`).
@@ -249,10 +249,8 @@ needless frames: the board positions pieces proportionally so a resize needs onl
 - **WSLg frame rate:** measured at 25–28 fps at 1440×900, including through an RTX 4090 via Mesa's
   D3D12 driver, so a faster renderer does not lift it there.
 
-- **Language** only offers English; Light and Match system themes are disabled, as planned.
 - **Tablebases:** `SyzygyPath` is passed to engines, but there is no built-in WDL/DTZ badge, so
-  `shakmaty-syzygy` is not a dependency yet.
-- **Check for update** cannot check anything, since Fast is offline; it says so.
+  local tablebase probing is not exposed in Analyse.
 - The Line preview explanation is a hook with no content outside demo mode.
 
 ## Recoverable work and study

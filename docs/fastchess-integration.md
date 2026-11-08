@@ -83,12 +83,13 @@ any tournament resumes exactly; only warn when stats are actually dropped.
 
 ## 6. Map games in the PGN to game ids
 
-**Today:** fastchess writes games to the PGN in finishing order, and the `Round` tag is the
+**Without the event stream:** fastchess writes games to the PGN in finishing order, and the `Round` tag is the
 pairing round, so two games share it. Fast relies on the k-th `Finished game` line matching
 the k-th game in the PGN (offset by games already in the file when resuming), which breaks if
 anything else appends to the file.
 
-**Wish:** a `[GameId "12"]` tag (and the total game index), or the PGN byte offset /
+**Status:** event-stream builds supply `[GameId]` tags, which Fast uses to open live games.
+For builds without those tags, the remaining wish is a stable game id or the PGN byte offset /
 `pgn_index` in the finished-game event.
 
 ## 7. Validate and normalise without playing

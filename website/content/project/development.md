@@ -6,8 +6,10 @@ For how the code is organised, see
 ## Checks
 
 ```sh
-cargo test --workspace
+cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+cargo build --release -p fast
 python3 scripts/third_party.py   # after changing dependencies
 ```
 

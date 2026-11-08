@@ -23,7 +23,7 @@ cargo run --release -p fast -- --demo  # separate generated profile, scripted en
 ```
 
 `--demo` uses its own `fast-demo` directories and needs no engines installed.
-`--screen analyse|database|train|play|settings[:engines|board|databases|shortcuts|data]`
+`--screen analyse|database|train|play|tournament|test-positions|settings[:engines|board|databases|shortcuts|data]`
 picks the first screen.
 
 Under WSLg, if the window fails to open, set `XDG_RUNTIME_DIR=/mnt/wslg/runtime-dir` or

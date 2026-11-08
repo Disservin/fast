@@ -23,7 +23,7 @@ cargo run --release -p fast -- --screen settings:engines
 
 | Value                                                             | Opens              |
 | ----------------------------------------------------------------- | ------------------ |
-| `analyse`, `database`, `train`, `play`, `settings`                | That tab           |
+| `analyse`, `database`, `train`, `play`, `tournament`, `test-positions`, `settings`                | That tab           |
 | `settings:engines`, `:board`, `:databases`, `:shortcuts`, `:data` | That settings page |
 
 ## First steps
