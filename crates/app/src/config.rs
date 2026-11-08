@@ -216,8 +216,8 @@ fn primary(key: &str) -> String {
     format!("{modifier}-{key}")
 }
 
-/// The key that moves to the neighbouring tab: Alt plus an arrow, or Cmd+Shift plus a
-/// bracket on macOS, where Cmd+Tab belongs to the system.
+/// The second key for the neighbouring tab: Alt plus an arrow, or Cmd+Shift plus a
+/// bracket on macOS.
 fn cycle_key(arrow: &str, bracket: &str) -> String {
     if cfg!(target_os = "macos") {
         format!("cmd-shift-{bracket}")
@@ -239,19 +239,14 @@ fn history_key(bracket: &str) -> String {
 /// Shortcuts whose default changed. A saved key that still equals the old default is
 /// moved to the new one, so users who never rebound it get the new behaviour.
 fn replaced_defaults() -> Vec<(&'static str, String)> {
-    let old_history = |arrow: &str, bracket: &str| {
-        if cfg!(target_os = "macos") {
-            format!("cmd-{bracket}")
-        } else {
-            format!("alt-{arrow}")
-        }
-    };
-    vec![
-        ("next_tab", primary("tab")),
-        ("prev_tab", primary("shift-tab")),
-        ("tab_back", old_history("left", "[")),
-        ("tab_forward", old_history("right", "]")),
-    ]
+    if cfg!(target_os = "macos") {
+        Vec::new()
+    } else {
+        vec![
+            ("tab_back", "alt-left".to_owned()),
+            ("tab_forward", "alt-right".to_owned()),
+        ]
+    }
 }
 
 /// Default keystrokes per action name. Users can rebind them in Settings; an empty
@@ -289,8 +284,10 @@ pub fn default_shortcuts() -> BTreeMap<String, String> {
         ("new_tab", primary("t")),
         ("close_tab", primary("w")),
         ("reopen_tab", primary("shift-t")),
-        ("next_tab", cycle_key("right", "]")),
-        ("prev_tab", cycle_key("left", "[")),
+        ("next_tab", primary("tab")),
+        ("prev_tab", primary("shift-tab")),
+        ("next_tab_alt", cycle_key("right", "]")),
+        ("prev_tab_alt", cycle_key("left", "[")),
         ("tab_back", history_key("[")),
         ("tab_forward", history_key("]")),
         ("search", primary("k")),

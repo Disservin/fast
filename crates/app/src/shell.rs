@@ -158,6 +158,8 @@ pub fn action_for(name: &str) -> Option<(Box<dyn Action>, &'static str)> {
         "reopen_tab" => (Box::new(ReopenTab), TAB_CONTEXT),
         "next_tab" => (Box::new(NextTab), TAB_CONTEXT),
         "prev_tab" => (Box::new(PrevTab), TAB_CONTEXT),
+        "next_tab_alt" => (Box::new(NextTab), TAB_CONTEXT),
+        "prev_tab_alt" => (Box::new(PrevTab), TAB_CONTEXT),
         "tab_back" => (Box::new(TabBack), TAB_CONTEXT),
         "tab_forward" => (Box::new(TabForward), TAB_CONTEXT),
         "open_game" => (Box::new(OpenGame), SHORTCUT_CONTEXT),

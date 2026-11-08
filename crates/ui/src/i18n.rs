@@ -260,6 +260,8 @@ pub fn translate(language: Language, text: &str) -> &str {
             "Fewer lines" => "Weniger Varianten",
             "Next tab" => "Nächster Tab",
             "Previous tab" => "Vorheriger Tab",
+            "Next tab, second key" => "Nächster Tab, zweite Taste",
+            "Previous tab, second key" => "Vorheriger Tab, zweite Taste",
             "Go back" => "Zurück",
             "Go forward" => "Vorwärts",
             "Navigation" => "Navigation",
