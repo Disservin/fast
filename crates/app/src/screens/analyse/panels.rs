@@ -840,6 +840,19 @@ impl AnalyseScreen {
                     .child(self.stepper(config, "Threads", "Threads", "", cx))
                     .child(self.stepper(config, "Hash", "Hash", " MB", cx))
                     .child(div().flex_1())
+                    .child({
+                        let this = this.clone();
+                        btn("restart-engines", "Restart engines")
+                            .compact()
+                            .tooltip(ui::i18n::t(
+                                "Quit the analysis engines and start them again",
+                            ))
+                            .on_click(move |_, cx| {
+                                this.update(cx, |screen, cx| {
+                                    screen.live.update(cx, |live, cx| live.relaunch(cx));
+                                });
+                            })
+                    })
                     .child(
                         btn("all-options", "All options")
                             .compact()
