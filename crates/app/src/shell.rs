@@ -1052,6 +1052,7 @@ impl Workspace {
             .h(px(38.))
             .px(px(10.))
             .gap(px(6.))
+            .items_end()
             .bg(rgb(T.surface))
             // The bottom rule is drawn first so the open tab, painted over it, can hide it.
             .child(
@@ -1066,20 +1067,24 @@ impl Workspace {
             // The strip only takes the width its tabs need, so New tab sits right after the
             // last one; with many tabs the strip scrolls and the button stays in view.
             .child(tabs)
+            // New tab sits in a slot as tall as a tab, so it lines up with the tab labels
+            // instead of floating in the middle of the bar.
             .child(
-                btn("new-tab", "New tab")
-                    .kind(BtnKind::Ghost)
-                    .icon("icons/plus.svg")
-                    .h(28.)
-                    .pad(8.)
-                    .tooltip(tip)
-                    .selected(self.new_tab_menu_open)
-                    .on_click(move |_, cx| {
-                        add.update(cx, |this, cx| {
-                            this.new_tab_menu_open = !this.new_tab_menu_open;
-                            cx.notify();
-                        })
-                    }),
+                h_flex().flex_none().h(px(33.)).items_center().child(
+                    btn("new-tab", "New tab")
+                        .kind(BtnKind::Ghost)
+                        .icon("icons/plus.svg")
+                        .h(28.)
+                        .pad(8.)
+                        .tooltip(tip)
+                        .selected(self.new_tab_menu_open)
+                        .on_click(move |_, cx| {
+                            add.update(cx, |this, cx| {
+                                this.new_tab_menu_open = !this.new_tab_menu_open;
+                                cx.notify();
+                            })
+                        }),
+                ),
             )
     }
 
