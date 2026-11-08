@@ -373,29 +373,36 @@ impl AnalyseScreen {
         let toggles = h_flex()
             .flex_wrap()
             .gap(px(6.))
-            .when(on, |row| {
-                row.child(
-                    icon_btn(
-                        "engine-pause",
-                        if paused {
-                            "icons/play.svg"
-                        } else {
-                            "icons/pause.svg"
-                        },
-                    )
-                    .w(28.)
-                    .compact()
-                    .selected(paused)
-                    .tooltip(if paused {
-                        "Resume search (P)"
+            .child(
+                icon_btn(
+                    "engine-pause",
+                    if on && !paused {
+                        "icons/pause.svg"
                     } else {
-                        "Pause search and keep the current lines (P)"
-                    })
-                    .on_click(move |_, cx| {
-                        pause_this.update(cx, |screen, cx| screen.toggle_pause(cx));
-                    }),
+                        "icons/play.svg"
+                    },
                 )
-            })
+                .w(28.)
+                .compact()
+                .selected(on && paused)
+                .tooltip(if !on {
+                    "Start analysis"
+                } else if paused {
+                    "Resume search (P)"
+                } else {
+                    "Pause search and keep the current lines (P)"
+                })
+                .on_click(move |_, cx| {
+                    // With the engines off, the same button starts them again.
+                    pause_this.update(cx, |screen, cx| {
+                        if on {
+                            screen.toggle_pause(cx);
+                        } else {
+                            screen.toggle_engine(cx);
+                        }
+                    });
+                }),
+            )
             .child(
                 btn("log-panel", "Log")
                     .compact()
@@ -717,7 +724,6 @@ impl AnalyseScreen {
         let engines = self.model.read(cx).config.engines.clone();
         let limit = self.model.read(cx).config.analysis_limit;
         let chosen = self.panel_engine_config(cx);
-        let on = self.live.read(cx).on;
         let tab = self.engine_tab;
         let mut body = panel().flex_none().overflow_hidden().child(
             h_flex()
@@ -754,29 +760,7 @@ impl AnalyseScreen {
                     }
                     tabs
                 }))
-                .child(div().flex_1())
-                .child(
-                    icon_btn(
-                        "engine-power",
-                        if on {
-                            "icons/pause.svg"
-                        } else {
-                            "icons/play.svg"
-                        },
-                    )
-                    .w(28.)
-                    .compact()
-                    .selected(on)
-                    .tooltip(if on {
-                        "Stop analysis"
-                    } else {
-                        "Start analysis"
-                    })
-                    .on_click({
-                        let this = this.clone();
-                        move |_, cx| this.update(cx, |screen, cx| screen.toggle_engine(cx))
-                    }),
-                ),
+                .child(div().flex_1()),
         );
         if engines.is_empty() {
             return body

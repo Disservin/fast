@@ -643,7 +643,6 @@ pub fn translate(language: Language, text: &str) -> &str {
             "Pause search and keep the current lines (P)" => {
                 "Suche pausieren und aktuelle Varianten behalten (P)"
             }
-            "Stop analysis" => "Analyse stoppen",
             "Start analysis" => "Analyse starten",
             "Search moves" => "Suchzüge",
             "all" => "alle",
