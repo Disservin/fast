@@ -2,11 +2,16 @@
 
 ## Build a database
 
-1. Select the database to import into on the left.
+1. In **Database**, click **New** to create an empty database, type its name and press
+   **Enter**. To add games to an existing database, select it on the left instead.
 2. Open **Database › Import**, leave **Keep comments and variations** on, and choose
    **Choose PGN file…**.
 3. Set your name under **Settings › Databases** so Fast can identify your games.
 4. Open any database game to analyse it in its own Analyse tab.
+
+Imports add games to the selected database. If no database is selected, Fast imports into
+**My games**. See [Database](../workspace/database.md#create-and-manage-databases) for renaming
+and duplicating databases.
 
 ## Comments, variations and NAGs
 

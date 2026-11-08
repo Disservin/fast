@@ -1,6 +1,22 @@
 # Database
 
-Each database is listed on the left with its game count.
+Each database is listed on the left with its game count. Click a row to select it; the
+selected database is highlighted.
+
+## Create and manage databases
+
+Click **New** beside the Databases heading to create an empty database. Fast selects it and
+opens its name for editing. Type a name and press **Enter** or click elsewhere to save it.
+Press **Escape** to keep the default name, **New database**. Creating a database clears the
+current filters and starts with newest games first.
+
+To fill it, leave it selected and use **Import › Choose PGN file…**. See
+[Import games](../getting-started/import.md) for import options.
+
+- Double-click a database name, or right-click and choose **Rename database**, to change its
+  name. **My games** keeps its name and cannot be renamed.
+- Right-click and choose **Duplicate database** to make an independent copy. Fast selects the
+  copy and adds “copy” to its name; rename it the same way as any other database.
 
 ## Filter games
 

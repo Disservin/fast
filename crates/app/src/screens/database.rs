@@ -2414,6 +2414,8 @@ impl DatabaseScreen {
                     .id(("db", index))
                     .h(px(35.))
                     .justify_between()
+                    .gap(px(8.))
+                    .when(selected, |row| row.bg(rgb(T.selected)))
                     .cursor_pointer()
                     .border_b_1()
                     .border_color(rgb(T.divider))
@@ -2507,7 +2509,9 @@ impl DatabaseScreen {
                     )
                     .child(
                         mono(format_count(entry.games))
-                            .text_size(px(14.))
+                            .flex_none()
+                            .whitespace_nowrap()
+                            .text_size(px(13.))
                             .text_color(rgb(T.muted)),
                     ),
             );
@@ -2659,7 +2663,7 @@ impl DatabaseScreen {
             .h_full()
             .flex_none()
             .overflow_y_scroll()
-            .px(px(18.))
+            .px(px(16.))
             .pt(px(16.))
             .pb(px(16.))
             .bg(rgb(T.surface))
@@ -2671,28 +2675,35 @@ impl DatabaseScreen {
                     .items_center()
                     .mb(px(5.))
                     .child(section_label(ui::i18n::t("Databases")))
-                    .child({
-                        let create_this = this.clone();
-                        btn("new-database", "New")
-                            .mini()
-                            .tooltip(ui::i18n::t("Create an empty database"))
-                            .on_click(move |window, cx| {
-                                create_this.update(cx, |screen, cx| screen.create_db(window, cx));
+                    .child(
+                        h_flex()
+                            .gap(px(6.))
+                            .flex_none()
+                            .child({
+                                let create_this = this.clone();
+                                btn("new-database", "New")
+                                    .mini()
+                                    .tooltip("Create an empty database")
+                                    .on_click(move |window, cx| {
+                                        create_this.update(cx, |screen, cx| {
+                                            screen.create_db(window, cx)
+                                        });
+                                    })
                             })
-                    })
-                    .child({
-                        let import_this = this.clone();
-                        btn("import", ui::i18n::t("Import"))
-                            .mini()
-                            .icon("icons/plus.svg")
-                            .tooltip(ui::i18n::t(
-                                "Import a PGN file, or download games from Lichess or Chess.com",
-                            ))
-                            .on_click(move |window, cx| {
-                                import_this
-                                    .update(cx, |screen, cx| screen.prompt_import(window, cx));
-                            })
-                    }),
+                            .child({
+                                let import_this = this.clone();
+                                btn("import", "Import")
+                                    .mini()
+                                    .tooltip(
+                                        "Import a PGN file, or download games from Lichess or Chess.com",
+                                    )
+                                    .on_click(move |window, cx| {
+                                        import_this.update(cx, |screen, cx| {
+                                            screen.prompt_import(window, cx)
+                                        });
+                                    })
+                            }),
+                    ),
             )
             .child(list)
             .child(
