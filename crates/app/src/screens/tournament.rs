@@ -27,7 +27,7 @@ use ui::{
 
 use crate::{
     controls::{TextSelect, field, new_input, new_select, select_el, text_input},
-    fastchess::{self, Limit, Line, Participant, Pasted, Setup, StopHandle},
+    fastchess::{self, Limit, Line, Participant, Pasted, PgnOut, Setup, StopHandle},
     model::{AppModel, ModelEvent, ToastExt as _, pick_path},
     shell::Workspace,
     tournament_live::{self, LiveGame, LiveGames, Score, Search},
@@ -266,8 +266,21 @@ pub struct TournamentScreen {
     limit: Limit,
     games_per_round: u32,
     gauntlet: bool,
+    chess960: bool,
+    noswap: bool,
+    reverse: bool,
     random_order: bool,
     sprt: bool,
+    sprt_model: &'static str,
+    tb_adjudication: bool,
+    tb_paths: Entity<InputState>,
+    tb_pieces: Entity<InputState>,
+    tb_ignore50: bool,
+    tb_adjudicate: &'static str,
+    engine_args: Entity<InputState>,
+    /// The games file's notation and move comments; `match_line` comes from its own input.
+    pgn: PgnOut,
+    pgn_match_line: Entity<InputState>,
     draw_adjudication: bool,
     resign_adjudication: bool,
     resign_twosided: bool,
@@ -394,8 +407,25 @@ impl TournamentScreen {
             limit: Limit::TimeControl,
             games_per_round: 2,
             gauntlet: false,
+            chess960: false,
+            noswap: false,
+            reverse: false,
             random_order: true,
             sprt: false,
+            sprt_model: "normalized",
+            tb_adjudication: false,
+            tb_paths: new_input(
+                "",
+                "Syzygy folders, separated by the system's path separator",
+                window,
+                cx,
+            ),
+            tb_pieces: new_input("", "All", window, cx),
+            tb_ignore50: false,
+            tb_adjudicate: "BOTH",
+            engine_args: new_input("", "None", window, cx),
+            pgn: PgnOut::default(),
+            pgn_match_line: new_input("", "e.g. ^info string", window, cx),
             draw_adjudication: true,
             resign_adjudication: true,
             resign_twosided: true,
@@ -581,6 +611,9 @@ impl TournamentScreen {
             games_per_round: self.games_per_round,
             concurrency: self.text(&self.concurrency, cx),
             gauntlet: self.gauntlet,
+            chess960: self.chess960,
+            noswap: self.noswap,
+            reverse: self.reverse,
             openings: self.text(&self.openings, cx),
             random_order: self.random_order,
             plies: self.text(&self.plies, cx),
@@ -589,6 +622,7 @@ impl TournamentScreen {
             elo1: self.text(&self.elo1, cx),
             alpha: self.text(&self.alpha, cx),
             beta: self.text(&self.beta, cx),
+            sprt_model: self.sprt_model,
             draw_adjudication: self.draw_adjudication,
             draw_movenumber: self.text(&self.draw_movenumber, cx),
             draw_movecount: self.text(&self.draw_movecount, cx),
@@ -598,12 +632,25 @@ impl TournamentScreen {
             resign_score: self.text(&self.resign_score, cx),
             resign_twosided: self.resign_twosided,
             maxmoves: self.text(&self.maxmoves, cx),
+            tb_paths: if self.tb_adjudication {
+                self.text(&self.tb_paths, cx)
+            } else {
+                String::new()
+            },
+            tb_pieces: self.text(&self.tb_pieces, cx),
+            tb_ignore50: self.tb_ignore50,
+            tb_adjudicate: self.tb_adjudicate,
             recover: self.recover,
             seed: self.text(&self.seed, cx),
             wait: self.text(&self.wait, cx),
             time_margin: self.text(&self.time_margin, cx),
             restart: self.restart,
             affinity: self.affinity,
+            engine_args: self.text(&self.engine_args, cx),
+            pgn: PgnOut {
+                match_line: self.text(&self.pgn_match_line, cx),
+                ..self.pgn.clone()
+            },
             extra: self.text(&self.extra, cx),
         }
     }
@@ -1370,6 +1417,36 @@ impl TournamentScreen {
         })
     }
 
+    /// A segmented control whose choice is stored with `set`.
+    fn choice<V, F>(
+        &self,
+        id: &'static str,
+        options: &[(V, &'static str)],
+        selected: V,
+        cx: &mut Context<Self>,
+        set: F,
+    ) -> gpui::Div
+    where
+        V: Copy + PartialEq + 'static,
+        F: Fn(&mut Self, V) + 'static,
+    {
+        let this = cx.entity();
+        segmented(
+            id,
+            options
+                .iter()
+                .map(|(value, label)| (*value, ui::i18n::t(label).into(), false))
+                .collect(),
+            selected,
+            move |value, _, cx| {
+                this.update(cx, |screen, cx| {
+                    set(screen, value);
+                    cx.notify();
+                })
+            },
+        )
+    }
+
     fn render_form(&self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let pair = |a: gpui::Div, b: gpui::Div| {
             h_flex()
@@ -1412,6 +1489,21 @@ impl TournamentScreen {
                 field("Rounds", text_input(&self.rounds)),
                 field("Concurrency", text_input(&self.concurrency)),
             ))
+            .child(field(
+                "Variant",
+                self.choice(
+                    "tournament-variant",
+                    &[(false, "Standard"), (true, "Chess960")],
+                    self.chess960,
+                    cx,
+                    |screen, on| screen.chess960 = on,
+                ),
+            ))
+            .when(self.chess960, |column| {
+                column.child(div().text_size(px(12.)).text_color(rgb(T.muted)).child(
+                    ui::i18n::t("Chess960 needs a book of Chess960 start positions."),
+                ))
+            })
             .child(field("Opening book", select_el(&self.book)))
             .child(div().text_size(px(12.)).text_color(rgb(T.muted)).child(
                 ui::i18n::t("Recommended: UHO_Lichess_4852_v1.epd. Stockfish books download on first use. Choose Custom file to use a local book.")
@@ -1443,6 +1535,20 @@ impl TournamentScreen {
                     .child(pair(
                         field("alpha", text_input(&self.alpha)),
                         field("beta", text_input(&self.beta)),
+                    ))
+                    .child(field(
+                        "Elo model",
+                        self.choice(
+                            "tournament-sprt-model",
+                            &[
+                                ("normalized", "Normalized"),
+                                ("logistic", "Logistic"),
+                                ("bayesian", "BayesElo"),
+                            ],
+                            self.sprt_model,
+                            cx,
+                            |screen, model| screen.sprt_model = model,
+                        ),
                     ))
             });
 
@@ -1479,7 +1585,7 @@ impl TournamentScreen {
                     .text_size(px(12.))
                     .text_color(rgb(T.muted))
                     .child(ui::i18n::t(
-                        "Hash and threads, pairing, adjudication, recovery, extra options",
+                        "Hash and threads, pairing, adjudication, tablebases, saved games, extra options",
                     )),
             )
             .on_click(move |_, _, cx| {
@@ -1500,6 +1606,7 @@ impl TournamentScreen {
                     field("Hash (MB)", text_input(&self.hash)),
                     field("Threads", text_input(&self.threads)),
                 ))
+                .child(field("Engine arguments", text_input(&self.engine_args)))
                 .child(section_label("Pairing"))
                 .child(segmented(
                     "tournament-type",
@@ -1532,6 +1639,24 @@ impl TournamentScreen {
                         },
                     ),
                 ))
+                .child(
+                    h_flex()
+                        .gap(px(16.))
+                        .child(self.toggle(
+                            "tournament-noswap",
+                            self.noswap,
+                            "Never swap colours",
+                            cx,
+                            |screen, on| screen.noswap = on,
+                        ))
+                        .child(self.toggle(
+                            "tournament-reverse",
+                            self.reverse,
+                            "Reverse colours",
+                            cx,
+                            |screen, on| screen.reverse = on,
+                        )),
+                )
                 .child(pair(
                     field(
                         "Book order",
@@ -1589,6 +1714,121 @@ impl TournamentScreen {
                         ))
                 })
                 .child(field("Maximum moves", text_input(&self.maxmoves)))
+                .child(self.toggle(
+                    "tournament-tb",
+                    self.tb_adjudication,
+                    "Tablebase adjudication",
+                    cx,
+                    |screen, on| screen.tb_adjudication = on,
+                ))
+                .when(self.tb_adjudication, |column| {
+                    column
+                        .child(pair(
+                            field("Syzygy folders", text_input(&self.tb_paths)),
+                            field("Up to pieces", text_input(&self.tb_pieces)),
+                        ))
+                        .child(self.choice(
+                            "tournament-tb-adjudicate",
+                            &[
+                                ("BOTH", "Wins and draws"),
+                                ("WIN_LOSS", "Wins only"),
+                                ("DRAW", "Draws only"),
+                            ],
+                            self.tb_adjudicate,
+                            cx,
+                            |screen, mode| screen.tb_adjudicate = mode,
+                        ))
+                        .child(self.toggle(
+                            "tournament-tb-ignore50",
+                            self.tb_ignore50,
+                            "Ignore the 50-move rule",
+                            cx,
+                            |screen, on| screen.tb_ignore50 = on,
+                        ))
+                })
+                .child(section_label("Saved games"))
+                .child(field(
+                    "Notation",
+                    self.choice(
+                        "tournament-pgn-notation",
+                        &[("san", "SAN"), ("lan", "LAN"), ("uci", "UCI")],
+                        self.pgn.notation,
+                        cx,
+                        |screen, notation| screen.pgn.notation = notation,
+                    ),
+                ))
+                .when(self.pgn.notation != "san", |column| {
+                    column.child(
+                        div()
+                            .text_size(px(12.))
+                            .text_color(rgb(T.warn))
+                            .child(ui::i18n::t("Games in LAN or UCI may not open in Analyse.")),
+                    )
+                })
+                .child(field("Record with each move", {
+                    let mut grid = div().grid().grid_cols(3).gap(px(8.));
+                    let flags: [PgnFlag; 8] = [
+                        (
+                            "tournament-pgn-nodes",
+                            "Nodes",
+                            self.pgn.nodes,
+                            |pgn, on| pgn.nodes = on,
+                        ),
+                        (
+                            "tournament-pgn-seldepth",
+                            "Selective depth",
+                            self.pgn.seldepth,
+                            |pgn, on| pgn.seldepth = on,
+                        ),
+                        ("tournament-pgn-nps", "Speed", self.pgn.nps, |pgn, on| {
+                            pgn.nps = on
+                        }),
+                        (
+                            "tournament-pgn-hashfull",
+                            "Hash usage",
+                            self.pgn.hashfull,
+                            |pgn, on| pgn.hashfull = on,
+                        ),
+                        (
+                            "tournament-pgn-tbhits",
+                            "Tablebase hits",
+                            self.pgn.tbhits,
+                            |pgn, on| pgn.tbhits = on,
+                        ),
+                        ("tournament-pgn-pv", "Full line", self.pgn.pv, |pgn, on| {
+                            pgn.pv = on
+                        }),
+                        (
+                            "tournament-pgn-timeleft",
+                            "Time left",
+                            self.pgn.timeleft,
+                            |pgn, on| pgn.timeleft = on,
+                        ),
+                        (
+                            "tournament-pgn-latency",
+                            "Latency",
+                            self.pgn.latency,
+                            |pgn, on| pgn.latency = on,
+                        ),
+                    ];
+                    for (id, label, on, set) in flags {
+                        grid = grid.child(self.toggle(id, on, label, cx, move |screen, on| {
+                            set(&mut screen.pgn, on)
+                        }));
+                    }
+                    grid
+                }))
+                .child(self.toggle(
+                    "tournament-pgn-min",
+                    self.pgn.min,
+                    "Minimal PGN",
+                    cx,
+                    |screen, on| screen.pgn.min = on,
+                ))
+                .child(field(
+                    "Copy engine output matching",
+                    text_input(&self.pgn_match_line),
+                ))
                 .child(section_label("Other"))
                 .child(self.toggle(
                     "tournament-recover",
@@ -2747,6 +2987,9 @@ fn player_line(game: &LiveGame, white: bool, size: f32) -> impl IntoElement + us
 }
 
 /// A panel of the tournament tab.
+/// A games-file checkbox: its id, label, current value and how it sets the value.
+type PgnFlag = (&'static str, &'static str, bool, fn(&mut PgnOut, bool));
+
 fn card() -> Div {
     v_flex()
         .gap(px(14.))

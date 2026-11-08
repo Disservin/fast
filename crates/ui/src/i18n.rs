@@ -121,6 +121,34 @@ pub fn translate(language: Language, text: &str) -> &str {
             }
             "Licenses" => "Lizenzen",
             "Thanks" => "Danksagung",
+            "Variant" => "Variante",
+            "Chess960 needs a book of Chess960 start positions." => {
+                "Chess960 braucht ein Buch mit Chess960-Startstellungen."
+            }
+            "Elo model" => "Elo-Modell",
+            "Engine arguments" => "Engine-Argumente",
+            "Never swap colours" => "Farben nie tauschen",
+            "Reverse colours" => "Farben umkehren",
+            "Tablebase adjudication" => "Endspieldatenbank-Abbruch",
+            "Syzygy folders" => "Syzygy-Ordner",
+            "Up to pieces" => "Bis Steine",
+            "Wins and draws" => "Siege und Remis",
+            "Wins only" => "Nur Siege",
+            "Draws only" => "Nur Remis",
+            "Ignore the 50-move rule" => "50-Züge-Regel ignorieren",
+            "Saved games" => "Gespeicherte Partien",
+            "Games in LAN or UCI may not open in Analyse." => {
+                "Partien in LAN oder UCI lassen sich eventuell nicht in Analyse öffnen."
+            }
+            "Record with each move" => "Bei jedem Zug speichern",
+            "Selective depth" => "Selektive Tiefe",
+            "Hash usage" => "Hash-Auslastung",
+            "Tablebase hits" => "Endspieldatenbank-Treffer",
+            "Full line" => "Ganze Variante",
+            "Time left" => "Restzeit",
+            "Latency" => "Latenz",
+            "Minimal PGN" => "Minimales PGN",
+            "Copy engine output matching" => "Engine-Ausgabe übernehmen, die passt auf",
             "Visit En Croissant" => "En Croissant besuchen",
             "Thanks to En Croissant and its contributors for a carefully handcrafted chess GUI with a rich set of features. Its project history and community requests were valuable resources for the implementation of this GUI." => {
                 "Danke an En Croissant und alle Mitwirkenden für eine sorgfältig von Hand gestaltete Schachoberfläche mit vielen Funktionen. Die Projektgeschichte und die Wünsche der Community waren wertvolle Ressourcen für die Umsetzung dieser Oberfläche."

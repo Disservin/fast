@@ -234,6 +234,72 @@ impl Limit {
     }
 }
 
+/// How fastchess writes the games file: the move notation and what each move's comment records.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PgnOut {
+    /// `san`, `lan` or `uci`.
+    pub notation: &'static str,
+    pub nodes: bool,
+    pub seldepth: bool,
+    pub nps: bool,
+    pub hashfull: bool,
+    pub tbhits: bool,
+    pub pv: bool,
+    pub timeleft: bool,
+    pub latency: bool,
+    /// Minimal PGN: fewer headers and no move comments.
+    pub min: bool,
+    /// Engine output lines matching this regex are copied into the PGN.
+    pub match_line: String,
+}
+
+impl Default for PgnOut {
+    fn default() -> Self {
+        Self {
+            notation: "san",
+            nodes: false,
+            seldepth: false,
+            nps: false,
+            hashfull: false,
+            tbhits: false,
+            pv: false,
+            timeleft: false,
+            latency: false,
+            min: false,
+            match_line: String::new(),
+        }
+    }
+}
+
+impl PgnOut {
+    /// The `-pgnout` key=value pairs after `file=`, leaving fastchess defaults unsaid.
+    fn args(&self) -> Vec<String> {
+        let mut args = Vec::new();
+        if self.notation != "san" {
+            args.push(format!("notation={}", self.notation));
+        }
+        for (key, on) in [
+            ("nodes", self.nodes),
+            ("seldepth", self.seldepth),
+            ("nps", self.nps),
+            ("hashfull", self.hashfull),
+            ("tbhits", self.tbhits),
+            ("pv", self.pv),
+            ("timeleft", self.timeleft),
+            ("latency", self.latency),
+            ("min", self.min),
+        ] {
+            if on {
+                args.push(format!("{key}=true"));
+            }
+        }
+        if !self.match_line.trim().is_empty() {
+            args.push(format!("match_line={}", self.match_line.trim()));
+        }
+        args
+    }
+}
+
 /// The tournament built in the form. Text fields are kept as typed and checked by [`Setup::args`].
 #[derive(Clone, Debug)]
 pub struct Setup {
@@ -246,6 +312,12 @@ pub struct Setup {
     pub games_per_round: u32,
     pub concurrency: String,
     pub gauntlet: bool,
+    /// Fischer Random (Chess960) instead of standard chess.
+    pub chess960: bool,
+    /// Never swap colours between the games of a round.
+    pub noswap: bool,
+    /// Reverse the colours of the schedule.
+    pub reverse: bool,
     pub openings: String,
     pub random_order: bool,
     pub plies: String,
@@ -254,6 +326,8 @@ pub struct Setup {
     pub elo1: String,
     pub alpha: String,
     pub beta: String,
+    /// `normalized`, `logistic` or `bayesian`.
+    pub sprt_model: &'static str,
     pub draw_adjudication: bool,
     /// Draw adjudication: from this full move, after this many moves in a row with both
     /// scores within this many centipawns of zero.
@@ -267,12 +341,21 @@ pub struct Setup {
     pub resign_score: String,
     pub resign_twosided: bool,
     pub maxmoves: String,
+    /// Syzygy folders for tablebase adjudication; empty turns it off.
+    pub tb_paths: String,
+    pub tb_pieces: String,
+    pub tb_ignore50: bool,
+    /// `BOTH`, `WIN_LOSS` or `DRAW`.
+    pub tb_adjudicate: &'static str,
     pub recover: bool,
     pub seed: String,
     pub wait: String,
     pub time_margin: String,
     pub restart: bool,
     pub affinity: bool,
+    /// Command-line arguments passed to every engine.
+    pub engine_args: String,
+    pub pgn: PgnOut,
     pub extra: String,
 }
 
@@ -364,6 +447,9 @@ impl Setup {
         if self.restart {
             push(&["restart=on".into()]);
         }
+        if !self.engine_args.trim().is_empty() {
+            push(&[format!("args={}", self.engine_args.trim())]);
+        }
         if !self.seed.trim().is_empty() {
             push(&[
                 "-srand".into(),
@@ -392,6 +478,15 @@ impl Setup {
         push(&["-concurrency".into(), concurrency.to_string()]);
         if self.gauntlet {
             push(&["-tournament".into(), "gauntlet".into()]);
+        }
+        if self.chess960 {
+            push(&["-variant".into(), "fischerandom".into()]);
+        }
+        if self.noswap {
+            push(&["-noswap".into()]);
+        }
+        if self.reverse {
+            push(&["-reverse".into()]);
         }
         let openings = self.openings.trim();
         if !openings.is_empty() {
@@ -435,6 +530,7 @@ impl Setup {
                 format!("elo1={}", number::<f64>(&self.elo1, "elo1")?),
                 format!("alpha={}", number::<f64>(&self.alpha, "alpha")?),
                 format!("beta={}", number::<f64>(&self.beta, "beta")?),
+                format!("model={}", self.sprt_model),
             ]);
         }
         if self.draw_adjudication {
@@ -474,25 +570,45 @@ impl Setup {
                 number::<u32>(&self.maxmoves, "Maximum moves")?.to_string(),
             ]);
         }
+        let tb_paths = self.tb_paths.trim();
+        if !tb_paths.is_empty() {
+            push(&["-tb".into(), tb_paths.to_owned()]);
+            if !self.tb_pieces.trim().is_empty() {
+                push(&[
+                    "-tbpieces".into(),
+                    number::<u32>(&self.tb_pieces, "Tablebase pieces")?.to_string(),
+                ]);
+            }
+            if self.tb_ignore50 {
+                push(&["-tbignore50".into()]);
+            }
+            if self.tb_adjudicate != "BOTH" {
+                push(&["-tbadjudicate".into(), self.tb_adjudicate.into()]);
+            }
+        }
         if self.recover {
             push(&["-recover".into()]);
         }
         // Results after every game keep the table live.
         push(&["-ratinginterval".into(), "1".into()]);
         push(&split_args(&self.extra)?);
-        args.extend(output_args(dir));
+        args.extend(output_args(dir, &self.pgn));
         Ok(args)
     }
 }
 
 /// Games and the resumable config go into the tournament's folder.
-fn output_args(dir: &Path) -> Vec<String> {
-    vec![
+fn output_args(dir: &Path, pgn: &PgnOut) -> Vec<String> {
+    let mut args = vec![
         "-pgnout".into(),
         format!("file={}", dir.join("games.pgn").display()),
+    ];
+    args.extend(pgn.args());
+    args.extend([
         "-config".into(),
         format!("outname={}", dir.join("config.json").display()),
-    ]
+    ]);
+    args
 }
 
 /// Arguments that continue the tournament saved in `config`.
@@ -1164,6 +1280,9 @@ mod tests {
             games_per_round: 2,
             concurrency: "4".into(),
             gauntlet: false,
+            chess960: false,
+            noswap: false,
+            reverse: false,
             openings: String::new(),
             random_order: true,
             plies: String::new(),
@@ -1172,6 +1291,7 @@ mod tests {
             elo1: "2".into(),
             alpha: "0.05".into(),
             beta: "0.05".into(),
+            sprt_model: "normalized",
             draw_adjudication: false,
             draw_movenumber: "32".into(),
             draw_movecount: "6".into(),
@@ -1181,14 +1301,54 @@ mod tests {
             resign_score: "600".into(),
             resign_twosided: true,
             maxmoves: String::new(),
+            tb_paths: String::new(),
+            tb_pieces: String::new(),
+            tb_ignore50: false,
+            tb_adjudicate: "BOTH",
             recover: true,
             seed: String::new(),
             wait: String::new(),
             time_margin: String::new(),
             restart: false,
             affinity: false,
+            engine_args: String::new(),
+            pgn: PgnOut::default(),
             extra: "-srand 42".into(),
         }
+    }
+
+    #[test]
+    fn variant_tablebases_and_pgn_options() {
+        let mut setup = setup(vec![engine("A"), engine("B")]);
+        setup.chess960 = true;
+        setup.noswap = true;
+        setup.engine_args = "--uci --quiet".into();
+        setup.tb_paths = "/tb/345".into();
+        setup.tb_pieces = "5".into();
+        setup.tb_ignore50 = true;
+        setup.tb_adjudicate = "DRAW";
+        setup.pgn.notation = "uci";
+        setup.pgn.nodes = true;
+        setup.pgn.pv = true;
+        let args = setup.args(Path::new("/out")).unwrap();
+        let after = |flag: &str| {
+            let at = args.iter().position(|arg| arg == flag).unwrap();
+            args[at + 1].clone()
+        };
+        assert_eq!(after("-variant"), "fischerandom");
+        assert!(args.contains(&"-noswap".to_owned()));
+        assert!(!args.contains(&"-reverse".to_owned()));
+        assert!(args.contains(&"args=--uci --quiet".to_owned()));
+        assert_eq!(after("-tb"), "/tb/345");
+        assert_eq!(after("-tbpieces"), "5");
+        assert!(args.contains(&"-tbignore50".to_owned()));
+        assert_eq!(after("-tbadjudicate"), "DRAW");
+        assert!(args.contains(&"model=normalized".to_owned()));
+        let pgnout = args.iter().position(|arg| arg == "-pgnout").unwrap();
+        assert_eq!(
+            args[pgnout + 2..pgnout + 5],
+            ["notation=uci", "nodes=true", "pv=true"]
+        );
     }
 
     #[test]
