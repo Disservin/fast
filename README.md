@@ -200,8 +200,16 @@ python3 scripts/third_party.py   # after changing dependencies
 `crates/app/third_party.json`, generated from `cargo metadata`; a test fails when it no longer
 matches `Cargo.lock`.
 
-See [ARCHITECTURE.md](ARCHITECTURE.md). Package installers with
-[cargo-bundle](https://github.com/burtonageo/cargo-bundle): `cargo bundle --release -p fast`.
+See [ARCHITECTURE.md](ARCHITECTURE.md). Release packaging and signing are described in
+[packaging/README.md](packaging/README.md). Push a tag matching the workspace version
+(for example, `v0.1.0`) to build packages and create a draft GitHub release.
+The release includes a Windows installer and ZIP, macOS DMGs for Apple Silicon and Intel,
+and Linux x86-64 AppImage and Debian packages, with SHA-256 checksums.
+
+**Settings › General › Fast updates** shows the installed version and lets you
+check for a published release, download it and start installation. AppImage
+installs replace themselves; other packages open the platform installer.
+Close and reopen Fast after installation. Updates keep your existing data.
 
 The bundle uses the app icon in `assets/app/fast.png`; its editable source is
 `assets/app/fast.svg`. For a local Linux install with a launcher and taskbar icon:
