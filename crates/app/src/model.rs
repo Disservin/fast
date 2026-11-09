@@ -551,6 +551,19 @@ impl AppModel {
             .collect()
     }
 
+    /// The engine that analyses previewed lines, when the kibitz is on: the chosen
+    /// one, or the first analysis engine.
+    pub fn kibitz_engine(&self) -> Option<EngineConfig> {
+        let kibitz = &self.config.kibitz;
+        if !kibitz.enabled || self.demo {
+            return None;
+        }
+        kibitz
+            .engine
+            .and_then(|id| self.engine(id).cloned())
+            .or_else(|| self.analysis_engines().into_iter().next())
+    }
+
     /// Engines offered as Play opponents.
     pub fn play_engines(&self) -> Vec<EngineConfig> {
         self.config

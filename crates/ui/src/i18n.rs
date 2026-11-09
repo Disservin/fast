@@ -248,6 +248,14 @@ pub fn translate(language: Language, text: &str) -> &str {
             "Leaving an Analyse tab" => "Beim Verlassen eines Analyse-Tabs",
             "Keep analysing" => "Weiter analysieren",
             "Analysis paused" => "Analyse pausiert",
+            "Kibitz engine" => "Kiebitz-Engine",
+            "Kibitz" => "Kiebitz",
+            "Line previews" => "Variantenvorschau",
+            "Analyse with a kibitz engine" => "Mit einer Kiebitz-Engine analysieren",
+            "First analysis engine" => "Erste Analyse-Engine",
+            "Clicking a move in Line preview analyses that position with a second engine, shown below the line, while the main analysis keeps searching the game position. Off: the main engines follow the preview." => {
+                "Ein Klick auf einen Zug in der Variantenvorschau analysiert diese Stellung mit einer zweiten Engine, angezeigt unter der Variante, während die Hauptanalyse die Partiestellung weiter durchsucht. Aus: Die Haupt-Engines folgen der Vorschau."
+            }
             "Engines are searching in this tab" => "In diesem Tab rechnen Engines",
             "The engines keep searching while a tab other than Analyse is shown. Switching to another Analyse tab hands them over." => {
                 "Die Engines rechnen weiter, solange ein anderer Tab als Analyse offen ist. Ein anderer Analyse-Tab übernimmt sie."

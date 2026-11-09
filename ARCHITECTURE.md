@@ -169,6 +169,20 @@ engine. Clearing the hash gives each position its own game id, so it gets `ucine
 presses `Clear Hash` where the engine has it. Mate searches send `go mate N` with the limit as a
 cap, and count a mate no longer than N.
 
+## Kibitz engine
+
+With Settings › Analysis › Kibitz engine on, clicking a move in Line preview no longer moves
+the main analysis. Each Analyse tab owns a `Kibitz` (`kibitz.rs`): its own process of the
+chosen engine (or the first analysis engine), started on first use with the engine's analysis
+options plus `MultiPV 1` and the kibitz's Threads and Hash (1 and 16 MB by default), outside
+the shared registry. It searches the previewed position (`go infinite`) and its best line is
+shown in a Kibitz row under the line. While the preview lasts (`pv_kibitz`), `preview_moves` is
+empty, so the main search, the table, explorer and online lookups stay on the game position;
+the board shows the preview with the kibitz's best move as its only arrow. The previewed line
+is a copy and the table's selection is held, so the main engine's changing lines replace it
+only once the preview ends. Leaving the preview or the tab stops the kibitz; the process is
+replaced when its engine, binary, threads or hash change, and quits when the tab closes.
+
 ## Analysis cache
 
 `LiveAnalysis` keeps a `LineCache` of each engine's lines per position hash (Zobrist), so lines

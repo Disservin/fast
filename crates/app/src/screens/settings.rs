@@ -3597,6 +3597,141 @@ impl SettingsScreen {
         cx.notify();
     }
 
+    /// Changes the kibitz settings and saves them; the next preview uses them.
+    fn update_kibitz(
+        &mut self,
+        cx: &mut Context<Self>,
+        change: impl FnOnce(&mut crate::config::KibitzConfig),
+    ) {
+        self.model.update(cx, |model, cx| {
+            change(&mut model.config.kibitz);
+            model.save_config(cx);
+        });
+        cx.notify();
+    }
+
+    /// The kibitz engine: whether it runs, which engine, and its threads and hash.
+    fn render_kibitz(&mut self, cx: &mut Context<Self>) -> Div {
+        let model = self.model.read(cx);
+        let kibitz = model.config.kibitz.clone();
+        let engines: Vec<(EngineId, String)> = model
+            .config
+            .engines
+            .iter()
+            .map(|engine| (engine.id, engine.name.clone()))
+            .collect();
+        let this = cx.entity();
+        let toggle_this = this.clone();
+        let toggle = check("kibitz-on", kibitz.enabled, "Analyse with a kibitz engine").on_change(
+            move |value, _, cx| {
+                toggle_this.update(cx, |screen, cx| {
+                    screen.update_kibitz(cx, |kibitz| kibitz.enabled = value)
+                })
+            },
+        );
+        let mut choices = vec![(None, ui::i18n::t("First analysis engine").into(), false)];
+        choices.extend(
+            engines
+                .into_iter()
+                .map(|(id, name)| (Some(id), SharedString::from(name), false)),
+        );
+        let chosen = kibitz
+            .engine
+            .filter(|id| choices.iter().any(|(choice, ..)| *choice == Some(*id)));
+        let engine_this = this.clone();
+        let engine_choice = segmented("kibitz-engine", choices, chosen, move |value, _, cx| {
+            engine_this.update(cx, |screen, cx| {
+                screen.update_kibitz(cx, |kibitz| kibitz.engine = value)
+            })
+        })
+        .flex_wrap()
+        .gap_y(px(6.));
+        let cores = std::thread::available_parallelism()
+            .map_or(64, |cores| cores.get() as u32)
+            .max(1);
+        let stepper = |id: &'static str,
+                       value: String,
+                       down: Option<u32>,
+                       up: Option<u32>,
+                       set: fn(&mut crate::config::KibitzConfig, u32)| {
+            let (down_this, up_this) = (this.clone(), this.clone());
+            h_flex()
+                .flex_none()
+                .gap(px(4.))
+                .child(
+                    btn((id, 0usize), "−")
+                        .mini()
+                        .w(24.)
+                        .pad(0.)
+                        .disabled(down.is_none())
+                        .on_click(move |_, cx| {
+                            if let Some(value) = down {
+                                down_this.update(cx, |screen, cx| {
+                                    screen.update_kibitz(cx, |kibitz| set(kibitz, value))
+                                });
+                            }
+                        }),
+                )
+                .child(
+                    mono(value)
+                        .w(px(64.))
+                        .flex_none()
+                        .text_center()
+                        .whitespace_nowrap()
+                        .text_size(px(13.)),
+                )
+                .child(
+                    btn((id, 1usize), "+")
+                        .mini()
+                        .w(24.)
+                        .pad(0.)
+                        .disabled(up.is_none())
+                        .on_click(move |_, cx| {
+                            if let Some(value) = up {
+                                up_this.update(cx, |screen, cx| {
+                                    screen.update_kibitz(cx, |kibitz| set(kibitz, value))
+                                });
+                            }
+                        }),
+                )
+        };
+        let threads = kibitz.threads.max(1);
+        let hash = kibitz.hash_mb.max(1);
+        section(ui::i18n::t("Kibitz engine"))
+            .child(option_row(
+                ui::i18n::t("Line previews"),
+                Some(ui::i18n::t(
+                    "Clicking a move in Line preview analyses that position with a second \
+                     engine, shown below the line, while the main analysis keeps searching \
+                     the game position. Off: the main engines follow the preview.",
+                )),
+                toggle,
+            ))
+            .child(option_row(ui::i18n::t("Engine"), None, engine_choice))
+            .child(option_row(
+                ui::i18n::t("Threads"),
+                None,
+                stepper(
+                    "kibitz-threads",
+                    threads.to_string(),
+                    (threads > 1).then(|| threads - 1),
+                    (threads < cores).then(|| threads + 1),
+                    |kibitz, value| kibitz.threads = value,
+                ),
+            ))
+            .child(option_row(
+                "Hash",
+                None,
+                stepper(
+                    "kibitz-hash",
+                    engine::format_hash(i64::from(hash)),
+                    (hash > 1).then_some(hash / 2),
+                    (hash < 65_536).then(|| hash.saturating_mul(2).min(65_536)),
+                    |kibitz, value| kibitz.hash_mb = value,
+                ),
+            ))
+    }
+
     fn render_analysis(&mut self, cx: &mut Context<Self>) -> Div {
         let current = self.model.read(cx).config.backward_nodes;
         let mut presets = h_flex().gap(px(6.)).flex_wrap();
@@ -3637,6 +3772,7 @@ impl SettingsScreen {
         v_flex()
             .gap(px(16.))
             .child(page_title(ui::i18n::t("Analysis")))
+            .child(self.render_kibitz(cx))
             .child(
                 section(ui::i18n::t("Backwards analysis"))
                     .child(option_row(

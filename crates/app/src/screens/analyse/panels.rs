@@ -171,7 +171,7 @@ pub fn spin_option(config: &EngineConfig, name: &str) -> Option<(i64, i64, i64)>
 }
 
 /// Plays SAN moves from a position, stopping at the first that does not apply.
-fn replay(base: &Chess, sans: &[String]) -> (Chess, Vec<Move>) {
+pub(super) fn replay(base: &Chess, sans: &[String]) -> (Chess, Vec<Move>) {
     let mut pos = base.clone();
     let mut moves = Vec::with_capacity(sans.len());
     for san in sans {
@@ -223,11 +223,22 @@ pub fn step_value(name: &str, value: i64, up: bool, min: i64, max: i64) -> i64 {
 }
 
 impl AnalyseScreen {
-    /// The moves being looked at beyond the game position.
+    /// The moves being looked at beyond the game position, which the engines and the
+    /// table follow; none while the kibitz analyses the preview instead.
     fn preview_moves(&self) -> &[String] {
-        self.pv_view
+        match &self.pv_view {
+            Some(view) if !self.pv_kibitz => &view.sans[..view.played()],
+            _ => &[],
+        }
+    }
+
+    /// The position on the board, including a previewed line.
+    pub(super) fn shown_pos(&self) -> Chess {
+        let moves = self
+            .pv_view
             .as_ref()
-            .map_or(&[], |view| &view.sans[..view.played()])
+            .map_or(&[][..], |view| &view.sans[..view.played()]);
+        replay(&self.tree.node(self.current).pos, moves).0
     }
 
     /// The position on the board, which the engine and the table are also following.
@@ -1601,7 +1612,7 @@ impl AnalyseScreen {
     /// Puts the highlight on the board and points the engine and table at that position.
     /// One move: the position after it. Several: the position before them, each drawn
     /// as an arrow.
-    fn show_pv_preview(&mut self, cx: &mut Context<Self>) {
+    pub(super) fn show_pv_preview(&mut self, cx: &mut Context<Self>) {
         let Some(view) = &self.pv_view else {
             return;
         };
@@ -1628,6 +1639,23 @@ impl AnalyseScreen {
             board.set_arrows(arrows, cx);
             board.set_interactive(false, cx);
         });
+        // With a kibitz engine the preview is its search alone: the main analysis keeps
+        // the game position, and the table keeps its rows and selection.
+        if self.pv_played != Some(played)
+            && (self.pv_kibitz || self.pv_played.is_none())
+            && let Some(config) = self.model.read(cx).kibitz_engine()
+        {
+            self.pv_played = Some(played);
+            self.pv_kibitz = true;
+            let settings = self.model.read(cx).config.kibitz.clone();
+            let extra: Vec<Move> = moves.iter().copied().take(played).collect();
+            let game = self.live.read(cx).game;
+            let (tree, current) = (self.tree.clone(), self.current);
+            self.kibitz.update(cx, |kibitz, cx| {
+                kibitz.analyse(&config, &settings, &tree, current, &extra, game, cx)
+            });
+            self.update_arrows(cx);
+        }
         // A new position needs a new search, and a new best line in the table.
         if self.pv_played != Some(played) {
             self.pv_played = Some(played);
@@ -1648,7 +1676,8 @@ impl AnalyseScreen {
         let Some(played) = self.pv_view.as_ref().map(PvView::played) else {
             return false;
         };
-        if played == 0 {
+        // The table shows the game position's moves, not the preview's.
+        if played == 0 || self.pv_kibitz {
             self.exit_pv_preview(cx);
             return false;
         }
@@ -1685,8 +1714,11 @@ impl AnalyseScreen {
         self.pv_dragging = false;
         self.pv_played = None;
         self.pv_hover = None;
-        self.selected = None;
-        self.row_chosen = false;
+        let kibitz = std::mem::take(&mut self.pv_kibitz);
+        if !kibitz {
+            self.selected = None;
+            self.row_chosen = false;
+        }
         let node = self.tree.node(self.current);
         let pos = node.pos.clone();
         let last = node.mv.as_ref().and_then(move_squares);
@@ -1695,10 +1727,16 @@ impl AnalyseScreen {
             board.set_arrows(Vec::new(), cx);
             board.set_interactive(true, cx);
         });
-        let (tree, current) = (self.tree.clone(), self.current);
-        self.live
-            .update(cx, |live, cx| live.set_position(&tree, current, cx));
-        self.query_databases(cx);
+        if kibitz {
+            // The main analysis never left the game position.
+            self.kibitz.update(cx, |kibitz, cx| kibitz.stop(cx));
+            self.update_arrows(cx);
+        } else {
+            let (tree, current) = (self.tree.clone(), self.current);
+            self.live
+                .update(cx, |live, cx| live.set_position(&tree, current, cx));
+            self.query_databases(cx);
+        }
         cx.notify();
     }
 
@@ -1739,6 +1777,71 @@ impl AnalyseScreen {
         };
         cx.write_to_clipboard(ClipboardItem::new_string(text));
         self.model.toast("Line copied.", cx);
+    }
+
+    /// The kibitz engine's view of the previewed position, apart from the main analysis:
+    /// its name, score, depth and best line.
+    pub(super) fn render_kibitz_row(&self, cx: &gpui::App) -> Option<AnyElement> {
+        let view = self.pv_view.as_ref().filter(|_| self.pv_kibitz)?;
+        let kibitz = self.kibitz.read(cx);
+        let line = kibitz.line.as_ref();
+        let ply = self.tree.node(self.current).ply + view.played() as u32;
+        let score = line
+            .and_then(|line| line.score)
+            .map_or_else(|| "—".to_owned(), engine::Score::display);
+        let depth = line.map_or_else(|| "—".to_owned(), |line| line.update.depth.to_string());
+        let best = line
+            .filter(|line| !line.sans.is_empty())
+            .map(|line| format_pv(ply, &line.sans))
+            .unwrap_or_else(|| {
+                if kibitz.running {
+                    ui::i18n::t("Searching…").to_owned()
+                } else {
+                    "—".to_owned()
+                }
+            });
+        let figure = |label: &'static str, value: String| {
+            v_flex()
+                .flex_none()
+                .child(
+                    div()
+                        .text_size(px(10.))
+                        .text_color(rgb(T.faint))
+                        .child(ui::i18n::t(label).to_uppercase()),
+                )
+                .child(
+                    mono(value)
+                        .whitespace_nowrap()
+                        .text_size(px(12.))
+                        .text_color(rgb(T.fg_2)),
+                )
+        };
+        Some(
+            h_flex()
+                .mt(px(10.))
+                .gap(px(14.))
+                .items_center()
+                .child(
+                    v_flex().flex_none().child(section_label("Kibitz")).child(
+                        div()
+                            .text_size(px(12.))
+                            .text_color(rgb(T.muted))
+                            .whitespace_nowrap()
+                            .child(kibitz.name.clone()),
+                    ),
+                )
+                .child(figure("Eval", score))
+                .child(figure("Depth", depth))
+                .child(
+                    mono(best)
+                        .flex_1()
+                        .min_w_0()
+                        .truncate()
+                        .text_size(px(12.))
+                        .text_color(rgb(T.fg_2)),
+                )
+                .into_any_element(),
+        )
     }
 
     /// Heading text while the board shows something other than the game position.

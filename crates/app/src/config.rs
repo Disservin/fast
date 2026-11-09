@@ -484,6 +484,30 @@ impl Default for TestPositionSettings {
     }
 }
 
+/// The second engine that analyses a position previewed in Line preview.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct KibitzConfig {
+    /// Clicking a move in Line preview analyses it with the kibitz engine and leaves
+    /// the main analysis on the game position. Off: the main engines follow the preview.
+    pub enabled: bool,
+    /// The engine to run; `None` uses the first analysis engine.
+    pub engine: Option<EngineId>,
+    pub threads: u32,
+    pub hash_mb: u32,
+}
+
+impl Default for KibitzConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            engine: None,
+            threads: 1,
+            hash_mb: 16,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
@@ -509,6 +533,7 @@ pub struct Config {
     /// instead of stopped: it keeps its lines and stays paused on return until resumed.
     #[serde(default)]
     pub pause_in_background: bool,
+    pub kibitz: KibitzConfig,
     pub analysis_limit: AnalysisLimit,
     /// Nodes each engine searches per position when a game is analysed backwards,
     /// whatever the search limit for ordinary analysis.
@@ -637,6 +662,7 @@ impl Default for Config {
             engine_on: true,
             analyse_in_background: false,
             pause_in_background: false,
+            kibitz: KibitzConfig::default(),
             analysis_limit: AnalysisLimit::default(),
             backward_nodes: DEFAULT_BACKWARD_NODES,
             view: AnalysisView::default(),

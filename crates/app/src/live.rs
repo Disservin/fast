@@ -165,7 +165,7 @@ pub struct LiveLine {
 
 impl LiveLine {
     /// A fresh line from a search of `pos`, with its score and WDL made White-relative.
-    fn new(
+    pub(crate) fn new(
         pos: &chess_core::Chess,
         update: AnalysisUpdate,
         search_limit: String,

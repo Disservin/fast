@@ -360,6 +360,10 @@ pub struct AnalyseScreen {
     pv_dragging: bool,
     pv_toggle_off: bool,
     pv_played: Option<usize>,
+    /// The preview is analysed by the kibitz engine; the main analysis, the table and
+    /// everything else stay on the game position.
+    pub(super) pv_kibitz: bool,
+    pub(super) kibitz: Entity<crate::kibitz::Kibitz>,
     pv_hover: Option<usize>,
     /// The small board that follows the cursor over a hovered PV move.
     pv_peek: Entity<BoardView>,
@@ -391,6 +395,7 @@ impl AnalyseScreen {
     ) -> Self {
         let board = cx.new(|_| BoardView::new("analyse-board"));
         let live = cx.new(|cx| LiveAnalysis::new(model.clone(), cx));
+        let kibitz = cx.new(|_| crate::kibitz::Kibitz::default());
         let note = cx.new(|cx| {
             TextareaState::new(window, cx).placeholder(ui::i18n::t("Add a note for this position"))
         });
@@ -425,6 +430,12 @@ impl AnalyseScreen {
                     let text = state.read(cx).value().to_string();
                     let hash = this.note_hash;
                     this.model.read(cx).set_note(hash, &text);
+                }
+            }),
+            cx.observe(&kibitz, |this, _, cx| {
+                if this.pv_kibitz {
+                    this.update_arrows(cx);
+                    cx.notify();
                 }
             }),
             cx.subscribe_in(&fen_input, window, |this, state, event, window, cx| {
@@ -538,6 +549,8 @@ impl AnalyseScreen {
             pv_dragging: false,
             pv_toggle_off: false,
             pv_played: None,
+            pv_kibitz: false,
+            kibitz,
             pv_hover: None,
             pv_peek: cx.new(|_| BoardView::new("pv-peek-board").read_only()),
             pv_peek_at: None,
@@ -598,6 +611,10 @@ impl AnalyseScreen {
         });
         if !visible {
             self.stop_backward(None, cx);
+            self.kibitz.update(cx, |kibitz, cx| kibitz.stop(cx));
+        } else if self.pv_kibitz {
+            self.pv_played = None;
+            self.show_pv_preview(cx);
         }
     }
 
@@ -665,6 +682,9 @@ impl AnalyseScreen {
         self.pv_hover = None;
         self.pv_peek_at = None;
         self.pv_played = None;
+        if std::mem::take(&mut self.pv_kibitz) {
+            self.kibitz.update(cx, |kibitz, cx| kibitz.stop(cx));
+        }
         self.board
             .update(cx, |board, cx| board.set_interactive(true, cx));
         let node = self.tree.node(self.current);
@@ -952,7 +972,9 @@ impl AnalyseScreen {
             },
         );
         // The selection follows the best line until the user picks a row.
+        // A kibitz preview holds the row whose line is being looked at.
         if !self.row_chosen
+            && !self.pv_kibitz
             && let Some(first) = self.rows.iter().find(|row| !row.pv.is_empty())
         {
             self.selected = Some(RowKey::of(first));
@@ -964,6 +986,25 @@ impl AnalyseScreen {
     fn update_arrows(&mut self, cx: &mut Context<Self>) {
         // A hovered move or a highlighted range is already drawn on the board.
         if self.pv_hover.is_some() || self.pv_view.as_ref().is_some_and(PvView::is_range) {
+            return;
+        }
+        // The board shows the previewed position, which only the kibitz analyses.
+        if self.pv_kibitz {
+            let arrows: Vec<Arrow> = self
+                .kibitz
+                .read(cx)
+                .line
+                .as_ref()
+                .and_then(|line| {
+                    let (_, moves) =
+                        panels::replay(&self.shown_pos(), &line.sans[..line.sans.len().min(1)]);
+                    let mv = moves.first()?;
+                    Some(Arrow::new(mv.from()?, mv.to()))
+                })
+                .into_iter()
+                .collect();
+            self.board
+                .update(cx, |board, cx| board.set_arrows(arrows, cx));
             return;
         }
         let pos = self.analysed_pos();
@@ -2203,7 +2244,7 @@ impl AnalyseScreen {
         } else {
             42.
         };
-        let shown = self.analysed_pos();
+        let shown = self.shown_pos();
         let turn = if shown.turn().is_white() {
             ui::i18n::t("White")
         } else {
@@ -3523,6 +3564,7 @@ impl AnalyseScreen {
                     })
                     .children(pv),
             )
+            .children(self.render_kibitz_row(cx))
             .children(explanation)
             .child(
                 h_flex()
