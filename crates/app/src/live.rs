@@ -476,6 +476,13 @@ impl LiveAnalysis {
                             model.save_config(cx);
                         }
                     });
+                    // Keep the running engine's copy in step, or the next reconcile would
+                    // take the new version for another binary and restart the process.
+                    if let Some(config) = self.model.read(cx).engine(id) {
+                        live.config.name = config.name.clone();
+                        live.config.version = config.version.clone();
+                        live.config.info = config.info.clone();
+                    }
                 }
                 EngineEvent::Analysis {
                     search_id: from,
