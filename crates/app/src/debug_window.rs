@@ -83,7 +83,11 @@ impl DebugWindow {
             return;
         }
         self.revision = Some(revision);
-        self.lines = self.log.snapshot(self.show_info);
+        let lines = self.log.snapshot(self.show_info);
+        if !self.follow {
+            keep_log_anchor(&self.scroll, &self.lines, &lines);
+        }
+        self.lines = lines;
         if self.follow && !self.lines.is_empty() {
             self.scroll
                 .scroll_to_item(self.lines.len() - 1, gpui::ScrollStrategy::Bottom);
@@ -102,6 +106,27 @@ impl DebugWindow {
 
 /// Height of one engine log line.
 pub(crate) const LOG_ROW_H: f32 = 19.;
+
+/// Keeps the line at the top of a log view in place when the log is replaced by a
+/// newer snapshot, so reading back through it is not disturbed while old lines fall
+/// off the front and new ones arrive at the end.
+pub(crate) fn keep_log_anchor(scroll: &UniformListScrollHandle, old: &[LogLine], new: &[LogLine]) {
+    let state = scroll.0.borrow();
+    let row = state
+        .last_item_size
+        .map_or(LOG_ROW_H, |size| f32::from(size.item.height))
+        .max(1.);
+    let mut offset = state.base_handle.offset();
+    let top = (-f32::from(offset.y) / row).floor().max(0.) as usize;
+    let Some(anchor) = old.get(top).map(|line| line.seq) else {
+        return;
+    };
+    let moved = new.partition_point(|line| line.seq < anchor) as f32 - top as f32;
+    if moved != 0. {
+        offset.y -= px(moved * row);
+        state.base_handle.set_offset(offset);
+    }
+}
 
 /// One engine log line, coloured by direction and starting with its mark; the caller
 /// adds the text.

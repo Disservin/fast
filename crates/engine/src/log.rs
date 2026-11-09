@@ -24,6 +24,9 @@ pub enum LogKind {
 pub struct LogLine {
     pub kind: LogKind,
     pub text: String,
+    /// Position in the whole log, counting lines already dropped, so a view can keep
+    /// its place while old lines fall off the front.
+    pub seq: u64,
 }
 
 impl LogLine {
@@ -41,6 +44,8 @@ struct Inner {
     lines: VecDeque<LogLine>,
     /// Bumped on every change, so readers can tell when to take a new snapshot.
     revision: u64,
+    /// The sequence number the next line gets.
+    next_seq: u64,
 }
 
 /// Shared handle to one engine's log. Outlives the process, so a crash can be inspected.
@@ -53,9 +58,12 @@ impl EngineLog {
         if inner.lines.len() == CAPACITY {
             inner.lines.pop_front();
         }
+        let seq = inner.next_seq;
+        inner.next_seq += 1;
         inner.lines.push_back(LogLine {
             kind,
             text: text.into(),
+            seq,
         });
         inner.revision += 1;
     }
@@ -110,5 +118,7 @@ mod tests {
         log.clear();
         assert!(log.snapshot(true).is_empty());
         assert!(log.revision() > filled);
+        log.push(LogKind::Sent, "uci");
+        assert!(log.snapshot(true)[0].seq > lines.last().unwrap().seq);
     }
 }

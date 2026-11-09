@@ -1063,11 +1063,17 @@ impl AnalyseScreen {
         if key.is_some() && key == self.log_key {
             return;
         }
+        let same_view = same_engine && key.map(|key| key.2) == self.log_key.map(|key| key.2);
         self.log_key = key;
-        self.log_lines = self
+        let lines = self
             .panel_log(cx)
             .map(|(_, log)| log.snapshot(self.log_show_info))
             .unwrap_or_default();
+        // Reading back through the log: new output must not move the text in view.
+        if !self.log_follow && same_view {
+            crate::debug_window::keep_log_anchor(&self.log_scroll, &self.log_lines, &lines);
+        }
+        self.log_lines = lines;
     }
 
     /// The byte under the pointer in a visible log line.
@@ -1828,6 +1834,7 @@ mod log_tests {
         LogLine {
             kind: LogKind::Received,
             text: text.to_owned(),
+            seq: 0,
         }
     }
 
