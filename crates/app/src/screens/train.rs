@@ -384,6 +384,9 @@ impl TrainScreen {
     }
 
     fn hint(&mut self, cx: &mut Context<Self>) {
+        if !matches!(self.phase, Phase::Asking | Phase::Wrong) {
+            return;
+        }
         let Some(mv) = self.answer_move() else { return };
         self.evidence().hints += 1;
         let role = mv.role();
@@ -401,11 +404,14 @@ impl TrainScreen {
     }
 
     fn show_answer(&mut self, cx: &mut Context<Self>) {
+        if !matches!(self.phase, Phase::Asking | Phase::Wrong) {
+            return;
+        }
         let Some(mv) = self.answer_move() else { return };
         let Some(from) = mv.from() else { return };
         self.evidence().reveals += 1;
         self.phase = Phase::Revealed;
-        self.message = Some(ui::i18n::t("Answer shown. Grade how well you knew it.").into());
+        self.message = Some(ui::i18n::t("Answer revealed. This position will repeat.").into());
         self.board.update(cx, |board, cx| {
             board.set_arrows(vec![Arrow::new(from, mv.to())], cx);
             board.set_interactive(false, cx);
@@ -605,8 +611,23 @@ impl TrainScreen {
         let (known, learning, new) = coverage.percents();
         let rows = rep.tree_rows(today);
         let selected = self.selected_path.clone();
+        let recalling =
+            self.current().is_some() && matches!(self.phase, Phase::Asking | Phase::Wrong);
         let mut list = v_flex().mb(px(14.));
-        for (index, row) in rows.into_iter().enumerate() {
+        if recalling {
+            let path = &self.current().unwrap().path;
+            list = list.child(
+                mono(if path.is_empty() {
+                    ui::i18n::t("Starting position").to_owned()
+                } else {
+                    format_pv(0, path)
+                })
+                .px(px(16.))
+                .text_size(px(13.))
+                .text_color(rgb(T.fg)),
+            );
+        }
+        for (index, row) in rows.into_iter().enumerate().filter(|_| !recalling) {
             let is_selected = selected.as_ref().is_some_and(|path| {
                 path.len() > row.path.len()
                     && path.starts_with(&row.path)
@@ -696,7 +717,7 @@ impl TrainScreen {
                             .w_full()
                             .overflow_hidden()
                             .child(segment(known, T.fg))
-                            .child(segment(learning, 0x9A948A))
+                            .child(segment(learning, T.muted))
                             .child(segment(new, T.bg)),
                     )
                     .child(
@@ -761,12 +782,12 @@ impl TrainScreen {
         } else {
             ui::i18n::t("Black")
         };
-        let position = self.finished + usize::from(drill.is_some());
+        let position = self.finished;
         let total = self.total.max(position);
         let fraction = if total == 0 {
             0.0
         } else {
-            position as f32 / total as f32
+            self.finished as f32 / total as f32
         };
         let context = drill.as_ref().map(|drill| {
             let start = drill.path.len().saturating_sub(2);
@@ -791,6 +812,25 @@ impl TrainScreen {
             .unwrap_or_default();
         let intervals = card.intervals();
         let has_drill = drill.is_some();
+        let answered = has_drill && matches!(self.phase, Phase::Correct | Phase::Revealed);
+        let evidence = self
+            .attempts
+            .get(&self.attempt_key())
+            .cloned()
+            .unwrap_or_default();
+        let repeat = evidence.scheduling_grade(Grade::Hard) == Grade::Again;
+        let hinted = evidence.hints > 0;
+        let explanation = if repeat {
+            Some(ui::i18n::t(
+                "A mistake or reveal means this position will repeat.",
+            ))
+        } else if hinted {
+            Some(ui::i18n::t(
+                "Hint used. The highest available grade is Hard.",
+            ))
+        } else {
+            None
+        };
         let tool = |id: &'static str,
                     label: &'static str,
                     action: fn(&mut Self, &mut Context<Self>),
@@ -804,7 +844,7 @@ impl TrainScreen {
                 btn(id, label)
                     .flex_1()
                     .kind(kind)
-                    .disabled(!has_drill)
+                    .disabled(!answered || evidence.scheduling_grade(grade) != grade)
                     .on_click(move |_, cx| this.update(cx, |screen, cx| screen.grade(grade, cx)))
             };
         v_flex()
@@ -815,7 +855,7 @@ impl TrainScreen {
                     .h(px(22.))
                     .mt(px(20.))
                     .gap(px(8.))
-                    .child(section_label(format!("Drill {position} of {total}")))
+                    .child(section_label(format!("{} {position}, {} {}", ui::i18n::t("Completed"), self.queue.len(), ui::i18n::t("remaining"))))
                     .child(badge(format!(
                         "{} due",
                         self.queue
@@ -875,16 +915,47 @@ impl TrainScreen {
                             .child(if has_drill {
                                 format!("Your move as {side}")
                             } else {
-                                ui::i18n::t("Nothing due").to_owned()
+                                ui::i18n::t(if self.finished > 0 {
+                                    "Session complete"
+                                } else if self.model.read(cx).repertoire.positions() == 0 {
+                                    "Your repertoire is empty"
+                                } else {
+                                    "Nothing scheduled today"
+                                }).to_owned()
                             }),
                     )
                     .children(
                         context.map(|text| mono(text).text_size(px(14.)).text_color(rgb(T.muted))),
                     ),
             )
-            .child(div().size(board_size).flex_none().child(self.board.clone()))
+            .when(has_drill, |column| {
+                column.child(div().size(board_size).flex_none().child(self.board.clone()))
+            })
             .children(self.render_message(board_size))
-            .child(
+            .when(!has_drill, |column| column.child(
+                div().mt(px(12.)).text_color(rgb(T.fg_2)).child(ui::i18n::t(
+                    if self.finished > 0 {
+                        "All session positions completed. Come back when more are due, or add a line."
+                    } else if self.model.read(cx).repertoire.positions() == 0 {
+                        "Use Add line or Import PGN to prepare your first positions."
+                    } else {
+                        "Come back when positions are due, or use Add line to learn something new."
+                    }
+                ))
+            ))
+            .when(!has_drill, |column| column.child(
+                btn("train-add-line", "Add line").on_click({
+                    let this = this.clone();
+                    move |window, cx| {
+                        this.update(cx, |screen, cx| {
+                            screen.adding = true;
+                            screen.add_line.update(cx, |input, cx| input.focus(window, cx));
+                            cx.notify();
+                        });
+                    }
+                })
+            ))
+            .when(has_drill && !answered, |column| column.child(
                 h_flex()
                     .mt(px(14.))
                     .justify_between()
@@ -897,44 +968,46 @@ impl TrainScreen {
                                 "Show answer",
                                 Self::show_answer,
                                 this.clone(),
-                            ))
-                            .child(tool("why", "Why this move?", Self::why, this.clone())),
+                            )),
                     )
                     .child(tool("skip", "Skip", Self::skip, this.clone())),
-            )
+            ))
+            .when(answered, |column| column
+            .children(explanation.map(|text| div().mt(px(10.)).text_color(rgb(T.fg_2)).child(text)))
+            .child(tool("why", "Why this move?", Self::why, this.clone()))
             .child(
                 h_flex()
                     .mt(px(15.))
                     .gap(px(6.))
                     .child(recall(
                         "again",
-                        ui::i18n::t("Again").to_owned(),
+                        ui::i18n::t("Repeat").to_owned(),
                         Grade::Again,
                         BtnKind::Normal,
                         this.clone(),
                     ))
-                    .child(recall(
+                    .when(!repeat, |row| row.child(recall(
                         "hard",
-                        format!("Hard ({}d)", intervals.hard),
+                        format!("{} ({}d)", ui::i18n::t("Hard"), intervals.hard),
                         Grade::Hard,
                         BtnKind::Normal,
                         this.clone(),
-                    ))
-                    .child(recall(
+                    )))
+                    .when(!repeat && !hinted, |row| row.child(recall(
                         "good",
-                        format!("Good ({}d)", intervals.good),
+                        format!("{} ({}d)", ui::i18n::t("Good"), intervals.good),
                         Grade::Good,
                         BtnKind::Primary,
                         this.clone(),
-                    ))
-                    .child(recall(
+                    )))
+                    .when(!repeat && !hinted, |row| row.child(recall(
                         "easy",
-                        format!("Easy ({}d)", intervals.easy),
+                        format!("{} ({}d)", ui::i18n::t("Easy"), intervals.easy),
                         Grade::Easy,
                         BtnKind::Normal,
                         this.clone(),
-                    )),
-            )
+                    ))),
+            ))
     }
 
     /// What the trainer says about the last answer, in a box right under the board: a
@@ -1103,11 +1176,14 @@ impl TrainScreen {
                     .py(px(12.))
                     .border_t_1()
                     .border_color(rgb(T.border))
-                    .child(btn("drill-leaks", "Drill these lines").primary().on_click(
-                        move |_, cx| {
-                            this.update(cx, |screen, cx| screen.drill_leaks(cx));
-                        },
-                    )),
+                    .child(
+                        btn("drill-leaks", "Drill these lines")
+                            .primary()
+                            .disabled(!model.leaks.iter().any(|leak| leak.prepared.is_some()))
+                            .on_click(move |_, cx| {
+                                this.update(cx, |screen, cx| screen.drill_leaks(cx));
+                            }),
+                    ),
             )
     }
 }

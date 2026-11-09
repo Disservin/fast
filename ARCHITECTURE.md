@@ -417,3 +417,16 @@ The Analyse board column fills its available height. The game graph below the bo
 and navigation grows into the remaining space, retaining a minimum height when
 the column needs to scroll. Eval, time, depth and bar views share this layout;
 tournament graphs keep their explicit heights.
+
+
+## Train recall phases
+
+Train hides the repertoire tree during recall and displays only the path to the
+question, because tree row labels can include future moves. After a correct answer
+or reveal, the tree and learning notes become available. Recall controls are
+replaced by grading controls: mistakes and reveals allow only Repeat, while hints
+cap the available grades at Hard, matching the scheduler's evidence rules.
+Progress counts finished queue entries, excluding the unanswered question and
+entries awaiting repetition. An exhausted queue distinguishes a completed session
+from an empty repertoire or a day with no scheduled positions; the persisted
+session counters preserve this distinction after restarting.

@@ -436,6 +436,30 @@ pub fn translate(language: Language, text: &str) -> &str {
             "Custom" => "Benutzerdefiniert",
             "Download an engine" => "Engine herunterladen",
             "Download engine" => "Engine herunterladen",
+            "Answer revealed. This position will repeat." => {
+                "Antwort aufgedeckt. Diese Stellung wird wiederholt."
+            }
+            "A mistake or reveal means this position will repeat." => {
+                "Nach einem Fehler oder Aufdecken wird diese Stellung wiederholt."
+            }
+            "Hint used. The highest available grade is Hard." => {
+                "Hinweis verwendet. Die höchste verfügbare Bewertung ist Schwer."
+            }
+            "Completed" => "Abgeschlossen",
+            "remaining" => "verbleibend",
+            "Session complete" => "Einheit abgeschlossen",
+            "Your repertoire is empty" => "Dein Repertoire ist leer",
+            "Nothing scheduled today" => "Heute ist nichts geplant",
+            "All session positions completed. Come back when more are due, or add a line." => {
+                "Alle Stellungen abgeschlossen. Komm wieder, wenn weitere fällig sind, oder füge eine Variante hinzu."
+            }
+            "Use Add line or Import PGN to prepare your first positions." => {
+                "Bereite deine ersten Stellungen mit Variante hinzufügen oder PGN importieren vor."
+            }
+            "Come back when positions are due, or use Add line to learn something new." => {
+                "Komm wieder, wenn Stellungen fällig sind, oder lerne mit Variante hinzufügen etwas Neues."
+            }
+            "Repeat" => "Wiederholen",
             "Drill these lines" => "Diese Varianten üben",
             "Duplicate" => "Duplizieren",
             "Earlier tournaments" => "Frühere Turniere",
