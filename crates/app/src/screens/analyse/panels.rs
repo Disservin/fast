@@ -38,8 +38,6 @@ pub enum EngineTab {
 const LOG_SELECTION_BG: u32 = 0x34507A;
 /// How often an open Log panel checks its engine for new lines.
 pub(super) const LOG_POLL: std::time::Duration = std::time::Duration::from_millis(200);
-/// A hovered PV move has to stand out against the panel surface.
-const HOVER_BG: u32 = 0x3F4753;
 /// Side of the board that follows the cursor over a hovered PV move.
 const PEEK_SIZE: f32 = 200.;
 /// How far the peek board sits below and right of the cursor, so it never covers the move.
@@ -1418,7 +1416,9 @@ impl AnalyseScreen {
                     .when(highlighted, |chip| {
                         chip.bg(rgb(T.accent)).text_color(rgb(T.accent_fg))
                     })
-                    .when(hovered, |chip| chip.bg(rgb(HOVER_BG)).text_color(rgb(T.fg)))
+                    .when(hovered, |chip| {
+                        chip.bg(rgb(T.hover_strong)).text_color(rgb(T.fg))
+                    })
                     .on_hover(cx.listener(move |this, hovering: &bool, window, cx| {
                         this.hover_pv_move(index, *hovering, &hover_sans, window, cx);
                     }))

@@ -52,6 +52,7 @@ decoration is kept to a minimum.
   | `surface` | Panels, headers, side columns, normal buttons |
   | `surface_2` | Table header rows, inset areas |
   | `hover` | Hover background |
+| `hover_strong` | Hover on small items inside an inset, such as moves in Line preview |
   | `selected` | Selected row or item, selected segmented button |
   | `border` | Panel outlines |
   | `border_strong` | Button and input outlines |
