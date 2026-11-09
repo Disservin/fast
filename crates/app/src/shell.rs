@@ -137,6 +137,16 @@ fn app_menus() -> Vec<gpui::Menu> {
 /// included. Elsewhere the system draws one when it can.
 pub const DRAWS_TITLE_BAR: bool = cfg!(target_os = "windows");
 
+/// On macOS the title bar is transparent and the top bar extends under it, so the
+/// traffic lights sit at its left end instead of on a separate line above it.
+pub const MAC_TITLE_BAR: bool = cfg!(target_os = "macos");
+
+/// Where macOS draws the traffic lights: centred in the 58px top bar.
+pub const TRAFFIC_LIGHTS_AT: (f32, f32) = (18., 22.);
+
+/// Room the traffic lights take at the top bar's left end, including a gap.
+const TRAFFIC_LIGHTS_W: f32 = 72.;
+
 /// Whether the menus are drawn by the app rather than the system.
 fn draws_own_menus() -> bool {
     !cfg!(target_os = "macos")
@@ -2165,12 +2175,16 @@ impl Workspace {
             .bg(rgb(T.surface))
             .border_b_1()
             .border_color(rgb(T.border))
-            .when(controls, |bar| bar.child(drag_region()))
+            .when(controls || MAC_TITLE_BAR, |bar| bar.child(drag_region()))
             .child(
                 h_flex()
                     .absolute()
                     .inset_0()
                     .px(px(21.))
+                    // The traffic lights are hidden in full screen.
+                    .when(MAC_TITLE_BAR && !window.is_fullscreen(), |row| {
+                        row.pl(px(TRAFFIC_LIGHTS_AT.0 + TRAFFIC_LIGHTS_W))
+                    })
                     .justify_between()
                     .child(
                         h_flex()
@@ -2528,6 +2542,16 @@ fn drag_region() -> impl IntoElement {
         // Windows treats this as its caption: dragging, double-click to maximize,
         // snapping and the system menu all work natively.
         return region.window_control_area(WindowControlArea::Drag);
+    }
+    if MAC_TITLE_BAR {
+        // A double click does what the user chose in System Settings: zoom or minimize.
+        return region.on_mouse_down(MouseButton::Left, |event, window, _| {
+            if event.click_count == 2 {
+                window.titlebar_double_click();
+            } else {
+                window.start_window_move();
+            }
+        });
     }
     region
         .on_mouse_down(MouseButton::Left, |event, window, _| {

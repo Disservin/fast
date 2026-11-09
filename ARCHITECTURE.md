@@ -70,6 +70,12 @@ empty bar are marked with `window_control_area`, so Windows itself handles them:
 double-click to maximize, snapping and Snap Layouts. Everything clickable in the bar uses
 `occlude()`, because a click on the drag area would otherwise go to the system caption.
 
+On macOS the title bar is transparent with its title hidden, and the top bar extends under
+it. The traffic lights are moved into the top bar (`TRAFFIC_LIGHTS_AT`), centred at its left
+end, and the bar's content starts after them except in full screen, where macOS hides them.
+The empty bar drags the window with `start_window_move`, and a double click runs
+`titlebar_double_click`, which zooms or minimizes as set in System Settings.
+
 ## Live engine options
 
 `EngineHandle::set_option` is safe during a search. The supervisor sends `stop`, waits for

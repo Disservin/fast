@@ -101,11 +101,15 @@ fn open_main_window(cli: Cli, cx: &mut App) -> anyhow::Result<()> {
         // Native decorations where the system offers them; otherwise `Workspace` draws its own.
         window_decorations: Some(WindowDecorations::Server),
         // On Windows the top bar is the title bar, so the menus share a line with the
-        // window controls; Windows keeps the frame, resizing and snapping.
+        // window controls; Windows keeps the frame, resizing and snapping. On macOS the
+        // top bar runs under a transparent title bar and holds the traffic lights.
         titlebar: Some(TitlebarOptions {
             title: Some("Fast".into()),
-            appears_transparent: shell::DRAWS_TITLE_BAR,
-            traffic_light_position: None,
+            appears_transparent: shell::DRAWS_TITLE_BAR || shell::MAC_TITLE_BAR,
+            traffic_light_position: shell::MAC_TITLE_BAR.then(|| {
+                let (x, y) = shell::TRAFFIC_LIGHTS_AT;
+                gpui::point(px(x), px(y))
+            }),
         }),
         ..Default::default()
     };
