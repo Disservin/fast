@@ -202,12 +202,20 @@ impl EngineConfig {
 /// Owns the live processes. Dropping the manager shuts every engine down.
 #[derive(Default)]
 pub struct EngineManager {
-    running: BTreeMap<EngineId, EngineHandle>,
+    running: BTreeMap<EngineId, (EngineHandle, PathBuf)>,
 }
 
 impl EngineManager {
-    /// The running handle for this engine, starting it if necessary.
+    /// The running handle for this engine, starting it if necessary. A process started
+    /// from another binary than the configured one is replaced.
     pub fn ensure_running(&mut self, config: &EngineConfig) -> EngineHandle {
+        if self
+            .running
+            .get(&config.id)
+            .is_some_and(|(_, path)| *path != config.path)
+        {
+            self.shutdown(config.id);
+        }
         self.running
             .entry(config.id)
             .or_insert_with(|| {
@@ -223,24 +231,38 @@ impl EngineManager {
                 if config.debug {
                     handle.set_debug(true);
                 }
-                handle
+                (handle, config.path.clone())
             })
+            .0
             .clone()
     }
 
     pub fn get(&self, id: EngineId) -> Option<&EngineHandle> {
-        self.running.get(&id)
+        self.running.get(&id).map(|(handle, _)| handle)
     }
 
     /// Stops and forgets a process, e.g. after a crash, so it can be restarted.
     pub fn shutdown(&mut self, id: EngineId) {
-        if let Some(handle) = self.running.remove(&id) {
+        if let Some((handle, _)) = self.running.remove(&id) {
             handle.quit();
         }
     }
 
+    /// Quits every process whose engine `keep` rejects.
+    pub fn retain(&mut self, mut keep: impl FnMut(EngineId) -> bool) {
+        let stale: Vec<EngineId> = self
+            .running
+            .keys()
+            .copied()
+            .filter(|id| !keep(*id))
+            .collect();
+        for id in stale {
+            self.shutdown(id);
+        }
+    }
+
     pub fn shutdown_all(&mut self) {
-        for (_, handle) in std::mem::take(&mut self.running) {
+        for (_, (handle, _)) in std::mem::take(&mut self.running) {
             handle.quit();
         }
     }

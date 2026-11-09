@@ -345,9 +345,13 @@ left on disk but not reopened, and new tab ids start above every id found there 
 new tab never picks up an old file.
 
 Only the visible `LiveAnalysis` searches through the shared engine registry.
-Deactivation stops searches and cancels readers while retaining its position cache;
-idle registry handles remain available to Settings and log windows. Activation
-replaces those handles and restarts from the selected tab's position. Inactive views ignore
+Deactivation only sends `stop` and cancels readers while retaining its position cache;
+the processes keep running, so networks and hash survive a tab switch, and idle
+registry handles remain available to Settings and log windows. Activation attaches
+readers to the running processes (quitting those no longer used for analysis; the
+registry replaces a process whose binary changed) and restarts from the selected tab's
+position. Search ids come from one global counter, so a late event from the previous
+tab's search never matches the new tab's. Inactive views ignore
 late engine events and configuration notifications cannot start background analysis.
 Each Play game already owns its own engine and clock. In self-play that one
 engine process plays both sides with the shared clock, and the board stays read-only. Open games continue when

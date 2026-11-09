@@ -21,6 +21,14 @@ use crate::{
 /// UI updates per engine are bounded to one per this interval (≤ 10 Hz).
 const THROTTLE: Duration = Duration::from_millis(100);
 
+/// Search ids are unique across every Analyse tab. Tabs hand the same engine processes
+/// to each other, so a late event from one tab's search can never match another's.
+static NEXT_SEARCH_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+fn next_search_id() -> u64 {
+    NEXT_SEARCH_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+}
+
 /// Positions remembered per engine before the cache starts over.
 const CACHE_LIMIT: usize = 50_000;
 
@@ -275,9 +283,19 @@ impl LiveAnalysis {
         }
         self.active = active;
         if active {
-            // Never attach a new tab's reader to another tab's event queue.
-            self.model
-                .update(cx, |model, _| model.manager.shutdown_all());
+            // The processes keep running between tabs; this tab takes over their event
+            // queues, and search ids keep the previous tab's late events out. Engines
+            // taken out of analysis meanwhile are quit.
+            let analysed: Vec<EngineId> = self
+                .model
+                .read(cx)
+                .analysis_engines()
+                .iter()
+                .map(|config| config.id)
+                .collect();
+            self.model.update(cx, |model, _| {
+                model.manager.retain(|id| analysed.contains(&id));
+            });
             self.restart(cx);
         } else {
             for engine in &mut self.engines {
@@ -352,7 +370,15 @@ impl LiveAnalysis {
                     if relaunch {
                         model.manager.shutdown(config.id);
                     }
-                    model.engine_status.insert(config.id, EngineStatus::Loading);
+                    // A process another tab already started is ready at once.
+                    let status = if model.manager.get(config.id).is_none() {
+                        EngineStatus::Loading
+                    } else if self.paused {
+                        EngineStatus::Paused
+                    } else {
+                        EngineStatus::Ready
+                    };
+                    model.engine_status.insert(config.id, status);
                     model.manager.ensure_running(&analysis_config(&config))
                 });
                 live._reader = Some(self.spawn_reader(config.id, &handle, cx));
@@ -833,7 +859,7 @@ impl LiveAnalysis {
     }
 
     fn refresh_restricted_search(&mut self, cx: &mut Context<Self>) {
-        self.search_id += 1;
+        self.search_id = next_search_id();
         // Restricted scores must not overwrite unrestricted cache entries or be
         // reused to skip the new search at a fixed depth.
         for engine in &mut self.engines {
@@ -850,7 +876,7 @@ impl LiveAnalysis {
         }
         let Some(pos) = &self.pos else { return };
         let terminal = self.end.is_some();
-        self.search_id += 1;
+        self.search_id = next_search_id();
         let hash = position_hash(pos);
         let limit = self
             .limit_override
