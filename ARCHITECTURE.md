@@ -113,6 +113,10 @@ is skipped without blocking the UI.
 - The standard initial position is sent as `position startpos`, other starts as
   `position fen`, with the moves after `moves`.
 - Analysis engines that offer `UCI_AnalyseMode` get it set to `true`.
+- `info` lines are read field by field in any order. Unknown fields (newer protocol
+  extensions, engine-specific ones) are skipped up to the next known field, the PV ends
+  at the first token that is not a UCI move, decimals are rounded, and a field that
+  cannot be read is dropped instead of the line. Only a line without a PV is ignored.
 
 ## Engine tournaments
 

@@ -169,7 +169,8 @@ pub fn parse_line(line: &str) -> UciLine {
     }
 }
 
-/// Every field an `info` line can carry. A field's value runs up to the next of these.
+/// Every field an `info` line can carry. Anything else is a field from a newer or
+/// engine-specific protocol, skipped up to the next field named here.
 const INFO_KEYWORDS: [&str; 20] = [
     "depth",
     "seldepth",
@@ -193,6 +194,42 @@ const INFO_KEYWORDS: [&str; 20] = [
     "lowerbound",
 ];
 
+/// A move in UCI notation: `e2e4`, `e7e8q`, a Chess960 king-takes-rook castle, a
+/// drop such as `N@f3`, or the null move `0000`.
+fn is_uci_move(token: &str) -> bool {
+    let bytes = token.as_bytes();
+    let square =
+        |file: u8, rank: u8| (b'a'..=b'h').contains(&file) && (b'1'..=b'8').contains(&rank);
+    match bytes {
+        b"0000" => true,
+        [piece, b'@', file, rank] => b"PNBRQKpnbrqk".contains(piece) && square(*file, *rank),
+        [from_file, from_rank, to_file, to_rank] => {
+            square(*from_file, *from_rank) && square(*to_file, *to_rank)
+        }
+        [from_file, from_rank, to_file, to_rank, promotion] => {
+            square(*from_file, *from_rank)
+                && square(*to_file, *to_rank)
+                && b"qrbnkQRBNK".contains(promotion)
+        }
+        _ => false,
+    }
+}
+
+/// A number written as an integer, or as a decimal that a newer engine might send,
+/// rounded to the nearest whole value.
+fn parse_number<T: std::str::FromStr + TryFrom<i64>>(token: &str) -> Option<T> {
+    token.parse().ok().or_else(|| {
+        let value: f64 = token.parse().ok()?;
+        if !value.is_finite() {
+            return None;
+        }
+        T::try_from(value.round() as i64).ok()
+    })
+}
+
+/// Reads an `info` line. Fields may come in any order, unknown fields are skipped,
+/// and a field that cannot be read is left out rather than losing the whole line;
+/// only a line without a principal variation is not analysis.
 fn parse_info(line: &str) -> Option<AnalysisUpdate> {
     let tokens: Vec<&str> = line.split_ascii_whitespace().skip(1).collect();
     let mut update = AnalysisUpdate {
@@ -200,48 +237,100 @@ fn parse_info(line: &str) -> Option<AnalysisUpdate> {
         ..Default::default()
     };
     let mut index = 0;
+    // The value right after a field name, if it is not itself a field name.
+    let value = |index: usize| {
+        tokens
+            .get(index)
+            .copied()
+            .filter(|token| !INFO_KEYWORDS.contains(token))
+    };
+    let moves_from = |mut index: usize| {
+        while tokens.get(index).is_some_and(|token| is_uci_move(token)) {
+            index += 1;
+        }
+        index
+    };
     while index < tokens.len() {
         let key = tokens[index];
         index += 1;
-        // The field's own tokens, up to the next keyword. `currmove`, `currline` and
-        // `refutation` carry moves too, but they are not the principal variation.
-        let end = tokens[index..]
-            .iter()
-            .position(|token| INFO_KEYWORDS.contains(token))
-            .map_or(tokens.len(), |offset| index + offset);
-        let values = &tokens[index..end];
-        let first = values.first().copied();
         match key {
-            "depth" => update.depth = first?.parse().ok()?,
-            "seldepth" => update.seldepth = first.and_then(|v| v.parse().ok()),
-            "multipv" => update.multipv = first?.parse().ok()?,
-            "nodes" => update.nodes = first.and_then(|v| v.parse().ok()),
-            "nps" => update.nps = first.and_then(|v| v.parse().ok()),
-            "tbhits" => update.tbhits = first.and_then(|v| v.parse().ok()),
-            "hashfull" => update.hashfull = first.and_then(|v| v.parse().ok()),
-            "time" => update.time_ms = first.and_then(|v| v.parse().ok()),
+            "depth" | "seldepth" | "multipv" | "nodes" | "nps" | "tbhits" | "hashfull" | "time"
+            | "sbhits" | "cpuload" | "currmovenumber" | "currmove" => {
+                let Some(text) = value(index) else { continue };
+                index += 1;
+                match key {
+                    "depth" => update.depth = parse_number(text).unwrap_or(update.depth),
+                    "seldepth" => update.seldepth = parse_number(text),
+                    "multipv" => update.multipv = parse_number(text).unwrap_or(1).max(1),
+                    "nodes" => update.nodes = parse_number(text),
+                    "nps" => update.nps = parse_number(text),
+                    "tbhits" => update.tbhits = parse_number(text),
+                    "hashfull" => update.hashfull = parse_number(text),
+                    "time" => update.time_ms = parse_number(text),
+                    _ => {}
+                }
+            }
+            // `score cp 20`, `score mate -3`, either followed by a bound, in any
+            // order a newer engine might use.
             "score" => {
-                let number = values.get(1)?.parse().ok()?;
-                update.score = match first? {
-                    "cp" => Some(Score::Cp(number)),
-                    "mate" => Some(Score::Mate(number)),
-                    _ => None,
-                };
+                while let Some(part) = tokens.get(index).copied() {
+                    match part {
+                        "cp" | "mate" => {
+                            index += 1;
+                            let Some(number) = tokens.get(index).and_then(|n| parse_number(n))
+                            else {
+                                continue;
+                            };
+                            index += 1;
+                            update.score = Some(if part == "cp" {
+                                Score::Cp(number)
+                            } else {
+                                Score::Mate(number)
+                            });
+                        }
+                        "upperbound" | "lowerbound" => {
+                            index += 1;
+                            update.bound = true;
+                        }
+                        _ => break,
+                    }
+                }
             }
             "upperbound" | "lowerbound" => update.bound = true,
             "wdl" => {
-                update.wdl = Some(Wdl {
-                    win: values.first()?.parse().ok()?,
-                    draw: values.get(1)?.parse().ok()?,
-                    loss: values.get(2)?.parse().ok()?,
-                });
+                let numbers: Vec<u32> = tokens[index..]
+                    .iter()
+                    .take(3)
+                    .map_while(|token| parse_number(token))
+                    .collect();
+                index += numbers.len();
+                if let [win, draw, loss] = numbers[..] {
+                    update.wdl = Some(Wdl { win, draw, loss });
+                }
             }
-            "pv" => update.pv = values.iter().map(|&mv| mv.to_owned()).collect(),
+            // Only moves belong to the line, so whatever follows them is read as the
+            // next field even if this parser has never heard of it.
+            "pv" => {
+                let end = moves_from(index);
+                update.pv = tokens[index..end].iter().map(|&mv| mv.to_owned()).collect();
+                index = end;
+            }
+            "refutation" => index = moves_from(index),
+            // An optional CPU number, then moves.
+            "currline" => {
+                if value(index).is_some_and(|token| token.parse::<u32>().is_ok()) {
+                    index += 1;
+                }
+                index = moves_from(index);
+            }
             // Free text runs to the end of the line.
-            "string" => return None,
-            _ => {}
+            "string" => break,
+            _ => {
+                while value(index).is_some() {
+                    index += 1;
+                }
+            }
         }
-        index = end;
     }
     update.pv.first()?;
     Some(update)
@@ -400,6 +489,45 @@ mod tests {
             parse_line("info string NNUE loaded pv e2e4"),
             UciLine::Other
         );
+    }
+
+    #[test]
+    fn unknown_and_future_fields_are_skipped() {
+        let UciLine::Info(info) = parse_line(
+            "info depth 20 movesleft 31 score cp 15 wdl 300 600 100 nodes 10 pv e2e4 e7e5 effort 12 7",
+        ) else {
+            panic!("not info");
+        };
+        assert_eq!(info.depth, 20);
+        assert_eq!(info.score, Some(Score::Cp(15)));
+        assert_eq!(info.nodes, Some(10));
+        assert_eq!(info.pv, vec!["e2e4", "e7e5"]);
+        // Fields in another order, a bound before the score, and decimals.
+        let UciLine::Info(info) =
+            parse_line("info pv g1f3 multipv 2 score lowerbound cp 33.6 depth 7 time 12.0")
+        else {
+            panic!("not info");
+        };
+        assert_eq!(info.pv, vec!["g1f3"]);
+        assert_eq!(info.multipv, 2);
+        assert_eq!(info.score, Some(Score::Cp(34)));
+        assert!(info.bound);
+        assert_eq!(info.depth, 7);
+        assert_eq!(info.time_ms, Some(12));
+    }
+
+    #[test]
+    fn a_bad_field_does_not_lose_the_line() {
+        let UciLine::Info(info) = parse_line(
+            "info depth x seldepth -1 multipv score cp 5 pv e7e8q e1h1 N@f3 string done",
+        ) else {
+            panic!("not info");
+        };
+        assert_eq!(info.depth, 0);
+        assert_eq!(info.seldepth, None);
+        assert_eq!(info.multipv, 1);
+        assert_eq!(info.score, Some(Score::Cp(5)));
+        assert_eq!(info.pv, vec!["e7e8q", "e1h1", "N@f3"]);
     }
 
     #[test]
