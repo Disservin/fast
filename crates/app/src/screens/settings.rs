@@ -95,6 +95,7 @@ const SHORTCUT_GROUPS: [(&str, &[(&str, &str)]); 5] = [
         "Game",
         &[
             ("new_game", "New game"),
+            ("new_chess960", "New Chess960 game"),
             ("open_game", "Open PGN or FEN"),
             ("save_game", "Save to My games"),
             ("save_pgn_as", "Save as PGN"),

@@ -270,6 +270,7 @@ pub fn default_shortcuts() -> BTreeMap<String, String> {
         ("flip_board", "f".to_owned()),
         // Game
         ("new_game", primary("n")),
+        ("new_chess960", primary("shift-n")),
         ("open_game", primary("o")),
         ("save_game", primary("s")),
         ("save_pgn_as", primary("shift-s")),

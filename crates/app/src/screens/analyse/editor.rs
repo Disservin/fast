@@ -90,12 +90,52 @@ impl PositionEditor {
         }
     }
 
+    /// Whether castling follows Chess960 rules.
+    pub fn is_chess960(&self) -> bool {
+        self.mode == CastlingMode::Chess960
+    }
+
+    /// Switches between standard and Chess960 castling. Chess960 takes each side's
+    /// outermost rook beside the king as its castling rook.
+    pub fn set_chess960(&mut self, on: bool) {
+        self.mode = if on {
+            CastlingMode::Chess960
+        } else {
+            CastlingMode::Standard
+        };
+    }
+
+    /// The rook each castling right needs, in `CASTLING` order.
+    fn castling_rooks(&self) -> [Square; 4] {
+        if self.mode == CastlingMode::Standard {
+            return CASTLING.map(|(square, _)| square);
+        }
+        let mut rooks = self.rook_squares;
+        for (index, color) in [(0, Color::White), (2, Color::Black)] {
+            let rank = color.backrank();
+            let Some(king) =
+                (self.board.kings() & self.board.by_color(color) & Bitboard::from_rank(rank))
+                    .first()
+            else {
+                continue;
+            };
+            let own = self.board.rooks() & self.board.by_color(color) & Bitboard::from_rank(rank);
+            if let Some(rook) = own.into_iter().rev().find(|rook| rook.file() > king.file()) {
+                rooks[index] = rook;
+            }
+            if let Some(rook) = own.into_iter().find(|rook| rook.file() < king.file()) {
+                rooks[index + 1] = rook;
+            }
+        }
+        rooks
+    }
+
     pub fn setup(&self) -> Setup {
         let mut setup = Setup::empty();
         setup.board = self.board.clone();
         setup.turn = self.turn;
         setup.castling_rights = self
-            .rook_squares
+            .castling_rooks()
             .iter()
             .zip(self.castling)
             .filter(|(_, on)| *on)
@@ -300,13 +340,27 @@ impl AnalyseScreen {
                 .child(castle(first))
                 .child(castle(first + 1))
         };
+        let chess960_this = this.clone();
         let castling = v_flex()
             .gap(px(4.))
             .child(
-                div()
-                    .text_size(px(13.))
-                    .text_color(rgb(T.muted))
-                    .child(ui::i18n::t("Castling")),
+                h_flex()
+                    .gap(px(16.))
+                    .child(
+                        div()
+                            .text_size(px(13.))
+                            .text_color(rgb(T.muted))
+                            .child(ui::i18n::t("Castling")),
+                    )
+                    .child(
+                        check("editor-chess960", editor.is_chess960(), "Chess960")
+                            .text(13.)
+                            .on_change(move |value, _, cx| {
+                                chess960_this.update(cx, |screen, cx| {
+                                    screen.edit_position(cx, |editor| editor.set_chess960(value));
+                                });
+                            }),
+                    ),
             )
             .child(castle_row(ui::i18n::t("White"), 0))
             .child(castle_row(ui::i18n::t("Black"), 2));
@@ -417,6 +471,27 @@ mod tests {
         );
         assert_eq!(
             GameTree::from_position(edited).variant,
+            chess_core::Variant::Chess960
+        );
+    }
+
+    #[test]
+    fn standard_positions_can_switch_to_chess960() {
+        let mut editor = PositionEditor::from_position(&chess_core::chess960_position(734));
+        editor.set_chess960(false);
+        assert_eq!(
+            editor.position().unwrap().castles().mode(),
+            CastlingMode::Standard
+        );
+        let mut editor = PositionEditor::from_position(&Chess::default());
+        assert!(!editor.is_chess960());
+        editor.set_chess960(true);
+        let pos = editor.position().unwrap();
+        assert_eq!(pos.castles().mode(), CastlingMode::Chess960);
+        assert!(pos.castles().castling_rights().contains(Square::H1));
+        assert!(pos.castles().castling_rights().contains(Square::A8));
+        assert_eq!(
+            GameTree::from_position(pos).variant,
             chess_core::Variant::Chess960
         );
     }

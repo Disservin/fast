@@ -41,6 +41,7 @@ actions!(
         FocusSearch,
         SaveGame,
         NewGame,
+        NewChess960,
         NewTab,
         CloseTab,
         ReopenTab,
@@ -73,12 +74,20 @@ actions!(
     ]
 );
 
+/// A Chess960 start position number picked at random.
+pub(crate) fn random_chess960_number() -> u16 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(518, |time| (time.subsec_nanos() % 960) as u16)
+}
+
 /// The application menus: native on macOS, drawn in the top bar elsewhere.
 fn app_menus() -> Vec<gpui::Menu> {
     use gpui::{Menu, MenuItem};
     vec![
         Menu::new(ui::i18n::t("File")).items([
             MenuItem::action(ui::i18n::t("New game"), NewGame),
+            MenuItem::action(ui::i18n::t("New Chess960 game"), NewChess960),
             MenuItem::action(ui::i18n::t("New tab"), NewTab),
             MenuItem::action(ui::i18n::t("Close tab"), CloseTab),
             MenuItem::action(ui::i18n::t("Reopen closed tab"), ReopenTab),
@@ -155,6 +164,7 @@ pub fn action_for(name: &str) -> Option<(Box<dyn Action>, &'static str)> {
         "search" => (Box::new(FocusSearch), SHORTCUT_CONTEXT),
         "save_game" => (Box::new(SaveGame), SHORTCUT_CONTEXT),
         "new_game" => (Box::new(NewGame), SHORTCUT_CONTEXT),
+        "new_chess960" => (Box::new(NewChess960), SHORTCUT_CONTEXT),
         "new_tab" => (Box::new(NewTab), TAB_CONTEXT),
         "close_tab" => (Box::new(CloseTab), TAB_CONTEXT),
         "reopen_tab" => (Box::new(ReopenTab), TAB_CONTEXT),
@@ -1262,11 +1272,7 @@ impl Workspace {
                                     .compact()
                                     .on_click(move |window, cx| {
                                         random.update(cx, |this, cx| {
-                                            let n = std::time::SystemTime::now()
-                                                .duration_since(std::time::UNIX_EPOCH)
-                                                .map_or(518, |time| {
-                                                    (time.subsec_nanos() % 960) as u16
-                                                });
+                                            let n = random_chess960_number();
                                             this.chess960_number.update(cx, |input, cx| {
                                                 input.set_value(n.to_string(), window, cx)
                                             });
@@ -1302,24 +1308,25 @@ impl Workspace {
                                             this.model.toast("Enter a number from 0 to 959", cx);
                                             return;
                                         };
-                                        this.model.update(cx, |model, cx| {
-                                            model.config.chess960_number = n;
-                                            model.save_config(cx);
-                                        });
                                         this.new_tab_menu_open = false;
-                                        this.new_tab(Mode::Analyse, window, cx);
-                                        this.analyse.update(cx, |screen, cx| {
-                                            screen.load_tree(
-                                                chess_core::GameTree::chess960(n),
-                                                window,
-                                                cx,
-                                            )
-                                        });
+                                        this.new_chess960(n, window, cx);
                                     });
                                 },
                             ))
                     }),
             )
+    }
+
+    /// Opens a new Analyse tab on Chess960 start position `n` and remembers the number.
+    fn new_chess960(&mut self, n: u16, window: &mut Window, cx: &mut Context<Self>) {
+        self.model.update(cx, |model, cx| {
+            model.config.chess960_number = n;
+            model.save_config(cx);
+        });
+        self.new_tab(Mode::Analyse, window, cx);
+        self.analyse.update(cx, |screen, cx| {
+            screen.load_tree(chess_core::GameTree::chess960(n), window, cx)
+        });
     }
 
     fn tab_bar(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
@@ -2419,6 +2426,9 @@ impl Render for Workspace {
                 this.new_tab(Mode::Analyse, window, cx);
                 this.analyse
                     .update(cx, |screen, cx| screen.new_game(window, cx));
+            }))
+            .on_action(cx.listener(|this, _: &NewChess960, window, cx| {
+                this.new_chess960(random_chess960_number(), window, cx);
             }))
             .on_action(cx.listener(|this, _: &NewTab, window, cx| {
                 let mode = match this.mode {

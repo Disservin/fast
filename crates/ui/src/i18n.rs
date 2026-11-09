@@ -60,6 +60,7 @@ pub fn translate(language: Language, text: &str) -> &str {
 
             "Chess960" => "Chess960",
             "New Chess960 game…" => "Neue Chess960-Partie…",
+            "New Chess960 game" => "Neue Chess960-Partie",
             "No Chess960 support" => "Keine Chess960-Unterstützung",
             "Enter a number from 0 to 959" => "Eine Zahl von 0 bis 959 eingeben",
             "Searching…" => "Suche…",

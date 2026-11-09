@@ -1015,9 +1015,7 @@ impl PlayScreen {
                                 .compact()
                                 .on_click(move |window, cx| {
                                     random_this.update(cx, |screen, cx| {
-                                        let number = std::time::SystemTime::now()
-                                            .duration_since(std::time::UNIX_EPOCH)
-                                            .map_or(518, |time| (time.subsec_nanos() % 960) as u16);
+                                        let number = crate::shell::random_chess960_number();
                                         screen.chess960_number.update(cx, |input, cx| {
                                             input.set_value(number.to_string(), window, cx)
                                         });

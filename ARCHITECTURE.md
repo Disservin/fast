@@ -385,6 +385,9 @@ castling mode. FEN import detects X-FEN and Shredder-FEN castling rights. PGN im
 honours the Variant tag, including when castling rights have disappeared. Chess960 PGNs
 always carry Variant, SetUp and FEN. Standard numbering and its inverse live in
 `chess_core::chess960`; the last chosen number is saved in config.
+File › New Chess960 game (Ctrl/Cmd Shift N) opens a new Analyse tab on a random start
+position, and the position editor's Chess960 switch gives any set-up position Chess960
+castling, taking each side's outermost rooks beside the king.
 
 Analyse, Play, Test positions and database review set `SearchRequest::chess960`. The engine
 supervisor checks the advertised option, sets UCI_Chess960 before searching, synchronises
