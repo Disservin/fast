@@ -576,6 +576,11 @@ impl AnalyseScreen {
         self.live.read(cx).on
     }
 
+    /// The engines are searching this tab's position.
+    pub fn live_searching(&self, cx: &gpui::App) -> bool {
+        self.live.read(cx).searching()
+    }
+
     /// The engines are on but their search is paused, by hand or on leaving the tab.
     pub fn live_paused(&self, cx: &gpui::App) -> bool {
         let live = self.live.read(cx);

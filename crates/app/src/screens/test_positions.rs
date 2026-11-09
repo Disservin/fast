@@ -90,6 +90,11 @@ pub struct TestPositionsScreen {
 }
 
 impl TestPositionsScreen {
+    /// Engines are working through the suite.
+    pub fn is_running(&self) -> bool {
+        self.run.as_ref().is_some_and(|run| run.finished.is_none())
+    }
+
     pub fn new(
         model: Entity<AppModel>,
         workspace: WeakEntity<Workspace>,

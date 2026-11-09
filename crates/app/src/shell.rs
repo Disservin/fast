@@ -1,7 +1,7 @@
 //! The window shell: top bar, mode routing, global shortcuts, toasts.
 
 use crate::model::ToastExt;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use engine::EngineStatus;
 use gpui::{
@@ -273,17 +273,23 @@ pub enum Mode {
 enum TabActivity {
     /// The tab's analysis is paused and keeps its lines.
     Paused,
+    /// Engines are searching for the tab while another one is shown.
+    Searching,
 }
 
 impl TabActivity {
     fn mark(self) -> impl IntoElement {
-        let (icon, color, tip) = match self {
-            Self::Paused => ("icons/pause.svg", T.muted, "Analysis paused"),
+        let tip = match self {
+            Self::Paused => "Analysis paused",
+            Self::Searching => "Engines are searching in this tab",
         };
         div()
             .id(tip)
             .flex_none()
-            .child(ui::widgets::icon(icon, px(12.), color))
+            .map(|mark| match self {
+                Self::Paused => mark.child(ui::widgets::icon("icons/pause.svg", px(12.), T.muted)),
+                Self::Searching => mark.size(px(7.)).rounded_full().bg(rgb(T.accent)),
+            })
             .tooltip(move |window, cx| {
                 gpui_component::tooltip::Tooltip::new(ui::i18n::t(tip)).build(window, cx)
             })
@@ -316,7 +322,27 @@ impl TabContent {
     fn activity(&self, cx: &App) -> Option<TabActivity> {
         match self {
             Self::Analyse(screen) if screen.read(cx).live_paused(cx) => Some(TabActivity::Paused),
-            _ => None,
+            Self::Analyse(screen) => screen
+                .read(cx)
+                .live_searching(cx)
+                .then_some(TabActivity::Searching),
+            Self::Play(screen) => screen
+                .read(cx)
+                .engine_thinking()
+                .then_some(TabActivity::Searching),
+            Self::Database(screen) => screen
+                .read(cx)
+                .is_reviewing()
+                .then_some(TabActivity::Searching),
+            Self::Tournament(screen) => screen
+                .read(cx)
+                .is_running()
+                .then_some(TabActivity::Searching),
+            Self::TestPositions(screen) => screen
+                .read(cx)
+                .is_running()
+                .then_some(TabActivity::Searching),
+            Self::Train(_) | Self::Settings(_) => None,
         }
     }
 
@@ -390,6 +416,9 @@ impl Render for DraggedTab {
 }
 
 pub struct Workspace {
+    /// Each tab's last activity mark, and the observer that redraws the strip when it
+    /// changes, so a tab working in the background updates its mark.
+    tab_watch: HashMap<u64, (Option<TabActivity>, Subscription)>,
     pub model: Entity<AppModel>,
     pub mode: Mode,
     pub analyse: Entity<AnalyseScreen>,
@@ -590,6 +619,7 @@ impl Workspace {
             focus,
             first_frame: true,
             force_window_controls: false,
+            tab_watch: HashMap::new(),
             _subscriptions: vec![search_sub, chess960_sub, path_sub, model_sub],
         };
         // `--screen` asks for one screen, so the saved tabs only come back without it.
@@ -1420,7 +1450,11 @@ impl Workspace {
             let (screen, detail) = tab.content.title(cx);
             let label: SharedString = tab.name.clone().unwrap_or_else(|| screen.into());
             let detail = if tab.name.is_some() { None } else { detail };
-            let activity = tab.content.activity(cx);
+            // The shown tab's own screen already says what its engines are doing.
+            let activity = tab
+                .content
+                .activity(cx)
+                .filter(|activity| !active || *activity == TabActivity::Paused);
             tabs = tabs.child(
                 h_flex()
                     .id(("tab", id as usize))
@@ -2305,8 +2339,47 @@ impl Workspace {
     }
 }
 
+impl Workspace {
+    /// Starts watching tabs opened since the last frame and forgets closed ones.
+    fn watch_tabs(&mut self, cx: &mut Context<Self>) {
+        self.tab_watch
+            .retain(|id, _| self.tabs.iter().any(|tab| tab.id == *id));
+        for tab in &self.tabs {
+            if self.tab_watch.contains_key(&tab.id) {
+                continue;
+            }
+            let id = tab.id;
+            let observe = move |this: &mut Self, cx: &mut Context<Self>| {
+                let now = this
+                    .tabs
+                    .iter()
+                    .find(|tab| tab.id == id)
+                    .and_then(|tab| tab.content.activity(cx));
+                if let Some(entry) = this.tab_watch.get_mut(&id)
+                    && entry.0 != now
+                {
+                    entry.0 = now;
+                    cx.notify();
+                }
+            };
+            let subscription = match &tab.content {
+                TabContent::Analyse(e) => cx.observe(e, move |this, _, cx| observe(this, cx)),
+                TabContent::Database(e) => cx.observe(e, move |this, _, cx| observe(this, cx)),
+                TabContent::Train(e) => cx.observe(e, move |this, _, cx| observe(this, cx)),
+                TabContent::Play(e) => cx.observe(e, move |this, _, cx| observe(this, cx)),
+                TabContent::Settings(e) => cx.observe(e, move |this, _, cx| observe(this, cx)),
+                TabContent::Tournament(e) => cx.observe(e, move |this, _, cx| observe(this, cx)),
+                TabContent::TestPositions(e) => cx.observe(e, move |this, _, cx| observe(this, cx)),
+            };
+            let now = tab.content.activity(cx);
+            self.tab_watch.insert(id, (now, subscription));
+        }
+    }
+}
+
 impl Render for Workspace {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.watch_tabs(cx);
         // The stack reads the previous frame, which does not exist on the first render.
         let stack = if std::mem::take(&mut self.first_frame) {
             log::info!("window decorations: {:?}", window.window_decorations());

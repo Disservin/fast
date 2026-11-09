@@ -358,6 +358,10 @@ analysing (`analyse_in_background`, only while a tab other than Analyse is shown
 pause (`pause_in_background`: `set_paused` before deactivating, so it keeps its lines
 and stays paused on return, marked with a pause icon in the tab strip) or stop (the
 search restarts when the tab is shown again).
+Tabs that are not shown carry an `accent` dot while engines work for them: an Analyse
+tab analysing in the background, a Play game whose engine is thinking, a Database review,
+a running tournament or test-position run. `Workspace` observes every tab entity and
+redraws the strip only when a tab's mark changes.
 Each Play game already owns its own engine and clock. In self-play that one
 engine process plays both sides with the shared clock, and the board stays read-only. Open games continue when
 switching tabs; closing suspends them and reopening resets the clock tick origin

@@ -348,6 +348,11 @@ impl Drop for DatabaseScreen {
 }
 
 impl DatabaseScreen {
+    /// Engines are reviewing games.
+    pub fn is_reviewing(&self) -> bool {
+        self.reviewing.is_some()
+    }
+
     pub fn new(
         model: Entity<AppModel>,
         workspace: WeakEntity<Workspace>,

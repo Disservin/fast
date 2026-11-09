@@ -122,6 +122,15 @@ pub struct PlayScreen {
 }
 
 impl PlayScreen {
+    /// The engine is thinking about its move in an unfinished game.
+    pub fn engine_thinking(&self) -> bool {
+        self.game.as_ref().is_some_and(|game| {
+            game.result.is_none()
+                && game.engine.is_some()
+                && (game.self_play || game.tree.node(game.current).pos.turn() != game.user)
+        })
+    }
+
     pub fn new(
         model: Entity<AppModel>,
         workspace: WeakEntity<Workspace>,

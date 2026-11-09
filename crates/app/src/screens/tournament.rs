@@ -350,6 +350,11 @@ pub struct TournamentScreen {
 }
 
 impl TournamentScreen {
+    /// A tournament is playing or stopping.
+    pub fn is_running(&self) -> bool {
+        self.run.as_ref().is_some_and(Run::active)
+    }
+
     pub fn new(
         model: Entity<AppModel>,
         workspace: WeakEntity<Workspace>,

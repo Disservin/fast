@@ -248,6 +248,7 @@ pub fn translate(language: Language, text: &str) -> &str {
             "Leaving an Analyse tab" => "Beim Verlassen eines Analyse-Tabs",
             "Keep analysing" => "Weiter analysieren",
             "Analysis paused" => "Analyse pausiert",
+            "Engines are searching in this tab" => "In diesem Tab rechnen Engines",
             "The engines keep searching while a tab other than Analyse is shown. Switching to another Analyse tab hands them over." => {
                 "Die Engines rechnen weiter, solange ein anderer Tab als Analyse offen ist. Ein anderer Analyse-Tab übernimmt sie."
             }

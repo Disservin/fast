@@ -1014,6 +1014,17 @@ impl LiveAnalysis {
         }
     }
 
+    /// An engine is searching for this tab right now.
+    pub fn searching(&self) -> bool {
+        self.active
+            && self.on
+            && !self.paused
+            && self
+                .engines
+                .iter()
+                .any(|engine| engine.handle.is_some() && engine.running)
+    }
+
     /// Engines with a live process.
     pub fn loaded(&self) -> usize {
         self.engines
