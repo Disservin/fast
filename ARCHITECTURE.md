@@ -353,6 +353,11 @@ registry replaces a process whose binary changed) and restarts from the selected
 position. Search ids come from one global counter, so a late event from the previous
 tab's search never matches the new tab's. Inactive views ignore
 late engine events and configuration notifications cannot start background analysis.
+Settings › Engines › Leaving an Analyse tab chooses what a hidden tab does: keep
+analysing (`analyse_in_background`, only while a tab other than Analyse is shown),
+pause (`pause_in_background`: `set_paused` before deactivating, so it keeps its lines
+and stays paused on return, marked with a pause icon in the tab strip) or stop (the
+search restarts when the tab is shown again).
 Each Play game already owns its own engine and clock. In self-play that one
 engine process plays both sides with the shared clock, and the board stays read-only. Open games continue when
 switching tabs; closing suspends them and reopening resets the clock tick origin

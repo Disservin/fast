@@ -268,6 +268,28 @@ pub enum Mode {
     TestPositions,
 }
 
+/// Engine work shown on a tab.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum TabActivity {
+    /// The tab's analysis is paused and keeps its lines.
+    Paused,
+}
+
+impl TabActivity {
+    fn mark(self) -> impl IntoElement {
+        let (icon, color, tip) = match self {
+            Self::Paused => ("icons/pause.svg", T.muted, "Analysis paused"),
+        };
+        div()
+            .id(tip)
+            .flex_none()
+            .child(ui::widgets::icon(icon, px(12.), color))
+            .tooltip(move |window, cx| {
+                gpui_component::tooltip::Tooltip::new(ui::i18n::t(tip)).build(window, cx)
+            })
+    }
+}
+
 #[derive(Clone)]
 enum TabContent {
     Analyse(Entity<AnalyseScreen>),
@@ -290,6 +312,14 @@ impl TabContent {
             Self::TestPositions(_) => Mode::TestPositions,
         }
     }
+    /// Engine work the tab holds, shown as a mark beside its title.
+    fn activity(&self, cx: &App) -> Option<TabActivity> {
+        match self {
+            Self::Analyse(screen) if screen.read(cx).live_paused(cx) => Some(TabActivity::Paused),
+            _ => None,
+        }
+    }
+
     /// The tab's screen and, where it has one, what that screen is showing.
     fn title(&self, cx: &App) -> (&'static str, Option<SharedString>) {
         match self {
@@ -1390,6 +1420,7 @@ impl Workspace {
             let (screen, detail) = tab.content.title(cx);
             let label: SharedString = tab.name.clone().unwrap_or_else(|| screen.into());
             let detail = if tab.name.is_some() { None } else { detail };
+            let activity = tab.content.activity(cx);
             tabs = tabs.child(
                 h_flex()
                     .id(("tab", id as usize))
@@ -1499,6 +1530,7 @@ impl Workspace {
                                                     .when(active, |d| d.text_color(rgb(T.muted)))
                                                     .child(detail)
                                             }))
+                                            .children(activity.map(TabActivity::mark))
                                     }),
                             )
                         },

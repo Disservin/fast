@@ -245,6 +245,18 @@ pub fn translate(language: Language, text: &str) -> &str {
             "Start" => "Starten",
             "Stop" => "Stoppen",
             "Pause" => "Pausieren",
+            "Leaving an Analyse tab" => "Beim Verlassen eines Analyse-Tabs",
+            "Keep analysing" => "Weiter analysieren",
+            "Analysis paused" => "Analyse pausiert",
+            "The engines keep searching while a tab other than Analyse is shown. Switching to another Analyse tab hands them over." => {
+                "Die Engines rechnen weiter, solange ein anderer Tab als Analyse offen ist. Ein anderer Analyse-Tab übernimmt sie."
+            }
+            "The search pauses and keeps its lines. The tab shows a pause mark and stays paused when you come back, until you resume (P)." => {
+                "Die Suche pausiert und behält ihre Varianten. Der Tab zeigt ein Pausenzeichen und bleibt pausiert, bis du sie fortsetzt (P)."
+            }
+            "The search stops and starts again from your position when you come back." => {
+                "Die Suche stoppt und beginnt neu bei deiner Stellung, wenn du zurückkommst."
+            }
             "Resume" => "Fortsetzen",
             "Continue" => "Fortfahren",
             "Result" => "Ergebnis",

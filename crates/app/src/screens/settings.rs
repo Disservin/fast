@@ -223,6 +223,26 @@ fn option_rank(name: &str) -> usize {
     .unwrap_or(usize::MAX)
 }
 
+/// What an Analyse tab's engines do while another tab is shown.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum LeaveAnalyse {
+    Keep,
+    Pause,
+    Stop,
+}
+
+impl LeaveAnalyse {
+    fn of(config: &crate::config::Config) -> Self {
+        if config.analyse_in_background {
+            Self::Keep
+        } else if config.pause_in_background {
+            Self::Pause
+        } else {
+            Self::Stop
+        }
+    }
+}
+
 /// Options the app itself drives, so they are not offered as settings.
 /// `UCI_EngineAbout` is the engine's description and is shown as text instead.
 fn option_is_hidden(name: &str) -> bool {
@@ -2224,28 +2244,59 @@ impl SettingsScreen {
             .selected_engine
             .and_then(|id| model.engine(id).cloned())
             .map(|config| self.render_engine_detail(&config, window, cx));
-        let background = self.model.read(cx).config.analyse_in_background;
+        let leave = LeaveAnalyse::of(&self.model.read(cx).config);
         let background_model = self.model.clone();
         let background_row = v_flex()
-            .gap(px(4.))
+            .gap(px(6.))
             .child(
-                check(
-                    "analyse-in-background",
-                    background,
-                    "Keep analysing in other tabs",
-                )
-                .on_change(move |value, _, cx| {
-                    background_model.update(cx, |model, cx| {
-                        model.config.analyse_in_background = value;
-                        model.save_config(cx);
-                    })
-                }),
+                h_flex()
+                    .gap(px(10.))
+                    .child(
+                        div()
+                            .text_size(px(13.))
+                            .text_color(rgb(T.muted))
+                            .child(ui::i18n::t("Leaving an Analyse tab")),
+                    )
+                    .child(segmented(
+                        "leave-analyse",
+                        vec![
+                            (
+                                LeaveAnalyse::Keep,
+                                ui::i18n::t("Keep analysing").into(),
+                                false,
+                            ),
+                            (LeaveAnalyse::Pause, ui::i18n::t("Pause").into(), false),
+                            (LeaveAnalyse::Stop, ui::i18n::t("Stop").into(), false),
+                        ],
+                        leave,
+                        move |value, _, cx| {
+                            background_model.update(cx, |model, cx| {
+                                model.config.analyse_in_background = value == LeaveAnalyse::Keep;
+                                model.config.pause_in_background = value == LeaveAnalyse::Pause;
+                                model.save_config(cx);
+                            })
+                        },
+                    )),
             )
-            .child(div().text_size(px(12.)).text_color(rgb(T.muted)).child(
-                "When off, an Analyse tab's engines stop while another tab is shown and \
-                 resume when you come back. Switching to another Analyse tab always hands \
-                 the engines over.",
-            ));
+            .child(
+                div()
+                    .text_size(px(12.))
+                    .text_color(rgb(T.muted))
+                    .child(ui::i18n::t(match leave {
+                        LeaveAnalyse::Keep => {
+                            "The engines keep searching while a tab other than Analyse is \
+                             shown. Switching to another Analyse tab hands them over."
+                        }
+                        LeaveAnalyse::Pause => {
+                            "The search pauses and keeps its lines. The tab shows a pause \
+                             mark and stays paused when you come back, until you resume (P)."
+                        }
+                        LeaveAnalyse::Stop => {
+                            "The search stops and starts again from your position when you \
+                             come back."
+                        }
+                    })),
+            );
         v_flex()
             .gap(px(21.))
             .child(header)

@@ -576,10 +576,21 @@ impl AnalyseScreen {
         self.live.read(cx).on
     }
 
+    /// The engines are on but their search is paused, by hand or on leaving the tab.
+    pub fn live_paused(&self, cx: &gpui::App) -> bool {
+        let live = self.live.read(cx);
+        live.on && live.paused
+    }
+
     pub fn set_visible(&mut self, visible: bool, cx: &mut Context<Self>) {
         self.visible = visible;
-        self.live
-            .update(cx, |live, cx| live.set_active(visible, cx));
+        let pause = !visible && self.model.read(cx).config.pause_in_background;
+        self.live.update(cx, |live, cx| {
+            if pause && live.on {
+                live.set_paused(true, cx);
+            }
+            live.set_active(visible, cx)
+        });
         if !visible {
             self.stop_backward(None, cx);
         }

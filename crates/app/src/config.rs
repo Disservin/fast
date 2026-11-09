@@ -505,6 +505,10 @@ pub struct Config {
     /// Keep an Analyse tab's engines searching while a tab other than Analyse is shown.
     /// Off: leaving the tab stops them, and they resume on return.
     pub analyse_in_background: bool,
+    /// When an Analyse tab is left and does not keep analysing, its search is paused
+    /// instead of stopped: it keeps its lines and stays paused on return until resumed.
+    #[serde(default)]
+    pub pause_in_background: bool,
     pub analysis_limit: AnalysisLimit,
     /// Nodes each engine searches per position when a game is analysed backwards,
     /// whatever the search limit for ordinary analysis.
@@ -632,6 +636,7 @@ impl Default for Config {
             next_engine_id: 1,
             engine_on: true,
             analyse_in_background: false,
+            pause_in_background: false,
             analysis_limit: AnalysisLimit::default(),
             backward_nodes: DEFAULT_BACKWARD_NODES,
             view: AnalysisView::default(),
