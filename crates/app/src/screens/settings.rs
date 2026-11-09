@@ -2315,7 +2315,8 @@ impl SettingsScreen {
                     let Some(input) = self.option_inputs.get(&option.name) else {
                         continue;
                     };
-                    let suffix = (option.name == "Hash").then_some("MB");
+                    let suffix = (option.name == "Hash")
+                        .then(|| crate::controls::hash_suffix(&input.read(cx).value()));
                     let range =
                         (*min > i64::MIN && *max < i64::MAX).then(|| format!("{min}–{max}"));
                     cell(

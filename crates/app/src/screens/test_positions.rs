@@ -678,7 +678,9 @@ impl TestPositionsScreen {
             .child(section_label("Hash"))
             .child(field(
                 "Hash (MB)",
-                text_input(&self.hash).suffix(Some("MB")),
+                text_input(&self.hash).suffix(Some(crate::controls::hash_suffix(
+                    &self.hash.read(cx).value(),
+                ))),
             ))
             .child(self.toggle(
                 "test-clear-hash",

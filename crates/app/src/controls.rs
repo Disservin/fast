@@ -17,7 +17,7 @@ pub type TextSelect = Entity<SelectState<SearchableVec<SharedString>>>;
 pub struct TextField {
     state: Entity<InputState>,
     height: f32,
-    suffix: Option<&'static str>,
+    suffix: Option<SharedString>,
     icon: Option<&'static str>,
     hint: Option<AnyElement>,
     invalid: bool,
@@ -48,8 +48,8 @@ impl TextField {
         self
     }
 
-    pub fn suffix(mut self, suffix: Option<&'static str>) -> Self {
-        self.suffix = suffix;
+    pub fn suffix(mut self, suffix: Option<impl Into<SharedString>>) -> Self {
+        self.suffix = suffix.map(Into::into);
         self
     }
 
@@ -112,6 +112,15 @@ impl RenderOnce for TextField {
                         input.suffix(hint)
                     }),
             )
+    }
+}
+
+/// The unit after a hash size field: MB, with the size in GB beside it once it
+/// reaches 1024 MB, so 10000 reads as 9.8 GB.
+pub fn hash_suffix(value: &str) -> SharedString {
+    match value.trim().parse::<i64>() {
+        Ok(mb) if mb >= 1024 => format!("MB ({})", engine::format_hash(mb)).into(),
+        _ => "MB".into(),
     }
 }
 

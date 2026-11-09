@@ -534,7 +534,16 @@ impl AnalyseScreen {
         {
             Input::new(input).w_full().into_any_element()
         } else {
-            let text = spin.map_or_else(|| "—".to_owned(), |(value, ..)| format!("{value}{unit}"));
+            let text = spin.map_or_else(
+                || "—".to_owned(),
+                |(value, ..)| {
+                    if name == "Hash" {
+                        engine::format_hash(value)
+                    } else {
+                        format!("{value}{unit}")
+                    }
+                },
+            );
             btn(SharedString::from(format!("{name}-value")), text)
                 .w(72.)
                 .h(24.)

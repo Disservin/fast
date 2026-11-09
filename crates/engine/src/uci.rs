@@ -347,6 +347,19 @@ pub fn format_nodes(nodes: u64) -> String {
     }
 }
 
+/// A hash size given in MB, in GB from 1024 MB on: "512 MB", "16 GB", "9.8 GB".
+pub fn format_hash(mb: i64) -> String {
+    if mb < 1024 {
+        return format!("{mb} MB");
+    }
+    let gb = mb as f64 / 1024.;
+    if mb % 1024 == 0 {
+        format!("{gb:.0} GB")
+    } else {
+        format!("{gb:.1} GB")
+    }
+}
+
 /// Search speed: "850 n/s", "412 kn/s", "58.0 Mn/s".
 pub fn format_speed(nps: u64) -> String {
     let value = nps as f64;
@@ -628,6 +641,9 @@ mod tests {
         assert_eq!(format_speed(850), "850 n/s");
         assert_eq!(format_speed(412_000), "412 kn/s");
         assert_eq!(format_speed(58_000_000), "58.0 Mn/s");
+        assert_eq!(format_hash(512), "512 MB");
+        assert_eq!(format_hash(16_384), "16 GB");
+        assert_eq!(format_hash(10_000), "9.8 GB");
     }
 
     #[test]
