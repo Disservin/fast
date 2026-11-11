@@ -4,6 +4,34 @@ Settings › Changelog shows this file. Keep entries to one short line each.
 
 ## Since 0.1.0
 
+- Analyse: My moves hides the My games and Repertoire columns in the moves table.
+- Analyse: analysis stops after 30 seconds by default, and Infinite lifts the limit.
+- Play: Engine vs engine lets two different engines play each other, each at its own strength.
+- Play: Full strength starts an engine without a rating limit.
+- Settings: each setting is on one page only, and backup moves to Data.
+- Analyse: the scoresheet shows the engine eval after each move, and saved PGN keeps the evals.
+- Analyse: a kibitz engine searches a previewed line while the main analysis stays on the game.
+- Analyse: arrows stay in step after leaving or hovering a previewed line.
+- Analyse: nodes, speed and time keep updating for engines that report them on their own line.
+- Analyse: engine output with unknown fields is read correctly.
+- Analyse: switching tabs no longer restarts the engines, so networks and hash are kept.
+- Analyse: choose whether leaving a tab keeps analysing, pauses or stops.
+- Analyse: New Chess960 game in the File menu, and a Chess960 switch in the position editor.
+- Analyse: the log stays in place while reading back through it.
+- Analyse: the game graph fills the space below the board controls.
+- Analyse: the panels beside the board have square corners.
+- Analyse: hovered Line preview moves are readable in light themes.
+- Train: Hint, Show answer, Skip and the grades sit in a Drill panel beside the board.
+- Train: Drill these lines practises the listed leaks first, keeps the session and says what it did.
+- Train: Import PGN sits in the Repertoire panel.
+- Train: the repertoire tree is hidden until you answer, so it cannot give the move away.
+- Train: a mistake or reveal repeats the position, and a hint limits the grade to Hard.
+- Train: says whether the session is complete, nothing is due or the repertoire is empty.
+- Tabs: a dot marks background tabs whose engines are still searching, and a pause mark paused ones.
+- Engines: hash sizes from 1024 MB are shown in GB.
+- Tournament: engine colours, charts and result chips match each theme.
+- Themes: disabled primary buttons are readable in Paper and Sand.
+- macOS: the title bar is merged into the top bar.
 - Database: create an empty database with New, then name it and import games.
 - Database: group sidebar actions, highlight the selected database and keep game counts readable.
 - Analyse and Play: Chess960 starts by position number or Random, with PGN and FEN support.
