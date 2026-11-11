@@ -4,6 +4,8 @@ Settings › Changelog shows this file. Keep entries to one short line each.
 
 ## Since 0.1.0
 
+- Dialogs: Escape closes dialogs even while editing a text field, including Add database, Manage and the fallback file picker.
+
 - Database: PGN export opens Save As with the database name, letting you choose the folder and filename.
 
 - Database: Browse opens the Windows file picker under WSL when the Linux desktop picker is unavailable.

@@ -1937,7 +1937,9 @@ impl DatabaseScreen {
             self.close_suggestions(cx);
             return true;
         }
-        if self.editing.take().is_some()
+        if self.manager.take().is_some()
+            || self.add_database.take().is_some()
+            || self.editing.take().is_some()
             || self.confirm_delete.take().is_some()
             || std::mem::take(&mut self.import_dialog)
             || self.dropped_details.take().is_some()

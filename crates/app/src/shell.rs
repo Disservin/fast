@@ -2465,7 +2465,15 @@ impl Render for Workspace {
                 MouseButton::Navigate(gpui::NavigationDirection::Forward),
                 cx.listener(|this, _, _, cx| this.step_history(false, cx)),
             )
-            .on_key_down(cx.listener(move |this, event: &gpui::KeyDownEvent, _, cx| {
+            .capture_key_down(cx.listener(move |this, event: &gpui::KeyDownEvent, _, cx| {
+                if event.keystroke.key == "escape" && this.model.read(cx).pending_path.is_some() {
+                    this.model.update(cx, |model, cx| {
+                        model.pending_path = None;
+                        cx.notify();
+                    });
+                    cx.stop_propagation();
+                    return;
+                }
                 if event.keystroke.key == "escape"
                     && this.mode == Mode::Tournament
                     && let Some(screen) = this.tournament.clone()
@@ -2479,8 +2487,9 @@ impl Render for Workspace {
                     && this.database.update(cx, |screen, cx| screen.escape(cx))
                 {
                     cx.stop_propagation();
-                    return;
                 }
+            }))
+            .on_key_down(cx.listener(move |this, event: &gpui::KeyDownEvent, _, cx| {
                 if !typing
                     && this.mode == Mode::Analyse
                     && this
