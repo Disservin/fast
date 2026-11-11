@@ -2498,13 +2498,13 @@ impl PlayScreen {
                         div()
                             .relative()
                             .min_w_0()
-                            .pr(px(16.))
                             .child(
                                 div()
                                     .id("play-moves-scroll")
                                     .w_full()
                                     .max_h(px(220.))
                                     .overflow_y_scroll()
+                                    .pr(px(16.))
                                     .track_scroll(&self.moves_scroll)
                                     .child(list),
                             )
