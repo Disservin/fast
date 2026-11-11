@@ -430,7 +430,9 @@ Each Play game already owns its own engine and clock. In an engine vs engine gam
 each side has its own process, options and strength limit (the same engine may be
 picked twice), and the board stays read-only. Each best move starts the next side’s
 search. Play retains each side’s latest analysis, normalises scores to White and
-converts PVs from the searched position to SAN. Starting a match folds setup away
+converts PVs from the searched position to SAN. Each engine match move stores standard
+`[%emt]`, optional `[%clk]` (for game clocks), and `[%eval]` with depth in its tree
+comment before recovery or PGN export. Only scores from that move’s search are used. Starting a match folds setup away
 and places moves and both search lines beside the board. The move list scrolls
 independently and follows new moves with a visible scrollbar. Play routes move
 navigation shortcuts to a separate review cursor, keeping the board and move

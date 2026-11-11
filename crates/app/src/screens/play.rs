@@ -75,6 +75,40 @@ pub fn format_clock(ms: u64) -> String {
     }
 }
 
+/// Writes move time, the optional game clock and a White-relative score for PGN export.
+fn match_move_comment(
+    elapsed_ms: u64,
+    clock_ms: Option<u64>,
+    score: Option<engine::Score>,
+    depth: u32,
+) -> String {
+    let time = |ms: u64| {
+        format!(
+            "{}:{:02}:{:02}.{:03}",
+            ms / 3_600_000,
+            ms / 60_000 % 60,
+            ms / 1_000 % 60,
+            ms % 1_000
+        )
+    };
+    let mut commands = vec![format!("[%emt {}]", time(elapsed_ms))];
+    if let Some(ms) = clock_ms {
+        commands.push(format!("[%clk {}]", time(ms)));
+    }
+    if let Some(score) = score {
+        let value = match score {
+            engine::Score::Cp(cp) => format!("{:.2}", f64::from(cp) / 100.0),
+            engine::Score::Mate(mate) => format!("#{mate}"),
+        };
+        commands.push(if depth > 0 {
+            format!("[%eval {value},{depth}]")
+        } else {
+            format!("[%eval {value}]")
+        });
+    }
+    commands.join(" ")
+}
+
 /// A PV move and its resulting position for the hover board.
 struct PvMove {
     label: String,
@@ -85,6 +119,7 @@ struct PvMove {
 /// The latest search line for one side, kept visible while the other side thinks.
 #[derive(Default)]
 struct GameAnalysis {
+    search_id: Option<u64>,
     depth: u32,
     score: Option<engine::Score>,
     pv: Vec<PvMove>,
@@ -113,6 +148,7 @@ struct Game {
     /// The queued move, played as soon as it is the player's turn if still legal.
     premove: Option<(chess_core::Square, chess_core::Square)>,
     last_tick: Instant,
+    elapsed_ms: u64,
     search_id: u64,
     analysis: [GameAnalysis; 2],
     engine: Option<EngineHandle>,
@@ -540,6 +576,7 @@ impl PlayScreen {
             premoves: true,
             premove: None,
             last_tick: Instant::now(),
+            elapsed_ms: 0,
             search_id: 0,
             analysis: Default::default(),
             engine: None,
@@ -837,6 +874,7 @@ impl PlayScreen {
             premoves: self.allow_premoves && !self_play,
             premove: None,
             last_tick: Instant::now(),
+            elapsed_ms: 0,
             search_id: 0,
             analysis: Default::default(),
             engine: None,
@@ -934,6 +972,7 @@ impl PlayScreen {
         let now = Instant::now();
         let elapsed = now.duration_since(game.last_tick).as_millis() as u64;
         game.last_tick = now;
+        game.elapsed_ms = game.elapsed_ms.saturating_add(elapsed);
         let turn = game.tree.node(game.current).pos.turn();
         if game.fixed_limits[usize::from(turn == Color::Black)].is_some() {
             return true;
@@ -1066,6 +1105,9 @@ impl PlayScreen {
     fn apply_move(&mut self, mv: Move, cx: &mut Context<Self>) {
         self.tick(cx);
         let Some(game) = &mut self.game else { return };
+        if game.result.is_some() {
+            return;
+        }
         let turn = game.tree.node(game.current).pos.turn();
         if turn == Color::White {
             game.white_ms += game.increment_ms[0];
@@ -1073,6 +1115,21 @@ impl PlayScreen {
             game.black_ms += game.increment_ms[1];
         }
         game.current = game.tree.add_move(game.current, mv);
+        if game.self_play() {
+            let side = usize::from(turn == Color::Black);
+            let line = &game.analysis[side];
+            let score = (line.search_id == Some(game.search_id))
+                .then_some(line.score)
+                .flatten();
+            let clock = game.fixed_limits[side].is_none().then_some(if side == 0 {
+                game.white_ms
+            } else {
+                game.black_ms
+            });
+            game.tree.node_mut(game.current).comment =
+                match_move_comment(game.elapsed_ms, clock, score, line.depth);
+        }
+        game.elapsed_ms = 0;
         if self.viewed.is_none() {
             self.moves_scroll.scroll_to_bottom();
         }
@@ -1233,6 +1290,12 @@ impl PlayScreen {
         let node = game.tree.node(game.current);
         let black = node.pos.turn() == Color::Black;
         let line = &mut game.analysis[usize::from(black)];
+        if line.search_id != Some(search_id) {
+            *line = GameAnalysis {
+                search_id: Some(search_id),
+                ..Default::default()
+            };
+        }
         if update.depth > 0 {
             line.depth = update.depth;
         }
@@ -2375,6 +2438,41 @@ mod tests {
         assert_eq!(tree.line_from(GameTree::ROOT).len(), 0);
         assert!(opening_from_book("empty.epd", "").is_err());
         assert!(opening_from_book("book.bin", "anything").is_err());
+    }
+
+    /// Exported match annotations retain precise times and White-relative scores.
+    #[test]
+    fn match_annotations_survive_pgn_export() {
+        let white = match_move_comment(1_234, Some(60_766), Some(engine::Score::Cp(35)), 18);
+        let black = match_move_comment(2_345, Some(59_655), Some(engine::Score::Cp(-42)), 20);
+        let tree = chess_core::parse_pgn(&format!("1. e4 {{{white}}} e5 {{{black}}} *"))
+            .unwrap()
+            .remove(0);
+        let exported = chess_core::write_pgn(&tree);
+        let restored = chess_core::parse_pgn(&exported).unwrap().remove(0);
+        let moves = restored.line_from(GameTree::ROOT);
+        let note = chess_core::annotation::parse_annotation(&restored.node(moves[0]).comment);
+        assert_eq!(note.elapsed, Some(1.234));
+        assert_eq!(note.clock, Some(60.766));
+        assert_eq!(note.eval_cp, Some(35));
+        assert_eq!(note.depth, Some(18));
+        let note = chess_core::annotation::parse_annotation(&restored.node(moves[1]).comment);
+        assert_eq!(note.eval_cp, Some(-42));
+        assert_eq!(note.depth, Some(20));
+        assert_eq!(note.elapsed, Some(2.345));
+    }
+
+    /// Per-move limits have elapsed time without a fictitious remaining clock or score.
+    #[test]
+    fn match_annotations_handle_limits_missing_scores_and_mates() {
+        let comment = match_move_comment(10, None, None, 0);
+        let note = chess_core::annotation::parse_annotation(&comment);
+        assert_eq!(note.elapsed, Some(0.01));
+        assert_eq!(note.clock, None);
+        assert_eq!(note.eval_cp, None);
+        let comment = match_move_comment(3_661_001, None, Some(engine::Score::Mate(-3)), 25);
+        assert!(comment.contains("[%emt 1:01:01.001]"));
+        assert!(comment.contains("[%eval #-3,25]"));
     }
 
     #[test]

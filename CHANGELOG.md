@@ -4,6 +4,8 @@ Settings › Changelog shows this file. Keep entries to one short line each.
 
 ## Since 0.1.0
 
+- Play: engine match PGNs include move times, remaining clocks and engine evaluations with depth.
+
 - Settings: engine checks allow more startup time, show failure details and offer retries using installed files.
 
 - Play: arrow keys browse the visible game, updating the board and selected move while engines continue playing.
