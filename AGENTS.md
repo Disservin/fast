@@ -160,4 +160,13 @@ decoration is kept to a minimum.
 - Keep views small. A screen is a `Render` struct built from `ui` widgets, with state in
   `Entity<T>` models and changes announced through `cx.notify()` and events.
 - Commit subjects are short imperative sentences about what the user sees ("Make Cancel
-  download take effect at once"). The body explains what changed and why.
+  download take effect at once"). Leave the body out when the subject says enough. Otherwise
+  keep it to a few short lines on why the change was made, and do not list files or repeat the diff.
+
+## Changelog
+
+- Add a line to `CHANGELOG.md` for every change a user can notice: a new feature, a changed
+  behaviour or a fixed bug. Skip refactors, tests, CI and documentation.
+- Put the line at the top of the newest section, in the same commit as the change.
+- Write one short line that starts with the area and says what the user now sees
+  ("Analyse: the log stays in place while reading back through it.").
