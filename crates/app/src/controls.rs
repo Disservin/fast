@@ -264,6 +264,17 @@ impl TimeInput {
         }
     }
 
+    /// Keeps the exact typed value and selected unit when saving a clock.
+    pub fn saved(&self, cx: &App) -> (String, usize) {
+        (
+            self.value.read(cx).value().to_string(),
+            self.unit
+                .read(cx)
+                .selected_index(cx)
+                .map_or(1, |index| index.row),
+        )
+    }
+
     /// Reads the duration as milliseconds, honoring an explicit unit suffix.
     pub fn milliseconds(&self, cx: &App) -> Option<u64> {
         let unit = self.unit.read(cx).selected_index(cx)?.row;

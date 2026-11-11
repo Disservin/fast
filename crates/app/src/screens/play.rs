@@ -6,8 +6,8 @@ use std::time::{Duration, Instant};
 use chess_core::{Color, GameTree, Move, NodeId, Position, classify, shakmaty::uci::UciMove};
 use engine::{EngineConfig, EngineEvent, EngineHandle, Limits, OptionKind, SearchRequest};
 use gpui::{
-    AppContext as _, Context, Entity, FontWeight, IntoElement, Pixels, Render, SharedString,
-    Subscription, Task, WeakEntity, Window, div, prelude::*, px, rgb,
+    AppContext as _, Context, Entity, FontWeight, IntoElement, Pixels, Point, Render, SharedString,
+    Subscription, Task, WeakEntity, Window, anchored, deferred, div, point, prelude::*, px, rgb,
 };
 use gpui_component::{
     select::SelectEvent,
@@ -73,12 +73,19 @@ pub fn format_clock(ms: u64) -> String {
     }
 }
 
+/// A PV move and its resulting position for the hover board.
+struct PvMove {
+    label: String,
+    position: chess_core::Chess,
+    last: Option<(chess_core::Square, chess_core::Square)>,
+}
+
 /// The latest search line for one side, kept visible while the other side thinks.
 #[derive(Default)]
 struct GameAnalysis {
     depth: u32,
     score: Option<engine::Score>,
-    pv: String,
+    pv: Vec<PvMove>,
 }
 
 /// A played game with independent engines, clocks and live analysis.
@@ -142,13 +149,54 @@ struct EngineTime {
 }
 
 impl EngineTime {
-    /// Starts an engine with a five-minute clock and a depth limit ready to enable.
-    fn new(window: &mut Window, cx: &mut Context<PlayScreen>) -> Self {
+    /// Restores the last clock values, units and per-move search limit for this side.
+    fn new(
+        saved: &crate::config::PlayEngineTime,
+        window: &mut Window,
+        cx: &mut Context<PlayScreen>,
+    ) -> Self {
         Self {
-            time: crate::controls::ClockInput::new("5", 2, "3", window, cx),
-            unlimited: false,
-            kind: new_select(vec!["Depth".into(), "Nodes".into()], 0, window, cx),
-            value: new_input("20", "20", window, cx),
+            time: crate::controls::ClockInput {
+                base: crate::controls::TimeInput::new(
+                    &saved.base,
+                    saved.base_unit.min(3),
+                    window,
+                    cx,
+                ),
+                increment: crate::controls::TimeInput::new(
+                    &saved.increment,
+                    saved.increment_unit.min(3),
+                    window,
+                    cx,
+                ),
+            },
+            unlimited: saved.unlimited,
+            kind: new_select(
+                vec!["Depth".into(), "Nodes".into()],
+                saved.limit_kind.min(1),
+                window,
+                cx,
+            ),
+            value: new_input(&saved.limit_value, "20", window, cx),
+        }
+    }
+
+    /// Saves both clock fields exactly as entered, including their chosen units.
+    fn saved(&self, cx: &gpui::App) -> crate::config::PlayEngineTime {
+        let (base, base_unit) = self.time.base.saved(cx);
+        let (increment, increment_unit) = self.time.increment.saved(cx);
+        crate::config::PlayEngineTime {
+            base,
+            base_unit,
+            increment,
+            increment_unit,
+            unlimited: self.unlimited,
+            limit_kind: self
+                .kind
+                .read(cx)
+                .selected_index(cx)
+                .map_or(0, |index| index.row),
+            limit_value: self.value.read(cx).value().to_string(),
         }
     }
 
@@ -193,6 +241,9 @@ pub struct PlayScreen {
     model: Entity<AppModel>,
     workspace: WeakEntity<Workspace>,
     board: Entity<BoardView>,
+    pv_board: Entity<BoardView>,
+    pv_hover: Option<(usize, usize)>,
+    pv_at: Option<Point<Pixels>>,
     /// The engine the user plays against.
     opponent: EngineChoice,
     /// The two sides of an engine game.
@@ -252,6 +303,7 @@ impl PlayScreen {
         let board = cx.new(|_| BoardView::new("play-board"));
         let prefs = model.read(cx).config.board.prefs();
         board.update(cx, |board, cx| board.set_prefs(prefs, cx));
+        let pv_board = cx.new(|_| BoardView::new("play-pv-board").read_only());
         let opponents = model.read(cx).play_engines();
         let names = opponent_names(&opponents);
         // An engine game starts as a match between the first two engines.
@@ -301,7 +353,10 @@ impl PlayScreen {
             window,
             cx,
         );
-        let engine_times = [EngineTime::new(window, cx), EngineTime::new(window, cx)];
+        let saved_times = model.read(cx).config.play_engine_times.clone();
+        let engine_times = saved_times
+            .each_ref()
+            .map(|saved| EngineTime::new(saved, window, cx));
         let book_path = new_input("", "Opening book (.pgn or .epd)", window, cx);
         let custom_time = crate::controls::ClockInput::new("5", 2, "3", window, cx);
         let chess960_number = new_input(
@@ -367,6 +422,9 @@ impl PlayScreen {
             model,
             workspace,
             board,
+            pv_board,
+            pv_hover: None,
+            pv_at: None,
             opponent,
             white,
             black,
@@ -780,8 +838,17 @@ impl PlayScreen {
             game._engine_reader = Some(reader);
             game.engine = Some(engine);
         }
+        self.pv_hover = None;
+        self.pv_at = None;
         self.game = Some(game);
         self.show_setup = false;
+        if self_play {
+            let saved = self.engine_times.each_ref().map(|time| time.saved(cx));
+            self.model.update(cx, |model, cx| {
+                model.config.play_engine_times = saved;
+                model.save_config(cx);
+            });
+        }
         self.board
             .update(cx, |board, cx| board.set_flipped(user == Color::Black, cx));
         self.sync_board(false, cx);
@@ -1102,10 +1169,28 @@ impl PlayScreen {
                 line.score = Some(if black { score.negate() } else { score });
             }
             if !update.pv.is_empty() {
-                line.pv = chess_core::format_pv(
-                    node.ply + 1,
-                    &chess_core::pv_to_san(&node.pos, &update.pv),
-                );
+                let mut tree = GameTree::from_position(node.pos.clone());
+                let mut current = GameTree::ROOT;
+                line.pv = update
+                    .pv
+                    .iter()
+                    .enumerate()
+                    .map_while(|(index, uci)| {
+                        let position = &tree.node(current).pos;
+                        let mv = uci.parse::<UciMove>().ok()?.to_move(position).ok()?;
+                        let last = mv.from().map(|from| (from, mv.to()));
+                        current = tree.add_move(current, mv);
+                        let next = tree.node(current);
+                        Some(PvMove {
+                            label: chess_core::format_pv(
+                                node.ply + index as u32 + 1,
+                                std::slice::from_ref(&next.san),
+                            ),
+                            position: next.pos.clone(),
+                            last,
+                        })
+                    })
+                    .collect();
             }
         }
         cx.notify();
@@ -1778,7 +1863,7 @@ impl PlayScreen {
     }
 
     /// Shows both engines' latest evaluations and principal variations beside the board.
-    fn render_analysis(&self) -> impl IntoElement + use<> {
+    fn render_analysis(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let mut column = panel().p(px(16.)).child(section_label("Engines"));
         if let Some(game) = &self.game {
             for (index, name) in [
@@ -1815,15 +1900,68 @@ impl PlayScreen {
                                     line.depth.to_string()
                                 })),
                         )
-                        .child(
-                            mono(if line.pv.is_empty() {
-                                "—".to_owned()
-                            } else {
-                                line.pv.clone()
-                            })
-                            .text_size(px(13.))
-                            .text_color(rgb(T.fg_2)),
-                        ),
+                        .child({
+                            let mut flow = div()
+                                .flex()
+                                .flex_wrap()
+                                .gap(px(4.))
+                                .font_family(MONO)
+                                .text_size(px(13.));
+                            if line.pv.is_empty() {
+                                flow = flow.child("—");
+                            }
+                            for (move_index, mv) in line.pv.iter().enumerate() {
+                                let position = mv.position.clone();
+                                let last = mv.last;
+                                flow = flow.child(
+                                    div()
+                                        .id((
+                                            if index == 0 { "white-pv" } else { "black-pv" },
+                                            move_index,
+                                        ))
+                                        .px(px(3.))
+                                        .rounded(px(3.))
+                                        .text_color(rgb(T.fg_2))
+                                        .hover(|item| item.bg(rgb(T.hover_strong)))
+                                        .child(mv.label.clone())
+                                        .on_hover(cx.listener(
+                                            move |screen, hovering: &bool, window, cx| {
+                                                if *hovering {
+                                                    let mut prefs =
+                                                        screen.model.read(cx).config.board.prefs();
+                                                    prefs.animation_ms = 0;
+                                                    screen.pv_board.update(cx, |board, cx| {
+                                                        board.set_prefs(prefs, cx);
+                                                        board.set_position(
+                                                            position.clone(),
+                                                            last,
+                                                            false,
+                                                            cx,
+                                                        );
+                                                    });
+                                                    screen.pv_hover = Some((index, move_index));
+                                                    screen.pv_at = Some(window.mouse_position());
+                                                } else if screen.pv_hover
+                                                    == Some((index, move_index))
+                                                {
+                                                    screen.pv_hover = None;
+                                                    screen.pv_at = None;
+                                                }
+                                                cx.notify();
+                                            },
+                                        )),
+                                );
+                            }
+                            div()
+                                .id(if index == 0 {
+                                    "white-pv-scroll"
+                                } else {
+                                    "black-pv-scroll"
+                                })
+                                .max_h(px(72.))
+                                .overflow_y_scroll()
+                                .child(flow)
+                        }),
                 );
             }
         }
@@ -1902,7 +2040,13 @@ impl PlayScreen {
                             |row| row.child(ui::widgets::badge("Chess960")),
                         ),
                     )
-                    .child(list)
+                    .child(
+                        div()
+                            .id("play-moves-scroll")
+                            .max_h(px(220.))
+                            .overflow_y_scroll()
+                            .child(list),
+                    )
                     .child(
                         div()
                             .mt(px(10.))
@@ -2073,10 +2217,28 @@ impl Render for PlayScreen {
                                     });
                                 },
                             ))
-                            .child(self.render_analysis())
+                            .child(self.render_analysis(cx))
                             .child(side),
                     )
                 })
+                .children(self.pv_at.map(|at| {
+                    deferred(
+                        anchored()
+                            .position(at + point(px(16.), px(16.)))
+                            .snap_to_window_with_margin(px(8.))
+                            .child(
+                                div()
+                                    .size(ui::board::snap_board_size(
+                                        px(256.),
+                                        window.scale_factor(),
+                                    ))
+                                    .border_1()
+                                    .border_color(rgb(T.border))
+                                    .child(self.pv_board.clone()),
+                            ),
+                    )
+                    .with_priority(1)
+                }))
                 .into_any_element();
         }
         let board_size = super::side_columns_board_size(window);

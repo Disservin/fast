@@ -429,7 +429,10 @@ each side has its own process, options and strength limit (the same engine may b
 picked twice), and the board stays read-only. Each best move starts the next side’s
 search. Play retains each side’s latest analysis, normalises scores to White and
 converts PVs from the searched position to SAN. Starting a match folds setup away
-and places moves and both search lines beside the board. Match setup overrides each engine’s
+and places moves and both search lines beside the board. The move list scrolls
+independently; each PV move keeps its resulting position for a read-only hover
+board. Match starts save both sides’ typed time values, units and search limits
+in `config.play_engine_times`, which seeds future match setups. Match setup overrides each engine’s
 Threads and Hash within its advertised UCI bounds. Clockless games use a fixed
 node or depth limit per move and run no clock task. A local PGN or EPD book loads
 on the background executor; its first game or position seeds the game tree. Open games continue when

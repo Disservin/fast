@@ -525,6 +525,8 @@ pub struct Config {
     pub player_name: String,
     /// The last Chess960 starting position chosen in Analyse or Play.
     pub chess960_number: u16,
+    /// The last clock and search-limit settings used for each side in Play.
+    pub play_engine_times: [PlayEngineTime; 2],
     /// The user's other names, such as Lichess and Chess.com accounts, counted as the
     /// same player wherever `player_name` is.
     pub player_aliases: Vec<String>,
@@ -573,6 +575,34 @@ pub struct Config {
     pub accounts: Vec<Account>,
     /// Named Database searches, listed under the Filter heading.
     pub saved_filters: Vec<SavedFilter>,
+}
+
+/// The clock values and units restored when setting up an engine match.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PlayEngineTime {
+    pub base: String,
+    pub base_unit: usize,
+    pub increment: String,
+    pub increment_unit: usize,
+    pub unlimited: bool,
+    pub limit_kind: usize,
+    pub limit_value: String,
+}
+
+impl Default for PlayEngineTime {
+    /// Starts new profiles with five minutes and three seconds per move.
+    fn default() -> Self {
+        Self {
+            base: "5".into(),
+            base_unit: 2,
+            increment: "3".into(),
+            increment_unit: 1,
+            unlimited: false,
+            limit_kind: 0,
+            limit_value: "20".into(),
+        }
+    }
 }
 
 /// A named Database search: the filter fields as typed.
@@ -663,6 +693,7 @@ impl Default for Config {
         Self {
             player_name: "me".to_owned(),
             chess960_number: 518,
+            play_engine_times: Default::default(),
             player_aliases: Vec::new(),
             player_rating: None,
             language: Language::default(),
@@ -794,6 +825,37 @@ impl Config {
 
 #[cfg(test)]
 mod tests {
+    /// Old profiles get usable clocks, and saved values retain their units and precision.
+    #[test]
+    fn engine_match_clocks_restore_values_and_units() {
+        let mut config: super::Config = toml::from_str("").unwrap();
+        assert_eq!(
+            config.play_engine_times,
+            <[super::PlayEngineTime; 2]>::default()
+        );
+        config.play_engine_times[0] = super::PlayEngineTime {
+            base: "0.25".into(),
+            base_unit: 1,
+            increment: "0.002".into(),
+            increment_unit: 2,
+            unlimited: false,
+            limit_kind: 0,
+            limit_value: "24".into(),
+        };
+        config.play_engine_times[1] = super::PlayEngineTime {
+            base: "12".into(),
+            base_unit: 2,
+            increment: "0".into(),
+            increment_unit: 0,
+            unlimited: true,
+            limit_kind: 1,
+            limit_value: "150000".into(),
+        };
+        let saved = toml::to_string(&config).unwrap();
+        let restored: super::Config = toml::from_str(&saved).unwrap();
+        assert_eq!(restored.play_engine_times, config.play_engine_times);
+    }
+
     use super::*;
     use engine::EngineConfig;
 
