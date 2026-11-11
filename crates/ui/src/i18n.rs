@@ -630,6 +630,9 @@ pub fn translate(language: Language, text: &str) -> &str {
             "Moves from here" => "Züge ab hier",
             "New game vs engine" => "Neue Partie gegen Engine",
             "Vs engine" => "Gegen Engine",
+            "No search data yet. Scores and search effort appear after each move." => {
+                "Noch keine Suchdaten. Bewertungen und Suchaufwand erscheinen nach jedem Zug."
+            }
             "Engine vs engine" => "Engine gegen Engine",
             "Game stopped" => "Partie abgebrochen",
             "your move" => "am Zug",

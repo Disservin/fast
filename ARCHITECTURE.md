@@ -560,3 +560,7 @@ and each search uses the moving side’s limit or both sides’ remaining clocks
 Shared dialogs use `ui::widgets::modal` for initial focus, Escape dismissal and
 backdrop clicks. Each caller supplies its close callback; dialog dismissal does not
 depend on the workspace knowing which screen owns it.
+
+Engine matches in Play retain per-move node counts in `[%nodes]` PGN comments alongside
+evaluation, depth and elapsed time. The Eval and Search graphs read those annotations
+from the current game path, with one series per engine and scrubbing linked to the board.

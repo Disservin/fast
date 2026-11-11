@@ -4,6 +4,8 @@ Settings › Changelog shows this file. Keep entries to one short line each.
 
 ## Since 0.1.0
 
+- Play: engine matches show colour-coded evaluation and search graphs with nodes, depth and time per move.
+
 - Tabs: right-click and choose Close all tabs to start a fresh Analyse tab with numbering reset to one.
 
 - Analyse: imported PGN evaluations show the mate distance in the move list.

@@ -17,7 +17,7 @@ use gpui_component::{
 };
 use ui::{
     BoardEvent, BoardView, MONO, T,
-    widgets::{btn, check, h_flex, mono, panel, section_label, segmented, v_flex},
+    widgets::{btn, check, h_flex, header_tab, mono, panel, section_label, segmented, v_flex},
 };
 
 use crate::{
@@ -119,6 +119,7 @@ struct PvMove {
 /// The latest search line for one side, kept visible while the other side thinks.
 #[derive(Default)]
 struct GameAnalysis {
+    nodes: Option<u64>,
     search_id: Option<u64>,
     depth: u32,
     score: Option<engine::Score>,
@@ -306,6 +307,8 @@ pub struct PlayScreen {
     chess960_number: Entity<gpui_component::input::InputState>,
     /// The position typed or pasted when the game starts from a FEN.
     start_fen: Entity<gpui_component::input::InputState>,
+    graph_metric: usize,
+    search_graph: bool,
     hide_eval: bool,
     allow_takebacks: bool,
     allow_premoves: bool,
@@ -485,6 +488,8 @@ impl PlayScreen {
             start_from,
             chess960_number,
             start_fen,
+            graph_metric: 0,
+            search_graph: false,
             hide_eval: true,
             allow_takebacks: false,
             allow_premoves: true,
@@ -1128,6 +1133,15 @@ impl PlayScreen {
             });
             game.tree.node_mut(game.current).comment =
                 match_move_comment(game.elapsed_ms, clock, score, line.depth);
+            if let Some(nodes) = line
+                .nodes
+                .filter(|_| line.search_id == Some(game.search_id))
+            {
+                game.tree
+                    .node_mut(game.current)
+                    .comment
+                    .push_str(&format!(" [%nodes {nodes}]"));
+            }
         }
         game.elapsed_ms = 0;
         if self.viewed.is_none() {
@@ -1295,6 +1309,9 @@ impl PlayScreen {
                 search_id: Some(search_id),
                 ..Default::default()
             };
+        }
+        if let Some(nodes) = update.nodes {
+            line.nodes = Some(nodes);
         }
         if update.depth > 0 {
             line.depth = update.depth;
@@ -1999,6 +2016,153 @@ impl PlayScreen {
             .child(bottom)
     }
 
+    /// Compares both engines' evaluations and search effort throughout the game.
+    fn render_graph(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let mut header = h_flex()
+            .h(px(44.))
+            .border_b_1()
+            .border_color(rgb(T.divider));
+        for (index, label) in ["Eval", "Search"].into_iter().enumerate() {
+            let this = cx.entity();
+            header = header.child(header_tab(
+                ("match-graph-tab", index),
+                label,
+                self.search_graph == (index == 1),
+                move |_, cx| {
+                    this.update(cx, |screen, cx| {
+                        screen.search_graph = index == 1;
+                        cx.notify();
+                    });
+                },
+            ));
+        }
+        let mut column = panel().p(px(16.)).gap(px(8.)).child(header);
+        if self.search_graph {
+            let mut controls = h_flex().gap(px(6.));
+            for (index, label) in ["Nodes", "Depth", "Time"].into_iter().enumerate() {
+                let this = cx.entity();
+                controls = controls.child(
+                    btn(("match-graph-metric", index), label)
+                        .mini()
+                        .selected(self.graph_metric == index)
+                        .on_click(move |_, cx| {
+                            this.update(cx, |screen, cx| {
+                                screen.graph_metric = index;
+                                cx.notify();
+                            });
+                        }),
+                );
+            }
+            column = column.child(controls);
+        }
+        let Some(game) = &self.game else {
+            return column;
+        };
+        let ids = game.tree.path_to(game.current);
+        let mut maximum = 1.0_f32;
+        let series = [T.engine_a, T.engine_b]
+            .into_iter()
+            .enumerate()
+            .map(|(side, color)| {
+                let values = ids
+                    .iter()
+                    .map(|&id| {
+                        let node = game.tree.node(id);
+                        if usize::from(node.ply % 2 == 0) != side {
+                            return None;
+                        }
+                        let note = chess_core::annotation::parse_annotation(&node.comment);
+                        let value = if !self.search_graph {
+                            note.eval_cp.map(|cp| cp as f32)
+                        } else {
+                            match self.graph_metric {
+                                0 => node
+                                    .comment
+                                    .split("[%nodes ")
+                                    .nth(1)
+                                    .and_then(|tail| tail.split(']').next())
+                                    .and_then(|value| value.parse::<f32>().ok()),
+                                1 => note.depth.map(|depth| depth as f32),
+                                _ => note.elapsed.map(|seconds| seconds as f32),
+                            }
+                        };
+                        if let Some(value) = value {
+                            maximum = maximum.max(value);
+                        }
+                        value
+                    })
+                    .collect();
+                ui::graph::Series {
+                    values,
+                    color,
+                    fill: false,
+                    connect: true,
+                }
+            })
+            .collect();
+        let legend = h_flex().gap(px(14.)).children(
+            [
+                (
+                    game.white.as_ref().map_or("—", |white| white.name.as_str()),
+                    T.engine_a,
+                ),
+                (game.opponent_name.as_str(), T.engine_b),
+            ]
+            .into_iter()
+            .map(|(name, color)| {
+                div()
+                    .min_w_0()
+                    .text_size(px(12.))
+                    .text_color(rgb(color))
+                    .child(name.to_owned())
+            }),
+        );
+        let current = ids
+            .iter()
+            .position(|id| *id == self.viewed.unwrap_or(game.current));
+        let count = ids.len();
+        let this = cx.entity();
+        column
+            .child(legend)
+            .child(ui::graph::graph(ui::graph::GraphProps {
+                series,
+                count,
+                current,
+                scale: if self.search_graph {
+                    ui::graph::Scale::Linear { max: maximum }
+                } else {
+                    ui::graph::Scale::SymLog {
+                        max: chess_core::annotation::MATE_CP as f32,
+                        unit: 100.0,
+                    }
+                },
+                ticks: if self.search_graph {
+                    ui::graph::linear_ticks(maximum, if self.graph_metric == 2 { "s" } else { "" })
+                } else {
+                    ui::graph::eval_ticks()
+                        .into_iter()
+                        .filter(|(cp, _)| cp.abs() != 100.0)
+                        .collect()
+                },
+                height: Some(130.0),
+                on_scrub: std::rc::Rc::new(move |index, _, cx| {
+                    if let Some(&id) = ids.get(index) {
+                        this.update(cx, |screen, cx| {
+                            screen.viewed = screen
+                                .game
+                                .as_ref()
+                                .and_then(|game| (id != game.current).then_some(id));
+                            screen.sync_board(false, cx);
+                            cx.notify();
+                        });
+                    }
+                }),
+                empty: ui::i18n::t(
+                    "No search data yet. Scores and search effort appear after each move.",
+                ),
+            }))
+    }
+
     /// Shows both engines' latest evaluations and principal variations beside the board.
     fn render_analysis(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let mut column = panel().p(px(16.)).child(section_label("Engines"));
@@ -2021,7 +2185,16 @@ impl PlayScreen {
                             h_flex()
                                 .gap(px(8.))
                                 .child(section_label(if index == 0 { "White" } else { "Black" }))
-                                .child(div().text_size(px(13.)).child(name.to_owned())),
+                                .child(
+                                    div()
+                                        .text_size(px(13.))
+                                        .text_color(rgb(if index == 0 {
+                                            T.engine_a
+                                        } else {
+                                            T.engine_b
+                                        }))
+                                        .child(name.to_owned()),
+                                ),
                         )
                         .child(
                             h_flex()
@@ -2374,6 +2547,7 @@ impl Render for PlayScreen {
                                     });
                                 },
                             ))
+                            .child(self.render_graph(cx))
                             .child(self.render_analysis(cx))
                             .child(side),
                     )
