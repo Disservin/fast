@@ -73,6 +73,15 @@ pub fn format_clock(ms: u64) -> String {
     }
 }
 
+/// The latest search line for one side, kept visible while the other side thinks.
+#[derive(Default)]
+struct GameAnalysis {
+    depth: u32,
+    score: Option<engine::Score>,
+    pv: String,
+}
+
+/// A played game with independent engines, clocks and live analysis.
 struct Game {
     tree: GameTree,
     current: NodeId,
@@ -96,6 +105,7 @@ struct Game {
     premove: Option<(chess_core::Square, chess_core::Square)>,
     last_tick: Instant,
     search_id: u64,
+    analysis: [GameAnalysis; 2],
     engine: Option<EngineHandle>,
     _engine_reader: Option<Task<()>>,
     _clock: Option<Task<()>>,
@@ -190,6 +200,7 @@ pub struct PlayScreen {
     black: EngineChoice,
     opponents: Vec<EngineConfig>,
     mode: Mode,
+    show_setup: bool,
     time_index: Option<usize>,
     custom_time: crate::controls::ClockInput,
     engine_times: [EngineTime; 2],
@@ -361,6 +372,7 @@ impl PlayScreen {
             black,
             opponents,
             mode: Mode::VsEngine,
+            show_setup: true,
             time_index: Some(2),
             custom_time,
             engine_times,
@@ -461,6 +473,7 @@ impl PlayScreen {
             premove: None,
             last_tick: Instant::now(),
             search_id: 0,
+            analysis: Default::default(),
             engine: None,
             _engine_reader: None,
             _clock: None,
@@ -757,6 +770,7 @@ impl PlayScreen {
             premove: None,
             last_tick: Instant::now(),
             search_id: 0,
+            analysis: Default::default(),
             engine: None,
             _engine_reader: None,
             _clock: None,
@@ -767,6 +781,7 @@ impl PlayScreen {
             game.engine = Some(engine);
         }
         self.game = Some(game);
+        self.show_setup = false;
         self.board
             .update(cx, |board, cx| board.set_flipped(user == Color::Black, cx));
         self.sync_board(false, cx);
@@ -782,11 +797,15 @@ impl PlayScreen {
         cx.notify();
     }
 
+    /// Receives moves and live search lines without blocking the board.
     fn spawn_reader(&self, handle: &EngineHandle, cx: &mut Context<Self>) -> Task<()> {
         let events = handle.events();
         cx.spawn(async move |this, cx| {
             while let Ok(event) = events.recv().await {
                 let alive = this.update(cx, |this, cx| match event {
+                    EngineEvent::Analysis { search_id, update } => {
+                        this.update_analysis(search_id, update, cx);
+                    }
                     EngineEvent::BestMove { search_id, best } => {
                         this.engine_move(search_id, best, cx);
                     }
@@ -987,7 +1006,13 @@ impl PlayScreen {
                 cx.background_executor()
                     .timer(Duration::from_millis(900))
                     .await;
-                let _ = this.update(cx, |this, cx| this.apply_move(mv, cx));
+                let _ = this.update(cx, |this, cx| {
+                    this.apply_move(mv, cx);
+                    if this.game.as_ref().is_some_and(Game::self_play) {
+                        this.maybe_request_engine_move(cx);
+                    }
+                    cx.notify();
+                });
             }));
             return;
         }
@@ -1037,12 +1062,53 @@ impl PlayScreen {
             .and_then(|uci| uci.parse::<UciMove>().ok())
             .and_then(|uci| uci.to_move(&pos).ok());
         match parsed {
-            Some(mv) => self.apply_move(mv, cx),
+            Some(mv) => {
+                self.apply_move(mv, cx);
+                if self.game.as_ref().is_some_and(Game::self_play) {
+                    self.maybe_request_engine_move(cx);
+                }
+                cx.notify();
+            }
             None => {
                 self.model.toast("The engine returned no legal move.", cx);
                 self.finish("Engine stopped".to_owned(), cx);
             }
         }
+    }
+
+    /// Keeps the moving engine's score White-relative and its PV in chess notation.
+    fn update_analysis(
+        &mut self,
+        search_id: u64,
+        update: engine::AnalysisUpdate,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(game) = &mut self.game else { return };
+        if self.suspended
+            || game.result.is_some()
+            || search_id != game.search_id
+            || update.multipv > 1
+        {
+            return;
+        }
+        let node = game.tree.node(game.current);
+        let black = node.pos.turn() == Color::Black;
+        let line = &mut game.analysis[usize::from(black)];
+        if update.depth > 0 {
+            line.depth = update.depth;
+        }
+        if !update.bound {
+            if let Some(score) = update.score {
+                line.score = Some(if black { score.negate() } else { score });
+            }
+            if !update.pv.is_empty() {
+                line.pv = chess_core::format_pv(
+                    node.ply + 1,
+                    &chess_core::pv_to_san(&node.pos, &update.pv),
+                );
+            }
+        }
+        cx.notify();
     }
 
     fn resign(&mut self, cx: &mut Context<Self>) {
@@ -1252,6 +1318,19 @@ impl PlayScreen {
             .border_r_1()
             .border_color(rgb(T.border))
             .child(section_label("New game").mb(px(10.)))
+            .when(self_play && self.game.is_some(), |column| {
+                let back_this = cx.entity();
+                column.child(
+                    btn("back-to-engine-game", "Back to game")
+                        .compact()
+                        .on_click(move |_, cx| {
+                            back_this.update(cx, |screen, cx| {
+                                screen.show_setup = false;
+                                cx.notify();
+                            });
+                        }),
+                )
+            })
             .child(mode.mb(px(14.)))
             .child(engines)
             .when(!self_play, |column| {
@@ -1698,6 +1777,59 @@ impl PlayScreen {
             .child(bottom)
     }
 
+    /// Shows both engines' latest evaluations and principal variations beside the board.
+    fn render_analysis(&self) -> impl IntoElement + use<> {
+        let mut column = panel().p(px(16.)).child(section_label("Engines"));
+        if let Some(game) = &self.game {
+            for (index, name) in [
+                game.white.as_ref().map_or("—", |white| white.name.as_str()),
+                game.opponent_name.as_str(),
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                let line = &game.analysis[index];
+                column = column.child(
+                    v_flex()
+                        .py(px(10.))
+                        .gap(px(6.))
+                        .border_b_1()
+                        .border_color(rgb(T.divider))
+                        .child(
+                            h_flex()
+                                .gap(px(8.))
+                                .child(section_label(if index == 0 { "White" } else { "Black" }))
+                                .child(div().text_size(px(13.)).child(name.to_owned())),
+                        )
+                        .child(
+                            h_flex()
+                                .gap(px(16.))
+                                .child(mono(
+                                    line.score
+                                        .map_or_else(|| "—".to_owned(), |score| score.display()),
+                                ))
+                                .child(section_label("Depth"))
+                                .child(mono(if line.depth == 0 {
+                                    "—".to_owned()
+                                } else {
+                                    line.depth.to_string()
+                                })),
+                        )
+                        .child(
+                            mono(if line.pv.is_empty() {
+                                "—".to_owned()
+                            } else {
+                                line.pv.clone()
+                            })
+                            .text_size(px(13.))
+                            .text_color(rgb(T.fg_2)),
+                        ),
+                );
+            }
+        }
+        column
+    }
+
     fn render_side(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let this = cx.entity();
         let game = self.game.as_ref();
@@ -1907,31 +2039,44 @@ impl Render for PlayScreen {
         }
         if self.mode == Mode::Engines {
             let viewport = window.viewport_size();
+            let setup_open = self.show_setup || self.game.is_none();
             let board_size = ui::board::snap_board_size(
-                (viewport.width - px(636.))
+                (viewport.width - px(if setup_open { 636. } else { 440. }))
                     .min(viewport.height - px(300.))
                     .max(px(320.)),
                 window.scale_factor(),
             );
-            let setup = self.render_setup(cx);
             let center = self.render_center(board_size, cx);
             let side = self.render_side(cx);
-            return h_flex()
-                .size_full()
-                .items_start()
-                .child(setup)
-                .child(
-                    v_flex()
-                        .id("engine-match-content")
-                        .flex_1()
-                        .min_w_0()
-                        .h_full()
-                        .overflow_y_scroll()
-                        .px(px(28.))
-                        .pb(px(16.))
-                        .child(div().flex().justify_center().child(center))
-                        .child(div().mt(px(16.)).child(side)),
-                )
+            let this = cx.entity();
+            let mut layout = h_flex().size_full().items_start();
+            if setup_open {
+                layout = layout.child(self.render_setup(cx));
+            }
+            return layout
+                .child(div().px(px(24.)).flex_none().child(center))
+                .when(!setup_open, |row| {
+                    row.child(
+                        v_flex()
+                            .id("engine-match-side")
+                            .flex_1()
+                            .min_w_0()
+                            .h_full()
+                            .overflow_y_scroll()
+                            .p(px(16.))
+                            .gap(px(16.))
+                            .child(btn("new-engine-game", "New game").compact().on_click(
+                                move |_, cx| {
+                                    this.update(cx, |screen, cx| {
+                                        screen.show_setup = true;
+                                        cx.notify();
+                                    });
+                                },
+                            ))
+                            .child(self.render_analysis())
+                            .child(side),
+                    )
+                })
                 .into_any_element();
         }
         let board_size = super::side_columns_board_size(window);

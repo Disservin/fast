@@ -426,7 +426,10 @@ a running tournament or test-position run. `Workspace` observes every tab entity
 redraws the strip only when a tab's mark changes.
 Each Play game already owns its own engine and clock. In an engine vs engine game
 each side has its own process, options and strength limit (the same engine may be
-picked twice), and the board stays read-only. Match setup overrides each engine’s
+picked twice), and the board stays read-only. Each best move starts the next side’s
+search. Play retains each side’s latest analysis, normalises scores to White and
+converts PVs from the searched position to SAN. Starting a match folds setup away
+and places moves and both search lines beside the board. Match setup overrides each engine’s
 Threads and Hash within its advertised UCI bounds. Clockless games use a fixed
 node or depth limit per move and run no clock task. A local PGN or EPD book loads
 on the background executor; its first game or position seeds the game tree. Open games continue when
