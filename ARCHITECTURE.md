@@ -205,6 +205,20 @@ from draws. Changing the picker updates both views. Uncached queries clear stale
 show a loading state and report lookup errors without caching them; clicking a move
 adds it to the analysed line and advances the board.
 
+Database collection management lives in `screens/database/management.rs`. It loads
+collection statistics, saves names/descriptions in SQLite `meta`, merges exact player
+names and previews duplicate or empty-game IDs on background workers. Cleanup uses
+the existing deletion confirmation and transactional index/review cleanup; duplicates
+with different annotations remain distinct. Reference selection saves
+`config.explorer_default`. Whole-collection export ignores the table's active filters.
+`database_sources.rs` installs local PGN, gzip/ZIP archives and consistent read-only
+snapshots of Fast SQLite files. Web installation fetches an explicit HTTPS PGN URL or
+resolves the latest issue from the TWIC publisher. Streaming downloads and imports
+report progress and accept cancellation; only a complete checkpointed temporary
+database is published to the database directory. Normal use stays offline until an
+installation is requested. `AppModel::remove_database` serves both Settings and the
+management dialog, preserving removed files in the recoverable `removed` folder.
+
 ## Online lookups
 
 `online.rs` queries the ChessTB Explorer tablebase (`POST /probe`, up to 8 pieces) and

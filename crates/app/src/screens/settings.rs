@@ -2698,59 +2698,8 @@ impl SettingsScreen {
 
     /// Removes a reference database from the list while keeping its file recoverable.
     fn remove_database(&mut self, path: PathBuf, cx: &mut Context<Self>) {
-        if path == self.model.read(cx).my_games_path() {
-            return;
-        }
-        let removed_path = path.clone();
-        let task = cx.background_spawn(async move {
-            let connection = db::open_sqlite(&path)?;
-            let busy: i64 =
-                connection.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |row| row.get(0))?;
-            anyhow::ensure!(busy == 0, "database is busy");
-            drop(connection);
-            let directory = path
-                .parent()
-                .ok_or_else(|| anyhow::anyhow!("missing database directory"))?
-                .join("removed");
-            std::fs::create_dir_all(&directory)?;
-            let name = path.file_stem().unwrap_or_default().to_string_lossy();
-            for index in 1_u64.. {
-                let destination = directory.join(format!("{name}-{index}.sqlite"));
-                if !destination.exists() {
-                    std::fs::rename(&path, destination)?;
-                    break;
-                }
-            }
-            Ok::<_, anyhow::Error>(())
-        });
-        let model = self.model.clone();
-        cx.spawn(async move |_, cx| {
-            let result = task.await;
-            model.update(cx, |model, cx| match result {
-                Ok(()) => {
-                    model
-                        .config
-                        .accounts
-                        .retain(|account| account.database != removed_path);
-                    if model.config.explorer_default.as_ref() == Some(&removed_path) {
-                        model.config.explorer_default = None;
-                    }
-                    model
-                        .config
-                        .database_sorts
-                        .remove(&removed_path.to_string_lossy().to_string());
-                    model.save_config(cx);
-                    model.refresh_databases();
-                    model.refresh_leaks(cx);
-                    cx.emit(ModelEvent::Databases);
-                }
-                Err(error) => model.toast(
-                    format!("{}: {error}", ui::i18n::t("Could not remove database")),
-                    cx,
-                ),
-            });
-        })
-        .detach();
+        self.model
+            .update(cx, |model, cx| model.remove_database(path, cx));
     }
 
     /// Shows player names, accounts and the locally stored databases.

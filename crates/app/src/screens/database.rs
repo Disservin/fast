@@ -33,6 +33,8 @@ use crate::{
     shell::Workspace,
 };
 
+mod management;
+
 /// The results a game can be given in the game editor, as stored.
 const RESULTS: [&str; 4] = ["1-0", "1/2-1/2", "0-1", "*"];
 
@@ -280,6 +282,12 @@ pub struct DatabaseScreen {
     importing: Option<Importing>,
     /// Whether the Import dialog is open.
     import_dialog: bool,
+    /// Collection settings and sources, separate from the game table's filters.
+    manager: Option<management::Manager>,
+    add_database: Option<management::AddDatabase>,
+    collection_control: Option<ImportControl>,
+    collection_progress: String,
+    collection_error: Option<String>,
     import_source: ImportSource,
     download_user: Entity<InputState>,
     download_since: Since,
@@ -342,6 +350,9 @@ impl Drop for DatabaseScreen {
     /// Stops optional indexing when its tab closes.
     fn drop(&mut self) {
         if let Some(control) = &self.pattern_control {
+            control.cancel();
+        }
+        if let Some(control) = &self.collection_control {
             control.cancel();
         }
     }
@@ -571,6 +582,11 @@ impl DatabaseScreen {
             scroll: UniformListScrollHandle::new(),
             importing: None,
             import_dialog: false,
+            manager: None,
+            add_database: None,
+            collection_control: None,
+            collection_progress: String::new(),
+            collection_error: None,
             import_source: ImportSource::File,
             download_user,
             download_since: Since::All,
@@ -2711,6 +2727,13 @@ impl DatabaseScreen {
                     ),
             )
             .child(list)
+            .child(h_flex().gap(px(6.)).mb(px(16.))
+                .child({ let this = this.clone(); btn("add-database", "Add database").compact().disabled(self.collection_busy() && self.collection_control.is_none()).on_click(move |window, cx| {
+                    this.update(cx, |screen, cx| screen.open_add_database(window, cx));
+                }) })
+                .child({ let this = this.clone(); btn("manage-database", "Manage").compact().disabled(self.selected_db.is_none() || self.collection_busy()).on_click(move |window, cx| {
+                    this.update(cx, |screen, cx| screen.open_manager(window, cx));
+                }) }))
             .child(
                 h_flex()
                     .justify_between()
@@ -5142,6 +5165,9 @@ impl Render for DatabaseScreen {
         let import_dialog = self.render_import_dialog(cx);
         let dropped_details = self.render_dropped_details(cx);
         let confirm_reimport = self.render_confirm_reimport(cx);
+        let manager = self.render_manager(cx);
+        let add_database = self.render_add_database(cx);
+        let collection_bar = self.render_collection_bar(cx);
         h_flex()
             .relative()
             .items_start()
@@ -5159,6 +5185,7 @@ impl Render for DatabaseScreen {
                     .child(header)
                     .children(import_bar)
                     .children(download_bar)
+                    .children(collection_bar)
                     .child(stats)
                     .child(
                         h_flex()
@@ -5178,6 +5205,8 @@ impl Render for DatabaseScreen {
             .children(import_dialog)
             .children(dropped_details)
             .children(confirm_reimport)
+            .children(manager)
+            .children(add_database)
     }
 }
 
@@ -5192,6 +5221,8 @@ fn dialog(
 ) -> AnyElement {
     let close = move |cx: &mut gpui::App| {
         screen.update(cx, |screen, cx| {
+            screen.manager = None;
+            screen.add_database = None;
             screen.editing = None;
             screen.confirm_delete = None;
             screen.import_dialog = false;

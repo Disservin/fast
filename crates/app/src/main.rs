@@ -12,6 +12,7 @@ mod backup;
 mod config;
 mod config_writer;
 mod controls;
+mod database_sources;
 mod debug_window;
 mod demo;
 mod engine_catalog;

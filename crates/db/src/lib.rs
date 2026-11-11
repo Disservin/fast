@@ -2,12 +2,14 @@
 
 mod edit;
 mod import;
+mod management;
 mod notes;
 mod queries;
 mod structure;
 
 pub use edit::GameInfo;
 pub use import::{ImportControl, ImportOptions, ImportProgress, ImportSummary, import_games};
+pub use management::DatabaseStats;
 pub use notes::NoteStore;
 pub use queries::{
     Filter, FilterStats, GameDetails, GameRow, MoveStat, PlayerLine, ResultFilter, ReviewPosition,

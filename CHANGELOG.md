@@ -4,6 +4,8 @@ Settings › Changelog shows this file. Keep entries to one short line each.
 
 ## Since 0.1.0
 
+- Database: add local or web collections and manage descriptions, reference selection, statistics, player names and cleanup.
+
 - Analyse: the Database tab lists moves from the current position with frequencies, game counts and results.
 
 - Play: configure engine matches with threads and hash per side, time or node/depth limits, and a local PGN or EPD opening book.

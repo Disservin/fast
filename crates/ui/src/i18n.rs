@@ -304,6 +304,57 @@ pub fn translate(language: Language, text: &str) -> &str {
             "On" => "Ein",
             "Off" => "Aus",
             "None" => "Keine",
+            "HTTPS download URL" => "HTTPS-Download-URL",
+            "Cancel indexing" => "Indexierung abbrechen",
+            "Manage" => "Verwalten",
+            "Local" => "Lokal",
+            "Web" => "Web",
+            "Players" => "Spieler",
+            "Events" => "Turniere",
+            "Add database" => "Datenbank hinzufügen",
+            "Manage database" => "Datenbank verwalten",
+            "Database name" => "Datenbankname",
+            "PGN, PGN.gz, ZIP or Fast SQLite file" => "PGN-, PGN.gz-, ZIP- oder Fast-SQLite-Datei",
+            "Player to replace" => "Zu ersetzender Spieler",
+            "Player to keep" => "Zu behaltender Spieler",
+            "Enter a name and a source." => "Einen Namen und eine Quelle eingeben.",
+            "Preparing database…" => "Datenbank wird vorbereitet…",
+            "Database added." => "Datenbank hinzugefügt.",
+            "Updated {} games." => "{} Partien aktualisiert.",
+            "No matching games to remove." => "Keine passenden Partien zum Entfernen.",
+            "PGN download URL" => "PGN-Download-URL",
+            "Local file" => "Lokale Datei",
+            "Download a PGN, PGN.gz or ZIP file over HTTPS." => {
+                "Eine PGN-, PGN.gz- oder ZIP-Datei über HTTPS herunterladen."
+            }
+            "Import PGN, PGN.gz or ZIP, or copy a Fast SQLite database." => {
+                "PGN, PGN.gz oder ZIP importieren oder eine Fast-SQLite-Datenbank kopieren."
+            }
+            "The Week in Chess" => "The Week in Chess",
+            "Download the latest weekly issue. Free for personal use." => {
+                "Die neueste Wochenausgabe herunterladen. Für den privaten Gebrauch kostenlos."
+            }
+            "Install latest issue" => "Neueste Ausgabe installieren",
+            "Use as reference database" => "Als Referenzdatenbank verwenden",
+            "Position index ready" => "Stellungsindex bereit",
+            "Rebuild structure index" => "Strukturindex neu aufbauen",
+            "Explore games" => "Partien durchsuchen",
+            "Merge players" => "Spieler zusammenführen",
+            "Replace this exact player name on both sides of every game." => {
+                "Diesen genauen Spielernamen für beide Farben in allen Partien ersetzen."
+            }
+            "Clean up" => "Bereinigen",
+            "Review the number of games before confirming removal. Different annotations are kept." => {
+                "Die Anzahl vor dem Entfernen prüfen. Unterschiedliche Kommentare bleiben erhalten."
+            }
+            "Remove duplicates" => "Duplikate entfernen",
+            "Remove empty games" => "Leere Partien entfernen",
+            "Indexing {} / {} games" => "{} / {} Partien werden indexiert",
+            "Remove database" => "Datenbank entfernen",
+            "Add games" => "Partien hinzufügen",
+            "Exported {} games." => "{} Partien exportiert.",
+            "Downloaded {} MB" => "{} MB heruntergeladen",
+            "Imported {} games" => "{} Partien importiert",
             "Played" => "Gespielt",
             "White / Draw / Black" => "Weiß / Remis / Schwarz",
             "White wins: {}%, draws: {}%, Black wins: {}%, unfinished: {}%" => {
