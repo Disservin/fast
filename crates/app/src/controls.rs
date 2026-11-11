@@ -211,3 +211,33 @@ pub fn engine_icon(config: &engine::EngineConfig, size: f32) -> gpui::AnyElement
             .into_any_element(),
     }
 }
+
+/// Opens a native file or folder picker and puts the chosen path in the input.
+pub fn browse_path(
+    id: &'static str,
+    model: &Entity<crate::model::AppModel>,
+    input: &Entity<InputState>,
+    title: &'static str,
+    directory: bool,
+) -> impl IntoElement + use<> {
+    let model = model.clone();
+    let input = input.clone();
+    ui::widgets::btn(id, "Browse…")
+        .compact()
+        .on_click(move |window, cx| {
+            let handle = window.window_handle();
+            let input = input.clone();
+            let on_path = move |path: std::path::PathBuf, cx: &mut App| {
+                let _ = handle.update(cx, |_, window, cx| {
+                    input.update(cx, |input, cx| {
+                        input.set_value(path.display().to_string(), window, cx);
+                    });
+                });
+            };
+            if directory {
+                crate::model::pick_directory(model.clone(), title, cx, on_path);
+            } else {
+                crate::model::pick_path(model.clone(), title, None, cx, on_path);
+            }
+        })
+}

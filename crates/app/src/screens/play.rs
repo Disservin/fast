@@ -1257,8 +1257,20 @@ impl PlayScreen {
             .when(self_play, |column| {
                 column
                     .child(
-                        field("Opening book (.pgn or .epd)", text_input(&self.book_path))
-                            .mb(px(6.)),
+                        field(
+                            "Opening book (.pgn or .epd)",
+                            h_flex()
+                                .gap(px(6.))
+                                .child(div().flex_1().min_w_0().child(text_input(&self.book_path)))
+                                .child(crate::controls::browse_path(
+                                    "play-book-browse",
+                                    &self.model,
+                                    &self.book_path,
+                                    "Opening book (.pgn or .epd)",
+                                    false,
+                                )),
+                        )
+                        .mb(px(6.)),
                     )
                     .child(
                         div()

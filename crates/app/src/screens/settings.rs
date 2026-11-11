@@ -2326,7 +2326,12 @@ impl SettingsScreen {
                         let can_browse = directory
                             || matches!(
                                 name.as_str(),
-                                "WeightsFile" | "EvalFile" | "EvalFileSmall"
+                                "WeightsFile"
+                                    | "EvalFile"
+                                    | "EvalFileSmall"
+                                    | "BookFile"
+                                    | "BookFile2"
+                                    | "BookFileName"
                             );
                         h_flex()
                             .gap(px(6.))

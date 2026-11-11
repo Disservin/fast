@@ -1281,7 +1281,19 @@ impl TournamentScreen {
                 "Own executable (optional)",
                 h_flex()
                     .gap(px(6.))
-                    .child(div().flex_1().child(text_input(&self.fastchess_path)))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .child(text_input(&self.fastchess_path)),
+                    )
+                    .child(crate::controls::browse_path(
+                        "fastchess-browse",
+                        &self.model,
+                        &self.fastchess_path,
+                        "Engine executable",
+                        false,
+                    ))
                     .child(btn("fastchess-path-save", ui::i18n::t("Use")).on_click(
                         move |_, cx| save.update(cx, |screen, cx| screen.save_fastchess_path(cx)),
                     )),
@@ -1729,7 +1741,21 @@ impl TournamentScreen {
                 .when(self.tb_adjudication, |column| {
                     column
                         .child(pair(
-                            field("Syzygy folders", text_input(&self.tb_paths)),
+                            field(
+                                "Syzygy folders",
+                                h_flex()
+                                    .gap(px(6.))
+                                    .child(
+                                        div().flex_1().min_w_0().child(text_input(&self.tb_paths)),
+                                    )
+                                    .child(crate::controls::browse_path(
+                                        "tournament-syzygy-browse",
+                                        &self.model,
+                                        &self.tb_paths,
+                                        "Syzygy folders",
+                                        true,
+                                    )),
+                            ),
                             field("Up to pieces", text_input(&self.tb_pieces)),
                         ))
                         .child(self.choice(
@@ -1894,7 +1920,16 @@ impl TournamentScreen {
             ))
             .child(field(
                 "Run a command line in folder (for its relative paths)",
-                text_input(&self.paste_dir),
+                h_flex()
+                    .gap(px(6.))
+                    .child(div().flex_1().min_w_0().child(text_input(&self.paste_dir)))
+                    .child(crate::controls::browse_path(
+                        "tournament-run-folder",
+                        &self.model,
+                        &self.paste_dir,
+                        "Run a command line in folder (for its relative paths)",
+                        true,
+                    )),
             ))
     }
 
