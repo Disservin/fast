@@ -232,6 +232,26 @@ impl AnalyseScreen {
         }
     }
 
+    /// The moves Line preview lists: the previewed line, or else the selected row's.
+    pub(super) fn preview_line(&self, selected: Option<&MoveRow>) -> Vec<String> {
+        match (&self.pv_view, selected) {
+            (Some(view), _) => view.sans.clone(),
+            (None, Some(row)) if !row.pv.is_empty() => row.pv.clone(),
+            (None, Some(row)) => vec![row.san.clone()],
+            (None, None) => Vec::new(),
+        }
+    }
+
+    /// The arrow for move `index` of the line Line preview lists now, if that line
+    /// still reaches it.
+    pub(super) fn hovered_arrow(&self, index: usize) -> Option<Arrow> {
+        let sans = self.preview_line(self.selected_row());
+        let base = &self.tree.node(self.current).pos;
+        let (_, moves) = replay(base, &sans[..sans.len().min(index + 1)]);
+        let (from, to) = moves.get(index).and_then(move_squares)?;
+        Some(Arrow::new(from, to))
+    }
+
     /// The position on the board, including a previewed line.
     pub(super) fn shown_pos(&self) -> Chess {
         let moves = self
@@ -1382,12 +1402,7 @@ impl AnalyseScreen {
         selected: Option<&MoveRow>,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
-        let sans: Vec<String> = match (&self.pv_view, selected) {
-            (Some(view), _) => view.sans.clone(),
-            (None, Some(row)) if !row.pv.is_empty() => row.pv.clone(),
-            (None, Some(row)) => vec![row.san.clone()],
-            (None, None) => Vec::new(),
-        };
+        let sans = self.preview_line(selected);
         // Numbered from the game position, wherever the preview has got to.
         let text = format_pv(self.tree.node(self.current).ply, &sans);
         let labels: Vec<&str> = if text.is_empty() {
@@ -1729,9 +1744,11 @@ impl AnalyseScreen {
             board.set_interactive(true, cx);
         });
         if kibitz {
-            // The main analysis never left the game position.
+            // The main analysis never left the game position, but the table held its
+            // selection for the preview: let it follow the best line again, and draw
+            // the arrows for what the table shows now.
             self.kibitz.update(cx, |kibitz, cx| kibitz.stop(cx));
-            self.update_arrows(cx);
+            self.rebuild_rows(cx);
         } else {
             let (tree, current) = (self.tree.clone(), self.current);
             self.live

@@ -991,8 +991,19 @@ impl AnalyseScreen {
     }
 
     fn update_arrows(&mut self, cx: &mut Context<Self>) {
-        // A hovered move or a highlighted range is already drawn on the board.
-        if self.pv_hover.is_some() || self.pv_view.as_ref().is_some_and(PvView::is_range) {
+        // A hovered move in Line preview shows just that move. The line can change under
+        // a still mouse, so it is drawn again from the line shown now; a move that is no
+        // longer there ends the hover.
+        if let Some(index) = self.pv_hover {
+            if let Some(arrow) = self.hovered_arrow(index) {
+                self.board
+                    .update(cx, |board, cx| board.set_arrows(vec![arrow], cx));
+                return;
+            }
+            self.pv_hover = None;
+        }
+        // A highlighted range is already drawn on the board.
+        if self.pv_view.as_ref().is_some_and(PvView::is_range) {
             return;
         }
         // The board shows the previewed position, which only the kibitz analyses.
