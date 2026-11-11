@@ -768,3 +768,16 @@ nav a[aria-current="page"] {
     scroll-margin-top: 160px;
   }
 }
+
+/* The arrow after links that leave the site. Drawn as a mask so phones cannot swap in
+   an emoji, and so it takes the colour of the link text. */
+.ext {
+  display: inline-block;
+  width: 0.8em;
+  height: 0.8em;
+  vertical-align: -0.05em;
+  background: currentColor;
+  -webkit-mask: var(--ext-arrow) center / contain no-repeat;
+  mask: var(--ext-arrow) center / contain no-repeat;
+  --ext-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 7h10v10M7 17 17 7'/%3E%3C/svg%3E");
+}
