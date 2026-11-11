@@ -1,124 +1,53 @@
 # Changelog
 
-Settings › Changelog shows this file. Keep entries to one short line each.
+Settings › Changelog shows this file. Describe the finished changes since each release, combining related work into one short line.
 
-## Since 0.1.0
+## 0.1.3
 
-- Play: the move list keeps the full Black thinking time visible beside the scrollbar.
-
-- Play: the nodes graph uses round steps suited to the node range, with room for full axis numbers.
-
-- Play: move columns stay separated and clear of the scrollbar, with visible headings and a compact move highlight.
-
-- Play: engine match moves show the recorded evaluation and thinking time for each side.
-
-- Play: engine match graphs have Eval, Nodes, Depth and Time tabs in a single row.
-
-- Play: game PGNs include the event, start date and actual engine names from the start of play.
-
-- Play: engine matches show colour-coded evaluation and search graphs with nodes, depth and time per move.
-
-- Tabs: right-click and choose Close all tabs to start a fresh Analyse tab with numbering reset to one.
-
-- Analyse: imported PGN evaluations show the mate distance in the move list.
-
-- Play: engine match PGNs include move times, remaining clocks and engine evaluations with depth.
-
-- Settings: engine checks allow more startup time, show failure details and offer retries using installed files.
-
-- Play: arrow keys browse the visible game, updating the board and selected move while engines continue playing.
-
-- Play: the move list follows each new move automatically and has a scrollbar for browsing earlier moves.
-
-- Play: long move lists scroll independently, hovering over PV moves previews the board, and engine matches remember clock values, units and search limits.
-
-- Play: engine matches close setup on start, play both sides, and show moves and live engine evaluations and PVs beside the board.
-
-- Time controls: set time and increment separately, choose their units, and enter fractional durations such as 0.1s in Play and Tournament.
-
-- Files: browse for Play opening books, Tournament executables, working folders and Syzygy folders, and engine book files.
-
-- Play: engine matches have a larger setup with separate White and Black panels and independent clocks or unlimited time with per-move search limits.
-
-- Dialogs: Escape closes dialogs even while editing a text field, including Add database, Manage and the fallback file picker.
-
-- Database: PGN export opens Save As with the database name, letting you choose the folder and filename.
-
-- Database: Browse opens the Windows file picker under WSL when the Linux desktop picker is unavailable.
-
-- Database: choose collections with a searchable picker, fold filters with an active count, and find review/export under More actions.
-
-- Database: choose collections and find Add database, Manage and import actions in a full-width top toolbar.
-
-- Database: add local or web collections and manage descriptions, reference selection, statistics, player names and cleanup.
-
-- Analyse: the Database tab lists moves from the current position with frequencies, game counts and results.
-
-- Play: configure engine matches with threads and hash per side, time or node/depth limits, and a local PGN or EPD opening book.
-
-- Train: the correct-answer prompt explains when a mistake or hint limits the available ratings.
-
-- Analyse: edit comments without clock tags getting in the way, preserving PGN timing and evaluations.
-
-- Settings: remove reference databases under Databases and keep their files recoverable.
-
-- Settings: edit player aliases under Databases.
-
-- Train: the Leaks header fits narrow panels without overflowing.
-
-- Analyse: My moves hides the My games and Repertoire columns in the moves table.
-- Analyse: analysis stops after 30 seconds by default, and Infinite lifts the limit.
-- Play: Engine vs engine lets two different engines play each other, each at its own strength.
-- Play: Full strength starts an engine without a rating limit.
-- Settings: each setting is on one page only, and backup moves to Data.
-- Analyse: the scoresheet shows the engine eval after each move, and saved PGN keeps the evals.
-- Analyse: a kibitz engine searches a previewed line while the main analysis stays on the game.
-- Analyse: arrows stay in step after leaving or hovering a previewed line.
-- Analyse: nodes, speed and time keep updating for engines that report them on their own line.
-- Analyse: engine output with unknown fields is read correctly.
-- Analyse: switching tabs no longer restarts the engines, so networks and hash are kept.
-- Analyse: choose whether leaving a tab keeps analysing, pauses or stops.
-- Analyse: New Chess960 game in the File menu, and a Chess960 switch in the position editor.
-- Analyse: the log stays in place while reading back through it.
-- Analyse: the game graph fills the space below the board controls.
-- Analyse: the panels beside the board have square corners.
-- Analyse: hovered Line preview moves are readable in light themes.
-- Train: Hint, Show answer, Skip and the grades sit in a Drill panel beside the board.
-- Train: Drill these lines practises the listed leaks first, keeps the session and says what it did.
-- Train: Import PGN sits in the Repertoire panel.
-- Train: the repertoire tree is hidden until you answer, so it cannot give the move away.
-- Train: a mistake or reveal repeats the position, and a hint limits the grade to Hard.
-- Train: says whether the session is complete, nothing is due or the repertoire is empty.
-- Tabs: a dot marks background tabs whose engines are still searching, and a pause mark paused ones.
-- Engines: hash sizes from 1024 MB are shown in GB.
-- Tournament: engine colours, charts and result chips match each theme.
-- Themes: disabled primary buttons are readable in Paper and Sand.
+- Play: match two engines with separate strength, threads, hash, clocks and search limits, plus a PGN or EPD opening book.
+- Play: follow engine matches with live evaluations, PV previews and graphs for evaluation, nodes, depth and thinking time.
+- Play: browse earlier moves with the scrollbar or arrow keys while engines continue playing.
+- Play: saved match PGNs include engine names, event, date, move times, remaining clocks and evaluations with depth.
+- Play: choose Full strength to play an engine without a rating limit.
+- Play and Tournament: set time and increment separately, with selectable units and fractional durations.
+- Files: browse for opening books, tournament engines, working folders and Syzygy folders.
+- Analyse: use a kibitz engine to explore previewed lines while the main engine analyses the game.
+- Analyse: analysis runs for 30 seconds by default, with Infinite available for longer searches.
+- Analyse: choose whether background tabs keep analysing, pause or stop, with tab indicators showing their status.
+- Analyse: engines stay loaded across tab switches, preserving their networks and hash.
+- Analyse: see evaluations in the scoresheet, including imported mate distances, and preserve evaluations and timing when editing PGN comments.
+- Analyse: see database move frequencies, game counts and results, and use My moves to show or hide personal move columns.
+- Analyse: start Chess960 from the File menu or the position editor.
+- Analyse: read engine statistics from more UCI output formats and browse the log without losing your place.
+- Analyse: the game graph fills the available space, with square side panels and readable previews in light themes.
+- Database: select collections from a searchable toolbar and add local or web collections.
+- Database: manage collection descriptions, reference selection, statistics, player aliases, cleanup and removal.
+- Database: fold search filters, see the active filter count and find review and export under More actions.
+- Database: choose the folder and filename for PGN exports, with a Windows file picker fallback under WSL.
+- Train: use a Drill panel beside the board, import from the Repertoire panel and practise listed leaks within the current session.
+- Train: the repertoire stays hidden until you answer, with repeated positions after mistakes or reveals and clear grading and session feedback.
+- Settings: find each setting on one page, with backup under Data and large engine hash sizes shown in GB.
+- Settings: engine checks allow more startup time, explain failures and let you retry with installed files.
+- Tabs: close all tabs from the context menu to start a fresh Analyse tab with numbering reset.
+- Dialogs: Escape closes dialogs while editing text fields.
+- Themes: disabled primary buttons are readable in Paper and Sand, and tournament colours follow the active palette.
 - macOS: the title bar is merged into the top bar.
-- Database: create an empty database with New, then name it and import games.
-- Database: group sidebar actions, highlight the selected database and keep game counts readable.
-- Analyse and Play: Chess960 starts by position number or Random, with PGN and FEN support.
-- Analyse: Chess960 badges, castling controls and warnings for unsupported engines.
-- Database: preserve PGN comments, variations and NAGs, with details for dropped variations.
-- Database: re-import games from their source PGN file.
-- Analyse: choose any database for opening-tree counts and click a count to open its games.
-- Database: sort games by file order or any column.
-- Database: download and update Lichess and Chess.com games, skipping games already stored.
-- Database: filter by date, event, result, rating and length, and save searches.
-- Database: exact pawn-structure and material searches with an optional, cancellable index.
-- Downloads: show connection, archive, receiving and saving progress, and acknowledge Cancel at once.
-- Settings: save in the background so starting an account download does not pause the UI.
-- Play: engine self-play.
-- Play: start a game from a pasted FEN.
-- Play: Analyse this game no longer crashes after a finished game.
+
+## 0.1.1–0.1.2
+
+- Database: create, rename and duplicate databases, and edit or delete games.
+- Database: preserve PGN comments, variations and NAGs, and re-import games from their source file.
+- Database: download and update Lichess and Chess.com games, skipping games already stored, with progress and cancellation.
+- Database: filter by date, event, result, rating and length, save searches and get player-name suggestions.
+- Database: search exact pawn structures and material with an optional, cancellable index.
+- Database: sort games by file order or any column, with a highlighted database selection and readable game counts.
+- Analyse and Play: start Chess960 by position number or Random, with PGN and FEN support.
+- Analyse: use Chess960 castling controls and see warnings for unsupported engines.
+- Analyse: choose any database for opening-tree counts, open matching games and save comments back to the source database.
+- Analyse: fold the scoresheet and use a fixed-height Line preview with controls that stay in place.
+- Play: run engine self-play, start from a pasted FEN and open finished games in Analyse.
+- Train: hear board sounds and see clearer feedback for wrong answers.
+- Tournament: use Chess960, engine arguments, colour-order options, the SPRT Elo model and tablebase adjudication.
+- Tournament: view games file notation and per-move search details, including nodes, depth, speed and PV.
 - Tabs: cycle with Alt+arrows as well as Ctrl+Tab.
-- Tabs: New tab looks like the other tabs.
-- Databases: rename and duplicate databases, edit and delete games.
-- Database: player filters suggest names while typing.
-- Analyse: shows when a game comes from a database and saves its comments there.
-- Analyse: the scoresheet folds away.
-- Analyse: the Line preview has a fixed height, so its buttons stay put.
-- Train: board sounds, and wrong answers are easier to see.
-- Tournament: Chess960, engine arguments, no-swap and reverse colours, SPRT Elo model.
-- Tournament: tablebase adjudication.
-- Tournament: games file notation and per-move details (nodes, depth, speed, PV and more).
-- Settings: this changelog.
+- Settings: browse the changelog and keep using the app while account downloads start.
