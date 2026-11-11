@@ -2203,28 +2203,31 @@ impl PlayScreen {
             .position(|id| *id == self.viewed.unwrap_or(game.current));
         let count = ids.len();
         let this = cx.entity();
+        let (scale, ticks) = match self.graph_metric {
+            0 => (
+                ui::graph::Scale::SymLog {
+                    max: chess_core::annotation::MATE_CP as f32,
+                    unit: 100.0,
+                },
+                ui::graph::eval_ticks()
+                    .into_iter()
+                    .filter(|(cp, _)| cp.abs() != 100.0)
+                    .collect(),
+            ),
+            1 => ui::graph::nodes_axis(maximum),
+            _ => (
+                ui::graph::Scale::Linear { max: maximum },
+                ui::graph::linear_ticks(maximum, if self.graph_metric == 3 { "s" } else { "" }),
+            ),
+        };
         column
             .child(legend)
             .child(ui::graph::graph(ui::graph::GraphProps {
                 series,
                 count,
                 current,
-                scale: if self.graph_metric != 0 {
-                    ui::graph::Scale::Linear { max: maximum }
-                } else {
-                    ui::graph::Scale::SymLog {
-                        max: chess_core::annotation::MATE_CP as f32,
-                        unit: 100.0,
-                    }
-                },
-                ticks: if self.graph_metric != 0 {
-                    ui::graph::linear_ticks(maximum, if self.graph_metric == 3 { "s" } else { "" })
-                } else {
-                    ui::graph::eval_ticks()
-                        .into_iter()
-                        .filter(|(cp, _)| cp.abs() != 100.0)
-                        .collect()
-                },
+                scale,
+                ticks,
                 height: Some(130.0),
                 on_scrub: std::rc::Rc::new(move |index, _, cx| {
                     if let Some(&id) = ids.get(index) {

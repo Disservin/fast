@@ -1,4 +1,4 @@
-//! Line graphs over the plies of a game: eval (symmetric log scale), time and depth.
+//! Line graphs over the plies of a game: eval (symmetric log scale), nodes, time and depth.
 //!
 //! Labels are ordinary elements laid over the canvas, so they use the UI fonts.
 
@@ -106,6 +106,38 @@ pub fn linear_ticks(max: f32, unit: &str) -> Vec<(f32, String)> {
         .collect()
 }
 
+/// Fits node counts to about five round, whole-number intervals with a labelled ceiling.
+pub fn nodes_axis(max: f32) -> (Scale, Vec<(f32, String)>) {
+    let max = if max.is_finite() { max.max(1.0) } else { 1.0 };
+    let raw = max / 5.0;
+    let magnitude = 10f32.powf(raw.log10().floor());
+    let step = [1.0, 2.0, 5.0, 10.0]
+        .into_iter()
+        .map(|factor| factor * magnitude)
+        .find(|step| *step >= raw)
+        .unwrap_or(raw)
+        .max(1.0);
+    let intervals = (max / step).ceil() as usize;
+    let ceiling = intervals as f32 * step;
+    let ticks = (0..=intervals)
+        .map(|index| {
+            let value = index as f32 * step;
+            (value, format!("{value:.0}"))
+        })
+        .collect();
+    (Scale::Linear { max: ceiling }, ticks)
+}
+
+/// Keeps full axis labels clear of the plotted lines at the graph's mono font size.
+fn label_gutter(ticks: &[(f32, String)]) -> f32 {
+    let characters = ticks
+        .iter()
+        .map(|(_, label)| label.len())
+        .max()
+        .unwrap_or(0);
+    (characters as f32 * 6.0 + 12.0).max(30.0)
+}
+
 fn trim_number(value: f32) -> String {
     if value.fract().abs() < 1e-3 {
         format!("{value:.0}")
@@ -147,6 +179,7 @@ pub fn graph(props: GraphProps) -> impl IntoElement {
     let has_data = series
         .iter()
         .any(|series| series.values.iter().any(Option::is_some));
+    let gutter = label_gutter(&ticks);
     let labels: Vec<_> = ticks
         .iter()
         .map(|(value, label)| {
@@ -326,7 +359,7 @@ pub fn graph(props: GraphProps) -> impl IntoElement {
             .absolute()
             .top(px(6.))
             .bottom(px(6.))
-            .left(px(30.))
+            .left(px(gutter))
             .right(px(8.)),
         )
         .child(
@@ -386,6 +419,40 @@ mod tests {
         assert_eq!(ticks, vec![20.0, 40.0]);
         assert_eq!(linear_ticks(0.0, "").len(), 0);
         assert_eq!(linear_ticks(30.0, "")[0].1, "10");
+    }
+
+    /// Node guides stay readable as search sizes grow from single nodes to billions.
+    #[test]
+    fn nodes_axis_uses_round_intervals_and_full_labels() {
+        for (maximum, step, ceiling) in [
+            (0.0, 1.0, 1.0),
+            (3.0, 1.0, 3.0),
+            (900_000.0, 200_000.0, 1_000_000.0),
+            (10_000_000.0, 2_000_000.0, 10_000_000.0),
+            (10_100_000.0, 5_000_000.0, 15_000_000.0),
+            (1_200_000_000.0, 500_000_000.0, 1_500_000_000.0),
+        ] {
+            let (scale, ticks) = nodes_axis(maximum);
+            assert_eq!(scale, Scale::Linear { max: ceiling });
+            assert_eq!(ticks.first(), Some(&(0.0, "0".to_owned())));
+            assert_eq!(ticks[1].0, step);
+            assert_eq!(ticks.last(), Some(&(ceiling, format!("{ceiling:.0}"))));
+            assert!(ticks.len() <= 6);
+            assert!(
+                ticks
+                    .iter()
+                    .all(|(_, label)| label.chars().all(|c| c.is_ascii_digit()))
+            );
+            assert!(scale.fraction(maximum) <= 1.0);
+        }
+    }
+
+    /// Full node labels reserve enough horizontal room before the plotting area.
+    #[test]
+    fn axis_gutter_fits_large_node_counts() {
+        let (_, ticks) = nodes_axis(10_000_000.0);
+        assert_eq!(label_gutter(&ticks), 60.0);
+        assert_eq!(label_gutter(&eval_ticks()), 30.0);
     }
 
     #[test]

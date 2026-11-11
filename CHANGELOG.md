@@ -4,6 +4,8 @@ Settings › Changelog shows this file. Keep entries to one short line each.
 
 ## Since 0.1.0
 
+- Play: the nodes graph uses round steps suited to the node range, with room for full axis numbers.
+
 - Play: move columns stay separated and clear of the scrollbar, with visible headings and a compact move highlight.
 
 - Play: engine match moves show the recorded evaluation and thinking time for each side.
