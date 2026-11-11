@@ -597,6 +597,7 @@ pub fn translate(language: Language, text: &str) -> &str {
             "Start tournament" => "Turnier starten",
             "Storage and backup" => "Speicher und Sicherung",
             "Strength" => "Spielstärke",
+            "Full strength" => "Volle Spielstärke",
             "TERMINATION" => "BEENDIGUNG",
             "Tablebase" => "Endspieldatenbank",
             "Takeback" => "Zug zurücknehmen",

@@ -104,6 +104,8 @@ pub struct PlayScreen {
     mode: Mode,
     strength: Entity<SliderState>,
     strength_value: u32,
+    /// The engine plays as well as it can instead of at `strength_value`.
+    full_strength: bool,
     time_index: Option<usize>,
     custom_time: Entity<gpui_component::input::InputState>,
     colour: ColourChoice,
@@ -240,6 +242,7 @@ impl PlayScreen {
             mode: Mode::VsEngine,
             strength,
             strength_value: 1800,
+            full_strength: false,
             time_index: Some(2),
             custom_time,
             colour: ColourChoice::White,
@@ -459,7 +462,7 @@ impl PlayScreen {
             }
         };
         let ms = u64::from(minutes) * 60_000;
-        let limited = supports_limit(&config);
+        let limited = supports_limit(&config) && !self.full_strength;
         let mut game = Game {
             tree,
             current,
@@ -933,6 +936,12 @@ impl PlayScreen {
             },
         );
         let engine_label = if self_play { "Engine" } else { "Opponent" };
+        // Without an engine to ask, the slider stays as a preview of the setup.
+        let limitable = self
+            .opponent_config(cx)
+            .is_none_or(|config| supports_limit(&config));
+        let limited = limitable && !self.full_strength;
+        let full_this = this.clone();
         v_flex()
             .id("play-setup")
             .w(px(300.))
@@ -958,9 +967,34 @@ impl PlayScreen {
                             .text_size(px(13.))
                             .text_color(rgb(T.muted))
                             .child(ui::i18n::t("Strength"))
-                            .child(mono(self.strength_value.to_string()).text_color(rgb(T.fg_2))),
+                            .when(limited, |row| {
+                                row.child(
+                                    mono(self.strength_value.to_string()).text_color(rgb(T.fg_2)),
+                                )
+                            })
+                            .when(!limitable, |row| {
+                                row.child(
+                                    div()
+                                        .text_color(rgb(T.fg_2))
+                                        .child(ui::i18n::t("Full strength")),
+                                )
+                            }),
                     )
-                    .child(Slider::new(&self.strength).bg(rgb(T.accent))),
+                    .when(limited, |column| {
+                        column.child(Slider::new(&self.strength).bg(rgb(T.accent)))
+                    })
+                    .when(limitable, |column| {
+                        column.child(
+                            check("full-strength", self.full_strength, "Full strength").on_change(
+                                move |value, _, cx| {
+                                    full_this.update(cx, |screen, cx| {
+                                        screen.full_strength = value;
+                                        cx.notify();
+                                    });
+                                },
+                            ),
+                        )
+                    }),
             )
             .child(field("Time control", grid).mb(px(14.)))
             .when(self.time_index.is_none(), |column| {
