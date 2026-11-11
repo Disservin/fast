@@ -2472,21 +2472,6 @@ impl Render for Workspace {
                         cx.notify();
                     });
                     cx.stop_propagation();
-                    return;
-                }
-                if event.keystroke.key == "escape"
-                    && this.mode == Mode::Tournament
-                    && let Some(screen) = this.tournament.clone()
-                    && screen.update(cx, |screen, cx| screen.escape(cx))
-                {
-                    cx.stop_propagation();
-                    return;
-                }
-                if event.keystroke.key == "escape"
-                    && this.mode == Mode::Database
-                    && this.database.update(cx, |screen, cx| screen.escape(cx))
-                {
-                    cx.stop_propagation();
                 }
             }))
             .on_key_down(cx.listener(move |this, event: &gpui::KeyDownEvent, _, cx| {

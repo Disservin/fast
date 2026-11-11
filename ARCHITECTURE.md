@@ -528,3 +528,7 @@ Drill these lines practises the leaks the Leaks panel lists (the first two seen 
 at least two games) that have a prepared move. They go to the front of the current
 session; queued drills for the same position and answer are dropped so nothing is
 asked twice, and the rest of the session stays behind them.
+
+Shared dialogs use `ui::widgets::modal` for initial focus, Escape dismissal and
+backdrop clicks. Each caller supplies its close callback; dialog dismissal does not
+depend on the workspace knowing which screen owns it.

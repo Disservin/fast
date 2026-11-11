@@ -1977,15 +1977,6 @@ impl TournamentScreen {
         cx.notify();
     }
 
-    /// Escape closes the setup dialog. Returns whether it was open.
-    pub fn escape(&mut self, cx: &mut Context<Self>) -> bool {
-        let open = self.setup_open;
-        if open {
-            self.close_setup(cx);
-        }
-        open
-    }
-
     /// The tournament setup, over the tab. Closes once fastchess starts.
     fn render_setup(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let source_this = cx.entity();
@@ -2076,21 +2067,10 @@ impl TournamentScreen {
                             }),
                     ),
             );
-        div()
-            .id("tournament-setup-backdrop")
-            .absolute()
-            .inset_0()
-            .occlude()
-            .flex()
-            .items_center()
-            .justify_center()
-            .p(px(24.))
-            .bg(gpui::rgba(0x0000_0099))
-            .on_mouse_down(gpui::MouseButton::Left, move |_, _, cx| {
-                backdrop.update(cx, |screen, cx| screen.close_setup(cx))
-            })
-            .child(dialog)
-            .into_any_element()
+        ui::widgets::modal("tournament-setup-backdrop", dialog, move |cx| {
+            backdrop.update(cx, |screen, cx| screen.close_setup(cx))
+        })
+        .into_any_element()
     }
 
     /// Opens the watch-all window on the games in progress.

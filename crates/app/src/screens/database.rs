@@ -1931,30 +1931,6 @@ impl DatabaseScreen {
         )
     }
 
-    /// Escape closes an open dialog. Returns whether one was open.
-    pub fn escape(&mut self, cx: &mut Context<Self>) -> bool {
-        if !self.player_suggestions.is_empty() {
-            self.close_suggestions(cx);
-            return true;
-        }
-        if self.manager.take().is_some()
-            || self.add_database.take().is_some()
-            || self.editing.take().is_some()
-            || self.confirm_delete.take().is_some()
-            || std::mem::take(&mut self.import_dialog)
-            || self.dropped_details.take().is_some()
-            || self.confirm_reimport.take().is_some()
-        {
-            cx.notify();
-            return true;
-        }
-        let open = self.review_settings_open;
-        if open {
-            self.set_review_settings_open(false, cx);
-        }
-        open
-    }
-
     /// Whether a database's name can be changed. "My games" keeps its name, since saving
     /// games from Analyse looks for it.
     fn can_rename(&self, path: &PathBuf, cx: &gpui::App) -> bool {
@@ -3351,21 +3327,10 @@ impl DatabaseScreen {
                     .child(row("Games", scope_control.into_any_element()))
                     .child(row("Engines at once", parallel.into_any_element())),
             );
-        div()
-            .id("review-settings-backdrop")
-            .absolute()
-            .inset_0()
-            .occlude()
-            .flex()
-            .items_center()
-            .justify_center()
-            .p(px(24.))
-            .bg(gpui::rgba(0x0000_0099))
-            .on_mouse_down(MouseButton::Left, move |_, _, cx| {
-                backdrop.update(cx, |screen, cx| screen.set_review_settings_open(false, cx))
-            })
-            .child(dialog)
-            .into_any_element()
+        ui::widgets::modal("review-settings-backdrop", dialog, move |cx| {
+            backdrop.update(cx, |screen, cx| screen.set_review_settings_open(false, cx))
+        })
+        .into_any_element()
     }
 
     /// Keeps the score and most common opening leak on a compact summary line.
@@ -5242,6 +5207,12 @@ impl Render for DatabaseScreen {
         v_flex()
             .relative()
             .size_full()
+            .capture_key_down(cx.listener(|screen, event: &gpui::KeyDownEvent, _, cx| {
+                if event.keystroke.key == "escape" && !screen.player_suggestions.is_empty() {
+                    screen.close_suggestions(cx);
+                    cx.stop_propagation();
+                }
+            }))
             .child(collections)
             .child(
                 h_flex()
@@ -5338,19 +5309,7 @@ fn dialog(
                 ),
         )
         .child(body);
-    div()
-        .id((id, 1usize))
-        .absolute()
-        .inset_0()
-        .occlude()
-        .flex()
-        .items_center()
-        .justify_center()
-        .p(px(24.))
-        .bg(gpui::rgba(0x0000_0099))
-        .on_mouse_down(MouseButton::Left, move |_, _, cx| close(cx))
-        .child(panel)
-        .into_any_element()
+    ui::widgets::modal((id, 1usize), panel, close).into_any_element()
 }
 
 #[cfg(test)]

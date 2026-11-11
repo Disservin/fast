@@ -641,3 +641,66 @@ pub fn divider() -> Div {
 pub fn any(element: impl IntoElement) -> AnyElement {
     element.into_any_element()
 }
+
+/// A modal surface that closes on Escape or a backdrop click.
+#[derive(IntoElement)]
+pub struct Modal {
+    id: ElementId,
+    content: AnyElement,
+    on_close: Rc<dyn Fn(&mut App)>,
+}
+
+/// Wraps dialog content with shared focus and dismissal behavior.
+pub fn modal(
+    id: impl Into<ElementId>,
+    content: impl IntoElement,
+    on_close: impl Fn(&mut App) + 'static,
+) -> Modal {
+    Modal {
+        id: id.into(),
+        content: content.into_any_element(),
+        on_close: Rc::new(on_close),
+    }
+}
+
+impl RenderOnce for Modal {
+    /// Focuses a newly opened dialog so Escape also works before editing a field.
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let focus = window
+            .use_keyed_state(self.id.clone(), cx, |window, cx| {
+                let focus = cx.focus_handle();
+                focus.focus(window, cx);
+                focus
+            })
+            .read(cx)
+            .clone();
+        let close = self.on_close;
+        let close_key = close.clone();
+        div()
+            .id(self.id)
+            .track_focus(&focus)
+            .key_context("Dialog")
+            .absolute()
+            .inset_0()
+            .occlude()
+            .flex()
+            .items_center()
+            .justify_center()
+            .p(px(24.))
+            .bg(gpui::rgba(0x0000_0099))
+            .capture_key_down(move |event, _, cx| {
+                if event.keystroke.key == "escape" {
+                    close_key(cx);
+                    cx.stop_propagation();
+                }
+            })
+            .on_mouse_down(MouseButton::Left, move |_, _, cx| close(cx))
+            .child(
+                div()
+                    .max_w_full()
+                    .max_h_full()
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    .child(self.content),
+            )
+    }
+}
