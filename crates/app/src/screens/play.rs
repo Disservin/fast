@@ -142,6 +142,30 @@ fn set_game_headers(
     tree.set_header("Result", "*");
 }
 
+/// Formats a move's saved evaluation and thinking time for the engine match scoresheet.
+fn match_move_values(comment: &str) -> (String, String) {
+    let note = chess_core::annotation::parse_annotation(comment);
+    let eval = if let Some(mate) = note.mate_distance {
+        format!("#{mate}")
+    } else {
+        note.eval_cp.map_or_else(
+            || "—".to_owned(),
+            |cp| format!("{:+.2}", f64::from(cp) / 100.0),
+        )
+    };
+    let time = note.elapsed.map_or_else(
+        || "—".to_owned(),
+        |seconds| {
+            if seconds >= 60.0 {
+                format_clock((seconds * 1000.0) as u64)
+            } else {
+                format!("{seconds:.1}s")
+            }
+        },
+    );
+    (eval, time)
+}
+
 /// A PV move and its resulting position for the hover board.
 struct PvMove {
     label: String,
@@ -341,7 +365,6 @@ pub struct PlayScreen {
     /// The position typed or pasted when the game starts from a FEN.
     start_fen: Entity<gpui_component::input::InputState>,
     graph_metric: usize,
-    search_graph: bool,
     hide_eval: bool,
     allow_takebacks: bool,
     allow_premoves: bool,
@@ -522,7 +545,6 @@ impl PlayScreen {
             chess960_number,
             start_fen,
             graph_metric: 0,
-            search_graph: false,
             hide_eval: true,
             allow_takebacks: false,
             allow_premoves: true,
@@ -2099,39 +2121,21 @@ impl PlayScreen {
             .h(px(44.))
             .border_b_1()
             .border_color(rgb(T.divider));
-        for (index, label) in ["Eval", "Search"].into_iter().enumerate() {
+        for (index, label) in ["Eval", "Nodes", "Depth", "Time"].into_iter().enumerate() {
             let this = cx.entity();
             header = header.child(header_tab(
                 ("match-graph-tab", index),
                 label,
-                self.search_graph == (index == 1),
+                self.graph_metric == index,
                 move |_, cx| {
                     this.update(cx, |screen, cx| {
-                        screen.search_graph = index == 1;
+                        screen.graph_metric = index;
                         cx.notify();
                     });
                 },
             ));
         }
-        let mut column = panel().p(px(16.)).gap(px(8.)).child(header);
-        if self.search_graph {
-            let mut controls = h_flex().gap(px(6.));
-            for (index, label) in ["Nodes", "Depth", "Time"].into_iter().enumerate() {
-                let this = cx.entity();
-                controls = controls.child(
-                    btn(("match-graph-metric", index), label)
-                        .mini()
-                        .selected(self.graph_metric == index)
-                        .on_click(move |_, cx| {
-                            this.update(cx, |screen, cx| {
-                                screen.graph_metric = index;
-                                cx.notify();
-                            });
-                        }),
-                );
-            }
-            column = column.child(controls);
-        }
+        let column = panel().p(px(16.)).gap(px(8.)).child(header);
         let Some(game) = &self.game else {
             return column;
         };
@@ -2149,17 +2153,17 @@ impl PlayScreen {
                             return None;
                         }
                         let note = chess_core::annotation::parse_annotation(&node.comment);
-                        let value = if !self.search_graph {
+                        let value = if self.graph_metric == 0 {
                             note.eval_cp.map(|cp| cp as f32)
                         } else {
                             match self.graph_metric {
-                                0 => node
+                                1 => node
                                     .comment
                                     .split("[%nodes ")
                                     .nth(1)
                                     .and_then(|tail| tail.split(']').next())
                                     .and_then(|value| value.parse::<f32>().ok()),
-                                1 => note.depth.map(|depth| depth as f32),
+                                2 => note.depth.map(|depth| depth as f32),
                                 _ => note.elapsed.map(|seconds| seconds as f32),
                             }
                         };
@@ -2205,7 +2209,7 @@ impl PlayScreen {
                 series,
                 count,
                 current,
-                scale: if self.search_graph {
+                scale: if self.graph_metric != 0 {
                     ui::graph::Scale::Linear { max: maximum }
                 } else {
                     ui::graph::Scale::SymLog {
@@ -2213,8 +2217,8 @@ impl PlayScreen {
                         unit: 100.0,
                     }
                 },
-                ticks: if self.search_graph {
-                    ui::graph::linear_ticks(maximum, if self.graph_metric == 2 { "s" } else { "" })
+                ticks: if self.graph_metric != 0 {
+                    ui::graph::linear_ticks(maximum, if self.graph_metric == 3 { "s" } else { "" })
                 } else {
                     ui::graph::eval_ticks()
                         .into_iter()
@@ -2358,7 +2362,7 @@ impl PlayScreen {
     fn render_side(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let this = cx.entity();
         let game = self.game.as_ref();
-        let mut list = v_flex().mt(px(8.)).font_family(MONO).text_size(px(14.));
+        let mut list = v_flex().mt(px(8.)).font_family(MONO).text_size(px(13.));
         let mut opening_text = String::from("Starting position");
         if let Some(game) = game {
             let ids = game.tree.path_to(game.current);
@@ -2372,6 +2376,23 @@ impl PlayScreen {
                 cells.push(None);
             }
             cells.extend(ids.iter().map(|&id| Some(id)));
+            if game.self_play() {
+                list = list.child(
+                    h_flex()
+                        .h(px(24.))
+                        .bg(rgb(T.surface_2))
+                        .pl(px(36.))
+                        .children((0..2).map(|_| {
+                            h_flex()
+                                .flex_1()
+                                .min_w_0()
+                                .gap(px(4.))
+                                .child(section_label("Move").flex_1().min_w_0())
+                                .child(section_label("Eval").w(px(44.)).text_right())
+                                .child(section_label("Time").w(px(44.)).text_right())
+                        })),
+                );
+            }
             for (index, pair) in cells.chunks(2).enumerate() {
                 let number = first_ply.div_ceil(2) as usize + index;
                 let cell = |id: Option<NodeId>| {
@@ -2379,17 +2400,46 @@ impl PlayScreen {
                     let san = id
                         .map(|id| game.tree.node(id).san.clone())
                         .unwrap_or_default();
-                    h_flex().flex_1().child(
-                        div()
-                            .flex_none()
-                            .when(current, |pill| {
-                                pill.px(px(6.))
-                                    .rounded(px(4.))
-                                    .bg(rgb(T.accent))
-                                    .text_color(rgb(T.accent_fg))
-                            })
-                            .child(san),
-                    )
+                    let values = id.map(|id| match_move_values(&game.tree.node(id).comment));
+                    h_flex()
+                        .flex_1()
+                        .min_w_0()
+                        .gap(px(4.))
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w_0()
+                                .whitespace_nowrap()
+                                .when(current, |pill| {
+                                    pill.px(px(6.))
+                                        .rounded(px(4.))
+                                        .bg(rgb(T.accent))
+                                        .text_color(rgb(T.accent_fg))
+                                })
+                                .child(san),
+                        )
+                        .when(game.self_play() && id.is_some(), |row| {
+                            let (eval, time) =
+                                values.unwrap_or_else(|| ("—".to_owned(), "—".to_owned()));
+                            row.child(
+                                mono(eval)
+                                    .w(px(44.))
+                                    .flex_none()
+                                    .text_size(px(12.))
+                                    .text_right()
+                                    .whitespace_nowrap()
+                                    .text_color(rgb(T.fg_2)),
+                            )
+                            .child(
+                                mono(time)
+                                    .w(px(44.))
+                                    .flex_none()
+                                    .text_size(px(12.))
+                                    .text_right()
+                                    .whitespace_nowrap()
+                                    .text_color(rgb(T.muted)),
+                            )
+                        })
                 };
                 list = list.child(
                     h_flex()
@@ -2660,6 +2710,20 @@ impl Render for PlayScreen {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Move rows preserve White-relative scores, mate distances and missing values.
+    #[test]
+    fn match_move_values_show_scores_and_time() {
+        assert_eq!(match_move_values(""), ("—".into(), "—".into()));
+        assert_eq!(
+            match_move_values("[%eval -0.42,18] [%emt 0:00:01.250]"),
+            ("-0.42".into(), "1.2s".into())
+        );
+        assert_eq!(
+            match_move_values("[%eval #-3] [%emt 0:01:05.000]"),
+            ("#-3".into(), "01:05".into())
+        );
+    }
 
     /// Game records replace source metadata and retain their participants through PGN export.
     #[test]
