@@ -529,6 +529,11 @@ at least two games) that have a prepared move. They go to the front of the curre
 session; queued drills for the same position and answer are dropped so nothing is
 asked twice, and the rest of the session stays behind them.
 
+Play and Tournament share `controls::ClockInput` and `TimeInput`: separate base time and
+increment fields with unit selectors. Decimal values and explicit unit suffixes are parsed
+as integer milliseconds; Play passes those directly to its clocks and UCI requests, while
+Tournament formats exact decimal seconds for fastchess.
+
 Engine matches in Play keep clock increments and optional per-move depth or node limits
 separately for White and Black. The clock task skips a side with an unlimited clock,
 and each search uses the moving side’s limit or both sides’ remaining clocks and increments.

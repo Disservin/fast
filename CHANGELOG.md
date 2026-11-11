@@ -4,6 +4,8 @@ Settings › Changelog shows this file. Keep entries to one short line each.
 
 ## Since 0.1.0
 
+- Time controls: set time and increment separately, choose their units, and enter fractional durations such as 0.1s in Play and Tournament.
+
 - Files: browse for Play opening books, Tournament executables, working folders and Syzygy folders, and engine book files.
 
 - Play: engine matches have a larger setup with separate White and Black panels and independent clocks or unlimited time with per-move search limits.

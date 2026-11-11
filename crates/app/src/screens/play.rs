@@ -73,14 +73,6 @@ pub fn format_clock(ms: u64) -> String {
     }
 }
 
-/// Parses "12+3" into base minutes and increment seconds.
-pub fn parse_custom_time(text: &str) -> Option<(u32, u32)> {
-    let (base, increment) = text.trim().split_once('+')?;
-    let base: u32 = base.trim().parse().ok()?;
-    let increment: u32 = increment.trim().parse().ok()?;
-    (base > 0).then_some((base, increment))
-}
-
 struct Game {
     tree: GameTree,
     current: NodeId,
@@ -133,7 +125,7 @@ impl Drop for Game {
 
 /// Keeps one engine's clock and per-move search settings independent.
 struct EngineTime {
-    time: Entity<gpui_component::input::InputState>,
+    time: crate::controls::ClockInput,
     unlimited: bool,
     kind: TextSelect,
     value: Entity<gpui_component::input::InputState>,
@@ -143,7 +135,7 @@ impl EngineTime {
     /// Starts an engine with a five-minute clock and a depth limit ready to enable.
     fn new(window: &mut Window, cx: &mut Context<PlayScreen>) -> Self {
         Self {
-            time: new_input("5+3", "12+3", window, cx),
+            time: crate::controls::ClockInput::new("5", 2, "3", window, cx),
             unlimited: false,
             kind: new_select(vec!["Depth".into(), "Nodes".into()], 0, window, cx),
             value: new_input("20", "20", window, cx),
@@ -151,10 +143,10 @@ impl EngineTime {
     }
 
     /// Validates this side's clock or positive per-move search limit.
-    fn settings(&self, cx: &gpui::App) -> Option<(u32, u32, Option<Limits>)> {
+    fn settings(&self, cx: &gpui::App) -> Option<(u64, u64, Option<Limits>)> {
         if !self.unlimited {
-            let (minutes, increment) = parse_custom_time(self.time.read(cx).value().as_ref())?;
-            return Some((minutes, increment, None));
+            let (base_ms, increment_ms) = self.time.milliseconds(cx)?;
+            return Some((base_ms, increment_ms, None));
         }
         let value = self
             .value
@@ -199,7 +191,7 @@ pub struct PlayScreen {
     opponents: Vec<EngineConfig>,
     mode: Mode,
     time_index: Option<usize>,
-    custom_time: Entity<gpui_component::input::InputState>,
+    custom_time: crate::controls::ClockInput,
     engine_times: [EngineTime; 2],
     book_path: Entity<gpui_component::input::InputState>,
     book_tree: Option<GameTree>,
@@ -300,7 +292,7 @@ impl PlayScreen {
         );
         let engine_times = [EngineTime::new(window, cx), EngineTime::new(window, cx)];
         let book_path = new_input("", "Opening book (.pgn or .epd)", window, cx);
-        let custom_time = new_input("", "12+3", window, cx);
+        let custom_time = crate::controls::ClockInput::new("5", 2, "3", window, cx);
         let chess960_number = new_input(
             model.read(cx).config.chess960_number.min(959).to_string(),
             "0–959",
@@ -477,10 +469,12 @@ impl PlayScreen {
         self.start_clock(cx);
     }
 
-    fn time_control(&self, cx: &gpui::App) -> Option<(u32, u32)> {
+    fn time_control(&self, cx: &gpui::App) -> Option<(u64, u64)> {
         match self.time_index {
-            Some(index) => TIME_CONTROLS.get(index).copied(),
-            None => parse_custom_time(self.custom_time.read(cx).value().as_ref()),
+            Some(index) => TIME_CONTROLS
+                .get(index)
+                .map(|&(m, i)| (u64::from(m) * 60_000, u64::from(i) * 1_000)),
+            None => self.custom_time.milliseconds(cx),
         }
     }
 
@@ -621,12 +615,12 @@ impl PlayScreen {
                 .map(|(m, i)| ((m, i, None), (m, i, None)))
         };
         let Some((
-            (minutes, increment, white_limit),
-            (black_minutes, black_increment, black_limit),
+            (base_ms, increment_ms, white_limit),
+            (black_base_ms, black_increment_ms, black_limit),
         )) = settings
         else {
             self.model.toast(
-                "Enter a custom time such as 12+3, or a positive search limit.",
+                "Enter a positive time and a nonnegative increment, or a positive search limit.",
                 cx,
             );
             return;
@@ -702,7 +696,7 @@ impl PlayScreen {
                 }
             }
         };
-        let ms = u64::from(minutes) * 60_000;
+        let ms = base_ms;
         let white = white.flatten().map(|(config, elo)| {
             let (engine, reader) = if demo {
                 (None, None)
@@ -723,11 +717,8 @@ impl PlayScreen {
             user,
             white,
             white_ms: ms,
-            black_ms: u64::from(black_minutes) * 60_000,
-            increment_ms: [
-                u64::from(increment) * 1000,
-                u64::from(black_increment) * 1000,
-            ],
+            black_ms: black_base_ms,
+            increment_ms: [increment_ms, black_increment_ms],
             fixed_limits,
             result: None,
             opponent_name: config.name.clone(),
@@ -738,16 +729,28 @@ impl PlayScreen {
                     if white_limit.is_some() {
                         "∞".to_owned()
                     } else {
-                        format!("{minutes}+{increment}")
+                        format!(
+                            "{}s+{}s",
+                            crate::controls::time_seconds(base_ms),
+                            crate::controls::time_seconds(increment_ms)
+                        )
                     },
                     if black_limit.is_some() {
                         "∞".to_owned()
                     } else {
-                        format!("{black_minutes}+{black_increment}")
+                        format!(
+                            "{}s+{}s",
+                            crate::controls::time_seconds(black_base_ms),
+                            crate::controls::time_seconds(black_increment_ms)
+                        )
                     }
                 )
             } else {
-                format!("{minutes}+{increment}")
+                format!(
+                    "{}s+{}s",
+                    crate::controls::time_seconds(base_ms),
+                    crate::controls::time_seconds(increment_ms)
+                )
             },
             takebacks: self.allow_takebacks && !self_play,
             premoves: self.allow_premoves && !self_play,
@@ -1283,7 +1286,7 @@ impl PlayScreen {
                     )
             })
             .when(self.time_index.is_none() && !self_play, |column| {
-                column.child(div().mb(px(14.)).child(text_input(&self.custom_time)))
+                column.child(div().mb(px(14.)).child(self.custom_time.render()))
             })
             .when(!self_play, |column| {
                 column.child(
@@ -1438,10 +1441,7 @@ impl PlayScreen {
                 }),
             )
             .when(!settings.unlimited, |column| {
-                column.child(field(
-                    "Time control (minutes+increment)",
-                    text_input(&settings.time).mono(),
-                ))
+                column.child(settings.time.render())
             })
             .when(settings.unlimited, |column| {
                 column.child(field(
@@ -1964,13 +1964,5 @@ mod tests {
         assert_eq!(format_clock(551_001), "09:12");
         assert_eq!(format_clock(0), "00:00");
         assert_eq!(format_clock(3_661_000), "1:01:01");
-    }
-
-    #[test]
-    fn custom_time_parses() {
-        assert_eq!(parse_custom_time("12+3"), Some((12, 3)));
-        assert_eq!(parse_custom_time(" 5 + 0 "), Some((5, 0)));
-        assert_eq!(parse_custom_time("0+3"), None);
-        assert_eq!(parse_custom_time("nonsense"), None);
     }
 }

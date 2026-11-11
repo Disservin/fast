@@ -392,6 +392,14 @@ pub fn translate(language: Language, text: &str) -> &str {
             "Unlimited" => "Unbegrenzt",
             "Infinite" => "Unbegrenzt",
             "Seconds" => "Sekunden",
+            "Milliseconds" => "Millisekunden",
+            "Minutes" => "Minuten",
+            "Hours" => "Stunden",
+            "Increment" => "Inkrement",
+            "Time per move" => "Zeit pro Zug",
+            "Enter a positive time and a nonnegative increment, or a positive search limit." => {
+                "Eine positive Zeit und ein nicht negatives Inkrement oder eine positive Suchgrenze eingeben."
+            }
             "Nodes" => "Knoten",
             "Threads" => "Threads",
             "Memory" => "Speicher",

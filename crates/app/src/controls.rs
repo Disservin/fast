@@ -241,3 +241,175 @@ pub fn browse_path(
             }
         })
 }
+
+/// A duration with an editable value and a choice of time units.
+pub struct TimeInput {
+    value: Entity<InputState>,
+    unit: TextSelect,
+}
+
+impl TimeInput {
+    /// Creates a duration in milliseconds, seconds, minutes or hours.
+    pub fn new(value: &str, unit: usize, window: &mut Window, cx: &mut App) -> Self {
+        Self {
+            value: new_input(value, "0.1s", window, cx),
+            unit: new_select(
+                ["Milliseconds", "Seconds", "Minutes", "Hours"]
+                    .map(SharedString::from)
+                    .to_vec(),
+                unit,
+                window,
+                cx,
+            ),
+        }
+    }
+
+    /// Reads the duration as milliseconds, honoring an explicit unit suffix.
+    pub fn milliseconds(&self, cx: &App) -> Option<u64> {
+        let unit = self.unit.read(cx).selected_index(cx)?.row;
+        parse_time_ms(
+            self.value.read(cx).value().as_ref(),
+            *[1, 1_000, 60_000, 3_600_000].get(unit)?,
+        )
+    }
+
+    /// Shows the duration beside its unit selector.
+    pub fn render(&self, label: &'static str) -> Div {
+        field(
+            label,
+            h_flex()
+                .gap(px(6.))
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .child(text_input(&self.value).mono()),
+                )
+                .child(div().w(px(116.)).child(select_el(&self.unit))),
+        )
+    }
+}
+
+/// Separate base time and increment fields for a game clock.
+pub struct ClockInput {
+    pub base: TimeInput,
+    pub increment: TimeInput,
+}
+
+impl ClockInput {
+    /// Creates a clock with base time in the chosen unit and increment in seconds.
+    pub fn new(
+        base: &str,
+        unit: usize,
+        increment: &str,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Self {
+        Self {
+            base: TimeInput::new(base, unit, window, cx),
+            increment: TimeInput::new(increment, 1, window, cx),
+        }
+    }
+
+    /// Reads a positive base time and a nonnegative increment in milliseconds.
+    pub fn milliseconds(&self, cx: &App) -> Option<(u64, u64)> {
+        let base = self.base.milliseconds(cx)?;
+        (base > 0).then_some((base, self.increment.milliseconds(cx)?))
+    }
+
+    /// Shows separate rows so both fields fit narrow setup panels.
+    pub fn render(&self) -> Div {
+        ui::widgets::v_flex()
+            .gap(px(8.))
+            .child(self.base.render("Time"))
+            .child(self.increment.render("Increment"))
+    }
+}
+
+/// Formats milliseconds as exact decimal seconds for engine time controls.
+pub fn time_seconds(ms: u64) -> String {
+    if ms.is_multiple_of(1_000) {
+        (ms / 1_000).to_string()
+    } else {
+        format!("{}.{:03}", ms / 1_000, ms % 1_000)
+            .trim_end_matches('0')
+            .to_owned()
+    }
+}
+
+/// Parses fractional durations and optional ms, s, min or h suffixes without losing milliseconds.
+fn parse_time_ms(text: &str, default_unit: u64) -> Option<u64> {
+    let text = text.trim();
+    let (number, unit) = [
+        ("ms", 1),
+        ("min", 60_000),
+        ("s", 1_000),
+        ("m", 60_000),
+        ("h", 3_600_000),
+    ]
+    .into_iter()
+    .find_map(|(suffix, unit)| text.strip_suffix(suffix).map(|n| (n.trim(), unit)))
+    .unwrap_or((text, default_unit));
+    let (whole, fraction) = number.split_once('.').unwrap_or((number, ""));
+    if (whole.is_empty() && fraction.is_empty())
+        || !whole
+            .bytes()
+            .chain(fraction.bytes())
+            .all(|b| b.is_ascii_digit())
+    {
+        return None;
+    }
+    let whole = if whole.is_empty() {
+        0
+    } else {
+        whole.parse::<u64>().ok()?
+    };
+    let scale = 10_u64.checked_pow(fraction.len().try_into().ok()?)?;
+    let fraction = if fraction.is_empty() {
+        0
+    } else {
+        fraction.parse::<u64>().ok()?
+    };
+    let fractional_ms = fraction.checked_mul(unit)?;
+    if !fractional_ms.is_multiple_of(scale) {
+        return None;
+    }
+    whole.checked_mul(unit)?.checked_add(fractional_ms / scale)
+}
+
+#[cfg(test)]
+mod time_tests {
+    use super::{parse_time_ms, time_seconds};
+
+    /// Engine arguments retain fractional seconds without floating-point rounding.
+    #[test]
+    fn seconds_preserve_milliseconds() {
+        for ms in [0, 1, 100, 1_001, 60_000, u64::MAX / 1_000] {
+            assert_eq!(parse_time_ms(&time_seconds(ms), 1_000), Some(ms));
+        }
+    }
+
+    /// Fractional values and explicit units retain millisecond precision.
+    #[test]
+    fn durations_accept_units_and_fractions() {
+        assert_eq!(parse_time_ms("0.1s", 60_000), Some(100));
+        assert_eq!(parse_time_ms(" 0.1 s ", 60_000), Some(100));
+        assert_eq!(parse_time_ms("1.5", 60_000), Some(90_000));
+        assert_eq!(parse_time_ms("250ms", 1_000), Some(250));
+        assert_eq!(parse_time_ms(".5min", 1_000), Some(30_000));
+        assert_eq!(parse_time_ms("1h", 1), Some(3_600_000));
+        assert_eq!(parse_time_ms("0", 1_000), Some(0));
+        for invalid in [
+            "",
+            ".",
+            "-1",
+            "NaN",
+            "inf",
+            "1+2",
+            "0.0001s",
+            "18446744073709551615h",
+        ] {
+            assert_eq!(parse_time_ms(invalid, 1_000), None, "{invalid}");
+        }
+    }
+}

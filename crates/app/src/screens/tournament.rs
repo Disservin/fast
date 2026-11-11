@@ -291,6 +291,8 @@ pub struct TournamentScreen {
     resign_movecount: Entity<InputState>,
     resign_score: Entity<InputState>,
     limit_value: Entity<InputState>,
+    clock_input: crate::controls::ClockInput,
+    move_time: crate::controls::TimeInput,
     hash: Entity<InputState>,
     threads: Entity<InputState>,
     rounds: Entity<InputState>,
@@ -440,7 +442,9 @@ impl TournamentScreen {
             draw_score: new_input("10", "10", window, cx),
             resign_movecount: new_input("3", "3", window, cx),
             resign_score: new_input("600", "600", window, cx),
-            limit_value: new_input("10+0.1", "10+0.1", window, cx),
+            limit_value: new_input("20", "20", window, cx),
+            clock_input: crate::controls::ClockInput::new("10", 1, "0.1", window, cx),
+            move_time: crate::controls::TimeInput::new("0.5", 1, window, cx),
             hash: new_input("16", "MB", window, cx),
             threads: new_input("1", "1", window, cx),
             rounds: new_input("100", "100", window, cx),
@@ -609,7 +613,26 @@ impl TournamentScreen {
         Setup {
             participants: self.participants(cx),
             limit: self.limit,
-            limit_value: self.text(&self.limit_value, cx),
+            limit_value: match self.limit {
+                Limit::TimeControl => self
+                    .clock_input
+                    .milliseconds(cx)
+                    .map(|(base, inc)| {
+                        format!(
+                            "{}+{}",
+                            crate::controls::time_seconds(base),
+                            crate::controls::time_seconds(inc)
+                        )
+                    })
+                    .unwrap_or_default(),
+                Limit::MoveTime => self
+                    .move_time
+                    .milliseconds(cx)
+                    .filter(|ms| *ms > 0)
+                    .map(crate::controls::time_seconds)
+                    .unwrap_or_default(),
+                _ => self.text(&self.limit_value, cx),
+            },
             hash: self.text(&self.hash, cx),
             threads: self.text(&self.threads, cx),
             rounds: self.text(&self.rounds, cx),
@@ -1500,7 +1523,11 @@ impl TournamentScreen {
                     })
                 },
             ))
-            .child(field(self.limit.hint(), text_input(&self.limit_value)))
+            .child(match self.limit {
+                Limit::TimeControl => self.clock_input.render(),
+                Limit::MoveTime => self.move_time.render("Time per move"),
+                _ => field(self.limit.hint(), text_input(&self.limit_value).mono()),
+            })
             .child(section_label(ui::i18n::t("Games")))
             .child(pair(
                 field("Rounds", text_input(&self.rounds)),
