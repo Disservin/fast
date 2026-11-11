@@ -434,6 +434,8 @@ pub struct Workspace {
     closed_tabs: Vec<WorkspaceTab>,
     active_tab: u64,
     next_tab_id: u64,
+    /// Keeps new recovery snapshots separate when visible tab numbering restarts.
+    next_recovery_id: u64,
     last_tab: BTreeMap<Mode, u64>,
     /// Tabs visited before the active one, most recent last, for Back.
     back_tabs: Vec<u64>,
@@ -588,6 +590,7 @@ impl Workspace {
             closed_tabs: Vec::new(),
             active_tab: 1,
             next_tab_id: 2,
+            next_recovery_id: 2,
             last_tab: [(mode, 1)].into(),
             back_tabs: Vec::new(),
             forward_tabs: Vec::new(),
@@ -701,7 +704,11 @@ impl Workspace {
             .iter()
             .rposition(|tab| tab.content.mode() == mode)
         {
-            let tab = self.closed_tabs.remove(index);
+            let mut tab = self.closed_tabs.remove(index);
+            if tab.id == 0 {
+                tab.id = self.next_tab_id;
+                self.next_tab_id += 1;
+            }
             let id = tab.id;
             self.tabs.push(tab);
             self.activate_tab(id, cx);
@@ -868,7 +875,15 @@ impl Workspace {
         }
         let id = self.next_tab_id;
         self.next_tab_id += 1;
-        let tab = self.make_tab(mode, id, None, window, cx);
+        let recovery_id = self.next_recovery_id.max(id);
+        self.next_recovery_id = recovery_id + 1;
+        let directory = self.model.read(cx).paths.data_dir.join("recovery");
+        let path = match mode {
+            Mode::Analyse => Some(directory.join(format!("analysis-{recovery_id}.json"))),
+            Mode::Play => Some(directory.join(format!("play-{recovery_id}.json"))),
+            _ => None,
+        };
+        let tab = self.make_tab(mode, id, path, window, cx);
         self.tabs.push(tab);
         self.activate_tab(id, cx);
     }
@@ -942,8 +957,59 @@ impl Workspace {
         cx.notify();
     }
 
+    /// Closes every tab safely and starts a fresh Analyse tab numbered one.
+    fn close_all_tabs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        // Preserve every analysis before changing the workspace, just as closing one does.
+        for tab in &self.tabs {
+            if let TabContent::Analyse(screen) = &tab.content
+                && let Err(err) = screen.read(cx).checkpoint()
+            {
+                self.model.toast(
+                    format!("Could not preserve this tab: {err}. Save it before closing."),
+                    cx,
+                );
+                return;
+            }
+        }
+        for tab in &self.tabs {
+            match &tab.content {
+                TabContent::Analyse(screen) => {
+                    screen.update(cx, |screen, cx| screen.set_visible(false, cx))
+                }
+                TabContent::Play(screen) => screen.update(cx, |screen, cx| screen.suspend(cx)),
+                TabContent::Train(screen) => {
+                    screen.update(cx, |screen, cx| screen.set_visible(false, cx))
+                }
+                _ => {}
+            }
+        }
+        self.closed_tabs.append(&mut self.tabs);
+        if self.closed_tabs.len() > 10 {
+            self.closed_tabs.drain(..self.closed_tabs.len() - 10);
+        }
+        // Reopened tabs receive fresh numbers, while retaining their original recovery files.
+        for tab in &mut self.closed_tabs {
+            tab.id = 0;
+        }
+        self.last_tab.clear();
+        self.back_tabs.clear();
+        self.forward_tabs.clear();
+        self.tab_watch.clear();
+        self.renaming = None;
+        self._rename_sub = None;
+        self.active_tab = u64::MAX;
+        self.next_recovery_id = self.next_recovery_id.max(self.next_tab_id);
+        self.next_tab_id = 1;
+        self.tab_in_view.set(0);
+        self.new_tab(Mode::Analyse, window, cx);
+    }
+
     fn reopen_tab(&mut self, cx: &mut Context<Self>) {
-        if let Some(tab) = self.closed_tabs.pop() {
+        if let Some(mut tab) = self.closed_tabs.pop() {
+            if tab.id == 0 {
+                tab.id = self.next_tab_id;
+                self.next_tab_id += 1;
+            }
             let id = tab.id;
             self.tabs.push(tab);
             self.activate_tab(id, cx);
@@ -999,6 +1065,7 @@ impl Workspace {
                 continue;
             }
             self.next_tab_id = self.next_tab_id.max(id + 1);
+            self.next_recovery_id = self.next_recovery_id.max(id + 1);
             let tab = self.make_tab(mode, id, Some(path), window, cx);
             self.tabs.push(tab);
         }
@@ -1090,7 +1157,8 @@ impl Workspace {
             .max()
             .unwrap_or(0);
         let highest_tab = tabs.iter().map(|tab| tab.id).max().unwrap_or(0);
-        self.next_tab_id = highest_file.max(highest_tab) + 1;
+        self.next_tab_id = highest_tab + 1;
+        self.next_recovery_id = highest_file.max(highest_tab) + 1;
         let active = tabs
             .get(session.active)
             .or(tabs.first())
@@ -1440,6 +1508,7 @@ impl Workspace {
             let close = select.clone();
             let duplicate = select.clone();
             let rename = select.clone();
+            let close_all = select.clone();
             let analysis = matches!(tab.content, TabContent::Analyse(_));
             let active = id == self.active_tab;
             let rename_input = self
@@ -1586,6 +1655,14 @@ impl Workspace {
                             menu.item(PopupMenuItem::new(ui::i18n::t("Rename tab")).on_click(
                                 move |_, window, cx| {
                                     rename.update(cx, |this, cx| this.start_rename(id, window, cx))
+                                },
+                            ));
+                        let close_all = close_all.clone();
+                        let menu =
+                            menu.item(PopupMenuItem::new(ui::i18n::t("Close all tabs")).on_click(
+                                move |_, window, cx| {
+                                    close_all
+                                        .update(cx, |this, cx| this.close_all_tabs(window, cx));
                                 },
                             ));
                         if !analysis {

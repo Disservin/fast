@@ -220,6 +220,7 @@ pub fn translate(language: Language, text: &str) -> &str {
             "Repertoires" => "Repertoires",
             "New game" => "Neue Partie",
             "New tab" => "Neuer Tab",
+            "Close all tabs" => "Alle Tabs schließen",
             "Close tab" => "Tab schließen",
             "Reopen closed tab" => "Geschlossenen Tab wieder öffnen",
             "Open PGN or FEN…" => "PGN oder FEN öffnen…",

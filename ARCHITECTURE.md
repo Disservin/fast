@@ -426,6 +426,10 @@ Tabs that are not shown carry an `accent` dot while engines work for them: an An
 tab analysing in the background, a Play game whose engine is thinking, a Database review,
 a running tournament or test-position run. `Workspace` observes every tab entity and
 redraws the strip only when a tab's mark changes.
+Closing all tabs preserves analysis snapshots and suspends Play games, then opens a fresh
+Analyse tab numbered one. Reopening closed tabs assigns new numbers after a reset.
+Recovery file numbers advance independently of visible tab numbers to keep snapshots separate.
+
 Each Play game already owns its own engine and clock. In an engine vs engine game
 each side has its own process, options and strength limit (the same engine may be
 picked twice), and the board stays read-only. Each best move starts the next side’s

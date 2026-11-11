@@ -4,6 +4,8 @@ Settings › Changelog shows this file. Keep entries to one short line each.
 
 ## Since 0.1.0
 
+- Tabs: right-click and choose Close all tabs to start a fresh Analyse tab with numbering reset to one.
+
 - Analyse: imported PGN evaluations show the mate distance in the move list.
 
 - Play: engine match PGNs include move times, remaining clocks and engine evaluations with depth.
