@@ -753,7 +753,7 @@ impl AnalyseScreen {
         let limit = self.model.read(cx).config.analysis_limit;
         let chosen = self.panel_engine_config(cx);
         let tab = self.engine_tab;
-        let mut body = panel().flex_none().overflow_hidden().child(
+        let mut body = panel().rounded_none().flex_none().overflow_hidden().child(
             h_flex()
                 .h(px(44.))
                 .px(px(16.))
@@ -1353,6 +1353,7 @@ impl AnalyseScreen {
             .into_any_element()
         };
         panel()
+            .rounded_none()
             .flex_none()
             .overflow_hidden()
             .child(tools)

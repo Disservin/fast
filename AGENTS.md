@@ -87,6 +87,8 @@ decoration is kept to a minimum.
 - `panel()`: `surface`, a 1px `border`, a 6px radius and no shadow. Never use gradients or
   shadows anywhere.
 - Radii: 6px for panels and buttons, 4px for inputs, badges and key caps, and 3px for checkboxes.
+  The panels in the column right of the Analyse board (Engine, the moves table, Line
+  preview, Log, Position note and the position editor) are square: `panel().rounded_none()`.
 - Panel content has 16px of horizontal padding. A panel header is a 44px row with a
   `section_label` on the left, actions on the right and a 1px bottom border.
 - Use a 4px spacing scale: 4 or 6 between controls in a group, 8 to 10 between groups, 14 to 16 between sections.

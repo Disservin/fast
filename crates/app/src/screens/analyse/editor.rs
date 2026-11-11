@@ -380,7 +380,6 @@ impl AnalyseScreen {
             .bg(rgb(T.surface))
             .border_1()
             .border_color(rgb(T.border))
-            .rounded(px(8.))
             .child(
                 h_flex()
                     .gap(px(10.))

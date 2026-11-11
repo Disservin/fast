@@ -3213,6 +3213,7 @@ impl AnalyseScreen {
         }
         let (toggles, settings) = self.render_table_tools(cx);
         panel()
+            .rounded_none()
             .flex_none()
             .overflow_hidden()
             .child(
@@ -3528,6 +3529,7 @@ impl AnalyseScreen {
         let pv = (selected.is_some() || self.pv_view.is_some())
             .then(|| self.render_pv(selected.as_ref(), cx));
         panel()
+            .rounded_none()
             .flex_none()
             .p(px(16.))
             .child(
@@ -3550,7 +3552,6 @@ impl AnalyseScreen {
                     .bg(rgb(T.bg))
                     .border_1()
                     .border_color(rgb(T.divider))
-                    .rounded(px(6.))
                     .when(pv.is_none(), |inset| {
                         inset.child(
                             div()
@@ -3999,6 +4000,7 @@ impl Render for AnalyseScreen {
                             .children(log_panel)
                             .child(
                                 panel()
+                                    .rounded_none()
                                     .flex_none()
                                     .p(px(16.))
                                     .child(section_label("Position note").mb(px(10.)))
