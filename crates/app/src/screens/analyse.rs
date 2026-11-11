@@ -1223,6 +1223,9 @@ impl AnalyseScreen {
                 chess_core::parse_move_annotation(&node.comment, !node.ply.is_multiple_of(2));
             if let Some(cp) = note.eval_cp {
                 self.evals.insert(id, cp);
+                if let Some(mate) = note.mate_distance {
+                    self.mates.insert(id, mate);
+                }
                 self.depths.insert(id, note.depth.unwrap_or(0));
             } else if let Some(depth) = note.depth {
                 self.depths.insert(id, depth);

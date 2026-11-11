@@ -432,7 +432,9 @@ picked twice), and the board stays read-only. Each best move starts the next sid
 search. Play retains each side’s latest analysis, normalises scores to White and
 converts PVs from the searched position to SAN. Each engine match move stores standard
 `[%emt]`, optional `[%clk]` (for game clocks), and `[%eval]` with depth in its tree
-comment before recovery or PGN export. Only scores from that move’s search are used. Starting a match folds setup away
+comment before recovery or PGN export. Only scores from that move’s search are used.
+PGN annotation parsing retains signed mate distances alongside graph centipawns;
+Analyse restores those distances for move-list labels and subsequent export. Starting a match folds setup away
 and places moves and both search lines beside the board. The move list scrolls
 independently and follows new moves with a visible scrollbar. Play routes move
 navigation shortcuts to a separate review cursor, keeping the board and move

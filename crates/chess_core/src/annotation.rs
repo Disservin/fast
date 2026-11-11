@@ -13,6 +13,8 @@ pub struct MoveAnnotation {
     /// Time spent on the move, in seconds.
     pub elapsed: Option<f64>,
     pub eval_cp: Option<i32>,
+    /// White-relative moves to mate, preserved for move-list labels and PGN export.
+    pub mate_distance: Option<i32>,
     pub depth: Option<u32>,
     /// Engine speed in nodes per second.
     pub nps: Option<u64>,
@@ -40,6 +42,16 @@ fn command<'a>(comment: &'a str, name: &str) -> Option<&'a str> {
     Some(rest[..end].trim())
 }
 
+/// Reads a signed mate distance without losing it to the graph's mate sentinel.
+fn parse_mate_distance(text: &str) -> Option<i32> {
+    text.split([',', ' '])
+        .next()?
+        .trim()
+        .strip_prefix('#')?
+        .parse()
+        .ok()
+}
+
 fn parse_eval_text(text: &str) -> Option<i32> {
     let text = text.split([',', ' ']).next()?.trim();
     if let Some(mate) = text.strip_prefix('#') {
@@ -55,6 +67,13 @@ fn cutechess(comment: &str) -> Option<MoveAnnotation> {
     let mut words = comment.split_whitespace();
     let (score, depth) = words.next()?.split_once('/')?;
     let depth = depth.parse().ok()?;
+    let mate_distance = if let Some(mate) = score.strip_prefix("-M") {
+        Some(-mate.parse::<i32>().ok()?)
+    } else if let Some(mate) = score.strip_prefix("+M").or_else(|| score.strip_prefix('M')) {
+        Some(mate.parse::<i32>().ok()?)
+    } else {
+        None
+    };
     let score = if let Some(mate) = score.strip_prefix("-M") {
         mate.parse::<u32>().ok()?;
         -MATE_CP
@@ -70,6 +89,7 @@ fn cutechess(comment: &str) -> Option<MoveAnnotation> {
     });
     Some(MoveAnnotation {
         eval_cp: Some(score),
+        mate_distance,
         depth: Some(depth),
         elapsed,
         ..Default::default()
@@ -86,6 +106,7 @@ pub fn parse_move_annotation(comment: &str, white_moved: bool) -> MoveAnnotation
         && cutechess(comment).is_some()
     {
         note.eval_cp = note.eval_cp.map(|cp| -cp);
+        note.mate_distance = note.mate_distance.map(|mate| -mate);
     }
     note
 }
@@ -103,6 +124,7 @@ pub fn parse_annotation(comment: &str) -> MoveAnnotation {
         clock: command(comment, "clk").and_then(parse_hms),
         elapsed: command(comment, "emt").and_then(parse_hms),
         eval_cp: command(comment, "eval").and_then(parse_eval_text),
+        mate_distance: command(comment, "eval").and_then(parse_mate_distance),
         ..Default::default()
     };
     out.depth = field(comment, "d")
@@ -124,13 +146,17 @@ pub fn parse_annotation(comment: &str) -> MoveAnnotation {
     }
     if out.eval_cp.is_none() {
         out.eval_cp = field(comment, "wv").and_then(parse_eval_text);
+        out.mate_distance = field(comment, "wv").and_then(parse_mate_distance);
     }
     // TCEC gives speed as "s=12345" in kN/s.
     out.nps = field(comment, "s")
         .and_then(|value| value.parse::<f64>().ok())
         .map(|knps| (knps * 1000.0) as u64);
     if let Some(cute) = cutechess(comment) {
-        out.eval_cp = out.eval_cp.or(cute.eval_cp);
+        if out.eval_cp.is_none() {
+            out.eval_cp = cute.eval_cp;
+            out.mate_distance = cute.mate_distance;
+        }
         out.depth = out.depth.or(cute.depth);
         out.elapsed = out.elapsed.or(cute.elapsed);
     }
@@ -255,6 +281,29 @@ mod tests {
         let tree = parse_pgn(&format!("1. e4 {{{updated}}} *")).unwrap();
         let exported = crate::write_pgn(&tree[0]);
         assert!(exported.contains(&updated));
+    }
+
+    /// Mate labels retain distance, sign and the source format's score perspective.
+    #[test]
+    fn mate_distances_survive_import() {
+        assert_eq!(parse_annotation("[%eval #5,24]").mate_distance, Some(5));
+        assert_eq!(parse_annotation("[%eval #-3]").mate_distance, Some(-3));
+        assert_eq!(parse_annotation("[%eval #0]").mate_distance, Some(0));
+        assert_eq!(parse_annotation("wv=#-7, d=20").mate_distance, Some(-7));
+        assert_eq!(
+            parse_move_annotation("-M3/18 0.012s", false).mate_distance,
+            Some(3)
+        );
+        assert_eq!(
+            parse_move_annotation("+M2/20 0s", true).mate_distance,
+            Some(2)
+        );
+        assert_eq!(parse_annotation("[%eval 1.25]").mate_distance, None);
+        assert_eq!(parse_annotation("[%eval #bad]").mate_distance, None);
+        assert_eq!(
+            parse_annotation("[%eval 0.80] +M2/20 0s").mate_distance,
+            None
+        );
     }
 
     #[test]
