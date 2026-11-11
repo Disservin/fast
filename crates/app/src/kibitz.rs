@@ -167,7 +167,10 @@ impl Kibitz {
         for event in batch {
             match event {
                 EngineEvent::Analysis { search_id, update }
-                    if search_id == self.search_id && update.multipv == 1 && !update.bound =>
+                    if search_id == self.search_id
+                        && update.multipv == 1
+                        && !update.bound
+                        && !update.pv.is_empty() =>
                 {
                     let Some(pos) = &self.pos else { continue };
                     self.line = Some(LiveLine::new(

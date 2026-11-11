@@ -54,7 +54,8 @@ impl Wdl {
     }
 }
 
-/// One `info` line carrying a principal variation.
+/// One `info` line: a principal variation with its search numbers, or only the
+/// numbers (`pv` empty) when the engine reports progress between lines.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AnalysisUpdate {
     pub depth: u32,
@@ -228,8 +229,9 @@ fn parse_number<T: std::str::FromStr + TryFrom<i64>>(token: &str) -> Option<T> {
 }
 
 /// Reads an `info` line. Fields may come in any order, unknown fields are skipped,
-/// and a field that cannot be read is left out rather than losing the whole line;
-/// only a line without a principal variation is not analysis.
+/// and a field that cannot be read is left out rather than losing the whole line.
+/// A line without a principal variation still counts when it reports search
+/// progress (nodes, speed, time, hash use); one with neither is not analysis.
 fn parse_info(line: &str) -> Option<AnalysisUpdate> {
     let tokens: Vec<&str> = line.split_ascii_whitespace().skip(1).collect();
     let mut update = AnalysisUpdate {
@@ -332,8 +334,14 @@ fn parse_info(line: &str) -> Option<AnalysisUpdate> {
             }
         }
     }
-    update.pv.first()?;
-    Some(update)
+    // Depth alone is not progress: `currmove` lines name the iteration being
+    // searched, ahead of the last finished line.
+    let progress = update.nodes.is_some()
+        || update.nps.is_some()
+        || update.tbhits.is_some()
+        || update.hashfull.is_some()
+        || update.time_ms.is_some();
+    (!update.pv.is_empty() || progress).then_some(update)
 }
 
 /// Node count with a metric suffix: "950 n", "12.4 kn", "1.20 Gn".
@@ -496,8 +504,21 @@ mod tests {
     }
 
     #[test]
-    fn info_without_pv_or_with_string_is_ignored() {
-        assert_eq!(parse_line("info depth 1 nodes 5"), UciLine::Other);
+    fn info_with_only_search_numbers_is_progress() {
+        let UciLine::Info(info) = parse_line("info nodes 1029477540 nps 5044579 time 204076")
+        else {
+            panic!("progress line was dropped");
+        };
+        assert_eq!(info.nodes, Some(1_029_477_540));
+        assert_eq!(info.nps, Some(5_044_579));
+        assert_eq!(info.time_ms, Some(204_076));
+        assert!(info.pv.is_empty());
+        assert_eq!(info.multipv, 1);
+    }
+
+    #[test]
+    fn info_without_numbers_or_with_string_is_ignored() {
+        assert_eq!(parse_line("info currmove e2e4"), UciLine::Other);
         assert_eq!(
             parse_line("info string NNUE loaded pv e2e4"),
             UciLine::Other

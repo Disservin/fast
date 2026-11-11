@@ -379,8 +379,9 @@ impl Worker {
                     search.time_ms = update
                         .time_ms
                         .unwrap_or_else(|| started.elapsed().as_millis() as u64);
-                    // Bound lines are not the engine's settled view of the position.
-                    if update.bound {
+                    // Bound lines are not the engine's settled view of the position,
+                    // and progress lines carry no move.
+                    if update.bound || update.pv.is_empty() {
                         continue;
                     }
                     if update.score.is_some() {

@@ -243,6 +243,12 @@ fn analysis_then_cancellation_on_new_position() {
     // Requested before the handshake completes: must be replayed once ready.
     engine.search(request(1, None));
     assert!(matches!(next(&events), EngineEvent::Ready(_)));
+    // A line with search numbers but no moves arrives as progress.
+    let EngineEvent::Analysis { update, .. } = next(&events) else {
+        panic!("expected search progress");
+    };
+    assert!(update.pv.is_empty());
+    assert_eq!((update.nodes, update.nps), (Some(100), Some(1000)));
     let EngineEvent::Analysis { search_id, update } = next(&events) else {
         panic!("expected analysis");
     };
@@ -296,12 +302,14 @@ fn option_change_during_a_search_applies_and_resumes_it() {
     let events = engine.events();
     assert!(matches!(next(&events), EngineEvent::Ready(_)));
     engine.search(request(4, None));
+    assert!(matches!(next(&events), EngineEvent::Analysis { update, .. } if update.pv.is_empty()));
     let EngineEvent::Analysis { update, .. } = next(&events) else {
         panic!("expected analysis");
     };
     assert_eq!(update.score, Some(Score::Cp(30)));
     engine.set_option("Marker", Some("55".to_owned()));
     // Output from before the stop is dropped; the search resumes with the new value.
+    assert!(matches!(next(&events), EngineEvent::Analysis { update, .. } if update.pv.is_empty()));
     let EngineEvent::Analysis { search_id, update } = next(&events) else {
         panic!("expected resumed analysis");
     };

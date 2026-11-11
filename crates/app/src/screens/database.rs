@@ -5025,7 +5025,7 @@ fn review_games(
                                 search_id: from,
                                 update,
                             }) if from == search_id => {
-                                if update.depth >= depth {
+                                if update.depth >= depth && !update.pv.is_empty() {
                                     depth = update.depth;
                                     pv = update.pv.join(" ");
                                 }

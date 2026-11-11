@@ -122,7 +122,10 @@ is skipped without blocking the UI.
 - `info` lines are read field by field in any order. Unknown fields (newer protocol
   extensions, engine-specific ones) are skipped up to the next known field, the PV ends
   at the first token that is not a UCI move, decimals are rounded, and a field that
-  cannot be read is dropped instead of the line. Only a line without a PV is ignored.
+  cannot be read is dropped instead of the line. A line without a PV that still carries
+  nodes, speed, time, hash use or tablebase hits is search progress: it arrives with an
+  empty `pv`, and Analyse merges its numbers into the last line of that `multipv`. Only a
+  line with neither is ignored.
 
 ## Engine tournaments
 

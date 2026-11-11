@@ -495,22 +495,28 @@ impl LiveAnalysis {
                     }) {
                         continue;
                     }
-                    analysed = true;
-                    // A fail-high/low line's move is only the one being tried: keep the
-                    // last real line and its score, and take just the search progress.
-                    if update.bound
-                        && let Some(line) = live.lines.get_mut(&update.multipv)
-                    {
-                        let kept = &mut line.update;
-                        kept.depth = kept.depth.max(update.depth);
-                        kept.seldepth = update.seldepth.or(kept.seldepth);
-                        kept.nodes = update.nodes.or(kept.nodes);
-                        kept.nps = update.nps.or(kept.nps);
-                        kept.tbhits = update.tbhits.or(kept.tbhits);
-                        kept.hashfull = update.hashfull.or(kept.hashfull);
-                        kept.time_ms = update.time_ms.or(kept.time_ms);
-                        continue;
+                    // A fail-high/low line's move is only the one being tried, and a
+                    // progress line has no move at all: keep the last real line and
+                    // its score, and take just the search progress.
+                    let progress_only = update.pv.is_empty();
+                    if progress_only || update.bound {
+                        if let Some(line) = live.lines.get_mut(&update.multipv) {
+                            analysed = true;
+                            let kept = &mut line.update;
+                            kept.depth = kept.depth.max(update.depth);
+                            kept.seldepth = update.seldepth.or(kept.seldepth);
+                            kept.nodes = update.nodes.or(kept.nodes);
+                            kept.nps = update.nps.or(kept.nps);
+                            kept.tbhits = update.tbhits.or(kept.tbhits);
+                            kept.hashfull = update.hashfull.or(kept.hashfull);
+                            kept.time_ms = update.time_ms.or(kept.time_ms);
+                            continue;
+                        }
+                        if progress_only {
+                            continue;
+                        }
                     }
+                    analysed = true;
                     let line = LiveLine::new(
                         pos,
                         update,
