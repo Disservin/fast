@@ -35,7 +35,7 @@ fn windows_script(title: &str, save_name: Option<&str>, directory: bool, multipl
         )
     } else if let Some(name) = save_name {
         format!(
-            "$dialog = New-Object System.Windows.Forms.SaveFileDialog; $dialog.Title = '{title}'; $dialog.FileName = '{}'; $dialog.OverwritePrompt = $true;",
+            "$dialog = New-Object System.Windows.Forms.SaveFileDialog; $dialog.Title = '{title}'; $dialog.FileName = '{}'; $dialog.OverwritePrompt = $true; $dialog.CheckPathExists = $true;",
             name.replace('\'', "''")
         )
     } else {
@@ -43,6 +43,19 @@ fn windows_script(title: &str, save_name: Option<&str>, directory: bool, multipl
             "$dialog = New-Object System.Windows.Forms.OpenFileDialog; $dialog.Title = '{title}'; $dialog.Multiselect = ${}; $dialog.CheckFileExists = $true;",
             if multiple { "true" } else { "false" }
         )
+    };
+    let dialog = if save_name.is_some_and(|name| name.to_ascii_lowercase().ends_with(".pgn")) {
+        let filter = format!(
+            "{} (*.pgn)|*.pgn|{} (*.*)|*.*",
+            ui::i18n::t("PGN files"),
+            ui::i18n::t("All files")
+        )
+        .replace('\'', "''");
+        format!(
+            "{dialog} $dialog.Filter = '{filter}'; $dialog.DefaultExt = 'pgn'; $dialog.AddExtension = $true;"
+        )
+    } else {
+        dialog
     };
     let selected = if directory {
         "$dialog.SelectedPath"

@@ -1765,6 +1765,7 @@ impl DatabaseScreen {
         cx.notify();
     }
 
+    /// Saves matching games as PGN after choosing a folder and filename in Save As.
     fn export_pgn(&mut self, cx: &mut Context<Self>) {
         let Some(db_path) = self.selected_db.clone() else {
             return;
@@ -1772,43 +1773,41 @@ impl DatabaseScreen {
         let ids = self.ids.clone();
         let this = cx.entity().downgrade();
         let model = self.model.clone();
-        pick_path(
-            model,
-            "Export PGN",
-            Some("games.pgn"),
-            cx,
-            move |path, cx| {
-                let Some(this) = this.upgrade() else { return };
-                this.update(cx, |_, cx| {
-                    cx.spawn(async move |this, cx| {
-                        let written = cx
-                            .background_spawn(async move {
-                                use std::io::Write as _;
-                                let database = Database::open(db_path)?;
-                                let mut out = std::io::BufWriter::new(std::fs::File::create(path)?);
-                                let mut count = 0usize;
-                                for id in ids {
-                                    if let Some(game) = database.game(id)? {
-                                        writeln!(out, "{}", game.to_pgn())?;
-                                        count += 1;
-                                    }
+        let name = self
+            .db_snapshot
+            .as_ref()
+            .map_or("database", |entry| entry.name.as_str());
+        crate::model::save_pgn(model, name, cx, move |path, cx| {
+            let Some(this) = this.upgrade() else { return };
+            this.update(cx, |_, cx| {
+                cx.spawn(async move |this, cx| {
+                    let written = cx
+                        .background_spawn(async move {
+                            use std::io::Write as _;
+                            let database = Database::open(db_path)?;
+                            let mut out = std::io::BufWriter::new(std::fs::File::create(path)?);
+                            let mut count = 0usize;
+                            for id in ids {
+                                if let Some(game) = database.game(id)? {
+                                    writeln!(out, "{}", game.to_pgn())?;
+                                    count += 1;
                                 }
-                                out.flush()?;
-                                anyhow::Ok(count)
-                            })
-                            .await;
-                        let _ = this.update(cx, |this, cx| {
-                            let text = match written {
-                                Ok(count) => format!("Exported {count} games."),
-                                Err(err) => format!("Export failed: {err:#}"),
-                            };
-                            this.model.toast(text, cx);
-                        });
-                    })
-                    .detach();
-                });
-            },
-        );
+                            }
+                            out.flush()?;
+                            anyhow::Ok(count)
+                        })
+                        .await;
+                    let _ = this.update(cx, |this, cx| {
+                        let text = match written {
+                            Ok(count) => format!("Exported {count} games."),
+                            Err(err) => format!("Export failed: {err:#}"),
+                        };
+                        this.model.toast(text, cx);
+                    });
+                })
+                .detach();
+            });
+        });
     }
 
     /// Opens or closes the batch review settings dialog.

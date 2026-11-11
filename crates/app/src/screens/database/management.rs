@@ -692,49 +692,44 @@ impl DatabaseScreen {
         };
         let path = manager.path.clone();
         let model = self.model.clone();
-        pick_path(
-            model.clone(),
-            "Export PGN",
-            Some("database.pgn"),
-            cx,
-            move |destination, cx| {
-                let worker = cx.background_spawn(async move {
-                    use std::io::Write as _;
-                    anyhow::ensure!(
-                        destination.canonicalize().ok() != path.canonicalize().ok(),
-                        "Choose a different file for PGN export"
-                    );
-                    let database = Database::open(&path)?;
-                    let parent = destination
-                        .parent()
-                        .filter(|parent| !parent.as_os_str().is_empty())
-                        .unwrap_or_else(|| std::path::Path::new("."));
-                    let temporary = tempfile::NamedTempFile::new_in(parent)?;
-                    let mut file = std::io::BufWriter::new(temporary);
-                    let ids = database.filtered_ids(&Filter::default())?;
-                    for id in &ids {
-                        if let Some(game) = database.game(*id)? {
-                            writeln!(file, "{}", game.to_pgn())?;
-                        }
+        let name = manager.name.read(cx).value().to_string();
+        crate::model::save_pgn(model.clone(), &name, cx, move |destination, cx| {
+            let worker = cx.background_spawn(async move {
+                use std::io::Write as _;
+                anyhow::ensure!(
+                    destination.canonicalize().ok() != path.canonicalize().ok(),
+                    "Choose a different file for PGN export"
+                );
+                let database = Database::open(&path)?;
+                let parent = destination
+                    .parent()
+                    .filter(|parent| !parent.as_os_str().is_empty())
+                    .unwrap_or_else(|| std::path::Path::new("."));
+                let temporary = tempfile::NamedTempFile::new_in(parent)?;
+                let mut file = std::io::BufWriter::new(temporary);
+                let ids = database.filtered_ids(&Filter::default())?;
+                for id in &ids {
+                    if let Some(game) = database.game(*id)? {
+                        writeln!(file, "{}", game.to_pgn())?;
                     }
-                    file.flush()?;
-                    file.into_inner()
-                        .map_err(|err| err.into_error())?
-                        .persist(destination)?;
-                    anyhow::Ok(ids.len())
+                }
+                file.flush()?;
+                file.into_inner()
+                    .map_err(|err| err.into_error())?
+                    .persist(destination)?;
+                anyhow::Ok(ids.len())
+            });
+            cx.spawn(async move |cx| {
+                let result = worker.await;
+                model.update(cx, |model, cx| match result {
+                    Ok(count) => model.toast(
+                        ui::i18n::tf("Exported {} games.", &[&count.to_string()]),
+                        cx,
+                    ),
+                    Err(err) => model.toast(err.to_string(), cx),
                 });
-                cx.spawn(async move |cx| {
-                    let result = worker.await;
-                    model.update(cx, |model, cx| match result {
-                        Ok(count) => model.toast(
-                            ui::i18n::tf("Exported {} games.", &[&count.to_string()]),
-                            cx,
-                        ),
-                        Err(err) => model.toast(err.to_string(), cx),
-                    });
-                })
-                .detach();
-            },
-        );
+            })
+            .detach();
+        });
     }
 }

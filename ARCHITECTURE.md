@@ -216,6 +216,9 @@ is unavailable, `file_dialog.rs` runs a native alternative on a background worke
 Windows common dialogs through PowerShell under WSL (with `wslpath` conversion), or
 Zenity/KDialog on Linux. Cancel returns no paths. The typed-path fallback is used only
 when native alternatives fail; open, save, folder and multi-file requests share this flow.
+Database exports use `model::save_pgn`: Save As suggests a portable filename from the
+collection name and lets the user choose the folder and filename.
+The Windows fallback uses a PGN file filter and confirms overwrites.
 
 Database collection management lives in `screens/database/management.rs`. It loads
 collection statistics, saves names/descriptions in SQLite `meta`, merges exact player

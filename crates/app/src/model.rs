@@ -92,7 +92,7 @@ impl EventEmitter<ModelEvent> for AppModel {}
 pub fn pick_path(
     model: Entity<AppModel>,
     title: &'static str,
-    save_name: Option<&'static str>,
+    save_name: Option<&str>,
     cx: &mut App,
     on_path: impl FnOnce(PathBuf, &mut App) + 'static,
 ) {
@@ -109,6 +109,49 @@ pub fn pick_path(
             }
         },
     );
+}
+
+/// Suggests a portable PGN filename from the collection's display name.
+fn pgn_filename(name: &str) -> String {
+    let clean: String = name
+        .chars()
+        .map(|ch| {
+            if ch.is_control() || matches!(ch, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*')
+            {
+                '_'
+            } else {
+                ch
+            }
+        })
+        .collect();
+    let clean = clean.trim().trim_matches('.').trim();
+    let base = if clean.is_empty() { "database" } else { clean };
+    let stem = base.split('.').next().unwrap_or(base).to_ascii_uppercase();
+    let reserved = matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || (stem.starts_with("COM") || stem.starts_with("LPT"))
+            && stem.len() == 4
+            && matches!(stem.as_bytes()[3], b'1'..=b'9');
+    let base = if reserved {
+        format!("_{base}")
+    } else {
+        base.to_owned()
+    };
+    if base.to_ascii_lowercase().ends_with(".pgn") {
+        base
+    } else {
+        format!("{base}.pgn")
+    }
+}
+
+/// Opens Save As so the user chooses both a destination folder and an editable PGN filename.
+pub fn save_pgn(
+    model: Entity<AppModel>,
+    collection_name: &str,
+    cx: &mut App,
+    on_path: impl FnOnce(PathBuf, &mut App) + 'static,
+) {
+    let filename = pgn_filename(collection_name);
+    pick_path(model, "Export PGN", Some(&filename), cx, on_path);
 }
 
 /// Select several files in one native dialog.
@@ -138,13 +181,14 @@ pub fn pick_directory(
 fn pick_path_kind(
     model: Entity<AppModel>,
     title: &'static str,
-    save_name: Option<&'static str>,
+    save_name: Option<&str>,
     directory: bool,
     multiple: bool,
     cx: &mut App,
     on_paths: impl FnOnce(Vec<PathBuf>, &mut App) + 'static,
 ) {
-    let prompt = match save_name {
+    let save_name = save_name.map(str::to_owned);
+    let prompt = match save_name.as_deref() {
         Some(name) => {
             let dir = dirs::document_dir().unwrap_or_else(|| PathBuf::from("."));
             let answer = cx.prompt_for_new_path(&dir, Some(name));
@@ -174,7 +218,12 @@ fn pick_path_kind(
             log::info!("no desktop file dialog: {err:#}");
             let native = cx
                 .background_spawn(async move {
-                    crate::file_dialog::pick(ui::i18n::t(title), save_name, directory, multiple)
+                    crate::file_dialog::pick(
+                        ui::i18n::t(title),
+                        save_name.as_deref(),
+                        directory,
+                        multiple,
+                    )
                 })
                 .await;
             match native {
@@ -736,6 +785,20 @@ pub fn split_engine_name(id_name: &str, fallback: &str) -> (String, String) {
 
 #[cfg(test)]
 mod tests {
+    /// Collection names remain readable and safe as Windows and Linux save suggestions.
+    #[test]
+    fn pgn_save_names_are_portable() {
+        assert_eq!(
+            super::pgn_filename("Reference: OTB masters"),
+            "Reference_ OTB masters.pgn"
+        );
+        assert_eq!(super::pgn_filename("Müller games"), "Müller games.pgn");
+        assert_eq!(super::pgn_filename("games.PGN"), "games.PGN");
+        assert_eq!(super::pgn_filename(" . "), "database.pgn");
+        assert_eq!(super::pgn_filename("CON"), "_CON.pgn");
+        assert_eq!(super::pgn_filename("a/b\\c"), "a_b_c.pgn");
+    }
+
     use super::*;
     use db::{ImportControl, ImportOptions, import_games};
 

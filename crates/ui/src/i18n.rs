@@ -307,6 +307,8 @@ pub fn translate(language: Language, text: &str) -> &str {
             "Filters" => "Filter",
             "Choose database" => "Datenbank auswählen",
             "Search databases" => "Datenbanken suchen",
+            "PGN files" => "PGN-Dateien",
+            "All files" => "Alle Dateien",
             "Position {} / {}" => "Stellung {} / {}",
             "{} matching games" => "{} passende Partien",
             "Filters ({})" => "Filter ({})",
