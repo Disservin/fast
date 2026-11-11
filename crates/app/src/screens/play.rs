@@ -40,6 +40,8 @@ struct EngineChoice {
     elo: u32,
     /// Play as well as it can instead of at `elo`.
     full: bool,
+    threads: u32,
+    hash: u32,
 }
 
 /// Finds one of the screen's engine choices, for handlers that outlive a borrow of it.
@@ -89,6 +91,8 @@ struct Game {
     white_ms: u64,
     black_ms: u64,
     increment_ms: u64,
+    /// A per-move search limit replaces the game clock.
+    fixed_limits: Option<Limits>,
     result: Option<String>,
     opponent_name: String,
     opponent_rating: Option<u32>,
@@ -143,6 +147,12 @@ pub struct PlayScreen {
     mode: Mode,
     time_index: Option<usize>,
     custom_time: Entity<gpui_component::input::InputState>,
+    unlimited: bool,
+    limit_kind: TextSelect,
+    limit_value: Entity<gpui_component::input::InputState>,
+    book_path: Entity<gpui_component::input::InputState>,
+    book_tree: Option<GameTree>,
+    book_task: Option<Task<()>>,
     colour: ColourChoice,
     start_from: TextSelect,
     /// The Chess960 starting position number.
@@ -216,6 +226,8 @@ impl PlayScreen {
                 strength,
                 elo: 1800,
                 full,
+                threads: 1,
+                hash: 128,
             }
         };
         let opponent = choice(0, false, |screen| &mut screen.opponent, cx);
@@ -235,6 +247,9 @@ impl PlayScreen {
             window,
             cx,
         );
+        let limit_kind = new_select(vec!["Depth".into(), "Nodes".into()], 0, window, cx);
+        let limit_value = new_input("20", "20", window, cx);
+        let book_path = new_input("", "Opening book (.pgn or .epd)", window, cx);
         let custom_time = new_input("", "12+3", window, cx);
         let chess960_number = new_input(
             model.read(cx).config.chess960_number.min(959).to_string(),
@@ -306,6 +321,12 @@ impl PlayScreen {
             mode: Mode::VsEngine,
             time_index: Some(2),
             custom_time,
+            unlimited: false,
+            limit_kind,
+            limit_value,
+            book_path,
+            book_tree: None,
+            book_task: None,
             colour: ColourChoice::White,
             start_from,
             chess960_number,
@@ -390,6 +411,7 @@ impl PlayScreen {
             white_ms: 552_000,
             black_ms: 521_000,
             increment_ms: 5_000,
+            fixed_limits: None,
             result: None,
             opponent_name: "Stockfish".to_owned(),
             opponent_rating: Some(self.opponent.elo),
@@ -417,7 +439,24 @@ impl PlayScreen {
     /// The engine picked in `choice`, or `None` when no engine is set up for Play.
     fn chosen_engine(&self, choice: &EngineChoice, cx: &gpui::App) -> Option<EngineConfig> {
         let index = choice.engine.read(cx).selected_index(cx)?.row;
-        self.opponents.get(index).cloned()
+        let mut config = self.opponents.get(index)?.clone();
+        if self.mode == Mode::Engines {
+            for (name, value) in [("Threads", choice.threads), ("Hash", choice.hash)] {
+                if let Some(option) = config
+                    .info
+                    .options
+                    .iter()
+                    .find(|option| option.name == name)
+                    && let OptionKind::Spin { min, max, .. } = option.kind
+                {
+                    config.options.insert(
+                        name.to_owned(),
+                        i64::from(value).clamp(min, max).to_string(),
+                    );
+                }
+            }
+        }
+        Some(config)
     }
 
     /// Starts a fresh process of `config` for one game, limited to `elo` if given.
@@ -490,8 +529,77 @@ impl PlayScreen {
         })
     }
 
+    /// Loads a local opening off the UI thread before starting the engines.
+    fn start_with_book(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.book_task.is_some() {
+            return;
+        }
+        let path = self.book_path.read(cx).value().trim().to_owned();
+        self.book_tree = None;
+        if self.mode != Mode::Engines || path.is_empty() {
+            self.start_game(window, cx);
+            return;
+        }
+        let load = cx.background_spawn(async move {
+            let text = std::fs::read_to_string(&path).map_err(|err| err.to_string())?;
+            opening_from_book(&path, &text)
+        });
+        self.book_task = Some(cx.spawn_in(window, async move |this, cx| {
+            let result = load.await;
+            let _ = this.update_in(cx, |screen, window, cx| {
+                screen.book_task = None;
+                match result {
+                    Ok(tree) => {
+                        screen.book_tree = Some(tree);
+                        screen.start_game(window, cx);
+                    }
+                    Err(err) => screen
+                        .model
+                        .toast(format!("Could not load opening book: {err}"), cx),
+                }
+                cx.notify();
+            });
+        }));
+        cx.notify();
+    }
+
     fn start_game(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some((minutes, increment)) = self.time_control(cx) else {
+        let unlimited = self.mode == Mode::Engines && self.unlimited;
+        let fixed_limits = if unlimited {
+            let Some(value) = self
+                .limit_value
+                .read(cx)
+                .value()
+                .trim()
+                .parse::<u64>()
+                .ok()
+                .filter(|value| *value > 0)
+            else {
+                self.model.toast("Enter a positive search limit.", cx);
+                return;
+            };
+            let nodes = self
+                .limit_kind
+                .read(cx)
+                .selected_index(cx)
+                .is_some_and(|index| index.row == 1);
+            if !nodes && value > u64::from(u32::MAX) {
+                self.model.toast("Enter a smaller depth.", cx);
+                return;
+            }
+            Some(Limits {
+                depth: (!nodes).then_some(value as u32),
+                nodes: nodes.then_some(value),
+                ..Default::default()
+            })
+        } else {
+            None
+        };
+        let Some((minutes, increment)) = (if unlimited {
+            Some((0, 0))
+        } else {
+            self.time_control(cx)
+        }) else {
             self.model.toast("Enter a custom time such as 12+3.", cx);
             return;
         };
@@ -514,7 +622,11 @@ impl PlayScreen {
                 .toast("Add an engine for Play in Settings › Engines first.", cx);
             return;
         };
-        let Some(tree) = self.start_tree(window, cx) else {
+        let Some(tree) = self
+            .book_tree
+            .take()
+            .or_else(|| self.start_tree(window, cx))
+        else {
             self.model.toast("Enter a valid starting position.", cx);
             return;
         };
@@ -584,10 +696,25 @@ impl PlayScreen {
             white_ms: ms,
             black_ms: ms,
             increment_ms: u64::from(increment) * 1000,
+            fixed_limits,
             result: None,
             opponent_name: config.name.clone(),
             opponent_rating: elo,
-            label: format!("{minutes}+{increment}"),
+            label: fixed_limits.map_or_else(
+                || format!("{minutes}+{increment}"),
+                |limits| {
+                    limits.nodes.map_or_else(
+                        || {
+                            format!(
+                                "{} {}",
+                                ui::i18n::t("Depth"),
+                                limits.depth.unwrap_or_default()
+                            )
+                        },
+                        |nodes| format!("{nodes} {}", ui::i18n::t("Nodes")),
+                    )
+                },
+            ),
             takebacks: self.allow_takebacks && !self_play,
             premoves: self.allow_premoves && !self_play,
             premove: None,
@@ -642,6 +769,9 @@ impl PlayScreen {
 
     fn start_clock(&mut self, cx: &mut Context<Self>) {
         let Some(game) = &mut self.game else { return };
+        if game.fixed_limits.is_some() {
+            return;
+        }
         game.last_tick = Instant::now();
         game._clock = Some(cx.spawn(async move |this, cx| {
             loop {
@@ -663,7 +793,7 @@ impl PlayScreen {
         let Some(game) = &mut self.game else {
             return false;
         };
-        if game.result.is_some() {
+        if game.result.is_some() || game.fixed_limits.is_some() {
             return false;
         }
         let now = Instant::now();
@@ -839,13 +969,13 @@ impl PlayScreen {
             search_moves: Vec::new(),
             fen: game.tree.fen(GameTree::ROOT),
             moves,
-            limits: Some(Limits {
+            limits: Some(game.fixed_limits.unwrap_or(Limits {
                 white_ms: Some(game.white_ms),
                 black_ms: Some(game.black_ms),
                 white_inc_ms: game.increment_ms,
                 black_inc_ms: game.increment_ms,
                 ..Default::default()
-            }),
+            })),
             search_id: game.search_id,
             game: 0,
         });
@@ -1069,10 +1199,51 @@ impl PlayScreen {
             .child(section_label("New game").mb(px(10.)))
             .child(mode.mb(px(14.)))
             .child(engines)
-            .child(field("Time control", grid).mb(px(14.)))
-            .when(self.time_index.is_none(), |column| {
-                column.child(div().mb(px(14.)).child(text_input(&self.custom_time)))
+            .when(self_play, |column| {
+                let this = cx.entity();
+                column.child(div().mb(px(10.)).child(
+                    check("unlimited-time", self.unlimited, "Unlimited time").on_change(
+                        move |value, _, cx| {
+                            this.update(cx, |screen, cx| {
+                                screen.unlimited = value;
+                                cx.notify();
+                            });
+                        },
+                    ),
+                ))
             })
+            .when(!self_play || !self.unlimited, |column| {
+                column.child(field("Time control", grid).mb(px(14.)))
+            })
+            .when(self_play && self.unlimited, |column| {
+                column.child(
+                    h_flex()
+                        .gap(px(8.))
+                        .mb(px(14.))
+                        .child(select_el(&self.limit_kind))
+                        .child(text_input(&self.limit_value).mono()),
+                )
+            })
+            .when(self_play, |column| {
+                column
+                    .child(
+                        field("Opening book (.pgn or .epd)", text_input(&self.book_path))
+                            .mb(px(6.)),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(12.))
+                            .text_color(rgb(T.muted))
+                            .mb(px(14.))
+                            .child(ui::i18n::t(
+                                "Optional local file. Uses the first game or position.",
+                            )),
+                    )
+            })
+            .when(
+                self.time_index.is_none() && (!self_play || !self.unlimited),
+                |column| column.child(div().mb(px(14.)).child(text_input(&self.custom_time))),
+            )
             .when(!self_play, |column| {
                 column.child(
                     field(
@@ -1189,9 +1360,9 @@ impl PlayScreen {
                     .primary()
                     .full()
                     .h(40.)
-                    .disabled(!can_start)
+                    .disabled(!can_start || self.book_task.is_some())
                     .on_click(move |window, cx| {
-                        start_this.update(cx, |screen, cx| screen.start_game(window, cx));
+                        start_this.update(cx, |screen, cx| screen.start_with_book(window, cx));
                     }),
             )
             .when(!can_start, |column| {
@@ -1221,6 +1392,57 @@ impl PlayScreen {
         let limited = limitable && !choice.full;
         v_flex()
             .child(field(ui::i18n::t(label), select_el(&choice.engine)).mb(px(14.)))
+            .when(self.mode == Mode::Engines, |column| {
+                let mut column = column;
+                for (name, value, step) in [
+                    ("Threads", choice.threads, 1),
+                    ("Hash (MB)", choice.hash, 64),
+                ] {
+                    let name_key = name;
+                    column = column.child(
+                        h_flex()
+                            .gap(px(6.))
+                            .mb(px(8.))
+                            .child(div().flex_1().text_size(px(13.)).child(ui::i18n::t(name)))
+                            .child({
+                                let this = cx.entity();
+                                btn(SharedString::from(format!("{label}-{name}-minus")), "−")
+                                    .compact()
+                                    .on_click(move |_, cx| {
+                                        this.update(cx, |screen, cx| {
+                                            let choice = pick(screen);
+                                            let value = if name_key == "Threads" {
+                                                &mut choice.threads
+                                            } else {
+                                                &mut choice.hash
+                                            };
+                                            *value = value.saturating_sub(step).max(1);
+                                            cx.notify();
+                                        });
+                                    })
+                            })
+                            .child(mono(value.to_string()).w(px(44.)))
+                            .child({
+                                let this = cx.entity();
+                                btn(SharedString::from(format!("{label}-{name}-plus")), "+")
+                                    .compact()
+                                    .on_click(move |_, cx| {
+                                        this.update(cx, |screen, cx| {
+                                            let choice = pick(screen);
+                                            let value = if name_key == "Threads" {
+                                                &mut choice.threads
+                                            } else {
+                                                &mut choice.hash
+                                            };
+                                            *value = value.saturating_add(step);
+                                            cx.notify();
+                                        });
+                                    })
+                            }),
+                    );
+                }
+                column
+            })
             .child(
                 v_flex()
                     .mb(px(16.))
@@ -1363,7 +1585,11 @@ impl PlayScreen {
                     })
                     .when(!active, |time| time.text_color(rgb(T.muted)))
                     .child(if game.is_some() {
-                        format_clock(ms)
+                        if game.is_some_and(|game| game.fixed_limits.is_some()) {
+                            "∞".to_owned()
+                        } else {
+                            format_clock(ms)
+                        }
                     } else {
                         "--:--".to_owned()
                     }),
@@ -1529,6 +1755,26 @@ impl PlayScreen {
     }
 }
 
+/// Starts a match at the first PGN line or EPD position in a local book.
+fn opening_from_book(path: &str, text: &str) -> Result<GameTree, String> {
+    if path.to_ascii_lowercase().ends_with(".pgn") {
+        chess_core::parse_pgn(text)
+            .map_err(|err| err.to_string())?
+            .into_iter()
+            .next()
+            .ok_or_else(|| "The opening book is empty.".to_owned())
+    } else if path.to_ascii_lowercase().ends_with(".epd") {
+        let record = chess_core::parse_epd(text)
+            .into_iter()
+            .next()
+            .ok_or_else(|| "The opening book is empty.".to_owned())?
+            .parsed?;
+        GameTree::from_fen(&record.fen).map_err(|err| err.to_string())
+    } else {
+        Err("Choose a PGN or EPD opening book.".to_owned())
+    }
+}
+
 fn supports_limit(config: &EngineConfig) -> bool {
     config
         .info
@@ -1591,6 +1837,18 @@ impl Render for PlayScreen {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Books seed the played line and reject empty or unsupported files.
+    #[test]
+    fn opening_books_seed_matches() {
+        let tree = opening_from_book("opening.pgn", "1. e4 e5 2. Nf3 *").unwrap();
+        assert_eq!(tree.line_from(GameTree::ROOT).len(), 3);
+        let tree =
+            opening_from_book("opening.epd", "8/8/8/8/8/4k3/8/4K3 w - - id \"test\";").unwrap();
+        assert_eq!(tree.line_from(GameTree::ROOT).len(), 0);
+        assert!(opening_from_book("empty.epd", "").is_err());
+        assert!(opening_from_book("book.bin", "anything").is_err());
+    }
 
     #[test]
     fn clocks_format_and_round_up() {

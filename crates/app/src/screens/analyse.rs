@@ -250,6 +250,7 @@ pub fn quality_color(quality: Quality) -> u32 {
     }
 }
 
+mod database_explorer;
 mod editor;
 mod online;
 mod panels;
@@ -298,6 +299,8 @@ pub struct AnalyseScreen {
     selected: Option<RowKey>,
     row_chosen: bool,
     reference: Vec<MoveStat>,
+    /// A failed local database lookup, shown instead of a misleading empty result.
+    reference_error: Option<String>,
     mine: Vec<MoveStat>,
     evals: HashMap<NodeId, i32>,
     /// Search depth behind each eval, for the depth graph.
@@ -504,6 +507,7 @@ impl AnalyseScreen {
             selected: None,
             row_chosen: false,
             reference: Vec::new(),
+            reference_error: None,
             mine: Vec::new(),
             evals,
             note,
@@ -841,6 +845,7 @@ impl AnalyseScreen {
     }
 
     fn query_databases(&mut self, cx: &mut Context<Self>) {
+        self.reference_error = None;
         let hash = position_hash(&self.analysed_pos());
         let reference = self.explorer_database(cx).map(|entry| entry.path);
         self.explorer_used = reference.clone();
@@ -865,6 +870,9 @@ impl AnalyseScreen {
             reference.clone().filter(|_| cached_reference.is_none()),
             mine.clone().filter(|_| cached_mine.is_none()),
         );
+        self.reference = cached_reference.clone().unwrap_or_default();
+        self.mine = cached_mine.clone().unwrap_or_default();
+        self.rebuild_rows(cx);
         let query_player = player.clone();
         let task = cx.background_spawn(async move {
             let query = |path: Option<std::path::PathBuf>, player: &str| {
@@ -883,10 +891,7 @@ impl AnalyseScreen {
                                 db.moves_from_players(hash, &names)
                             }
                         })
-                        .unwrap_or_else(|err| {
-                            log::warn!("position query failed: {err}");
-                            Vec::new()
-                        }),
+                        .map_err(|err| err.to_string()),
                 )
             };
             (query(query_reference, ""), query(query_mine, &query_player))
@@ -895,6 +900,15 @@ impl AnalyseScreen {
         self.db_task = Some(cx.spawn(async move |this, cx| {
             let (found_reference, found_mine) = task.await;
             let _ = this.update(cx, |this, cx| {
+                this.db_task = None;
+                let found_reference = found_reference.and_then(|result| match result {
+                    Ok(moves) => Some(moves),
+                    Err(err) => {
+                        this.reference_error = Some(err);
+                        None
+                    }
+                });
+                let found_mine = found_mine.and_then(|result| result.ok());
                 if let (Some(path), Some(moves)) = (&reference, &found_reference) {
                     this.move_cache
                         .insert(path.clone(), hash, String::new(), moves.clone());
@@ -2969,7 +2983,15 @@ impl AnalyseScreen {
         let this = cx.entity();
         const COL_REF: f32 = 84.;
         let explorer = self.explorer_database(cx);
-        let picker = self.render_explorer_picker(COL_REF, cx);
+        let picker = if self.engine_tab == panels::EngineTab::Database {
+            div()
+                .w(px(COL_REF))
+                .flex_none()
+                .child(section_label("Database"))
+                .into_any_element()
+        } else {
+            self.render_explorer_picker(COL_REF, cx)
+        };
         let model = self.model.read(cx);
         let notation = model.config.board.notation;
         let live = self.live.read(cx);

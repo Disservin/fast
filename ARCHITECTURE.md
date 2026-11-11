@@ -198,6 +198,12 @@ database, position hash and player, holding the 512 most recent. Only answers mi
 are queried, in one background task. Any `ModelEvent::Databases` (import, edit, delete, rename)
 clears it. `explorer::pick_database` chooses the Reference column's database: the tab's
 choice, the `DbGame` database, `config.explorer_default`, then `AppModel::reference_db()`.
+The Database tab beside Engines and Search options renders these same answers through
+`analyse/database_explorer.rs`: all recorded continuations in popularity order, game
+frequencies, White/draw/Black result shares and totals. Unfinished games stay separate
+from draws. Changing the picker updates both views. Uncached queries clear stale rows,
+show a loading state and report lookup errors without caching them; clicking a move
+adds it to the analysed line and advances the board.
 
 ## Online lookups
 
@@ -391,7 +397,10 @@ a running tournament or test-position run. `Workspace` observes every tab entity
 redraws the strip only when a tab's mark changes.
 Each Play game already owns its own engine and clock. In an engine vs engine game
 each side has its own process, options and strength limit (the same engine may be
-picked twice), and the board stays read-only. Open games continue when
+picked twice), and the board stays read-only. Match setup overrides each engine’s
+Threads and Hash within its advertised UCI bounds. Clockless games use a fixed
+node or depth limit per move and run no clock task. A local PGN or EPD book loads
+on the background executor; its first game or position seeds the game tree. Open games continue when
 switching tabs; closing suspends them and reopening resets the clock tick origin
 and resumes the search. Dropping a game quits its process. The last ten closed
 entities can be reopened; autosave files keep every document independently.

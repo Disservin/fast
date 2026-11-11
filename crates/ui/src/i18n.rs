@@ -304,6 +304,23 @@ pub fn translate(language: Language, text: &str) -> &str {
             "On" => "Ein",
             "Off" => "Aus",
             "None" => "Keine",
+            "Played" => "Gespielt",
+            "White / Draw / Black" => "Weiß / Remis / Schwarz",
+            "White wins: {}%, draws: {}%, Black wins: {}%, unfinished: {}%" => {
+                "Weiß gewinnt: {}%, Remis: {}%, Schwarz gewinnt: {}%, unbeendet: {}%"
+            }
+            "Add a database in Settings › Databases." => {
+                "Eine Datenbank unter Einstellungen › Datenbanken hinzufügen."
+            }
+            "No games reach this position." => "Keine Partie erreicht diese Stellung.",
+            "Could not query database: {}" => "Datenbankabfrage fehlgeschlagen: {}",
+            "Unlimited time" => "Unbegrenzte Zeit",
+            "Opening book (.pgn or .epd)" => "Eröffnungsbuch (.pgn oder .epd)",
+            "Optional local file. Uses the first game or position." => {
+                "Optionale lokale Datei. Verwendet die erste Partie oder Stellung."
+            }
+            "Enter a positive search limit." => "Eine positive Suchgrenze eingeben.",
+            "Enter a smaller depth." => "Eine kleinere Tiefe eingeben.",
             "Unlimited" => "Unbegrenzt",
             "Infinite" => "Unbegrenzt",
             "Seconds" => "Sekunden",

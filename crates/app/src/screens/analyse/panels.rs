@@ -24,7 +24,7 @@ use crate::config::AnalysisLimit;
 use crate::debug_window::LOG_ROW_H;
 use crate::model::ToastExt as _;
 
-/// The settings the Engine panel shows under its engines.
+/// The engine controls or local database results shown above the moves table.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum EngineTab {
     /// The engines with their live figures, and replacing cached results.
@@ -32,6 +32,8 @@ pub enum EngineTab {
     /// The chosen engine's lines, threads and hash, the search limit and the moves
     /// searched.
     Options,
+    /// Moves and game results from the selected local database.
+    Database,
 }
 
 /// Selected log text, which has to read clearly under every line colour.
@@ -794,15 +796,12 @@ impl AnalyseScreen {
                 .gap(px(6.))
                 .border_b_1()
                 .border_color(rgb(T.border))
-                // With engines, the tabs name the panel; without, the label does.
-                .when(engines.is_empty(), |header| {
-                    header.child(section_label(ui::i18n::t("Engine")))
-                })
-                .children((!engines.is_empty()).then(|| {
+                .child({
                     let mut tabs = h_flex().h_full().gap(px(16.));
                     for (index, (value, label)) in [
                         (EngineTab::Engines, "Engines"),
                         (EngineTab::Options, "Search options"),
+                        (EngineTab::Database, "Database"),
                     ]
                     .into_iter()
                     .enumerate()
@@ -815,30 +814,38 @@ impl AnalyseScreen {
                             move |_, cx| {
                                 this.update(cx, |screen, cx| {
                                     screen.engine_tab = value;
+                                    screen.explorer_menu = None;
                                     cx.notify();
                                 })
                             },
                         ));
                     }
                     tabs
-                }))
+                })
                 .child(div().flex_1())
-                // Always in reach, on either tab: one click lifts or restores the limit.
-                .children((!engines.is_empty()).then(|| {
-                    let this = this.clone();
-                    btn("infinite-search", "Infinite")
-                        .mini()
-                        .selected(limit == AnalysisLimit::Infinite)
-                        .tooltip(ui::i18n::t(
-                            "Search until stopped, instead of up to the search limit",
-                        ))
-                        .on_click(move |_, cx| {
-                            this.update(cx, |screen, cx| {
-                                screen.live.update(cx, |live, cx| live.toggle_infinite(cx));
-                            });
-                        })
-                })),
+                // Engine controls keep the search limit in reach.
+                .children(
+                    (!engines.is_empty() && tab != EngineTab::Database).then(|| {
+                        let this = this.clone();
+                        btn("infinite-search", "Infinite")
+                            .mini()
+                            .selected(limit == AnalysisLimit::Infinite)
+                            .tooltip(ui::i18n::t(
+                                "Search until stopped, instead of up to the search limit",
+                            ))
+                            .on_click(move |_, cx| {
+                                this.update(cx, |screen, cx| {
+                                    screen.live.update(cx, |live, cx| live.toggle_infinite(cx));
+                                });
+                            })
+                    }),
+                ),
         );
+        if tab == EngineTab::Database {
+            return body
+                .child(self.render_database_explorer(cx))
+                .into_any_element();
+        }
         if engines.is_empty() {
             return body
                 .child(

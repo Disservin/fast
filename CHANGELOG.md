@@ -4,6 +4,10 @@ Settings › Changelog shows this file. Keep entries to one short line each.
 
 ## Since 0.1.0
 
+- Analyse: the Database tab lists moves from the current position with frequencies, game counts and results.
+
+- Play: configure engine matches with threads and hash per side, time or node/depth limits, and a local PGN or EPD opening book.
+
 - Train: the correct-answer prompt explains when a mistake or hint limits the available ratings.
 
 - Analyse: edit comments without clock tags getting in the way, preserving PGN timing and evaluations.
