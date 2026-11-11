@@ -4,6 +4,8 @@ Settings › Changelog shows this file. Keep entries to one short line each.
 
 ## Since 0.1.0
 
+- Train: the Leaks header fits narrow panels without overflowing.
+
 - Analyse: My moves hides the My games and Repertoire columns in the moves table.
 - Analyse: analysis stops after 30 seconds by default, and Infinite lifts the limit.
 - Play: Engine vs engine lets two different engines play each other, each at its own strength.

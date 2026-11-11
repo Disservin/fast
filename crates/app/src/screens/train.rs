@@ -1236,27 +1236,24 @@ impl TrainScreen {
         }
         panel()
             .child(
-                h_flex().h(px(50.)).px(px(16.)).child(
-                    h_flex()
-                        .gap(px(10.))
-                        .items_baseline()
-                        .child(
-                            div()
-                                .text_size(px(16.))
-                                .font_weight(FontWeight::SEMIBOLD)
-                                .child(ui::i18n::t("Leaks from your games")),
-                        )
-                        .child(
-                            div()
-                                .text_size(px(12.))
-                                .text_color(rgb(T.muted))
-                                .min_w_0()
-                                .overflow_hidden()
-                                .whitespace_nowrap()
-                                .text_ellipsis()
-                                .child(ui::i18n::t("Where you left the repertoire")),
-                        ),
-                ),
+                v_flex()
+                    .w_full()
+                    .min_w_0()
+                    .px(px(16.))
+                    .py(px(12.))
+                    .gap(px(4.))
+                    .child(
+                        div()
+                            .text_size(px(16.))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .child(ui::i18n::t("Leaks from your games")),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(12.))
+                            .text_color(rgb(T.muted))
+                            .child(ui::i18n::t("Where you left the repertoire")),
+                    ),
             )
             .child(body)
             .child(
