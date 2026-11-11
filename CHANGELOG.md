@@ -4,6 +4,8 @@ Settings › Changelog shows this file. Keep entries to one short line each.
 
 ## Since 0.1.0
 
+- Database: choose collections with a searchable picker, fold filters with an active count, and find review/export under More actions.
+
 - Database: choose collections and find Add database, Manage and import actions in a full-width top toolbar.
 
 - Database: add local or web collections and manage descriptions, reference selection, statistics, player names and cleanup.

@@ -224,8 +224,11 @@ pub struct DatabaseScreen {
     workspace: WeakEntity<Workspace>,
     selected_db: Option<PathBuf>,
     db_snapshot: Option<DbEntry>,
-    /// Stable keyboard focus for the collection tabs in the top toolbar.
-    collection_focus: HashMap<PathBuf, gpui::FocusHandle>,
+    /// Searchable collection choice, synchronized with imports and external database changes.
+    collection_picker: TextSelect,
+    collection_entries: Vec<DbEntry>,
+    collection_labels: Vec<SharedString>,
+    filters_open: bool,
     player: Entity<InputState>,
     colour: TextSelect,
     result: TextSelect,
@@ -432,7 +435,34 @@ impl DatabaseScreen {
                 "Najdorf, English Attack".to_owned(),
             )
         });
+        let collection_picker = cx.new(|cx| {
+            gpui_component::select::SelectState::new(
+                gpui_component::select::SearchableVec::<SharedString>::new(Vec::new()),
+                None,
+                window,
+                cx,
+            )
+            .searchable(true)
+        });
         let mut subscriptions = Vec::new();
+        subscriptions.push(cx.subscribe(
+            &collection_picker,
+            |screen, _, event: &SelectEvent<_>, cx| {
+                let SelectEvent::Confirm(Some(label)) = event else {
+                    return;
+                };
+                if let Some(index) = screen
+                    .collection_labels
+                    .iter()
+                    .position(|item| item == label)
+                    && let Some(entry) = screen.collection_entries.get(index)
+                {
+                    screen.selected_db = Some(entry.path.clone());
+                    screen.selected = None;
+                    screen.apply_filter(cx);
+                }
+            },
+        ));
         subscriptions.push(cx.subscribe_in(
             &player,
             window,
@@ -534,7 +564,10 @@ impl DatabaseScreen {
             workspace,
             selected_db,
             db_snapshot: None,
-            collection_focus: HashMap::new(),
+            collection_picker,
+            collection_entries: Vec::new(),
+            collection_labels: Vec::new(),
+            filters_open: true,
             player,
             colour,
             result,
@@ -883,8 +916,8 @@ impl DatabaseScreen {
         .count()
     }
 
-    /// Whether any filter is set, so "Clear filters" is offered.
-    fn any_filter_set(&self, cx: &gpui::App) -> bool {
+    /// Counts active filter groups even when their sidebar is folded away.
+    fn active_filter_count(&self, cx: &gpui::App) -> usize {
         let typed = |input: &Entity<InputState>| !input.read(cx).value().trim().is_empty();
         let chosen = |select: &TextSelect| {
             select
@@ -892,16 +925,19 @@ impl DatabaseScreen {
                 .selected_index(cx)
                 .is_some_and(|index| index.row != 0)
         };
-        self.hidden_filters_set(cx) > 0
-            || typed(&self.player)
-            || typed(&self.date_from)
-            || typed(&self.date_to)
-            || chosen(&self.colour)
-            || chosen(&self.result)
-            || self.reached
+        self.hidden_filters_set(cx)
+            + [
+                typed(&self.player),
+                typed(&self.date_from) || typed(&self.date_to),
+                chosen(&self.colour),
+                chosen(&self.result),
+                self.reached,
+            ]
+            .into_iter()
+            .filter(|set| *set)
+            .count()
     }
 
-    /// Empties every filter and shows all games.
     fn clear_filters(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.clear_filter_fields(window, cx);
         self.sync_result_labels(window, cx);
@@ -1991,8 +2027,20 @@ impl DatabaseScreen {
         .detach();
     }
 
-    /// Creates an empty database, selects it and opens its name for editing.
-    fn create_db(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    /// Creates a collection from the Add dialog's details, asking for a name when omitted.
+    fn create_db(
+        &mut self,
+        name: String,
+        description: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let rename = name.trim().is_empty();
+        let name = if rename {
+            ui::i18n::t("New database").to_owned()
+        } else {
+            name.trim().to_owned()
+        };
         let dir = self.model.read(cx).paths.databases_dir();
         let task = cx.background_spawn(async move {
             std::fs::create_dir_all(&dir)?;
@@ -2007,8 +2055,7 @@ impl DatabaseScreen {
                     Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => continue,
                     Err(err) => return Err(err.into()),
                 }
-                let name = ui::i18n::t("New database");
-                Database::open(&path)?.set_name(name)?;
+                Database::open(&path)?.set_details(&name, &description)?;
                 return Ok::<_, anyhow::Error>(path);
             }
             unreachable!("an unused database file name")
@@ -2019,7 +2066,9 @@ impl DatabaseScreen {
                 Ok(path) => {
                     this.model.update(cx, |model, _| model.refresh_databases());
                     this.show_newest(path.clone(), window, cx);
-                    this.start_rename(path, window, cx);
+                    if rename {
+                        this.start_rename(path, window, cx);
+                    }
                     this.model
                         .update(cx, |_, cx| cx.emit(ModelEvent::Databases));
                 }
@@ -2379,276 +2428,119 @@ impl DatabaseScreen {
         cx.notify();
     }
 
-    /// Keeps collection choices and management actions visible above the game workspace.
+    /// Keeps the searchable picker aligned with collections added, renamed or selected elsewhere.
+    fn sync_collection_picker(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let entries = self.model.read(cx).databases.clone();
+        if self.collection_entries != entries {
+            let mut used = std::collections::HashSet::new();
+            let labels: Vec<SharedString> = entries
+                .iter()
+                .map(|entry| {
+                    let mut label = entry.name.to_string();
+                    let mut number = 2;
+                    while !used.insert(label.clone()) {
+                        label = format!("{} ({number})", entry.name);
+                        number += 1;
+                    }
+                    label.into()
+                })
+                .collect();
+            self.collection_picker.update(cx, |picker, cx| {
+                picker.set_items(
+                    gpui_component::select::SearchableVec::new(labels.clone()),
+                    window,
+                    cx,
+                );
+            });
+            self.collection_entries = entries;
+            self.collection_labels = labels;
+        }
+        let selected = self
+            .collection_entries
+            .iter()
+            .position(|entry| Some(&entry.path) == self.selected_db.as_ref())
+            .map(gpui_component::IndexPath::new);
+        if self.collection_picker.read(cx).selected_index(cx) != selected {
+            self.collection_picker.update(cx, |picker, cx| {
+                picker.set_selected_index(selected, window, cx)
+            });
+        }
+    }
+
+    /// Shows the selected collection and its settings without taking a row per database.
     fn render_collections(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let this = cx.entity();
-        let entries = self.model.read(cx).databases.clone();
-        let mut list = h_flex()
-            .id("database-collections")
-            .w_full()
-            .min_w_0()
-            .overflow_x_scroll();
-        for (index, entry) in entries.iter().enumerate() {
-            let focus = self
-                .collection_focus
-                .entry(entry.path.clone())
-                .or_insert_with(|| cx.focus_handle().tab_stop(true))
-                .clone();
-            let selected = self.selected_db.as_ref() == Some(&entry.path);
-            let renamable = self.can_rename(&entry.path, cx);
-            let rename_input = self
-                .renaming
-                .as_ref()
-                .filter(|(path, _)| *path == entry.path)
-                .map(|(_, input)| input.clone());
-            if let Some(input) = rename_input {
-                let cancel = this.clone();
-                list = list.child(
-                    div()
-                        .h(px(40.))
-                        .w(px(260.))
-                        .flex_none()
-                        .flex()
-                        .items_center()
-                        .border_b_1()
-                        .border_color(rgb(T.divider))
-                        .on_key_down(move |event: &gpui::KeyDownEvent, window, cx| {
-                            if event.keystroke.key == "escape" {
-                                cx.stop_propagation();
-                                cancel.update(cx, |screen, cx| {
-                                    screen.finish_rename(false, window, cx)
-                                });
-                            }
-                        })
-                        .child(div().w_full().child(text_input(&input).height(28.))),
-                );
-                continue;
-            }
-            let path = entry.path.clone();
-            let this_click = this.clone();
-            let keys = this.clone();
-            let key_path = path.clone();
-            let (rename_this, duplicate_this) = (this.clone(), this.clone());
-            let (rename_path, duplicate_path) = (entry.path.clone(), entry.path.clone());
-            let reimport_this = this.clone();
-            let update_this = this.clone();
-            let accounts: Vec<(usize, Site, String)> = self
-                .model
-                .read(cx)
-                .config
-                .accounts
-                .iter()
-                .enumerate()
-                .filter(|(_, account)| account.database == entry.path)
-                .map(|(index, account)| (index, account.site, account.name.clone()))
-                .collect();
-            let reimport = entry
-                .source_file
-                .clone()
-                .filter(|file| file.exists())
-                .map(|file| (entry.path.clone(), file));
-            list = list.child(
-                h_flex()
-                    .id(("db", index))
-                    .key_context("FastButton")
-                    .track_focus(&focus)
-                    .focus_visible(|row| row.border_2().border_color(rgb(T.accent)))
-                    .on_key_down(move |event: &gpui::KeyDownEvent, _, cx| {
-                        if !event.keystroke.modifiers.modified()
-                            && matches!(event.keystroke.key.as_str(), "enter" | "space")
-                        {
-                            cx.stop_propagation();
-                            keys.update(cx, |screen, cx| {
-                                screen.selected_db = Some(key_path.clone());
-                                screen.selected = None;
-                                screen.apply_filter(cx);
-                            });
-                        }
-                    })
-                    .h(px(40.))
-                    .w(px(260.))
-                    .flex_none()
-                    .px(px(12.))
-                    .border_r_1()
-                    .border_color(rgb(T.divider))
-                    .justify_between()
-                    .gap(px(8.))
-                    .when(selected, |row| row.bg(rgb(T.selected)))
-                    .cursor_pointer()
-                    .border_b_1()
-                    .border_color(rgb(T.divider))
-                    .hover(|style| style.bg(rgb(T.hover)))
-                    .when(renamable, |row| {
-                        row.tooltip(|window, cx| {
-                            gpui_component::tooltip::Tooltip::new(ui::i18n::t(
-                                "Double-click to rename",
-                            ))
-                            .build(window, cx)
-                        })
-                    })
-                    .on_click(move |event, window, cx| {
-                        let path = path.clone();
-                        this_click.update(cx, |screen, cx| {
-                            if event.click_count() == 2 {
-                                screen.start_rename(path, window, cx);
-                                return;
-                            }
-                            if screen.selected_db.as_ref() != Some(&path) {
-                                screen.selected = None;
-                            }
-                            screen.selected_db = Some(path);
-                            screen.apply_filter(cx);
-                        });
-                    })
-                    .context_menu(move |menu, _, _| {
-                        let (rename_this, duplicate_this) =
-                            (rename_this.clone(), duplicate_this.clone());
-                        let (rename_path, duplicate_path) =
-                            (rename_path.clone(), duplicate_path.clone());
-                        menu.item(
-                            PopupMenuItem::new(ui::i18n::t("Rename database"))
-                                .disabled(!renamable)
-                                .on_click(move |_, window, cx| {
-                                    let path = rename_path.clone();
-                                    rename_this.update(cx, |screen, cx| {
-                                        screen.start_rename(path, window, cx)
-                                    })
-                                }),
-                        )
-                        .item(
-                            PopupMenuItem::new(ui::i18n::t("Duplicate database")).on_click(
-                                move |_, _, cx| {
-                                    let path = duplicate_path.clone();
-                                    duplicate_this
-                                        .update(cx, |screen, cx| screen.duplicate_db(path, cx))
-                                },
-                            ),
-                        )
-                        .map(|mut menu| {
-                            for (index, site, name) in &accounts {
-                                let (index, update_this) = (*index, update_this.clone());
-                                menu = menu.item(
-                                    PopupMenuItem::new(ui::i18n::tf(
-                                        "Update {} from {}",
-                                        &[name, site.name()],
-                                    ))
-                                    .on_click(
-                                        move |_, _, cx| {
-                                            update_this.update(cx, |screen, cx| {
-                                                screen.update_account(index, cx)
-                                            })
-                                        },
-                                    ),
-                                );
-                            }
-                            menu
-                        })
-                        .when_some(reimport.clone(), |menu, target| {
-                            let reimport_this = reimport_this.clone();
-                            menu.item(
-                                PopupMenuItem::new(ui::i18n::t("Re-import from file…")).on_click(
-                                    move |_, _, cx| {
-                                        let target = target.clone();
-                                        reimport_this.update(cx, |screen, cx| {
-                                            screen.confirm_reimport = Some(target);
-                                            cx.notify();
-                                        })
-                                    },
-                                ),
-                            )
-                        })
-                    })
-                    .child(
-                        div()
-                            .min_w_0()
-                            .truncate()
-                            .when(selected, |name| name.font_weight(FontWeight::SEMIBOLD))
-                            .child(entry.name.clone()),
-                    )
-                    .child(
-                        mono(format_count(entry.games))
-                            .flex_none()
-                            .whitespace_nowrap()
-                            .text_size(px(13.))
-                            .text_color(rgb(T.muted)),
-                    ),
-            );
-        }
-        if entries.is_empty() {
-            list = list.child(
-                div()
-                    .py(px(8.))
-                    .text_size(px(13.))
-                    .text_color(rgb(T.muted))
-                    .child(ui::i18n::t(
-                        "No databases yet. Create one with New or import a PGN.",
-                    )),
-            );
-        }
         let busy = self.collection_busy();
-        v_flex()
+        let rename_cancel = this.clone();
+        h_flex()
+            .min_h(px(56.))
             .flex_none()
             .w_full()
-            .min_w_0()
+            .gap(px(12.))
+            .px(px(16.))
+            .py(px(10.))
             .bg(rgb(T.surface))
             .border_b_1()
             .border_color(rgb(T.border))
+            .child(section_label("Database"))
             .child(
-                h_flex()
-                    .flex_wrap()
-                    .justify_between()
-                    .gap(px(12.))
-                    .px(px(16.))
-                    .py(px(12.))
-                    .child(section_label("Databases"))
-                    .child(
-                        h_flex()
-                            .gap(px(6.))
-                            .child({
-                                let this = this.clone();
-                                btn("add-database", "Add database")
-                                    .compact()
-                                    .primary()
-                                    .disabled(busy && self.collection_control.is_none())
-                                    .on_click(move |window, cx| {
-                                        this.update(cx, |screen, cx| {
-                                            screen.open_add_database(window, cx)
-                                        });
-                                    })
-                            })
-                            .child({
-                                let this = this.clone();
-                                btn("manage-database", "Manage")
-                                    .compact()
-                                    .disabled(self.selected_db.is_none() || busy)
-                                    .on_click(move |window, cx| {
-                                        this.update(cx, |screen, cx| {
-                                            screen.open_manager(window, cx)
-                                        });
-                                    })
-                            })
-                            .child({
-                                let this = this.clone();
-                                btn("new-database", "New")
-                                    .compact()
-                                    .tooltip(ui::i18n::t("Create an empty database"))
-                                    .on_click(move |window, cx| {
-                                        this.update(cx, |screen, cx| screen.create_db(window, cx));
-                                    })
-                            })
-                            .child({
-                                let this = this.clone();
-                                btn("import", "Import games").compact().on_click(
-                                    move |window, cx| {
-                                        this.update(cx, |screen, cx| {
-                                            screen.prompt_import(window, cx)
-                                        });
-                                    },
-                                )
-                            }),
-                    ),
+                div()
+                    .w(px(280.))
+                    .min_w_0()
+                    .on_key_down(move |event: &gpui::KeyDownEvent, window, cx| {
+                        if event.keystroke.key == "escape" {
+                            rename_cancel.update(cx, |screen, cx| {
+                                if screen.renaming.is_some() {
+                                    screen.finish_rename(false, window, cx);
+                                }
+                            });
+                        }
+                    })
+                    .child(if let Some((_, input)) = &self.renaming {
+                        text_input(input).into_any_element()
+                    } else {
+                        div()
+                            .bg(rgb(T.bg))
+                            .rounded(px(4.))
+                            .child(
+                                gpui_component::select::Select::new(&self.collection_picker)
+                                    .h(px(34.))
+                                    .text_size(px(13.5))
+                                    .placeholder(ui::i18n::t("Choose database"))
+                                    .search_placeholder(ui::i18n::t("Search databases")),
+                            )
+                            .into_any_element()
+                    }),
             )
-            .child(list)
+            .child(
+                mono(self.db_snapshot.as_ref().map_or_else(
+                    || "—".to_owned(),
+                    |entry| ui::i18n::tf("{} games", &[&format_count(entry.games)]),
+                ))
+                .text_size(px(13.))
+                .text_color(rgb(T.muted))
+                .whitespace_nowrap(),
+            )
+            .child(div().flex_1())
+            .child({
+                let this = this.clone();
+                btn("add-database", "Add database")
+                    .compact()
+                    .primary()
+                    .disabled(busy && self.collection_control.is_none())
+                    .on_click(move |window, cx| {
+                        this.update(cx, |screen, cx| screen.open_add_database(window, cx));
+                    })
+            })
+            .child({
+                let this = this.clone();
+                btn("manage-database", "Manage")
+                    .compact()
+                    .disabled(self.selected_db.is_none() || busy)
+                    .on_click(move |window, cx| {
+                        this.update(cx, |screen, cx| screen.open_manager(window, cx));
+                    })
+            })
     }
 
     /// Keeps game-search controls together beside the results table.
@@ -3036,114 +2928,234 @@ impl DatabaseScreen {
         self.schedule_filter(cx);
     }
 
+    /// Separates game searching from less frequent review, export and collection actions.
     fn render_main_header(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        use gpui_component::{button::Button, menu::DropdownMenu as _};
         let this = cx.entity();
-        let analyse_label: SharedString = match &self.reviewing {
-            Some(reviewing) => format!(
-                "Stop review {}/{}",
-                reviewing
-                    .finished
-                    .load(std::sync::atomic::Ordering::Relaxed)
-                    .min(reviewing.total),
-                reviewing.total
-            )
-            .into(),
-            None => "Analyse all".into(),
-        };
-        let analyse_this = this.clone();
-        let settings_this = this.clone();
-        let clear_this = this.clone();
-        let filtered = self.any_filter_set(cx);
+        let filtered = self.active_filter_count(cx);
+        let selected = self.selected_db.clone();
+        let renamable = selected
+            .as_ref()
+            .is_some_and(|path| self.can_rename(path, cx));
+        let reimport = self.db_snapshot.as_ref().and_then(|entry| {
+            entry
+                .source_file
+                .clone()
+                .map(|file| (entry.path.clone(), file))
+        });
+        let review_running = self.reviewing.is_some();
+        let review_disabled = !review_running
+            && (selected.is_none() || self.review_selected_only && self.selected.is_none());
+        let accounts: Vec<_> = self
+            .model
+            .read(cx)
+            .config
+            .accounts
+            .iter()
+            .enumerate()
+            .filter(|(_, account)| Some(&account.database) == selected.as_ref())
+            .map(|(index, account)| (index, account.site, account.name.clone()))
+            .collect();
         h_flex()
             .flex_wrap()
             .justify_between()
             .gap(px(8.))
-            .min_h(px(36.))
+            .min_h(px(28.))
             .child(
                 h_flex()
-                    .min_w_0()
-                    .gap(px(12.))
-                    .items_baseline()
-                    .child({
-                        let total = self.db_snapshot.as_ref().map_or(0, |entry| entry.games);
-                        let text = if filtered && total != self.stats.games {
-                            ui::i18n::tf(
-                                "{} of {} games",
-                                &[&format_count(self.stats.games), &format_count(total)],
-                            )
-                        } else {
-                            ui::i18n::tf("{} games", &[&format_count(self.stats.games)])
-                        };
-                        mono(text)
-                            .text_size(px(18.))
-                            .font_weight(FontWeight::SEMIBOLD)
-                    })
+                    .gap(px(10.))
                     .child(
-                        div()
-                            .min_w_0()
-                            .truncate()
-                            .text_size(px(14.))
-                            .text_color(rgb(T.muted))
-                            .child(self.summary.clone()),
+                        mono(ui::i18n::tf(
+                            "{} matching games",
+                            &[&format_count(self.stats.games)],
+                        ))
+                        .text_size(px(14.))
+                        .font_weight(FontWeight::SEMIBOLD),
                     )
-                    .when(filtered, |row| {
-                        row.child(
-                            btn("clear-filters", "Clear filters")
-                                .compact()
-                                .icon("icons/x.svg")
-                                .on_click(move |window, cx| {
-                                    clear_this
-                                        .update(cx, |screen, cx| screen.clear_filters(window, cx));
-                                }),
+                    .child({
+                        let this = this.clone();
+                        btn(
+                            "toggle-filters",
+                            if filtered > 0 {
+                                ui::i18n::tf("Filters ({})", &[&filtered.to_string()])
+                            } else {
+                                ui::i18n::t("Filters").to_owned()
+                            },
                         )
+                        .compact()
+                        .selected(self.filters_open)
+                        .on_click(move |_, cx| {
+                            this.update(cx, |screen, cx| {
+                                screen.filters_open = !screen.filters_open;
+                                cx.notify();
+                            });
+                        })
+                    })
+                    .when(filtered > 0, |row| {
+                        row.child({
+                            let this = this.clone();
+                            btn("clear-filters", "Clear filters").compact().on_click(
+                                move |window, cx| {
+                                    this.update(cx, |screen, cx| screen.clear_filters(window, cx));
+                                },
+                            )
+                        })
                     }),
             )
             .child(
                 h_flex()
-                    .gap(px(8.))
+                    .gap(px(6.))
                     .when_some(self.reviewing.as_ref(), |row, reviewing| {
-                        let pause_this = cx.entity();
+                        let this = this.clone();
                         row.when(reviewing.engines == 1, |row| {
                             row.child(
-                                mono(format!("Position {}/{}", reviewing.ply, reviewing.plies))
-                                    .text_size(px(12.))
-                                    .text_color(rgb(T.muted)),
+                                mono(ui::i18n::tf(
+                                    "Position {} / {}",
+                                    &[&reviewing.ply.to_string(), &reviewing.plies.to_string()],
+                                ))
+                                .text_size(px(12.)),
                             )
                         })
+                        .child(
+                            mono(ui::i18n::tf(
+                                "Review {} / {}",
+                                &[
+                                    &reviewing
+                                        .finished
+                                        .load(std::sync::atomic::Ordering::Relaxed)
+                                        .min(reviewing.total)
+                                        .to_string(),
+                                    &reviewing.total.to_string(),
+                                ],
+                            ))
+                            .text_size(px(12.)),
+                        )
                         .child(
                             btn(
                                 "review-pause",
                                 if reviewing.paused.load(std::sync::atomic::Ordering::Relaxed) {
-                                    ui::i18n::t("Resume")
+                                    "Resume"
                                 } else {
-                                    ui::i18n::t("Pause")
+                                    "Pause"
                                 },
                             )
+                            .compact()
                             .on_click(move |_, cx| {
-                                pause_this.update(cx, |screen, cx| screen.toggle_review_pause(cx))
+                                this.update(cx, |screen, cx| screen.toggle_review_pause(cx));
                             }),
                         )
                     })
+                    .child({
+                        let this = this.clone();
+                        btn("import-games", "Import games")
+                            .compact()
+                            .on_click(move |window, cx| {
+                                this.update(cx, |screen, cx| screen.prompt_import(window, cx));
+                            })
+                    })
                     .child(
-                        btn("review-settings-open", "Review settings")
-                            .icon("icons/settings.svg")
-                            .tooltip(ui::i18n::t("Engine, limit and side for Analyse all"))
-                            .on_click(move |_, cx| {
-                                settings_this.update(cx, |screen, cx| {
-                                    screen.set_review_settings_open(true, cx)
-                                })
+                        Button::new("database-more-actions")
+                            .label(ui::i18n::t("More actions"))
+                            .compact()
+                            .h(px(28.))
+                            .dropdown_menu(move |menu, _, _| {
+                                let settings = this.clone();
+                                let review = this.clone();
+                                let export = this.clone();
+                                let rename = this.clone();
+                                let duplicate = this.clone();
+                                let reimport_this = this.clone();
+                                let rename_path = selected.clone();
+                                let duplicate_path = selected.clone();
+                                let mut menu = menu
+                                    .item(
+                                        PopupMenuItem::new(ui::i18n::t("Review settings"))
+                                            .on_click(move |_, _, cx| {
+                                                settings.update(cx, |screen, cx| {
+                                                    screen.set_review_settings_open(true, cx)
+                                                });
+                                            }),
+                                    )
+                                    .item(
+                                        PopupMenuItem::new(ui::i18n::t(if review_running {
+                                            "Stop review"
+                                        } else {
+                                            "Analyse all"
+                                        }))
+                                        .disabled(review_disabled)
+                                        .on_click(
+                                            move |_, _, cx| {
+                                                review.update(cx, |screen, cx| {
+                                                    screen.analyse_all(cx)
+                                                });
+                                            },
+                                        ),
+                                    )
+                                    .item(
+                                        PopupMenuItem::new(ui::i18n::t("Export matching games"))
+                                            .disabled(selected.is_none())
+                                            .on_click(move |_, _, cx| {
+                                                export
+                                                    .update(cx, |screen, cx| screen.export_pgn(cx));
+                                            }),
+                                    )
+                                    .item(
+                                        PopupMenuItem::new(ui::i18n::t("Rename database"))
+                                            .disabled(!renamable)
+                                            .on_click(move |_, window, cx| {
+                                                if let Some(path) = &rename_path {
+                                                    rename.update(cx, |screen, cx| {
+                                                        screen.start_rename(
+                                                            path.clone(),
+                                                            window,
+                                                            cx,
+                                                        )
+                                                    });
+                                                }
+                                            }),
+                                    )
+                                    .item(
+                                        PopupMenuItem::new(ui::i18n::t("Duplicate database"))
+                                            .disabled(selected.is_none())
+                                            .on_click(move |_, _, cx| {
+                                                if let Some(path) = &duplicate_path {
+                                                    duplicate.update(cx, |screen, cx| {
+                                                        screen.duplicate_db(path.clone(), cx)
+                                                    });
+                                                }
+                                            }),
+                                    );
+                                if let Some(target) = &reimport {
+                                    let target = target.clone();
+                                    menu = menu.item(
+                                        PopupMenuItem::new(ui::i18n::t("Re-import from file…"))
+                                            .on_click(move |_, _, cx| {
+                                                reimport_this.update(cx, |screen, cx| {
+                                                    screen.confirm_reimport = Some(target.clone());
+                                                    cx.notify();
+                                                });
+                                            }),
+                                    );
+                                }
+                                for (index, site, name) in &accounts {
+                                    let update = this.clone();
+                                    let index = *index;
+                                    menu =
+                                        menu.item(
+                                            PopupMenuItem::new(ui::i18n::tf(
+                                                "Update {} from {}",
+                                                &[name, site.name()],
+                                            ))
+                                            .on_click(move |_, _, cx| {
+                                                update.update(cx, |screen, cx| {
+                                                    screen.update_account(index, cx)
+                                                });
+                                            }),
+                                        );
+                                }
+                                menu
                             }),
-                    )
-                    .child(
-                        btn("analyse-all", analyse_label)
-                            .disabled(self.review_selected_only && self.selected.is_none())
-                            .on_click(move |_, cx| {
-                                analyse_this.update(cx, |screen, cx| screen.analyse_all(cx));
-                            }),
-                    )
-                    .child(btn("export", "Export PGN").on_click(move |_, cx| {
-                        this.update(cx, |screen, cx| screen.export_pgn(cx));
-                    })),
+                    ),
             )
     }
 
@@ -3355,39 +3367,33 @@ impl DatabaseScreen {
             .into_any_element()
     }
 
+    /// Keeps the score and most common opening leak on a compact summary line.
     fn render_stats(&self) -> impl IntoElement + use<> {
-        let cell = |label: &'static str, value: gpui::AnyElement| {
-            v_flex()
-                .flex_1()
-                .px(px(16.))
-                .py(px(12.))
-                .gap(px(2.))
-                .child(section_label(label))
-                .child(value)
-        };
-        let leak = self.leak_text.clone().unwrap_or_else(|| "—".to_owned());
-        panel()
-            .flex()
-            .flex_row()
+        h_flex()
+            .flex_wrap()
             .flex_none()
-            .h(px(77.))
-            .child(cell(
-                ui::i18n::t("Score"),
-                mono(format!("{:.1}%", self.stats.score_percent))
-                    .text_size(px(22.))
-                    .font_weight(FontWeight::MEDIUM)
-                    .into_any_element(),
-            ))
-            .child(div().w(px(1.)).h_full().bg(rgb(T.border)))
-            .child(cell(
-                "Most common leak",
-                mono(leak)
-                    .text_size(px(16.))
-                    .mt(px(3.))
-                    .font_weight(FontWeight::MEDIUM)
-                    .text_color(rgb(T.warn))
-                    .into_any_element(),
-            ))
+            .gap(px(16.))
+            .text_size(px(13.))
+            .child(
+                h_flex()
+                    .gap(px(8.))
+                    .child(section_label("Score"))
+                    .child(mono(if self.stats.games == 0 {
+                        "—".to_owned()
+                    } else {
+                        format!("{:.1}%", self.stats.score_percent)
+                    })),
+            )
+            .child(
+                h_flex()
+                    .min_w_0()
+                    .gap(px(8.))
+                    .child(section_label("Most common leak"))
+                    .child(
+                        mono(self.leak_text.clone().unwrap_or_else(|| "—".to_owned()))
+                            .text_color(rgb(T.warn)),
+                    ),
+            )
     }
 
     /// A column heading that sorts the table by its column. The sorted one is `fg`
@@ -5212,6 +5218,7 @@ impl Render for DatabaseScreen {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // The table needs its fixed columns, so the preview makes way on narrow windows.
         let show_preview = window.viewport_size().width >= px(1320.);
+        self.sync_collection_picker(window, cx);
         let collections = self.render_collections(cx);
         let left = self.render_left(cx);
         let header = self.render_main_header(cx);
@@ -5241,7 +5248,7 @@ impl Render for DatabaseScreen {
                     .min_h_0()
                     .w_full()
                     .items_start()
-                    .child(left)
+                    .when(self.filters_open, |row| row.child(left))
                     .child(
                         v_flex()
                             .flex_1()

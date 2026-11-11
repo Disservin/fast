@@ -409,6 +409,24 @@ impl DatabaseScreen {
                         "Import PGN, PGN.gz or ZIP, or copy a Fast SQLite database."
                     })),
             );
+        if !busy {
+            let this = this.clone();
+            body = body.child(
+                h_flex().child(
+                    btn("create-empty-database", "Create empty database")
+                        .compact()
+                        .on_click(move |window, cx| {
+                            this.update(cx, |screen, cx| {
+                                if let Some(add) = screen.add_database.take() {
+                                    let name = add.name.read(cx).value().to_string();
+                                    let description = add.description.read(cx).value().to_string();
+                                    screen.create_db(name, description, window, cx);
+                                }
+                            });
+                        }),
+                ),
+            );
+        }
         if !add.web && !busy {
             let this = this.clone();
             body = body.child(
