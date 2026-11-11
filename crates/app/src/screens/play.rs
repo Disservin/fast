@@ -1,5 +1,5 @@
-//! Play against a UCI engine (or a scripted opponent in demo mode), or watch an engine play
-//! itself.
+//! Play against a UCI engine (or a scripted opponent in demo mode), or watch two engines
+//! play each other.
 
 use std::time::{Duration, Instant};
 
@@ -26,11 +26,31 @@ use crate::{
 
 const TIME_CONTROLS: [(u32, u32); 5] = [(3, 2), (5, 0), (10, 5), (15, 10), (30, 0)];
 
-/// Whether the user plays the engine or watches it play both sides.
+/// Whether the user plays an engine or watches two engines play each other.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Mode {
     VsEngine,
-    SelfPlay,
+    Engines,
+}
+
+/// An engine picked for a game, and how strongly it should play.
+struct EngineChoice {
+    engine: TextSelect,
+    strength: Entity<SliderState>,
+    elo: u32,
+    /// Play as well as it can instead of at `elo`.
+    full: bool,
+}
+
+/// Finds one of the screen's engine choices, for handlers that outlive a borrow of it.
+type PickChoice = fn(&mut PlayScreen) -> &mut EngineChoice;
+
+/// The engine that plays White when engines play both sides.
+struct WhiteEngine {
+    name: String,
+    rating: Option<u32>,
+    engine: Option<EngineHandle>,
+    _reader: Option<Task<()>>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -63,8 +83,9 @@ struct Game {
     tree: GameTree,
     current: NodeId,
     user: Color,
-    /// The engine plays both sides and the board is read-only.
-    self_play: bool,
+    /// Set when engines play both sides and the board is read-only. `opponent_name`,
+    /// `opponent_rating` and `engine` are then Black's.
+    white: Option<WhiteEngine>,
     white_ms: u64,
     black_ms: u64,
     increment_ms: u64,
@@ -84,9 +105,23 @@ struct Game {
     _clock: Option<Task<()>>,
 }
 
+impl Game {
+    /// Engines play both sides.
+    fn self_play(&self) -> bool {
+        self.white.is_some()
+    }
+
+    /// Every engine process this game runs.
+    fn engines(&self) -> impl Iterator<Item = &EngineHandle> {
+        self.engine
+            .iter()
+            .chain(self.white.iter().filter_map(|white| white.engine.as_ref()))
+    }
+}
+
 impl Drop for Game {
     fn drop(&mut self) {
-        if let Some(engine) = &self.engine {
+        for engine in self.engines() {
             engine.quit();
         }
     }
@@ -99,13 +134,13 @@ pub struct PlayScreen {
     model: Entity<AppModel>,
     workspace: WeakEntity<Workspace>,
     board: Entity<BoardView>,
-    opponent: TextSelect,
+    /// The engine the user plays against.
+    opponent: EngineChoice,
+    /// The two sides of an engine game.
+    white: EngineChoice,
+    black: EngineChoice,
     opponents: Vec<EngineConfig>,
     mode: Mode,
-    strength: Entity<SliderState>,
-    strength_value: u32,
-    /// The engine plays as well as it can instead of at `strength_value`.
-    full_strength: bool,
     time_index: Option<usize>,
     custom_time: Entity<gpui_component::input::InputState>,
     colour: ColourChoice,
@@ -129,7 +164,7 @@ impl PlayScreen {
         self.game.as_ref().is_some_and(|game| {
             game.result.is_none()
                 && game.engine.is_some()
-                && (game.self_play || game.tree.node(game.current).pos.turn() != game.user)
+                && (game.self_play() || game.tree.node(game.current).pos.turn() != game.user)
         })
     }
 
@@ -155,7 +190,37 @@ impl PlayScreen {
         board.update(cx, |board, cx| board.set_prefs(prefs, cx));
         let opponents = model.read(cx).play_engines();
         let names = opponent_names(&opponents);
-        let opponent = new_select(names, 0, window, cx);
+        // An engine game starts as a match between the first two engines.
+        let other = usize::from(opponents.len() > 1);
+        let mut subscriptions = Vec::new();
+        let mut choice = |index: usize, full: bool, pick: PickChoice, cx: &mut Context<Self>| {
+            let strength = cx.new(|_| {
+                SliderState::new()
+                    .min(1320.)
+                    .max(3190.)
+                    .step(10.)
+                    .default_value(1800.)
+            });
+            subscriptions.push(
+                cx.subscribe(&strength, move |this, _, event: &SliderEvent, cx| {
+                    if let SliderEvent::Change(value) = event {
+                        pick(this).elo = value.start().round() as u32;
+                        cx.notify();
+                    }
+                }),
+            );
+            let engine = new_select(names.clone(), index, window, cx);
+            subscriptions.push(cx.subscribe(&engine, |_, _, _: &SelectEvent<_>, cx| cx.notify()));
+            EngineChoice {
+                engine,
+                strength,
+                elo: 1800,
+                full,
+            }
+        };
+        let opponent = choice(0, false, |screen| &mut screen.opponent, cx);
+        let white = choice(0, true, |screen| &mut screen.white, cx);
+        let black = choice(other, true, |screen| &mut screen.black, cx);
         let start_from = new_select(
             [
                 "Starting position",
@@ -170,13 +235,6 @@ impl PlayScreen {
             window,
             cx,
         );
-        let strength = cx.new(|_| {
-            SliderState::new()
-                .min(1320.)
-                .max(3190.)
-                .step(10.)
-                .default_value(1800.)
-        });
         let custom_time = new_input("", "12+3", window, cx);
         let chess960_number = new_input(
             model.read(cx).config.chess960_number.min(959).to_string(),
@@ -185,7 +243,7 @@ impl PlayScreen {
             cx,
         );
         let start_fen = new_input("", "Paste a FEN", window, cx);
-        let subscriptions = vec![
+        subscriptions.extend([
             cx.subscribe(
                 &chess960_number,
                 |_, _, _: &gpui_component::input::InputEvent, cx| cx.notify(),
@@ -202,13 +260,6 @@ impl PlayScreen {
                 }
                 BoardEvent::Square { .. } => {}
             }),
-            cx.subscribe(&strength, |this, _, event: &SliderEvent, cx| {
-                if let SliderEvent::Change(value) = event {
-                    this.strength_value = value.start().round() as u32;
-                    cx.notify();
-                }
-            }),
-            cx.subscribe(&opponent, |_, _, _: &SelectEvent<_>, cx| cx.notify()),
             cx.subscribe(&start_from, |_, _, _: &SelectEvent<_>, cx| cx.notify()),
             cx.subscribe_in(
                 &model,
@@ -222,13 +273,24 @@ impl PlayScreen {
                     ModelEvent::Engines => {
                         this.opponents = model.read(cx).play_engines();
                         let names = opponent_names(&this.opponents);
-                        this.opponent = new_select(names, 0, window, cx);
+                        let other = usize::from(this.opponents.len() > 1);
+                        for (pick, index) in [
+                            ((|screen| &mut screen.opponent) as PickChoice, 0),
+                            (|screen| &mut screen.white, 0),
+                            (|screen| &mut screen.black, other),
+                        ] {
+                            let engine = new_select(names.clone(), index, window, cx);
+                            this._subscriptions.push(
+                                cx.subscribe(&engine, |_, _, _: &SelectEvent<_>, cx| cx.notify()),
+                            );
+                            pick(this).engine = engine;
+                        }
                         cx.notify();
                     }
                     _ => {}
                 },
             ),
-        ];
+        ]);
         let demo = model.read(cx).demo;
         let mut this = Self {
             recovery: crate::recovery::Recovery::load(&recovery_path),
@@ -238,11 +300,10 @@ impl PlayScreen {
             workspace,
             board,
             opponent,
+            white,
+            black,
             opponents,
             mode: Mode::VsEngine,
-            strength,
-            strength_value: 1800,
-            full_strength: false,
             time_index: Some(2),
             custom_time,
             colour: ColourChoice::White,
@@ -267,7 +328,7 @@ impl PlayScreen {
         self.suspended = true;
         if let Some(game) = &mut self.game {
             game._clock = None;
-            if let Some(engine) = &game.engine {
+            for engine in game.engines() {
                 engine.stop();
             }
         }
@@ -291,13 +352,12 @@ impl PlayScreen {
 
     pub fn breadcrumb(&self) -> SharedString {
         match &self.game {
-            Some(game) if game.self_play => format!(
-                "{} {}, {}",
-                game.opponent_name,
-                ui::i18n::t("self-play"),
-                game.label
-            )
-            .into(),
+            Some(Game {
+                white: Some(white),
+                opponent_name,
+                label,
+                ..
+            }) => format!("{} vs {opponent_name}, {label}", white.name).into(),
             Some(game) => format!("vs {}, {}", game.opponent_name, game.label).into(),
             None => ui::i18n::t("New game").into(),
         }
@@ -326,13 +386,13 @@ impl PlayScreen {
             tree,
             current: node,
             user: Color::White,
-            self_play: false,
+            white: None,
             white_ms: 552_000,
             black_ms: 521_000,
             increment_ms: 5_000,
             result: None,
             opponent_name: "Stockfish".to_owned(),
-            opponent_rating: Some(self.strength_value),
+            opponent_rating: Some(self.opponent.elo),
             label: "10+5".to_owned(),
             takebacks: false,
             premoves: true,
@@ -354,9 +414,34 @@ impl PlayScreen {
         }
     }
 
-    fn opponent_config(&self, cx: &gpui::App) -> Option<EngineConfig> {
-        let index = self.opponent.read(cx).selected_index(cx)?.row;
+    /// The engine picked in `choice`, or `None` when no engine is set up for Play.
+    fn chosen_engine(&self, choice: &EngineChoice, cx: &gpui::App) -> Option<EngineConfig> {
+        let index = choice.engine.read(cx).selected_index(cx)?.row;
         self.opponents.get(index).cloned()
+    }
+
+    /// Starts a fresh process of `config` for one game, limited to `elo` if given.
+    fn spawn_engine(
+        &self,
+        config: &EngineConfig,
+        elo: Option<u32>,
+        cx: &mut Context<Self>,
+    ) -> (EngineHandle, Task<()>) {
+        // Analysis-only settings would just weaken or slow the search.
+        let mut options: Vec<(String, String)> = config
+            .options
+            .iter()
+            .filter(|(name, _)| !matches!(name.as_str(), "MultiPV" | "UCI_ShowWDL"))
+            .map(|(name, value)| (name.clone(), value.clone()))
+            .collect();
+        if let Some(elo) = elo {
+            options.push(("UCI_LimitStrength".to_owned(), "true".to_owned()));
+            options.push(("UCI_Elo".to_owned(), elo.to_string()));
+        }
+        // Its first search sends `ucinewgame`: each game gets its own process.
+        let handle = EngineHandle::spawn(config.path.clone(), Vec::new(), options);
+        let reader = self.spawn_reader(&handle, cx);
+        (handle, reader)
     }
 
     /// The position the new game starts from, or `None` when the pasted FEN is not valid.
@@ -411,8 +496,20 @@ impl PlayScreen {
             return;
         };
         let demo = self.model.read(cx).demo;
-        let config = self.opponent_config(cx);
-        let Some(config) = config else {
+        let self_play = self.mode == Mode::Engines;
+        let (white_choice, choice) = if self_play {
+            (Some(&self.white), &self.black)
+        } else {
+            (None, &self.opponent)
+        };
+        let pick = |choice: &EngineChoice| {
+            let config = self.chosen_engine(choice, cx)?;
+            let elo = (supports_limit(&config) && !choice.full).then_some(choice.elo);
+            Some((config, elo))
+        };
+        // `white` is `Some(None)` when an engine game has no engine to put on that side.
+        let white = white_choice.map(pick);
+        let (Some((config, elo)), false) = (pick(choice), white == Some(None)) else {
             self.model
                 .toast("Add an engine for Play in Settings › Engines first.", cx);
             return;
@@ -422,12 +519,16 @@ impl PlayScreen {
             return;
         };
         if tree.variant == chess_core::Variant::Chess960 {
-            if !demo
-                && !config
+            let supported = |config: &EngineConfig| {
+                config
                     .info
                     .options
                     .iter()
                     .any(|option| option.name == "UCI_Chess960")
+            };
+            if !demo
+                && !(supported(&config)
+                    && white.iter().flatten().all(|(white, _)| supported(white)))
             {
                 self.model.toast("No Chess960 support", cx);
                 return;
@@ -444,7 +545,6 @@ impl PlayScreen {
             .last()
             .copied()
             .unwrap_or(GameTree::ROOT);
-        let self_play = self.mode == Mode::SelfPlay;
         let user = match self.colour {
             _ if self_play => Color::White,
             ColourChoice::White => Color::White,
@@ -462,18 +562,31 @@ impl PlayScreen {
             }
         };
         let ms = u64::from(minutes) * 60_000;
-        let limited = supports_limit(&config) && !self.full_strength;
+        let white = white.flatten().map(|(config, elo)| {
+            let (engine, reader) = if demo {
+                (None, None)
+            } else {
+                let (engine, reader) = self.spawn_engine(&config, elo, cx);
+                (Some(engine), Some(reader))
+            };
+            WhiteEngine {
+                name: config.name,
+                rating: elo,
+                engine,
+                _reader: reader,
+            }
+        });
         let mut game = Game {
             tree,
             current,
             user,
-            self_play,
+            white,
             white_ms: ms,
             black_ms: ms,
             increment_ms: u64::from(increment) * 1000,
             result: None,
             opponent_name: config.name.clone(),
-            opponent_rating: limited.then_some(self.strength_value),
+            opponent_rating: elo,
             label: format!("{minutes}+{increment}"),
             takebacks: self.allow_takebacks && !self_play,
             premoves: self.allow_premoves && !self_play,
@@ -485,21 +598,9 @@ impl PlayScreen {
             _clock: None,
         };
         if !demo {
-            // Analysis-only settings would just weaken or slow the opponent's search.
-            let mut options: Vec<(String, String)> = config
-                .options
-                .iter()
-                .filter(|(name, _)| !matches!(name.as_str(), "MultiPV" | "UCI_ShowWDL"))
-                .map(|(name, value)| (name.clone(), value.clone()))
-                .collect();
-            if limited {
-                options.push(("UCI_LimitStrength".to_owned(), "true".to_owned()));
-                options.push(("UCI_Elo".to_owned(), self.strength_value.to_string()));
-            }
-            // Its first search sends `ucinewgame`: each game gets its own process.
-            let handle = EngineHandle::spawn(config.path.clone(), Vec::new(), options);
-            game._engine_reader = Some(self.spawn_reader(&handle, cx));
-            game.engine = Some(handle);
+            let (engine, reader) = self.spawn_engine(&config, elo, cx);
+            game._engine_reader = Some(reader);
+            game.engine = Some(engine);
         }
         self.game = Some(game);
         self.board
@@ -606,7 +707,8 @@ impl PlayScreen {
         game.tree.set_header("Result", result_tag);
         game.result = Some(text);
         game._clock = None;
-        if let Some(engine) = game.engine.take() {
+        let white = game.white.as_mut().and_then(|white| white.engine.take());
+        for engine in game.engine.take().into_iter().chain(white) {
             engine.stop();
             engine.quit();
         }
@@ -623,7 +725,7 @@ impl PlayScreen {
         let last = node.mv.as_ref().and_then(|mv| Some((mv.from()?, mv.to())));
         let user = game.user;
         let active = game.result.is_none();
-        let interactive = active && !game.self_play;
+        let interactive = active && !game.self_play();
         let premoves = game.premoves && interactive;
         let premove = game.premove.filter(|_| premoves);
         self.board.update(cx, |board, cx| {
@@ -685,7 +787,7 @@ impl PlayScreen {
     fn user_move(&mut self, mv: Move, cx: &mut Context<Self>) {
         let Some(game) = &self.game else { return };
         let turn = game.tree.node(game.current).pos.turn();
-        if game.result.is_some() || game.self_play || turn != game.user {
+        if game.result.is_some() || game.self_play() || turn != game.user {
             return;
         }
         self.apply_move(mv, cx);
@@ -699,7 +801,8 @@ impl PlayScreen {
             return;
         }
         let pos = &game.tree.node(game.current).pos;
-        if pos.turn() == game.user && !game.self_play {
+        let turn = pos.turn();
+        if turn == game.user && !game.self_play() {
             return;
         }
         if demo {
@@ -718,8 +821,12 @@ impl PlayScreen {
             }));
             return;
         }
-        let Some(engine) = &game.engine else { return };
         game.search_id += 1;
+        let engine = match &game.white {
+            Some(white) if turn == Color::White => &white.engine,
+            _ => &game.engine,
+        };
+        let Some(engine) = engine else { return };
         let moves = game
             .tree
             .path_to(game.current)
@@ -768,7 +875,7 @@ impl PlayScreen {
 
     fn resign(&mut self, cx: &mut Context<Self>) {
         let Some(game) = &self.game else { return };
-        if game.self_play {
+        if game.self_play() {
             self.finish("Game stopped".to_owned(), cx);
             return;
         }
@@ -830,8 +937,8 @@ impl PlayScreen {
         let Some(game) = &self.game else { return };
         let mut tree = game.tree.clone();
         let player = self.model.read(cx).config.player_name.clone();
-        let (white, black) = if game.self_play {
-            (game.opponent_name.clone(), game.opponent_name.clone())
+        let (white, black) = if let Some(white) = &game.white {
+            (white.name.clone(), game.opponent_name.clone())
         } else if game.user == Color::White {
             (player, game.opponent_name.clone())
         } else {
@@ -900,7 +1007,7 @@ impl PlayScreen {
         let takeback_this = this.clone();
         let start_this = this.clone();
         let can_start = !self.opponents.is_empty();
-        let self_play = self.mode == Mode::SelfPlay;
+        let self_play = self.mode == Mode::Engines;
         let from_fen = self
             .start_from
             .read(cx)
@@ -925,7 +1032,7 @@ impl PlayScreen {
             "play-mode",
             vec![
                 (Mode::VsEngine, ui::i18n::t("Vs engine").into(), false),
-                (Mode::SelfPlay, ui::i18n::t("Self-play").into(), false),
+                (Mode::Engines, ui::i18n::t("Engine vs engine").into(), false),
             ],
             self.mode,
             move |mode, _, cx| {
@@ -935,13 +1042,18 @@ impl PlayScreen {
                 });
             },
         );
-        let engine_label = if self_play { "Engine" } else { "Opponent" };
-        // Without an engine to ask, the slider stays as a preview of the setup.
-        let limitable = self
-            .opponent_config(cx)
-            .is_none_or(|config| supports_limit(&config));
-        let limited = limitable && !self.full_strength;
-        let full_this = this.clone();
+        let engines = if self_play {
+            v_flex()
+                .child(self.render_choice("White", &self.white, |screen| &mut screen.white, cx))
+                .child(self.render_choice("Black", &self.black, |screen| &mut screen.black, cx))
+        } else {
+            self.render_choice(
+                "Opponent",
+                &self.opponent,
+                |screen| &mut screen.opponent,
+                cx,
+            )
+        };
         v_flex()
             .id("play-setup")
             .w(px(300.))
@@ -956,46 +1068,7 @@ impl PlayScreen {
             .border_color(rgb(T.border))
             .child(section_label("New game").mb(px(10.)))
             .child(mode.mb(px(14.)))
-            .child(field(ui::i18n::t(engine_label), select_el(&self.opponent)).mb(px(14.)))
-            .child(
-                v_flex()
-                    .mb(px(16.))
-                    .gap(px(6.))
-                    .child(
-                        h_flex()
-                            .justify_between()
-                            .text_size(px(13.))
-                            .text_color(rgb(T.muted))
-                            .child(ui::i18n::t("Strength"))
-                            .when(limited, |row| {
-                                row.child(
-                                    mono(self.strength_value.to_string()).text_color(rgb(T.fg_2)),
-                                )
-                            })
-                            .when(!limitable, |row| {
-                                row.child(
-                                    div()
-                                        .text_color(rgb(T.fg_2))
-                                        .child(ui::i18n::t("Full strength")),
-                                )
-                            }),
-                    )
-                    .when(limited, |column| {
-                        column.child(Slider::new(&self.strength).bg(rgb(T.accent)))
-                    })
-                    .when(limitable, |column| {
-                        column.child(
-                            check("full-strength", self.full_strength, "Full strength").on_change(
-                                move |value, _, cx| {
-                                    full_this.update(cx, |screen, cx| {
-                                        screen.full_strength = value;
-                                        cx.notify();
-                                    });
-                                },
-                            ),
-                        )
-                    }),
-            )
+            .child(engines)
             .child(field("Time control", grid).mb(px(14.)))
             .when(self.time_index.is_none(), |column| {
                 column.child(div().mb(px(14.)).child(text_input(&self.custom_time)))
@@ -1112,21 +1185,14 @@ impl PlayScreen {
                     ))
             })
             .child(
-                btn(
-                    "start-game",
-                    if self_play {
-                        "Start self-play"
-                    } else {
-                        "Start game"
-                    },
-                )
-                .primary()
-                .full()
-                .h(40.)
-                .disabled(!can_start)
-                .on_click(move |window, cx| {
-                    start_this.update(cx, |screen, cx| screen.start_game(window, cx));
-                }),
+                btn("start-game", "Start game")
+                    .primary()
+                    .full()
+                    .h(40.)
+                    .disabled(!can_start)
+                    .on_click(move |window, cx| {
+                        start_this.update(cx, |screen, cx| screen.start_game(window, cx));
+                    }),
             )
             .when(!can_start, |column| {
                 column.child(
@@ -1137,6 +1203,64 @@ impl PlayScreen {
                         .child(ui::i18n::t("Add an engine in Settings › Engines to play.")),
                 )
             })
+    }
+
+    /// One engine of the new game: which engine, and how strongly it plays.
+    fn render_choice(
+        &self,
+        label: &'static str,
+        choice: &EngineChoice,
+        pick: PickChoice,
+        cx: &mut Context<Self>,
+    ) -> gpui::Div {
+        let this = cx.entity();
+        // Without an engine to ask, the slider stays as a preview of the setup.
+        let limitable = self
+            .chosen_engine(choice, cx)
+            .is_none_or(|config| supports_limit(&config));
+        let limited = limitable && !choice.full;
+        v_flex()
+            .child(field(ui::i18n::t(label), select_el(&choice.engine)).mb(px(14.)))
+            .child(
+                v_flex()
+                    .mb(px(16.))
+                    .gap(px(6.))
+                    .child(
+                        h_flex()
+                            .justify_between()
+                            .text_size(px(13.))
+                            .text_color(rgb(T.muted))
+                            .child(ui::i18n::t("Strength"))
+                            .when(limited, |row| {
+                                row.child(mono(choice.elo.to_string()).text_color(rgb(T.fg_2)))
+                            })
+                            .when(!limitable, |row| {
+                                row.child(
+                                    div()
+                                        .text_color(rgb(T.fg_2))
+                                        .child(ui::i18n::t("Full strength")),
+                                )
+                            }),
+                    )
+                    .when(limited, |column| {
+                        column.child(Slider::new(&choice.strength).bg(rgb(T.accent)))
+                    })
+                    .when(limitable, |column| {
+                        column.child(
+                            check(
+                                SharedString::from(format!("full-strength-{label}")),
+                                choice.full,
+                                "Full strength",
+                            )
+                            .on_change(move |value, _, cx| {
+                                this.update(cx, |screen, cx| {
+                                    pick(screen).full = value;
+                                    cx.notify();
+                                });
+                            }),
+                        )
+                    }),
+            )
     }
 
     fn clock_bar(&self, opponent: bool, cx: &gpui::App) -> impl IntoElement + use<> {
@@ -1161,12 +1285,18 @@ impl PlayScreen {
                 || ui::i18n::t("Opponent").into(),
                 |engine| engine.name.clone().into(),
             ),
-            (false, Some(game)) if game.self_play => game.opponent_name.clone().into(),
+            (false, Some(game)) if game.self_play() => game
+                .white
+                .as_ref()
+                .map_or_else(SharedString::default, |white| white.name.clone().into()),
             (false, _) => ui::i18n::t("You").into(),
         };
-        let self_play = game.is_some_and(|game| game.self_play);
-        let rating = if opponent || self_play {
+        let self_play = game.is_some_and(|game| game.self_play());
+        let rating = if opponent {
             game.and_then(|game| game.opponent_rating)
+                .map(|rating| rating.to_string())
+        } else if self_play {
+            game.and_then(|game| game.white.as_ref()?.rating)
                 .map(|rating| rating.to_string())
         } else {
             self.model
@@ -1318,7 +1448,7 @@ impl PlayScreen {
         }
         let result = game.and_then(|game| game.result.clone());
         let in_game = game.is_some_and(|game| game.result.is_none());
-        let self_play = game.is_some_and(|game| game.self_play);
+        let self_play = game.is_some_and(|game| game.self_play());
         let draw_this = this.clone();
         let takeback_this = this.clone();
         let resign_this = this.clone();

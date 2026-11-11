@@ -512,9 +512,7 @@ pub fn translate(language: Language, text: &str) -> &str {
             "Moves from here" => "Züge ab hier",
             "New game vs engine" => "Neue Partie gegen Engine",
             "Vs engine" => "Gegen Engine",
-            "Self-play" => "Selbstspiel",
-            "self-play" => "Selbstspiel",
-            "Start self-play" => "Selbstspiel starten",
+            "Engine vs engine" => "Engine gegen Engine",
             "Game stopped" => "Partie abgebrochen",
             "your move" => "am Zug",
             "No databases yet. Create one with New or import a PGN." => {
