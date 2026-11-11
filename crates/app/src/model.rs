@@ -171,15 +171,30 @@ fn pick_path_kind(
         // Cancelled by the user.
         Ok(Ok(None)) => {}
         Ok(Err(err)) => {
-            log::info!("no file dialog: {err:#}");
-            model.update(cx, |model, cx| {
-                model.pending_path = Some(PendingPath {
-                    title: title.into(),
-                    multiple,
-                    on_paths: Box::new(on_paths),
-                });
-                cx.notify();
-            });
+            log::info!("no desktop file dialog: {err:#}");
+            let native = cx
+                .background_spawn(async move {
+                    crate::file_dialog::pick(ui::i18n::t(title), save_name, directory, multiple)
+                })
+                .await;
+            match native {
+                Ok(paths) => {
+                    if !paths.is_empty() {
+                        cx.update(|cx| on_paths(paths, cx));
+                    }
+                }
+                Err(err) => {
+                    log::info!("no alternative native file dialog: {err:#}");
+                    model.update(cx, |model, cx| {
+                        model.pending_path = Some(PendingPath {
+                            title: title.into(),
+                            multiple,
+                            on_paths: Box::new(on_paths),
+                        });
+                        cx.notify();
+                    });
+                }
+            }
         }
         Err(_) => {}
     })

@@ -211,6 +211,12 @@ imports or restored tabs. A separate games toolbar shows matching counts, toggle
 the filter sidebar with an active-group count, and offers import. Review/export,
 rename, duplicate, re-import and account updates live under More actions. Score and
 opening leak use one compact summary row. The optional preview stays beside the table.
+File selection first uses GPUI's platform-native picker. If the Linux desktop portal
+is unavailable, `file_dialog.rs` runs a native alternative on a background worker:
+Windows common dialogs through PowerShell under WSL (with `wslpath` conversion), or
+Zenity/KDialog on Linux. Cancel returns no paths. The typed-path fallback is used only
+when native alternatives fail; open, save, folder and multi-file requests share this flow.
+
 Database collection management lives in `screens/database/management.rs`. It loads
 collection statistics, saves names/descriptions in SQLite `meta`, merges exact player
 names and previews duplicate or empty-game IDs on background workers. Cleanup uses

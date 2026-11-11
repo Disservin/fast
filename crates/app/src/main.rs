@@ -18,6 +18,7 @@ mod demo;
 mod engine_catalog;
 mod explorer;
 mod fastchess;
+mod file_dialog;
 mod game_download;
 mod kibitz;
 mod licenses;
