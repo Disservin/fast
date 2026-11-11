@@ -656,11 +656,27 @@ impl LiveAnalysis {
     pub fn set_limit(&mut self, limit: AnalysisLimit, cx: &mut Context<Self>) {
         self.model.update(cx, |model, cx| {
             model.config.analysis_limit = limit;
+            if limit != AnalysisLimit::Infinite {
+                model.config.finite_limit = limit;
+            }
             model.save_config(cx);
         });
         self.search(cx);
         cx.emit(LiveEvent::Updated);
         cx.notify();
+    }
+
+    /// Switches between searching without end and the limit chosen in Search options.
+    pub fn toggle_infinite(&mut self, cx: &mut Context<Self>) {
+        let config = &self.model.read(cx).config;
+        let limit = match config.analysis_limit {
+            AnalysisLimit::Infinite => match config.finite_limit {
+                AnalysisLimit::Infinite => AnalysisLimit::default(),
+                finite => finite,
+            },
+            _ => AnalysisLimit::Infinite,
+        };
+        self.set_limit(limit, cx);
     }
 
     /// Explicitly replaces a restored record with a fresh search under current settings.

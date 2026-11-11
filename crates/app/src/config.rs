@@ -315,15 +315,22 @@ pub fn default_shortcuts() -> BTreeMap<String, String> {
 }
 
 /// When live analysis stops on its own.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AnalysisLimit {
-    #[default]
     Infinite,
     Depth(u32),
     Seconds(u32),
     /// A fixed node count per search, as backwards analysis uses.
     Nodes(u64),
+}
+
+impl Default for AnalysisLimit {
+    /// Half a minute per position: deep enough for most questions, and the engines go
+    /// quiet on their own instead of holding every core until the user steps in.
+    fn default() -> Self {
+        Self::Seconds(30)
+    }
 }
 
 /// Nodes searched per position when a game is analysed backwards.
@@ -535,6 +542,8 @@ pub struct Config {
     pub pause_in_background: bool,
     pub kibitz: KibitzConfig,
     pub analysis_limit: AnalysisLimit,
+    /// The limit analysis goes back to when the user turns infinite search off.
+    pub finite_limit: AnalysisLimit,
     /// Nodes each engine searches per position when a game is analysed backwards,
     /// whatever the search limit for ordinary analysis.
     pub backward_nodes: u64,
@@ -664,6 +673,7 @@ impl Default for Config {
             pause_in_background: false,
             kibitz: KibitzConfig::default(),
             analysis_limit: AnalysisLimit::default(),
+            finite_limit: AnalysisLimit::default(),
             backward_nodes: DEFAULT_BACKWARD_NODES,
             view: AnalysisView::default(),
             fastchess_path: None,

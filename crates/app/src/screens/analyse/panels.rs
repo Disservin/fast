@@ -55,11 +55,12 @@ fn limit_progress(stats: &engine::AnalysisUpdate, limit: AnalysisLimit) -> Optio
     Some(fraction.clamp(0., 1.) as f32)
 }
 
-const LIMITS: [(AnalysisLimit, &str); 5] = [
+const LIMITS: [(AnalysisLimit, &str); 6] = [
     (AnalysisLimit::Infinite, "∞"),
     (AnalysisLimit::Depth(20), "d20"),
     (AnalysisLimit::Depth(30), "d30"),
     (AnalysisLimit::Seconds(10), "10s"),
+    (AnalysisLimit::Seconds(30), "30s"),
     (AnalysisLimit::Seconds(60), "60s"),
 ];
 
@@ -808,7 +809,22 @@ impl AnalyseScreen {
                     }
                     tabs
                 }))
-                .child(div().flex_1()),
+                .child(div().flex_1())
+                // Always in reach, on either tab: one click lifts or restores the limit.
+                .children((!engines.is_empty()).then(|| {
+                    let this = this.clone();
+                    btn("infinite-search", "Infinite")
+                        .mini()
+                        .selected(limit == AnalysisLimit::Infinite)
+                        .tooltip(ui::i18n::t(
+                            "Search until stopped, instead of up to the search limit",
+                        ))
+                        .on_click(move |_, cx| {
+                            this.update(cx, |screen, cx| {
+                                screen.live.update(cx, |live, cx| live.toggle_infinite(cx));
+                            });
+                        })
+                })),
         );
         if engines.is_empty() {
             return body

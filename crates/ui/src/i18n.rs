@@ -586,6 +586,9 @@ pub fn translate(language: Language, text: &str) -> &str {
             "Save current" => "Aktuelle speichern",
             "Scoresheet" => "Partieformular",
             "Search limit" => "Suchlimit",
+            "Search until stopped, instead of up to the search limit" => {
+                "Suchen bis zum Anhalten statt bis zum Suchlimit"
+            }
             "Sends debug on and shows the raw engine output in its own window" => {
                 "Aktiviert den Debug-Modus und zeigt die Engine-Ausgabe in einem eigenen Fenster"
             }
