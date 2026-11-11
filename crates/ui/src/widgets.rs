@@ -326,7 +326,13 @@ impl RenderOnce for Btn {
             })
             .read(cx)
             .clone();
-        let (bg, hover, fg, border): (Option<u32>, u32, u32, Option<u32>) = match self.kind {
+        // A disabled filled button would put `faint` text on `accent`, which is
+        // unreadable in the light palettes: it looks like a disabled normal one instead.
+        let kind = match self.kind {
+            BtnKind::Primary | BtnKind::Active if self.disabled => BtnKind::Normal,
+            kind => kind,
+        };
+        let (bg, hover, fg, border): (Option<u32>, u32, u32, Option<u32>) = match kind {
             BtnKind::Normal => (Some(T.surface), T.hover, T.fg, Some(T.border_strong)),
             BtnKind::Primary => (Some(T.accent), T.accent_hover, T.accent_fg, None),
             BtnKind::Selected => (Some(T.selected), T.selected, T.fg, Some(T.accent)),
