@@ -681,6 +681,7 @@ impl TrainScreen {
         };
         let add_this = this.clone();
         let gaps_this = this.clone();
+        let import_this = this.clone();
         v_flex()
             .w(px(300.))
             .h_full()
@@ -751,20 +752,30 @@ impl TrainScreen {
                         h_flex()
                             .px(px(18.))
                             .gap(px(6.))
-                            .child(btn("add-line", "Add line").on_click(move |window, cx| {
-                                add_this.update(cx, |screen, cx| {
-                                    screen.adding = !screen.adding;
-                                    if screen.adding {
-                                        screen.add_line.update(cx, |input, cx| {
-                                            input.focus(window, cx);
-                                        });
-                                    }
-                                    cx.notify();
-                                });
-                            }))
-                            .child(btn("find-gaps", "Find gaps").on_click(move |_, cx| {
-                                gaps_this.update(cx, |screen, cx| screen.find_gaps(cx));
-                            })),
+                            .child(btn("add-line", "Add line").compact().on_click(
+                                move |window, cx| {
+                                    add_this.update(cx, |screen, cx| {
+                                        screen.adding = !screen.adding;
+                                        if screen.adding {
+                                            screen.add_line.update(cx, |input, cx| {
+                                                input.focus(window, cx);
+                                            });
+                                        }
+                                        cx.notify();
+                                    });
+                                },
+                            ))
+                            .child(btn("find-gaps", "Find gaps").compact().on_click(
+                                move |_, cx| {
+                                    gaps_this.update(cx, |screen, cx| screen.find_gaps(cx));
+                                },
+                            ))
+                            .child(btn("import-pgn", "Import PGN").compact().on_click(
+                                move |window, cx| {
+                                    import_this
+                                        .update(cx, |screen, cx| screen.prompt_open(window, cx));
+                                },
+                            )),
                     ),
             )
     }

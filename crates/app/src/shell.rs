@@ -2171,24 +2171,10 @@ impl Workspace {
             }
             row = row.child(search_box);
         }
-        match self.mode {
-            Mode::Analyse => {
-                if let Some(button) = self.engine_button(cx) {
-                    row = row.child(button);
-                }
-            }
-            Mode::Train => {
-                let settings_this = this.clone();
-                row = row.child(btn("repertoires", ui::i18n::t("Repertoires")).on_click(
-                    move |window, cx| {
-                        settings_this.update(cx, |this, cx| {
-                            this.train
-                                .update(cx, |train, cx| train.prompt_open(window, cx));
-                        });
-                    },
-                ));
-            }
-            _ => {}
+        if self.mode == Mode::Analyse
+            && let Some(button) = self.engine_button(cx)
+        {
+            row = row.child(button);
         }
         let settings_active = self.mode == Mode::Settings;
         row.child(

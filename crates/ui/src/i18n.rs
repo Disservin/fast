@@ -491,6 +491,7 @@ pub fn translate(language: Language, text: &str) -> &str {
             "Export complete backup" => "Vollständige Sicherung exportieren",
             "Filter" => "Filter",
             "Find gaps" => "Lücken finden",
+            "Import PGN" => "PGN importieren",
             "Follow" => "Folgen",
             "Game graph" => "Partiediagramm",
             "Hash and threads, pairing, adjudication, recovery, extra options" => {
