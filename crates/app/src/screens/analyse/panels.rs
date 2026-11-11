@@ -365,6 +365,7 @@ impl AnalyseScreen {
         let view = self.model.read(cx).config.view.clone();
         let all_this = this.clone();
         let arrows_this = this.clone();
+        let mine_this = this.clone();
         let small = |id: &'static str, label: &'static str| btn(id, label).compact();
         let view_tools = h_flex()
             .flex_wrap()
@@ -389,6 +390,18 @@ impl AnalyseScreen {
                     .on_click(move |_, cx| {
                         arrows_this.update(cx, |screen, cx| {
                             screen.set_view(cx, |view| view.quality_arrows = !view.quality_arrows);
+                        });
+                    }),
+            )
+            .child(
+                small("my-moves", "My moves")
+                    .selected(view.my_moves)
+                    .tooltip(ui::i18n::t(
+                        "Show what you played and your repertoire for each move",
+                    ))
+                    .on_click(move |_, cx| {
+                        mine_this.update(cx, |screen, cx| {
+                            screen.set_view(cx, |view| view.my_moves = !view.my_moves);
                         });
                     }),
             );

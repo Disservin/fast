@@ -389,6 +389,8 @@ pub struct AnalysisView {
     pub all_moves: bool,
     /// One arrow per engine line, coloured by how much it loses against the best.
     pub quality_arrows: bool,
+    /// Show the My games and Repertoire columns, and the moves only they list.
+    pub my_moves: bool,
     pub scoresheet: ScoresheetStyle,
     pub graph: GraphTab,
 }
@@ -399,6 +401,7 @@ impl Default for AnalysisView {
             sort: LineSort::Eval,
             all_moves: false,
             quality_arrows: true,
+            my_moves: true,
             scoresheet: ScoresheetStyle::Table,
             graph: GraphTab::Eval,
         }

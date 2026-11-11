@@ -5,6 +5,7 @@
 The **Moves from here** table lists engine lines (MultiPV), database moves and repertoire moves.
 
 - **All moves** adds every legal move, like Nibbler.
+- **My moves** shows the My games and Repertoire columns and the moves only they list. Turn it off to see just the engine and reference database.
 - **Lines − +** sets MultiPV for every analysis engine and saves it in the engine's options.
   The **Engine** panel sets it per engine.
 

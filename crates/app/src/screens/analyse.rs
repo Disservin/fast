@@ -943,7 +943,7 @@ impl AnalyseScreen {
         let rep_moves: Vec<(String, bool)> = model
             .repertoire
             .moves_after(&path)
-            .filter(|_| from_start)
+            .filter(|_| from_start && model.config.view.my_moves)
             .map(|moves| {
                 moves
                     .iter()
@@ -969,7 +969,12 @@ impl AnalyseScreen {
         self.rows = merge_rows(
             lines,
             self.reference.clone(),
-            self.mine.clone(),
+            // With My moves off, the user's own games add no rows and no figures.
+            if view.my_moves {
+                self.mine.clone()
+            } else {
+                Vec::new()
+            },
             &rep_moves,
             &legal,
             RowOptions {
@@ -2966,6 +2971,7 @@ impl AnalyseScreen {
             .collect();
         let show_wdl = self.show_wdl;
         let quality_arrows = model.config.view.quality_arrows;
+        let my_moves = model.config.view.my_moves;
         const COL_BADGE: f32 = 96.;
         const COL_MOVE: f32 = 64.;
         const COL_SF: f32 = 66.;
@@ -3025,18 +3031,21 @@ impl AnalyseScreen {
                     )
             })
             .child(picker)
-            .child(
-                div()
-                    .w(px(COL_MY))
-                    .flex_none()
-                    .child(section_label(ui::i18n::t("My games"))),
-            )
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .child(section_label(ui::i18n::t("Repertoire"))),
-            );
+            .when(my_moves, |header| {
+                header
+                    .child(
+                        div()
+                            .w(px(COL_MY))
+                            .flex_none()
+                            .child(section_label(ui::i18n::t("My games"))),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .child(section_label(ui::i18n::t("Repertoire"))),
+                    )
+            });
         let ply = self.analysed_ply();
         let pos = self.analysed_pos();
         let white_to_move = pos.turn().is_white();
@@ -3223,24 +3232,27 @@ impl AnalyseScreen {
                             })
                             .child(stat_text(&row.reference)),
                     )
-                    .child(
-                        div()
-                            .w(px(COL_MY))
-                            .flex_none()
-                            .text_size(px(13.))
-                            .text_color(rgb(T.fg_2))
-                            .child(stat_text(&row.mine)),
-                    )
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .font_family(ui::SANS)
-                            .text_size(px(12.))
-                            .font_weight(FontWeight::MEDIUM)
-                            .text_color(rgb(rep_color))
-                            .child(rep_text),
-                    ),
+                    .when(my_moves, |row_el| {
+                        row_el
+                            .child(
+                                div()
+                                    .w(px(COL_MY))
+                                    .flex_none()
+                                    .text_size(px(13.))
+                                    .text_color(rgb(T.fg_2))
+                                    .child(stat_text(&row.mine)),
+                            )
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .font_family(ui::SANS)
+                                    .text_size(px(12.))
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .text_color(rgb(rep_color))
+                                    .child(rep_text),
+                            )
+                    }),
             );
         }
         if !self.rows.is_empty() && self.reference.is_empty() && explorer.is_some() {
@@ -3554,6 +3566,7 @@ impl AnalyseScreen {
                         .child(value),
                 )
         };
+        let my_moves = self.model.read(cx).config.view.my_moves;
         let facts = selected.as_ref().map(|row| {
             h_flex()
                 .mt(px(16.))
@@ -3566,18 +3579,21 @@ impl AnalyseScreen {
                     stat_text(row.reference.as_ref()),
                     T.fg_2,
                 ))
-                .child(fact(
-                    ui::i18n::t("My games").to_owned(),
-                    stat_text(row.mine.as_ref()),
-                    T.fg_2,
-                ))
-                .child(fact(
-                    ui::i18n::t("Repertoire").to_owned(),
-                    div()
-                        .child(ui::i18n::t(rep_text).to_owned())
-                        .into_any_element(),
-                    rep_color,
-                ))
+                .when(my_moves, |facts| {
+                    facts
+                        .child(fact(
+                            ui::i18n::t("My games").to_owned(),
+                            stat_text(row.mine.as_ref()),
+                            T.fg_2,
+                        ))
+                        .child(fact(
+                            ui::i18n::t("Repertoire").to_owned(),
+                            div()
+                                .child(ui::i18n::t(rep_text).to_owned())
+                                .into_any_element(),
+                            rep_color,
+                        ))
+                })
         });
         // A previewed line counts even where the table is empty, such as after the
         // mating move, so the whole line can still be played.

@@ -323,6 +323,10 @@ pub fn translate(language: Language, text: &str) -> &str {
             "Table" => "Tabelle",
             "Inline" => "Fließtext",
             "All moves" => "Alle Züge",
+            "My moves" => "Meine Züge",
+            "Show what you played and your repertoire for each move" => {
+                "Zeigt zu jedem Zug, was du gespielt hast, und dein Repertoire"
+            }
             "Best move" => "Bester Zug",
             "Quality arrows" => "Qualitätspfeile",
             "Sort by depth" => "Nach Tiefe sortieren",
