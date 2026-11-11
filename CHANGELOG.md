@@ -4,6 +4,8 @@ Settings › Changelog shows this file. Keep entries to one short line each.
 
 ## Since 0.1.0
 
+- Train: the correct-answer prompt explains when a mistake or hint limits the available ratings.
+
 - Analyse: edit comments without clock tags getting in the way, preserving PGN timing and evaluations.
 
 - Settings: remove reference databases under Databases and keep their files recoverable.

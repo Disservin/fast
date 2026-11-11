@@ -472,6 +472,13 @@ pub fn translate(language: Language, text: &str) -> &str {
             "Custom" => "Benutzerdefiniert",
             "Download an engine" => "Engine herunterladen",
             "Download engine" => "Engine herunterladen",
+            "Correct: {}. Press Repeat to practise this position again." => {
+                "Richtig: {}. Drücke Wiederholen, um diese Stellung erneut zu üben."
+            }
+            "Correct: {}. Hint used: choose Repeat or Hard." => {
+                "Richtig: {}. Hinweis verwendet: Wähle Wiederholen oder Schwer."
+            }
+            "Correct: {}. How well did you know it?" => "Richtig: {}. Wie gut wusstest du es?",
             "Answer revealed. This position will repeat." => {
                 "Antwort aufgedeckt. Diese Stellung wird wiederholt."
             }

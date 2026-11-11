@@ -349,7 +349,14 @@ impl TrainScreen {
                 self.attempts.insert(self.attempt_key(), evidence);
             }
             self.phase = Phase::Correct;
-            self.message = Some(format!("Correct: {played}. How well did you know it?").into());
+            let prompt = if self.evidence().scheduling_grade(Grade::Hard) == Grade::Again {
+                "Correct: {}. Press Repeat to practise this position again."
+            } else if self.evidence().hints > 0 {
+                "Correct: {}. Hint used: choose Repeat or Hard."
+            } else {
+                "Correct: {}. How well did you know it?"
+            };
+            self.message = Some(ui::i18n::tf(prompt, &[&played]).into());
             let last = mv.from().map(|from| (from, mv.to()));
             self.model
                 .read(cx)
