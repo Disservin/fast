@@ -500,6 +500,10 @@ pub fn translate(language: Language, text: &str) -> &str {
             "Choose a sound and preview it at your current volume" => {
                 "Wählen Sie einen Klang und hören Sie ihn mit der aktuellen Lautstärke an"
             }
+            "Retry engine check" => "Engine erneut prüfen",
+            "Engine check failed. Retry using the installed files" => {
+                "Engine-Prüfung fehlgeschlagen. Mit den installierten Dateien erneut versuchen"
+            }
             "Download & install" => "Herunterladen und installieren",
             "Add from file" => "Aus Datei hinzufügen",
             "Source" => "Quelle",

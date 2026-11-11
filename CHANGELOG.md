@@ -4,6 +4,8 @@ Settings › Changelog shows this file. Keep entries to one short line each.
 
 ## Since 0.1.0
 
+- Settings: engine checks allow more startup time, show failure details and offer retries using installed files.
+
 - Play: arrow keys browse the visible game, updating the board and selected move while engines continue playing.
 
 - Play: the move list follows each new move automatically and has a scrollbar for browsing earlier moves.

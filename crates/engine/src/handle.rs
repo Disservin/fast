@@ -159,6 +159,53 @@ impl EngineHandle {
         }
     }
 
+    /// Checks an engine's identity within a deadline and stops the probe process.
+    /// Failures include recent output so startup problems can be diagnosed.
+    pub async fn probe(&self, timeout: Duration) -> Result<EngineInfo, String> {
+        let result = smol::future::or(
+            async {
+                loop {
+                    match self.events.recv().await {
+                        Ok(EngineEvent::Ready(info)) => return Ok(info),
+                        Ok(EngineEvent::Crashed(reason)) => return Err(reason),
+                        Ok(_) => {}
+                        Err(_) => return Err("the engine closed unexpectedly".to_owned()),
+                    }
+                }
+            },
+            async {
+                smol::Timer::after(timeout).await;
+                Err(format!(
+                    "no reply to the uci handshake within {} seconds",
+                    timeout.as_secs_f64()
+                ))
+            },
+        )
+        .await;
+        self.quit();
+        result.map_err(|reason| {
+            let lines = self.log.snapshot(false);
+            for line in &lines {
+                log::warn!("engine probe {:?}: {}", line.kind, line.text);
+            }
+            let output: Vec<_> = lines
+                .iter()
+                .filter(|line| matches!(line.kind, LogKind::Received | LogKind::Stderr))
+                .rev()
+                .take(6)
+                .map(|line| line.text.chars().take(300).collect::<String>())
+                .collect();
+            if output.is_empty() {
+                reason
+            } else {
+                format!(
+                    "{reason}\n{}",
+                    output.into_iter().rev().collect::<Vec<_>>().join("\n")
+                )
+            }
+        })
+    }
+
     /// Everything sent to and received from this process.
     pub fn log(&self) -> EngineLog {
         self.log.clone()

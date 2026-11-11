@@ -309,6 +309,7 @@ pub struct SettingsScreen {
     benchmark: Option<SharedString>,
     catalog_open: bool,
     install_status: Option<SharedString>,
+    probing_engine: bool,
     install_cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
     install_task: Option<gpui::Task<()>>,
     opening_task: Option<gpui::Task<()>>,
@@ -511,6 +512,7 @@ impl SettingsScreen {
             benchmark: None,
             catalog_open: false,
             install_status: None,
+            probing_engine: false,
             install_cancel: None,
             install_task: None,
             opening_task: None,
@@ -927,6 +929,7 @@ impl SettingsScreen {
         self.probe_engine_defaults(path, replace, Default::default(), cx);
     }
 
+    /// Checks a local engine with time for its first launch and retains startup errors.
     fn probe_engine_defaults(
         &mut self,
         path: PathBuf,
@@ -934,29 +937,29 @@ impl SettingsScreen {
         defaults: std::collections::BTreeMap<String, String>,
         cx: &mut Context<Self>,
     ) {
+        if self.probing_engine {
+            return;
+        }
+        self.probing_engine = true;
+        cx.notify();
         let handle = EngineHandle::spawn(path.clone(), Vec::new(), Vec::new());
-        let events = handle.events();
         let this = cx.entity().downgrade();
         let model = self.model.clone();
         cx.spawn(async move |_, cx| {
-            let result = smol::future::or(
-                async {
-                    loop {
-                        match events.recv().await {
-                            Ok(EngineEvent::Ready(info)) => return Ok(info),
-                            Ok(EngineEvent::Crashed(reason)) => return Err(reason),
-                            Ok(_) => {}
-                            Err(_) => return Err("the engine closed unexpectedly".to_owned()),
-                        }
-                    }
-                },
-                async {
-                    smol::Timer::after(std::time::Duration::from_secs(10)).await;
-                    Err("no reply to the uci handshake within 10 seconds".to_owned())
-                },
-            )
-            .await;
-            handle.quit();
+            let result = handle.probe(std::time::Duration::from_secs(60)).await;
+            let _ = this.update(cx, |screen, cx| {
+                screen.probing_engine = false;
+                cx.notify();
+            });
+            if let Err(reason) = &result {
+                let _ = this.update(cx, |screen, cx| {
+                    screen.install_status = Some(format!(
+                        "{}: {reason}",
+                        ui::i18n::t("Engine check failed. Retry using the installed files")
+                    ).into());
+                    cx.notify();
+                });
+            }
             let added = model.update(cx, |model, cx| match result {
                 Ok(info) => {
                     let id = replace.unwrap_or(model.config.next_engine_id);
@@ -1885,7 +1888,7 @@ impl SettingsScreen {
     }
 
     fn download_engine(&mut self, index: usize, cx: &mut Context<Self>) {
-        if self.install_cancel.is_some() {
+        if self.install_cancel.is_some() || self.probing_engine {
             return;
         }
         let entry = match crate::engine_catalog::Catalog::bundled().and_then(|catalog| {
@@ -1981,7 +1984,7 @@ impl SettingsScreen {
                         "Downloads require an internet connection. Installed engines run offline.",
                     )),
             );
-        let busy = self.install_cancel.is_some();
+        let busy = self.install_cancel.is_some() || self.probing_engine;
         match crate::engine_catalog::Catalog::bundled() {
             Err(err) => body = body.child(format!("Engine catalog unavailable: {err:#}")),
             Ok(catalog) => {
@@ -1999,6 +2002,12 @@ impl SettingsScreen {
                             .iter()
                             .any(|engine| engine.path == path)
                     });
+                    let downloaded = entry.native_download().is_some_and(|asset| {
+                        entry
+                            .install_dir(&self.model.read(cx).paths.data_dir, asset)
+                            .join(&asset.executable)
+                            .is_file()
+                    });
                     let homepage = entry.homepage.clone();
                     let source = entry.source_url.clone();
                     body = body.child(h_flex().gap(px(16.)).items_start()
@@ -2008,7 +2017,7 @@ impl SettingsScreen {
                         .when(!supported, |column| column.child(format!("No catalog build for {} / {}. You can still add a local executable.", std::env::consts::OS, std::env::consts::ARCH))))
                     .child(btn(("engine-site", index), "Website").h(30.).on_click(move |_, cx| cx.open_url(&homepage)))
                     .child(btn(("engine-source", index), ui::i18n::t("Source")).h(30.).on_click(move |_, cx| cx.open_url(&source)))
-                    .child(btn(("engine-install", index), if installed { ui::i18n::t("Installed") } else { ui::i18n::t("Download & install") }).h(30.).disabled(busy || !supported || installed)
+                    .child(btn(("engine-install", index), if installed { ui::i18n::t("Installed") } else if downloaded { ui::i18n::t("Retry engine check") } else { ui::i18n::t("Download & install") }).h(30.).disabled(busy || !supported || installed)
                         .on_click(move |_, cx| this.update(cx, |screen, cx| screen.download_engine(index, cx)))));
                 }
             }

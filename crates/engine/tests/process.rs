@@ -486,3 +486,62 @@ fn stockfish_chess960_castles_and_returns_to_standard_chess() {
     assert!(sent(&engine).contains(&"setoption name UCI_Chess960 value false".into()));
     engine.quit();
 }
+
+/// A slow first launch can finish, and a timed-out probe is stopped with diagnostics.
+#[test]
+fn probe_waits_for_startup_and_reports_timeout_output() {
+    let engine = EngineHandle::spawn(
+        PathBuf::from("/bin/sh"),
+        vec!["-c".into(), "echo 'Loading engine' >&2; sleep 0.1; echo 'id name SlowFish'; echo uciok; cat >/dev/null".into()],
+        Vec::new(),
+    );
+    let info = future::block_on(engine.probe(Duration::from_secs(5))).unwrap();
+    assert_eq!(info.name, "SlowFish");
+    wait_for_probe_exit(&engine);
+
+    let engine = EngineHandle::spawn(
+        PathBuf::from("/bin/sh"),
+        vec![
+            "-c".into(),
+            "echo 'Cannot load network' >&2; cat >/dev/null".into(),
+        ],
+        Vec::new(),
+    );
+    // Synchronise with the stderr reader rather than relying on process scheduling.
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    while !engine
+        .log()
+        .snapshot(true)
+        .iter()
+        .any(|line| line.text == "Cannot load network")
+    {
+        assert!(std::time::Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let error = future::block_on(engine.probe(Duration::from_millis(20))).unwrap_err();
+    assert!(error.contains("no reply to the uci handshake"), "{error}");
+    assert!(error.contains("Cannot load network"), "{error}");
+    wait_for_probe_exit(&engine);
+}
+
+/// A failed launch reports its executable and underlying operating system error.
+#[test]
+fn probe_reports_spawn_failure() {
+    let engine = EngineHandle::spawn(
+        fixture().with_file_name("missing-engine"),
+        Vec::new(),
+        Vec::new(),
+    );
+    let error = future::block_on(engine.probe(Duration::from_secs(5))).unwrap_err();
+    assert!(error.contains("could not start"), "{error}");
+    assert!(error.contains("missing-engine"), "{error}");
+}
+
+/// Confirms that a probe releases its supervisor and child process.
+fn wait_for_probe_exit(engine: &EngineHandle) {
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    while !engine.events().is_closed() {
+        assert!(std::time::Instant::now() < deadline, "probe did not stop");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}

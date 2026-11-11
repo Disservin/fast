@@ -105,6 +105,8 @@ is skipped without blocking the UI.
 
 ## UCI protocol
 
+- Settings probes allow 60 seconds for first launch, stop the probe process on success or
+  failure, and report recent engine output on failure. Catalog retries reuse installed files.
 - `uci`, then the saved options once `uciok` arrives.
 - Before a search, whenever options or `ucinewgame` were sent since the last `readyok`
   (always, before the first one), the supervisor sends `isready` and holds `position`/`go`
