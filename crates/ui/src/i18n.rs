@@ -788,6 +788,15 @@ pub fn translate(language: Language, text: &str) -> &str {
                 "Für diesen Zug ist noch keine Notiz gespeichert."
             }
             "No leaks to drill." => "Keine Abweichungen zum Üben.",
+            "This leak is already the next position in the session." => {
+                "Diese Abweichung ist schon die nächste Stellung der Sitzung."
+            }
+            "The leak is now the next position to drill." => {
+                "Die Abweichung ist jetzt die nächste Stellung zum Üben."
+            }
+            "Practise the repertoire move in each position above, next in this session" => {
+                "Den Repertoirezug in jeder Stellung oben üben, als Nächstes in dieser Sitzung"
+            }
             "No gaps: every line ends on an answered move." => {
                 "Keine Lücken: Jede Variante endet mit einem beantworteten Zug."
             }

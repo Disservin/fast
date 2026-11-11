@@ -509,6 +509,12 @@ impl TrainScreen {
                 drill.answer.clone(),
             )
         };
+        let already_next = self.queue.len() >= drills.len()
+            && drills
+                .iter()
+                .zip(&self.queue)
+                .all(|(drill, queued)| key(drill) == key(queued));
+        let count = drills.len();
         let added: std::collections::HashSet<_> = drills.iter().map(key).collect();
         let before = self.queue.len();
         self.queue.retain(|drill| !added.contains(&key(drill)));
@@ -517,6 +523,19 @@ impl TrainScreen {
         self.queue.splice(0..0, drills);
         self.start_drill(cx);
         self.persist_session(cx);
+        // Without a word the click can look like it did nothing, since the queue may
+        // already start with these positions.
+        let text = match (already_next, count) {
+            (true, 1) => {
+                ui::i18n::t("This leak is already the next position in the session.").to_owned()
+            }
+            (true, _) => {
+                format!("These {count} leaks are already the next positions in the session.")
+            }
+            (false, 1) => ui::i18n::t("The leak is now the next position to drill.").to_owned(),
+            (false, _) => format!("The {count} leaks are now the next positions to drill."),
+        };
+        self.model.toast(text, cx);
     }
 
     fn submit_line(&mut self, text: &str, window: &mut Window, cx: &mut Context<Self>) {
@@ -1249,6 +1268,9 @@ impl TrainScreen {
                     .child(
                         btn("drill-leaks", "Drill these lines")
                             .primary()
+                            .tooltip(ui::i18n::t(
+                                "Practise the repertoire move in each position above, next in this session",
+                            ))
                             .disabled(
                                 !shown_leaks(&model.leaks).any(|leak| leak.prepared.is_some()),
                             )
