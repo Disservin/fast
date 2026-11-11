@@ -119,22 +119,13 @@ fn engine_game_name(config: &EngineConfig) -> String {
 }
 
 /// Records the participants and UTC start date before moves or recovery saves are made.
-fn set_game_headers(tree: &mut GameTree, white: &str, black: &str, engines: bool, days: i64) {
-    // Convert days since the Unix epoch to the Gregorian calendar, including leap years.
-    let z = days + 719_468;
-    let era = z.div_euclid(146_097);
-    let day_of_era = z - era * 146_097;
-    let year_of_era =
-        (day_of_era - day_of_era / 1460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
-    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
-    let month_index = (5 * day_of_year + 2) / 153;
-    let day = day_of_year - (153 * month_index + 2) / 5 + 1;
-    let month = if month_index < 10 {
-        month_index + 3
-    } else {
-        month_index - 9
-    };
-    let year = year_of_era + era * 400 + i64::from(month <= 2);
+fn set_game_headers(
+    tree: &mut GameTree,
+    white: &str,
+    black: &str,
+    engines: bool,
+    date: chrono::NaiveDate,
+) {
     tree.set_header(
         "Event",
         if engines {
@@ -144,7 +135,7 @@ fn set_game_headers(tree: &mut GameTree, white: &str, black: &str, engines: bool
         },
     );
     tree.set_header("Site", "Fast");
-    tree.set_header("Date", &format!("{year:04}.{month:02}.{day:02}"));
+    tree.set_header("Date", &date.format("%Y.%m.%d").to_string());
     tree.set_header("Round", "-");
     tree.set_header("White", white);
     tree.set_header("Black", black);
@@ -609,7 +600,7 @@ impl PlayScreen {
             &self.model.read(cx).config.player_name,
             "Stockfish",
             false,
-            crate::model::today(),
+            chrono::Utc::now().date_naive(),
         );
         self.moves_scroll.scroll_to_bottom();
         self.viewed = None;
@@ -949,7 +940,7 @@ impl PlayScreen {
             white_name,
             black_name,
             self_play,
-            crate::model::today(),
+            chrono::Utc::now().date_naive(),
         );
         if !demo {
             let (engine, reader) = self.spawn_engine(
@@ -2677,7 +2668,13 @@ mod tests {
         tree.set_header("Event", "Opening book source");
         tree.set_header("Date", "1999.01.01");
         tree.set_header("Result", "1-0");
-        set_game_headers(&mut tree, "Stockfish 18", "Berserk 13", true, 20_000);
+        set_game_headers(
+            &mut tree,
+            "Stockfish 18",
+            "Berserk 13",
+            true,
+            chrono::NaiveDate::from_ymd_opt(2024, 10, 4).unwrap(),
+        );
         let exported = chess_core::write_pgn(&tree);
         let restored = chess_core::parse_pgn(&exported).unwrap().remove(0);
         for (key, expected) in [
@@ -2693,20 +2690,20 @@ mod tests {
         }
     }
 
-    /// Dates handle leap days and the calendar year boundary for either player colour.
+    /// Human games keep the player's selected colour and use the casual event name.
     #[test]
-    fn played_game_dates_and_human_participants() {
+    fn played_game_human_participants() {
         let mut tree = GameTree::new();
-        for (days, date) in [
-            (0, "1970.01.01"),
-            (19_782, "2024.02.29"),
-            (20_089, "2025.01.01"),
-        ] {
-            set_game_headers(&mut tree, "Stockfish 18", "Player", false, days);
-            assert_eq!(tree.header("Date"), Some(date));
-            assert_eq!(tree.header("Event"), Some("Fast casual game"));
-            assert_eq!(tree.header("Black"), Some("Player"));
-        }
+        set_game_headers(
+            &mut tree,
+            "Stockfish 18",
+            "Player",
+            false,
+            chrono::NaiveDate::from_ymd_opt(2024, 2, 29).unwrap(),
+        );
+        assert_eq!(tree.header("Date"), Some("2024.02.29"));
+        assert_eq!(tree.header("Event"), Some("Fast casual game"));
+        assert_eq!(tree.header("Black"), Some("Player"));
     }
 
     /// Browsing follows the played line even while new moves and side lines are added.

@@ -1746,6 +1746,7 @@ version = "0.1.2"
 dependencies = [
  "anyhow",
  "chess_core",
+ "chrono",
  "db",
  "dirs 6.0.0",
  "embed-resource",

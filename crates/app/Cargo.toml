@@ -21,6 +21,7 @@ rusqlite.workspace = true
 trainer.workspace = true
 ui.workspace = true
 anyhow.workspace = true
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 ureq = { version = "3", default-features = false, features = ["rustls"] }
 zip = { version = "9", default-features = false, features = ["deflate"] }
 tar = "0.4"
