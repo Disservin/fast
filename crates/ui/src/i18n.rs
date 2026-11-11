@@ -378,6 +378,11 @@ pub fn translate(language: Language, text: &str) -> &str {
             "No games reach this position." => "Keine Partie erreicht diese Stellung.",
             "Could not query database: {}" => "Datenbankabfrage fehlgeschlagen: {}",
             "Unlimited time" => "Unbegrenzte Zeit",
+            "Time control (minutes+increment)" => "Bedenkzeit (Minuten+Inkrement)",
+            "Per-move search limit" => "Suchgrenze pro Zug",
+            "Enter a custom time such as 12+3, or a positive search limit." => {
+                "Eine Bedenkzeit wie 12+3 oder eine positive Suchgrenze eingeben."
+            }
             "Opening book (.pgn or .epd)" => "Eröffnungsbuch (.pgn oder .epd)",
             "Optional local file. Uses the first game or position." => {
                 "Optionale lokale Datei. Verwendet die erste Partie oder Stellung."

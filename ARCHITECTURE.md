@@ -529,6 +529,10 @@ at least two games) that have a prepared move. They go to the front of the curre
 session; queued drills for the same position and answer are dropped so nothing is
 asked twice, and the rest of the session stays behind them.
 
+Engine matches in Play keep clock increments and optional per-move depth or node limits
+separately for White and Black. The clock task skips a side with an unlimited clock,
+and each search uses the moving side’s limit or both sides’ remaining clocks and increments.
+
 Shared dialogs use `ui::widgets::modal` for initial focus, Escape dismissal and
 backdrop clicks. Each caller supplies its close callback; dialog dismissal does not
 depend on the workspace knowing which screen owns it.

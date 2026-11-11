@@ -90,9 +90,9 @@ struct Game {
     white: Option<WhiteEngine>,
     white_ms: u64,
     black_ms: u64,
-    increment_ms: u64,
+    increment_ms: [u64; 2],
     /// A per-move search limit replaces the game clock.
-    fixed_limits: Option<Limits>,
+    fixed_limits: [Option<Limits>; 2],
     result: Option<String>,
     opponent_name: String,
     opponent_rating: Option<u32>,
@@ -131,6 +131,59 @@ impl Drop for Game {
     }
 }
 
+/// Keeps one engine's clock and per-move search settings independent.
+struct EngineTime {
+    time: Entity<gpui_component::input::InputState>,
+    unlimited: bool,
+    kind: TextSelect,
+    value: Entity<gpui_component::input::InputState>,
+}
+
+impl EngineTime {
+    /// Starts an engine with a five-minute clock and a depth limit ready to enable.
+    fn new(window: &mut Window, cx: &mut Context<PlayScreen>) -> Self {
+        Self {
+            time: new_input("5+3", "12+3", window, cx),
+            unlimited: false,
+            kind: new_select(vec!["Depth".into(), "Nodes".into()], 0, window, cx),
+            value: new_input("20", "20", window, cx),
+        }
+    }
+
+    /// Validates this side's clock or positive per-move search limit.
+    fn settings(&self, cx: &gpui::App) -> Option<(u32, u32, Option<Limits>)> {
+        if !self.unlimited {
+            let (minutes, increment) = parse_custom_time(self.time.read(cx).value().as_ref())?;
+            return Some((minutes, increment, None));
+        }
+        let value = self
+            .value
+            .read(cx)
+            .value()
+            .trim()
+            .parse::<u64>()
+            .ok()
+            .filter(|v| *v > 0)?;
+        let nodes = self
+            .kind
+            .read(cx)
+            .selected_index(cx)
+            .is_some_and(|i| i.row == 1);
+        if !nodes && value > u64::from(u32::MAX) {
+            return None;
+        }
+        Some((
+            0,
+            0,
+            Some(Limits {
+                depth: (!nodes).then_some(value as u32),
+                nodes: nodes.then_some(value),
+                ..Default::default()
+            }),
+        ))
+    }
+}
+
 pub struct PlayScreen {
     recovery: Option<crate::recovery::Recovery>,
     recovery_path: std::path::PathBuf,
@@ -147,9 +200,7 @@ pub struct PlayScreen {
     mode: Mode,
     time_index: Option<usize>,
     custom_time: Entity<gpui_component::input::InputState>,
-    unlimited: bool,
-    limit_kind: TextSelect,
-    limit_value: Entity<gpui_component::input::InputState>,
+    engine_times: [EngineTime; 2],
     book_path: Entity<gpui_component::input::InputState>,
     book_tree: Option<GameTree>,
     book_task: Option<Task<()>>,
@@ -247,8 +298,7 @@ impl PlayScreen {
             window,
             cx,
         );
-        let limit_kind = new_select(vec!["Depth".into(), "Nodes".into()], 0, window, cx);
-        let limit_value = new_input("20", "20", window, cx);
+        let engine_times = [EngineTime::new(window, cx), EngineTime::new(window, cx)];
         let book_path = new_input("", "Opening book (.pgn or .epd)", window, cx);
         let custom_time = new_input("", "12+3", window, cx);
         let chess960_number = new_input(
@@ -321,9 +371,7 @@ impl PlayScreen {
             mode: Mode::VsEngine,
             time_index: Some(2),
             custom_time,
-            unlimited: false,
-            limit_kind,
-            limit_value,
+            engine_times,
             book_path,
             book_tree: None,
             book_task: None,
@@ -410,8 +458,8 @@ impl PlayScreen {
             white: None,
             white_ms: 552_000,
             black_ms: 521_000,
-            increment_ms: 5_000,
-            fixed_limits: None,
+            increment_ms: [5_000; 2],
+            fixed_limits: [None; 2],
             result: None,
             opponent_name: "Stockfish".to_owned(),
             opponent_rating: Some(self.opponent.elo),
@@ -564,45 +612,26 @@ impl PlayScreen {
     }
 
     fn start_game(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let unlimited = self.mode == Mode::Engines && self.unlimited;
-        let fixed_limits = if unlimited {
-            let Some(value) = self
-                .limit_value
-                .read(cx)
-                .value()
-                .trim()
-                .parse::<u64>()
-                .ok()
-                .filter(|value| *value > 0)
-            else {
-                self.model.toast("Enter a positive search limit.", cx);
-                return;
-            };
-            let nodes = self
-                .limit_kind
-                .read(cx)
-                .selected_index(cx)
-                .is_some_and(|index| index.row == 1);
-            if !nodes && value > u64::from(u32::MAX) {
-                self.model.toast("Enter a smaller depth.", cx);
-                return;
-            }
-            Some(Limits {
-                depth: (!nodes).then_some(value as u32),
-                nodes: nodes.then_some(value),
-                ..Default::default()
-            })
-        } else {
-            None
-        };
-        let Some((minutes, increment)) = (if unlimited {
-            Some((0, 0))
+        let settings = if self.mode == Mode::Engines {
+            self.engine_times[0]
+                .settings(cx)
+                .zip(self.engine_times[1].settings(cx))
         } else {
             self.time_control(cx)
-        }) else {
-            self.model.toast("Enter a custom time such as 12+3.", cx);
+                .map(|(m, i)| ((m, i, None), (m, i, None)))
+        };
+        let Some((
+            (minutes, increment, white_limit),
+            (black_minutes, black_increment, black_limit),
+        )) = settings
+        else {
+            self.model.toast(
+                "Enter a custom time such as 12+3, or a positive search limit.",
+                cx,
+            );
             return;
         };
+        let fixed_limits = [white_limit, black_limit];
         let demo = self.model.read(cx).demo;
         let self_play = self.mode == Mode::Engines;
         let (white_choice, choice) = if self_play {
@@ -694,27 +723,32 @@ impl PlayScreen {
             user,
             white,
             white_ms: ms,
-            black_ms: ms,
-            increment_ms: u64::from(increment) * 1000,
+            black_ms: u64::from(black_minutes) * 60_000,
+            increment_ms: [
+                u64::from(increment) * 1000,
+                u64::from(black_increment) * 1000,
+            ],
             fixed_limits,
             result: None,
             opponent_name: config.name.clone(),
             opponent_rating: elo,
-            label: fixed_limits.map_or_else(
-                || format!("{minutes}+{increment}"),
-                |limits| {
-                    limits.nodes.map_or_else(
-                        || {
-                            format!(
-                                "{} {}",
-                                ui::i18n::t("Depth"),
-                                limits.depth.unwrap_or_default()
-                            )
-                        },
-                        |nodes| format!("{nodes} {}", ui::i18n::t("Nodes")),
-                    )
-                },
-            ),
+            label: if self_play {
+                format!(
+                    "{} / {}",
+                    if white_limit.is_some() {
+                        "∞".to_owned()
+                    } else {
+                        format!("{minutes}+{increment}")
+                    },
+                    if black_limit.is_some() {
+                        "∞".to_owned()
+                    } else {
+                        format!("{black_minutes}+{black_increment}")
+                    }
+                )
+            } else {
+                format!("{minutes}+{increment}")
+            },
             takebacks: self.allow_takebacks && !self_play,
             premoves: self.allow_premoves && !self_play,
             premove: None,
@@ -769,7 +803,7 @@ impl PlayScreen {
 
     fn start_clock(&mut self, cx: &mut Context<Self>) {
         let Some(game) = &mut self.game else { return };
-        if game.fixed_limits.is_some() {
+        if game.fixed_limits.iter().all(Option::is_some) {
             return;
         }
         game.last_tick = Instant::now();
@@ -793,13 +827,16 @@ impl PlayScreen {
         let Some(game) = &mut self.game else {
             return false;
         };
-        if game.result.is_some() || game.fixed_limits.is_some() {
+        if game.result.is_some() {
             return false;
         }
         let now = Instant::now();
         let elapsed = now.duration_since(game.last_tick).as_millis() as u64;
         game.last_tick = now;
         let turn = game.tree.node(game.current).pos.turn();
+        if game.fixed_limits[usize::from(turn == Color::Black)].is_some() {
+            return true;
+        }
         let clock = if turn == Color::White {
             &mut game.white_ms
         } else {
@@ -873,9 +910,9 @@ impl PlayScreen {
         let Some(game) = &mut self.game else { return };
         let turn = game.tree.node(game.current).pos.turn();
         if turn == Color::White {
-            game.white_ms += game.increment_ms;
+            game.white_ms += game.increment_ms[0];
         } else {
-            game.black_ms += game.increment_ms;
+            game.black_ms += game.increment_ms[1];
         }
         game.current = game.tree.add_move(game.current, mv);
         let mut recovery_tree = game.tree.clone();
@@ -969,13 +1006,15 @@ impl PlayScreen {
             search_moves: Vec::new(),
             fen: game.tree.fen(GameTree::ROOT),
             moves,
-            limits: Some(game.fixed_limits.unwrap_or(Limits {
-                white_ms: Some(game.white_ms),
-                black_ms: Some(game.black_ms),
-                white_inc_ms: game.increment_ms,
-                black_inc_ms: game.increment_ms,
-                ..Default::default()
-            })),
+            limits: Some(
+                game.fixed_limits[usize::from(turn == Color::Black)].unwrap_or(Limits {
+                    white_ms: Some(game.white_ms),
+                    black_ms: Some(game.black_ms),
+                    white_inc_ms: game.increment_ms[0],
+                    black_inc_ms: game.increment_ms[1],
+                    ..Default::default()
+                }),
+            ),
             search_id: game.search_id,
             game: 0,
         });
@@ -1173,9 +1212,22 @@ impl PlayScreen {
             },
         );
         let engines = if self_play {
-            v_flex()
-                .child(self.render_choice("White", &self.white, |screen| &mut screen.white, cx))
-                .child(self.render_choice("Black", &self.black, |screen| &mut screen.black, cx))
+            let mut row = h_flex().items_start().gap(px(12.));
+            for (index, label, choice, pick) in [
+                (0, "White", &self.white, (|s| &mut s.white) as PickChoice),
+                (1, "Black", &self.black, (|s| &mut s.black) as PickChoice),
+            ] {
+                row = row.child(
+                    panel()
+                        .flex_1()
+                        .min_w_0()
+                        .p(px(12.))
+                        .child(section_label(label).mb(px(12.)))
+                        .child(self.render_choice(label, choice, pick, cx))
+                        .child(self.render_engine_time(index, cx)),
+                );
+            }
+            v_flex().child(row).mb(px(16.))
         } else {
             self.render_choice(
                 "Opponent",
@@ -1186,7 +1238,7 @@ impl PlayScreen {
         };
         v_flex()
             .id("play-setup")
-            .w(px(300.))
+            .w(px(if self_play { 580. } else { 300. }))
             .h_full()
             .flex_none()
             .overflow_y_scroll()
@@ -1199,30 +1251,8 @@ impl PlayScreen {
             .child(section_label("New game").mb(px(10.)))
             .child(mode.mb(px(14.)))
             .child(engines)
-            .when(self_play, |column| {
-                let this = cx.entity();
-                column.child(div().mb(px(10.)).child(
-                    check("unlimited-time", self.unlimited, "Unlimited time").on_change(
-                        move |value, _, cx| {
-                            this.update(cx, |screen, cx| {
-                                screen.unlimited = value;
-                                cx.notify();
-                            });
-                        },
-                    ),
-                ))
-            })
-            .when(!self_play || !self.unlimited, |column| {
+            .when(!self_play, |column| {
                 column.child(field("Time control", grid).mb(px(14.)))
-            })
-            .when(self_play && self.unlimited, |column| {
-                column.child(
-                    h_flex()
-                        .gap(px(8.))
-                        .mb(px(14.))
-                        .child(select_el(&self.limit_kind))
-                        .child(text_input(&self.limit_value).mono()),
-                )
             })
             .when(self_play, |column| {
                 column
@@ -1240,10 +1270,9 @@ impl PlayScreen {
                             )),
                     )
             })
-            .when(
-                self.time_index.is_none() && (!self_play || !self.unlimited),
-                |column| column.child(div().mb(px(14.)).child(text_input(&self.custom_time))),
-            )
+            .when(self.time_index.is_none() && !self_play, |column| {
+                column.child(div().mb(px(14.)).child(text_input(&self.custom_time)))
+            })
             .when(!self_play, |column| {
                 column.child(
                     field(
@@ -1377,6 +1406,42 @@ impl PlayScreen {
     }
 
     /// One engine of the new game: which engine, and how strongly it plays.
+    /// Shows a separate clock and unlimited-search choice for one engine.
+    fn render_engine_time(&self, index: usize, cx: &mut Context<Self>) -> gpui::Div {
+        let settings = &self.engine_times[index];
+        let this = cx.entity();
+        v_flex()
+            .gap(px(8.))
+            .child(
+                check(
+                    SharedString::from(format!("unlimited-{index}")),
+                    settings.unlimited,
+                    "Unlimited time",
+                )
+                .on_change(move |value, _, cx| {
+                    this.update(cx, |screen, cx| {
+                        screen.engine_times[index].unlimited = value;
+                        cx.notify();
+                    });
+                }),
+            )
+            .when(!settings.unlimited, |column| {
+                column.child(field(
+                    "Time control (minutes+increment)",
+                    text_input(&settings.time).mono(),
+                ))
+            })
+            .when(settings.unlimited, |column| {
+                column.child(field(
+                    "Per-move search limit",
+                    v_flex()
+                        .gap(px(6.))
+                        .child(select_el(&settings.kind))
+                        .child(text_input(&settings.value).mono()),
+                ))
+            })
+    }
+
     fn render_choice(
         &self,
         label: &'static str,
@@ -1585,7 +1650,9 @@ impl PlayScreen {
                     })
                     .when(!active, |time| time.text_color(rgb(T.muted)))
                     .child(if game.is_some() {
-                        if game.is_some_and(|game| game.fixed_limits.is_some()) {
+                        if game.is_some_and(|game| {
+                            game.fixed_limits[usize::from(side == Some(Color::Black))].is_some()
+                        }) {
                             "∞".to_owned()
                         } else {
                             format_clock(ms)
@@ -1825,6 +1892,35 @@ impl Render for PlayScreen {
                 }
                 None => self.recovery = Some(recovery),
             }
+        }
+        if self.mode == Mode::Engines {
+            let viewport = window.viewport_size();
+            let board_size = ui::board::snap_board_size(
+                (viewport.width - px(636.))
+                    .min(viewport.height - px(300.))
+                    .max(px(320.)),
+                window.scale_factor(),
+            );
+            let setup = self.render_setup(cx);
+            let center = self.render_center(board_size, cx);
+            let side = self.render_side(cx);
+            return h_flex()
+                .size_full()
+                .items_start()
+                .child(setup)
+                .child(
+                    v_flex()
+                        .id("engine-match-content")
+                        .flex_1()
+                        .min_w_0()
+                        .h_full()
+                        .overflow_y_scroll()
+                        .px(px(28.))
+                        .pb(px(16.))
+                        .child(div().flex().justify_center().child(center))
+                        .child(div().mt(px(16.)).child(side)),
+                )
+                .into_any_element();
         }
         let board_size = super::side_columns_board_size(window);
         let setup = self.render_setup(cx);
