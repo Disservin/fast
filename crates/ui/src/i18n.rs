@@ -766,6 +766,8 @@ pub fn translate(language: Language, text: &str) -> &str {
             "Show answer" => "Antwort anzeigen",
             "Why this move?" => "Warum dieser Zug?",
             "Skip" => "Überspringen",
+            "Drill" => "Üben",
+            "Ask this position again later" => "Diese Stellung später noch einmal abfragen",
             "Again" => "Noch einmal",
             "Known" => "Bekannt",
             "Learning" => "In Arbeit",

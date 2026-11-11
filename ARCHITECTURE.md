@@ -466,8 +466,10 @@ tournament graphs keep their explicit heights.
 
 Train hides the repertoire tree during recall and displays only the path to the
 question, because tree row labels can include future moves. After a correct answer
-or reveal, the tree and learning notes become available. Recall controls are
-replaced by grading controls: mistakes and reveals allow only Repeat, while hints
+or reveal, the tree and learning notes become available. The recall controls
+(Hint, Show answer, Skip) and the trainer's message sit in a Drill panel at the
+top of the right column, above Leaks, so the board takes the full height of its
+column. Once answered, the recall controls are replaced by grading controls: mistakes and reveals allow only Repeat, while hints
 cap the available grades at Hard, matching the scheduler's evidence rules.
 Progress counts finished queue entries, excluding the unanswered question and
 entries awaiting repetition. An exhausted queue distinguishes a completed session

@@ -798,55 +798,7 @@ impl TrainScreen {
                 moves
             }
         });
-        let card: Card = drill
-            .as_ref()
-            .and_then(|drill| {
-                let path: Vec<&str> = drill
-                    .path
-                    .iter()
-                    .map(String::as_str)
-                    .chain([drill.answer.as_str()])
-                    .collect();
-                self.model.read(cx).repertoire.card_for(&path)
-            })
-            .unwrap_or_default();
-        let intervals = card.intervals();
         let has_drill = drill.is_some();
-        let answered = has_drill && matches!(self.phase, Phase::Correct | Phase::Revealed);
-        let evidence = self
-            .attempts
-            .get(&self.attempt_key())
-            .cloned()
-            .unwrap_or_default();
-        let repeat = evidence.scheduling_grade(Grade::Hard) == Grade::Again;
-        let hinted = evidence.hints > 0;
-        let explanation = if repeat {
-            Some(ui::i18n::t(
-                "A mistake or reveal means this position will repeat.",
-            ))
-        } else if hinted {
-            Some(ui::i18n::t(
-                "Hint used. The highest available grade is Hard.",
-            ))
-        } else {
-            None
-        };
-        let tool = |id: &'static str,
-                    label: &'static str,
-                    action: fn(&mut Self, &mut Context<Self>),
-                    this: Entity<Self>| {
-            btn(id, label).disabled(!has_drill).on_click(move |_, cx| {
-                this.update(cx, action);
-            })
-        };
-        let recall =
-            |id: &'static str, label: String, grade: Grade, kind: BtnKind, this: Entity<Self>| {
-                btn(id, label)
-                    .flex_1()
-                    .kind(kind)
-                    .disabled(!answered || evidence.scheduling_grade(grade) != grade)
-                    .on_click(move |_, cx| this.update(cx, |screen, cx| screen.grade(grade, cx)))
-            };
         v_flex()
             .flex_none()
             .w(board_size)
@@ -931,7 +883,6 @@ impl TrainScreen {
             .when(has_drill, |column| {
                 column.child(div().size(board_size).flex_none().child(self.board.clone()))
             })
-            .children(self.render_message(board_size))
             .when(!has_drill, |column| column.child(
                 div().mt(px(12.)).text_color(rgb(T.fg_2)).child(ui::i18n::t(
                     if self.finished > 0 {
@@ -955,65 +906,167 @@ impl TrainScreen {
                     }
                 })
             ))
-            .when(has_drill && !answered, |column| column.child(
-                h_flex()
-                    .mt(px(14.))
-                    .justify_between()
-                    .child(
-                        h_flex()
-                            .gap(px(6.))
-                            .child(tool("hint", "Hint", Self::hint, this.clone()))
-                            .child(tool(
-                                "show-answer",
-                                "Show answer",
-                                Self::show_answer,
-                                this.clone(),
-                            )),
-                    )
-                    .child(tool("skip", "Skip", Self::skip, this.clone())),
-            ))
-            .when(answered, |column| column
-            .children(explanation.map(|text| div().mt(px(10.)).text_color(rgb(T.fg_2)).child(text)))
-            .child(tool("why", "Why this move?", Self::why, this.clone()))
-            .child(
-                h_flex()
-                    .mt(px(15.))
-                    .gap(px(6.))
-                    .child(recall(
-                        "again",
-                        ui::i18n::t("Repeat").to_owned(),
-                        Grade::Again,
-                        BtnKind::Normal,
-                        this.clone(),
-                    ))
-                    .when(!repeat, |row| row.child(recall(
-                        "hard",
-                        format!("{} ({}d)", ui::i18n::t("Hard"), intervals.hard),
-                        Grade::Hard,
-                        BtnKind::Normal,
-                        this.clone(),
-                    )))
-                    .when(!repeat && !hinted, |row| row.child(recall(
-                        "good",
-                        format!("{} ({}d)", ui::i18n::t("Good"), intervals.good),
-                        Grade::Good,
-                        BtnKind::Primary,
-                        this.clone(),
-                    )))
-                    .when(!repeat && !hinted, |row| row.child(recall(
-                        "easy",
-                        format!("{} ({}d)", ui::i18n::t("Easy"), intervals.easy),
-                        Grade::Easy,
-                        BtnKind::Normal,
-                        this.clone(),
-                    ))),
-            ))
     }
 
-    /// What the trainer says about the last answer, in a box right under the board: a
+    /// The drill controls beside the board: what the trainer says about the last
+    /// answer, Hint, Show answer and Skip while the move is asked, and the recall
+    /// grades once it is answered. Shown only while there is a position to drill or
+    /// something to say.
+    fn render_drill(&self, cx: &mut Context<Self>) -> Option<impl IntoElement + use<>> {
+        let this = cx.entity();
+        let drill = self.current().cloned();
+        if drill.is_none() && self.message.is_none() {
+            return None;
+        }
+        let card: Card = drill
+            .as_ref()
+            .and_then(|drill| {
+                let path: Vec<&str> = drill
+                    .path
+                    .iter()
+                    .map(String::as_str)
+                    .chain([drill.answer.as_str()])
+                    .collect();
+                self.model.read(cx).repertoire.card_for(&path)
+            })
+            .unwrap_or_default();
+        let intervals = card.intervals();
+        let has_drill = drill.is_some();
+        let answered = has_drill && matches!(self.phase, Phase::Correct | Phase::Revealed);
+        let evidence = self
+            .attempts
+            .get(&self.attempt_key())
+            .cloned()
+            .unwrap_or_default();
+        let repeat = evidence.scheduling_grade(Grade::Hard) == Grade::Again;
+        let hinted = evidence.hints > 0;
+        let explanation = if repeat {
+            Some(ui::i18n::t(
+                "A mistake or reveal means this position will repeat.",
+            ))
+        } else if hinted {
+            Some(ui::i18n::t(
+                "Hint used. The highest available grade is Hard.",
+            ))
+        } else {
+            None
+        };
+        let tool = |id: &'static str,
+                    label: &'static str,
+                    action: fn(&mut Self, &mut Context<Self>),
+                    this: Entity<Self>| {
+            btn(id, label).disabled(!has_drill).on_click(move |_, cx| {
+                this.update(cx, action);
+            })
+        };
+        let recall =
+            |id: &'static str, label: String, grade: Grade, kind: BtnKind, this: Entity<Self>| {
+                btn(id, label)
+                    .flex_1()
+                    .kind(kind)
+                    .disabled(!answered || evidence.scheduling_grade(grade) != grade)
+                    .on_click(move |_, cx| this.update(cx, |screen, cx| screen.grade(grade, cx)))
+            };
+        let grades = [
+            (
+                "again",
+                ui::i18n::t("Repeat").to_owned(),
+                Grade::Again,
+                BtnKind::Normal,
+                true,
+            ),
+            (
+                "hard",
+                format!("{} ({}d)", ui::i18n::t("Hard"), intervals.hard),
+                Grade::Hard,
+                BtnKind::Normal,
+                !repeat,
+            ),
+            (
+                "good",
+                format!("{} ({}d)", ui::i18n::t("Good"), intervals.good),
+                Grade::Good,
+                BtnKind::Primary,
+                !repeat && !hinted,
+            ),
+            (
+                "easy",
+                format!("{} ({}d)", ui::i18n::t("Easy"), intervals.easy),
+                Grade::Easy,
+                BtnKind::Normal,
+                !repeat && !hinted,
+            ),
+        ];
+        let mut grade_rows = v_flex().gap(px(6.));
+        for pair in grades.chunks(2) {
+            let mut row = h_flex().gap(px(6.));
+            for (id, label, grade, kind, shown) in pair.iter().cloned() {
+                if shown {
+                    row = row.child(recall(id, label, grade, kind, this.clone()));
+                }
+            }
+            grade_rows = grade_rows.child(row);
+        }
+        Some(
+            panel()
+                .flex_none()
+                .child(
+                    h_flex()
+                        .h(px(44.))
+                        .px(px(16.))
+                        .justify_between()
+                        .border_b_1()
+                        .border_color(rgb(T.border))
+                        .child(section_label(ui::i18n::t("Drill")))
+                        .when(has_drill && !answered, |header| {
+                            header.child(
+                                tool("skip", "Skip", Self::skip, this.clone())
+                                    .compact()
+                                    .tooltip(ui::i18n::t("Ask this position again later")),
+                            )
+                        }),
+                )
+                .child(
+                    v_flex()
+                        .px(px(16.))
+                        .py(px(14.))
+                        .gap(px(10.))
+                        .children(self.render_message())
+                        .when(has_drill && !answered, |column| {
+                            column.child(
+                                h_flex()
+                                    .gap(px(6.))
+                                    .child(tool("hint", "Hint", Self::hint, this.clone()).flex_1())
+                                    .child(
+                                        tool(
+                                            "show-answer",
+                                            "Show answer",
+                                            Self::show_answer,
+                                            this.clone(),
+                                        )
+                                        .flex_1(),
+                                    ),
+                            )
+                        })
+                        .when(answered, |column| {
+                            column
+                                .children(explanation.map(|text| {
+                                    div().text_size(px(13.)).text_color(rgb(T.fg_2)).child(text)
+                                }))
+                                .child(grade_rows)
+                                .child(
+                                    tool("why", "Why this move?", Self::why, this.clone())
+                                        .compact(),
+                                )
+                        }),
+                ),
+        )
+    }
+
+    /// What the trainer says about the last answer, in a box at the top of the Drill panel: a
     /// wrong move gets a `warn` outline and a cross, a right one `good` and a tick. The
     /// text itself stays in `fg` so it reads well in every palette.
-    fn render_message(&self, width: gpui::Pixels) -> Option<impl IntoElement + use<>> {
+    fn render_message(&self) -> Option<impl IntoElement + use<>> {
         let message = self.message.clone()?;
         let (outline, mark) = match self.phase {
             Phase::Wrong => (T.warn, Some("icons/x.svg")),
@@ -1022,8 +1075,6 @@ impl TrainScreen {
         };
         Some(
             h_flex()
-                .mt(px(12.))
-                .max_w(width)
                 .gap(px(8.))
                 .px(px(12.))
                 .py(px(9.))
@@ -1188,9 +1239,21 @@ impl TrainScreen {
     }
 }
 
+/// The drill board: as large as the window allows, since its controls sit in the
+/// right column rather than under it.
+fn board_size(window: &Window) -> gpui::Pixels {
+    let viewport = window.viewport_size();
+    ui::board::snap_board_size(
+        (viewport.height - px(240.))
+            .min(viewport.width - px(720.))
+            .max(px(320.)),
+        window.scale_factor(),
+    )
+}
+
 impl Render for TrainScreen {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let board_size = super::side_columns_board_size(window);
+        let board_size = board_size(window);
         let mode_this = cx.entity();
         let mode = btn(
             "reply-mode",
@@ -1234,8 +1297,10 @@ impl Render for TrainScreen {
         );
         let tree = self.render_tree(session, cx);
         let center = self.render_center(board_size, cx);
+        let drill = self.render_drill(cx);
         let leaks = self.render_leaks(cx);
-        super::three_columns(tree, "train-center", center, "leaks-column", leaks)
+        let side = v_flex().gap(px(16.)).children(drill).child(leaks);
+        super::three_columns(tree, "train-center", center, "leaks-column", side)
     }
 }
 
