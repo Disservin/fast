@@ -1551,183 +1551,91 @@ impl SettingsScreen {
             .child(option_row(ui::i18n::t("Board behaviour"), None, check_row))
     }
 
-    fn render_shortcut_summary(&mut self, cx: &mut Context<Self>) -> Div {
-        let this = cx.entity();
-        let model = self.model.read(cx);
-        let keys = |action: &str| -> Div { keycaps(model.config.shortcuts.get(action)) };
-        let row = |left: &'static str, a: Div, right: &'static str, b: Div| {
-            h_flex()
-                .h(px(32.))
-                .border_b_1()
-                .border_color(rgb(T.divider))
-                .child(
-                    div()
-                        .w(px(232.))
-                        .flex_none()
-                        .font_weight(FontWeight::MEDIUM)
-                        .child(left),
-                )
-                .child(div().w(px(352.)).flex_none().child(a))
-                .child(
-                    div()
-                        .w(px(232.))
-                        .flex_none()
-                        .font_weight(FontWeight::MEDIUM)
-                        .child(right),
-                )
-                .child(b)
-        };
-        let pair =
-            |first: &str, second: &str| h_flex().gap(px(4.)).child(keys(first)).child(keys(second));
-        section(ui::i18n::t("Keyboard shortcuts"))
-            .child(row(
-                "Previous / next move",
-                pair("prev_move", "next_move"),
-                "Start / end of game",
-                pair("first_move", "last_move"),
-            ))
-            .child(row(
-                ui::i18n::t("Engine on / off"),
-                keys("toggle_engine"),
-                ui::i18n::t("Flip board"),
-                keys("flip_board"),
-            ))
-            .child(row(
-                ui::i18n::t("Search"),
-                keys("search"),
-                "Save game",
-                keys("save_game"),
-            ))
-            .child(
-                h_flex().mt(px(12.)).child(
-                    btn("edit-shortcuts", "Edit shortcuts")
-                        .h(30.)
-                        .on_click(move |window, cx| {
-                            this.update(cx, |screen, cx| {
-                                screen.set_page(SettingsPage::Shortcuts, window, cx)
-                            });
-                        }),
-                ),
-            )
-    }
-
-    fn render_storage(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+    /// Export everything to one backup file, or preview and restore one.
+    fn render_backup(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let model = self.model.clone();
         let export = model.clone();
         let import = model.clone();
-        let paths = &model.read(cx).paths;
-        let mut body = v_flex()
-            .gap(px(12.))
-            .child(section_label("Storage and backup"))
-            .children(
-                [
-                    (
-                        "open-settings-path",
-                        "Settings",
-                        paths
-                            .config_file
-                            .parent()
-                            .unwrap_or(&paths.data_dir)
-                            .to_path_buf(),
-                        paths.config_file.display().to_string(),
-                    ),
-                    (
-                        "open-data-path",
-                        "Games, notes, repertoire and history",
-                        paths.data_dir.clone(),
-                        paths.data_dir.display().to_string(),
-                    ),
-                ]
-                .into_iter()
-                .map(|(id, label, folder, display)| {
-                    h_flex()
-                        .gap(px(12.))
-                        .child(
-                            div()
-                                .flex_1()
-                                .min_w_0()
-                                .child(format!("{label}: {display}")),
-                        )
-                        .child(
-                            btn(id, "Open")
-                                .h(28.)
-                                .tooltip(ui::i18n::t("Open the containing folder"))
-                                .on_click(move |_, cx| {
-                                    cx.reveal_path(&folder);
-                                }),
-                        )
-                }),
-            )
-            .child(
-                btn("export-backup", "Export complete backup").on_click(move |_, cx| {
-                    let target = export.clone();
-                    crate::model::pick_path(
-                        export.clone(),
-                        "Export backup",
-                        Some("fast-backup.json"),
-                        cx,
-                        move |path, cx| {
-                            target.update(cx, |model, cx| {
-                                let paths = model.paths.clone();
-                                let config = model.config.clone();
-                                let repertoire = model.repertoire.clone();
-                                let task = cx.background_spawn(async move {
-                                    crate::backup::Archive::capture(&paths, &config, &repertoire)
+        let mut body = v_flex().gap(px(12.)).child(
+            h_flex()
+                .gap(px(8.))
+                .child(
+                    btn("export-backup", "Export complete backup").on_click(move |_, cx| {
+                        let target = export.clone();
+                        crate::model::pick_path(
+                            export.clone(),
+                            "Export backup",
+                            Some("fast-backup.json"),
+                            cx,
+                            move |path, cx| {
+                                target.update(cx, |model, cx| {
+                                    let paths = model.paths.clone();
+                                    let config = model.config.clone();
+                                    let repertoire = model.repertoire.clone();
+                                    let task = cx.background_spawn(async move {
+                                        crate::backup::Archive::capture(
+                                            &paths,
+                                            &config,
+                                            &repertoire,
+                                        )
                                         .and_then(|archive| Ok(serde_json::to_vec(&archive)?))
-                                        .and_then(|bytes| {
-                                            crate::persistence::atomic_write(&path, &bytes)
-                                        })
-                                });
-                                model.toast("Exporting backup…", cx);
-                                cx.spawn(async move |this, cx| {
-                                    let result = task.await;
-                                    let _ = this.update(cx, |model, cx| {
-                                        model.toast(
-                                            match result {
-                                                Ok(()) => "Backup exported".into(),
-                                                Err(err) => format!("Backup failed: {err:#}"),
-                                            },
-                                            cx,
+                                        .and_then(
+                                            |bytes| crate::persistence::atomic_write(&path, &bytes),
                                         )
                                     });
-                                })
-                                .detach();
-                            });
-                        },
-                    );
-                }),
-            )
-            .child(
-                btn("preview-backup", "Preview backup to restore").on_click(move |_, cx| {
-                    let target = import.clone();
-                    crate::model::pick_path(
-                        import.clone(),
-                        "Preview backup",
-                        None,
-                        cx,
-                        move |path, cx| {
-                            target.update(cx, |model, cx| {
-                                let task = cx.background_spawn(async move {
-                                    crate::backup::Archive::read(&path)
+                                    model.toast("Exporting backup…", cx);
+                                    cx.spawn(async move |this, cx| {
+                                        let result = task.await;
+                                        let _ = this.update(cx, |model, cx| {
+                                            model.toast(
+                                                match result {
+                                                    Ok(()) => "Backup exported".into(),
+                                                    Err(err) => format!("Backup failed: {err:#}"),
+                                                },
+                                                cx,
+                                            )
+                                        });
+                                    })
+                                    .detach();
                                 });
-                                model.toast("Reading backup preview…", cx);
-                                cx.spawn(async move |this, cx| {
-                                    let result = task.await;
-                                    let _ = this.update(cx, |model, cx| match result {
-                                        Ok(archive) => {
-                                            model.pending_backup = Some(archive);
-                                            cx.notify();
-                                        }
-                                        Err(err) => model
-                                            .toast(format!("Cannot restore backup: {err:#}"), cx),
+                            },
+                        );
+                    }),
+                )
+                .child(btn("preview-backup", "Preview backup to restore").on_click(
+                    move |_, cx| {
+                        let target = import.clone();
+                        crate::model::pick_path(
+                            import.clone(),
+                            "Preview backup",
+                            None,
+                            cx,
+                            move |path, cx| {
+                                target.update(cx, |model, cx| {
+                                    let task = cx.background_spawn(async move {
+                                        crate::backup::Archive::read(&path)
                                     });
-                                })
-                                .detach();
-                            });
-                        },
-                    );
-                }),
-            );
+                                    model.toast("Reading backup preview…", cx);
+                                    cx.spawn(async move |this, cx| {
+                                        let result = task.await;
+                                        let _ = this.update(cx, |model, cx| match result {
+                                            Ok(archive) => {
+                                                model.pending_backup = Some(archive);
+                                                cx.notify();
+                                            }
+                                            Err(err) => model.toast(
+                                                format!("Cannot restore backup: {err:#}"),
+                                                cx,
+                                            ),
+                                        });
+                                    })
+                                    .detach();
+                                });
+                            },
+                        );
+                    },
+                )),
+        );
         if let Some(archive) = &model.read(cx).pending_backup {
             body = body.child(format!(
                 "Backup preview ({} files): {}",
@@ -1791,17 +1699,18 @@ impl SettingsScreen {
                 }),
             );
         }
-        panel().p(px(16.)).child(body)
+        section("Backup").child(body)
     }
 
+    /// The General page: updates, opening data, theme and language. Board, shortcut and
+    /// storage settings live on their own pages only.
     fn render_general(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         v_flex()
             .gap(px(16.))
             .child(page_title(ui::i18n::t("General")))
-            .child(self.render_app_update(cx))
-            .child(self.render_storage(cx))
-            .child(self.render_opening_data(cx))
             .child(self.render_appearance(cx))
+            .child(self.render_app_update(cx))
+            .child(self.render_opening_data(cx))
             .when(
                 {
                     let model = self.model.read(cx);
@@ -1821,8 +1730,6 @@ impl SettingsScreen {
                     )
                 },
             )
-            .child(self.render_board_section(cx))
-            .child(self.render_shortcut_summary(cx))
     }
 
     /// Show the installed version and user-requested application update controls.
@@ -3280,7 +3187,7 @@ impl SettingsScreen {
 }
 
 impl SettingsScreen {
-    /// The Data page: where Fast keeps its files, what each kind holds and its size.
+    /// The Data page: where Fast keeps its files, what each kind holds, its size, and backup.
     fn render_data(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let this = cx.entity();
         let paths = self.model.read(cx).paths.clone();
@@ -3411,6 +3318,7 @@ impl SettingsScreen {
                         .on_click(move |_, _| crate::storage::reveal_folder(&path)),
                 )
         };
+        let backup = self.render_backup(cx);
         v_flex()
             .gap(px(16.))
             .child(page_title(ui::i18n::t("Data")))
@@ -3462,6 +3370,7 @@ impl SettingsScreen {
                     .children(drive)
                     .child(table),
             )
+            .child(backup)
     }
 }
 
