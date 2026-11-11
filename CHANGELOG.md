@@ -4,6 +4,8 @@ Settings › Changelog shows this file. Keep entries to one short line each.
 
 ## Since 0.1.0
 
+- Play: game PGNs include the event, start date and actual engine names from the start of play.
+
 - Play: engine matches show colour-coded evaluation and search graphs with nodes, depth and time per move.
 
 - Tabs: right-click and choose Close all tabs to start a fresh Analyse tab with numbering reset to one.

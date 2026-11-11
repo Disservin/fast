@@ -109,6 +109,48 @@ fn match_move_comment(
     commands.join(" ")
 }
 
+/// Names an engine in game records using its own identification when available.
+fn engine_game_name(config: &EngineConfig) -> String {
+    if config.info.name.trim().is_empty() {
+        config.name.clone()
+    } else {
+        config.info.name.clone()
+    }
+}
+
+/// Records the participants and UTC start date before moves or recovery saves are made.
+fn set_game_headers(tree: &mut GameTree, white: &str, black: &str, engines: bool, days: i64) {
+    // Convert days since the Unix epoch to the Gregorian calendar, including leap years.
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let day_of_era = z - era * 146_097;
+    let year_of_era =
+        (day_of_era - day_of_era / 1460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
+    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let month_index = (5 * day_of_year + 2) / 153;
+    let day = day_of_year - (153 * month_index + 2) / 5 + 1;
+    let month = if month_index < 10 {
+        month_index + 3
+    } else {
+        month_index - 9
+    };
+    let year = year_of_era + era * 400 + i64::from(month <= 2);
+    tree.set_header(
+        "Event",
+        if engines {
+            "Fast engine match"
+        } else {
+            "Fast casual game"
+        },
+    );
+    tree.set_header("Site", "Fast");
+    tree.set_header("Date", &format!("{year:04}.{month:02}.{day:02}"));
+    tree.set_header("Round", "-");
+    tree.set_header("White", white);
+    tree.set_header("Black", black);
+    tree.set_header("Result", "*");
+}
+
 /// A PV move and its resulting position for the hover board.
 struct PvMove {
     label: String,
@@ -562,6 +604,13 @@ impl PlayScreen {
                 }
             }
         }
+        set_game_headers(
+            &mut tree,
+            &self.model.read(cx).config.player_name,
+            "Stockfish",
+            false,
+            crate::model::today(),
+        );
         self.moves_scroll.scroll_to_bottom();
         self.viewed = None;
         self.game = Some(Game {
@@ -628,6 +677,7 @@ impl PlayScreen {
     fn spawn_engine(
         &self,
         config: &EngineConfig,
+        color: Color,
         elo: Option<u32>,
         cx: &mut Context<Self>,
     ) -> (EngineHandle, Task<()>) {
@@ -644,7 +694,7 @@ impl PlayScreen {
         }
         // Its first search sends `ucinewgame`: each game gets its own process.
         let handle = EngineHandle::spawn(config.path.clone(), Vec::new(), options);
-        let reader = self.spawn_reader(&handle, cx);
+        let reader = self.spawn_reader(&handle, color, cx);
         (handle, reader)
     }
 
@@ -824,11 +874,11 @@ impl PlayScreen {
             let (engine, reader) = if demo {
                 (None, None)
             } else {
-                let (engine, reader) = self.spawn_engine(&config, elo, cx);
+                let (engine, reader) = self.spawn_engine(&config, Color::White, elo, cx);
                 (Some(engine), Some(reader))
             };
             WhiteEngine {
-                name: config.name,
+                name: engine_game_name(&config),
                 rating: elo,
                 engine,
                 _reader: reader,
@@ -844,7 +894,7 @@ impl PlayScreen {
             increment_ms: [increment_ms, black_increment_ms],
             fixed_limits,
             result: None,
-            opponent_name: config.name.clone(),
+            opponent_name: engine_game_name(&config),
             opponent_rating: elo,
             label: if self_play {
                 format!(
@@ -886,8 +936,28 @@ impl PlayScreen {
             _engine_reader: None,
             _clock: None,
         };
+        let player = self.model.read(cx).config.player_name.clone();
+        let (white_name, black_name) = if let Some(white) = &game.white {
+            (white.name.as_str(), game.opponent_name.as_str())
+        } else if user == Color::White {
+            (player.as_str(), game.opponent_name.as_str())
+        } else {
+            (game.opponent_name.as_str(), player.as_str())
+        };
+        set_game_headers(
+            &mut game.tree,
+            white_name,
+            black_name,
+            self_play,
+            crate::model::today(),
+        );
         if !demo {
-            let (engine, reader) = self.spawn_engine(&config, elo, cx);
+            let (engine, reader) = self.spawn_engine(
+                &config,
+                if self_play { Color::Black } else { !user },
+                elo,
+                cx,
+            );
             game._engine_reader = Some(reader);
             game.engine = Some(engine);
         }
@@ -920,11 +990,38 @@ impl PlayScreen {
     }
 
     /// Receives moves and live search lines without blocking the board.
-    fn spawn_reader(&self, handle: &EngineHandle, cx: &mut Context<Self>) -> Task<()> {
+    fn spawn_reader(
+        &self,
+        handle: &EngineHandle,
+        color: Color,
+        cx: &mut Context<Self>,
+    ) -> Task<()> {
         let events = handle.events();
         cx.spawn(async move |this, cx| {
             while let Ok(event) = events.recv().await {
                 let alive = this.update(cx, |this, cx| match event {
+                    EngineEvent::Ready(info) => {
+                        if let Some(game) = &mut this.game
+                            && !info.name.trim().is_empty()
+                        {
+                            game.tree.set_header(
+                                if color == Color::White {
+                                    "White"
+                                } else {
+                                    "Black"
+                                },
+                                &info.name,
+                            );
+                            if color == Color::White
+                                && let Some(white) = &mut game.white
+                            {
+                                white.name = info.name;
+                            } else {
+                                game.opponent_name = info.name;
+                            }
+                            cx.notify();
+                        }
+                    }
                     EngineEvent::Analysis { search_id, update } => {
                         this.update_analysis(search_id, update, cx);
                     }
@@ -936,7 +1033,6 @@ impl PlayScreen {
                             .toast(format!("The engine stopped: {reason}"), cx);
                         this.finish("Engine stopped".to_owned(), cx);
                     }
-                    _ => {}
                 });
                 if alive.is_err() {
                     return;
@@ -1412,17 +1508,7 @@ impl PlayScreen {
 
     fn analyse_game(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(game) = &self.game else { return };
-        let mut tree = game.tree.clone();
-        let player = self.model.read(cx).config.player_name.clone();
-        let (white, black) = if let Some(white) = &game.white {
-            (white.name.clone(), game.opponent_name.clone())
-        } else if game.user == Color::White {
-            (player, game.opponent_name.clone())
-        } else {
-            (game.opponent_name.clone(), player)
-        };
-        tree.set_header("White", &white);
-        tree.set_header("Black", &black);
+        let tree = game.tree.clone();
         // Deferred: opening a tab saves the session, which reads every Play tab,
         // including this one while it is still being updated.
         if let Some(workspace) = self.workspace.upgrade() {
@@ -2583,6 +2669,45 @@ impl Render for PlayScreen {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Game records replace source metadata and retain their participants through PGN export.
+    #[test]
+    fn played_game_headers_survive_export() {
+        let mut tree = GameTree::new();
+        tree.set_header("Event", "Opening book source");
+        tree.set_header("Date", "1999.01.01");
+        tree.set_header("Result", "1-0");
+        set_game_headers(&mut tree, "Stockfish 18", "Berserk 13", true, 20_000);
+        let exported = chess_core::write_pgn(&tree);
+        let restored = chess_core::parse_pgn(&exported).unwrap().remove(0);
+        for (key, expected) in [
+            ("Event", "Fast engine match"),
+            ("Site", "Fast"),
+            ("Date", "2024.10.04"),
+            ("Round", "-"),
+            ("White", "Stockfish 18"),
+            ("Black", "Berserk 13"),
+            ("Result", "*"),
+        ] {
+            assert_eq!(restored.header(key), Some(expected));
+        }
+    }
+
+    /// Dates handle leap days and the calendar year boundary for either player colour.
+    #[test]
+    fn played_game_dates_and_human_participants() {
+        let mut tree = GameTree::new();
+        for (days, date) in [
+            (0, "1970.01.01"),
+            (19_782, "2024.02.29"),
+            (20_089, "2025.01.01"),
+        ] {
+            set_game_headers(&mut tree, "Stockfish 18", "Player", false, days);
+            assert_eq!(tree.header("Date"), Some(date));
+            assert_eq!(tree.header("Event"), Some("Fast casual game"));
+            assert_eq!(tree.header("Black"), Some("Player"));
+        }
+    }
 
     /// Browsing follows the played line even while new moves and side lines are added.
     #[test]

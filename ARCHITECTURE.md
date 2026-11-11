@@ -564,3 +564,7 @@ depend on the workspace knowing which screen owns it.
 Engine matches in Play retain per-move node counts in `[%nodes]` PGN comments alongside
 evaluation, depth and elapsed time. The Eval and Search graphs read those annotations
 from the current game path, with one series per engine and scrubbing linked to the board.
+
+Play writes event, site, UTC start date and participant headers when creating a game,
+then refreshes engine participants from each process’s UCI identification. Recovery
+and Analyse use the same game headers.
