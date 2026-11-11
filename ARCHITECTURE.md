@@ -347,6 +347,12 @@ variations and NAGs goes to the `annotated` column, which `GameDetails::to_pgn`
 prefers. The scoresheet shows a strip naming the database, whether there are
 unsaved changes, and the stored review's findings. The review also fills the eval
 graph. Loading any other game clears the link.
+Analyse keeps the best eval known for each move (from the game's own comments, a
+stored review, or the engine, whichever searched deepest, with mate distances
+when known). The scoresheet shows it beside each mainline move. Save, Save as,
+Copy PGN and Copy PGN from here write it into the move's comment as
+`[%eval 0.35,24]` or `[%eval #-3,30]`, replacing an older, shallower `[%eval]`.
+The tab's own game is not changed, so analysing alone never marks it unsaved.
 The tab strip scrolls horizontally; tab keyboard actions remain available during
 text entry without enabling move-navigation keys inside inputs.
 

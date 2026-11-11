@@ -210,9 +210,9 @@ impl LiveEngine {
 
 pub enum LiveEvent {
     Updated,
-    /// An engine reached an evaluation for the analysed node (White-relative cp)
-    /// at a depth.
-    Eval(NodeId, i32, u32),
+    /// An engine reached an evaluation for the analysed node (White-relative) at a
+    /// depth.
+    Eval(NodeId, Score, u32),
 }
 
 pub struct LiveAnalysis {
@@ -528,7 +528,7 @@ impl LiveAnalysis {
                         && !line.update.bound
                         && let Some(score) = line.score
                     {
-                        newest_eval = Some((score_cp(score), line.update.depth));
+                        newest_eval = Some((score, line.update.depth));
                     }
                     live.lines.insert(line.update.multipv, line);
                 }
@@ -580,9 +580,9 @@ impl LiveAnalysis {
             });
         }
         if self.search_moves.is_empty()
-            && let (Some(node), Some((cp, depth))) = (node, newest_eval)
+            && let (Some(node), Some((score, depth))) = (node, newest_eval)
         {
-            cx.emit(LiveEvent::Eval(node, cp, depth));
+            cx.emit(LiveEvent::Eval(node, score, depth));
         }
         if ready {
             self.search(cx);
@@ -772,7 +772,7 @@ impl LiveAnalysis {
                 chess_core::GameEnd::Checkmate { .. } => -chess_core::annotation::MATE_CP,
                 _ => 0,
             };
-            (cp, 0)
+            (Score::Cp(cp), 0)
         });
         for engine in &mut self.engines {
             // A drawn repetition may have lines from its earlier visits; they no longer
@@ -833,11 +833,11 @@ impl LiveAnalysis {
                 && let Some(line) = engine.lines.get(&1)
                 && let Some(score) = line.score
             {
-                known = Some((score_cp(score), line.update.depth));
+                known = Some((score, line.update.depth));
             }
         }
-        if let (Some(node), Some((cp, depth))) = (self.node, known) {
-            cx.emit(LiveEvent::Eval(node, cp, depth));
+        if let (Some(node), Some((score, depth))) = (self.node, known) {
+            cx.emit(LiveEvent::Eval(node, score, depth));
         }
         self.search(cx);
         cx.emit(LiveEvent::Updated);

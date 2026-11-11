@@ -14,7 +14,8 @@ pub mod sample;
 pub mod tree;
 
 pub use annotation::{
-    MoveAnnotation, move_times, parse_annotation, parse_move_annotation, strip_commands,
+    MoveAnnotation, eval_command, move_times, parse_annotation, parse_move_annotation,
+    strip_commands, with_eval_command,
 };
 pub use chess960::{Variant, back_rank, chess960_number, chess960_position, fen_variant};
 pub use eco::{Opening, classify};

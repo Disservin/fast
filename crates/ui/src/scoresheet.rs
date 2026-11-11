@@ -1,6 +1,6 @@
 //! OTB-style scoresheet rendering of a [`GameTree`].
 
-use std::{cell::Cell, rc::Rc};
+use std::{cell::Cell, collections::HashMap, rc::Rc};
 
 use chess_core::{GameTree, NodeId, Notation, display_san, nag_symbol};
 use gpui::{
@@ -25,6 +25,9 @@ pub struct ScoresheetProps {
     pub notation: Notation,
     pub on_select: SelectHandler,
     pub on_context: ContextHandler,
+    /// The evaluation after each move, already written for display ("+0.35", "#-3"),
+    /// shown beside the move.
+    pub evals: Rc<HashMap<NodeId, SharedString>>,
     /// Where the current move was last drawn, so the sheet can be scrolled to keep it in view.
     pub current_bounds: Rc<Cell<Option<Bounds<Pixels>>>>,
 }
@@ -89,6 +92,21 @@ fn move_cell(tree: &GameTree, id: NodeId, props: &ScoresheetProps) -> impl IntoE
                 .font_weight(FontWeight::SEMIBOLD)
                 .child(nags)
         }))
+        .children(eval_text(id, props))
+}
+
+/// The evaluation after a move, small and `muted` so the moves stay the thing to read.
+fn eval_text(id: NodeId, props: &ScoresheetProps) -> Option<impl IntoElement + use<>> {
+    let text = props.evals.get(&id)?.clone();
+    Some(
+        div()
+            .ml(px(4.))
+            .flex_none()
+            .whitespace_nowrap()
+            .text_size(px(11.))
+            .text_color(rgb(T.muted))
+            .child(text),
+    )
 }
 
 fn inline_move(
@@ -231,6 +249,7 @@ pub fn scoresheet_body(tree: &GameTree, props: &ScoresheetProps) -> impl IntoEle
                 div()
                     .w(px(MOVE_W))
                     .flex_none()
+                    .overflow_hidden()
                     .child(move_cell(tree, white, props)),
             ),
             None => cells.child(
@@ -426,6 +445,7 @@ pub fn scoresheet_inline(tree: &GameTree, props: &ScoresheetProps) -> impl IntoE
                         })
                         .child(text),
                 )
+                .when(depth == 0, |flow| flow.children(eval_text(id, props)))
             }
             Token::Open(depth) => flow.child(div().text_color(rgb(depth_color(depth))).child("(")),
             Token::Close(depth) => flow.child(div().text_color(rgb(depth_color(depth))).child(")")),

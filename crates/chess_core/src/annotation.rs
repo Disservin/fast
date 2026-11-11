@@ -105,7 +105,13 @@ pub fn parse_annotation(comment: &str) -> MoveAnnotation {
         eval_cp: command(comment, "eval").and_then(parse_eval_text),
         ..Default::default()
     };
-    out.depth = field(comment, "d").and_then(|value| value.parse().ok());
+    out.depth = field(comment, "d")
+        .or_else(|| {
+            command(comment, "eval")?
+                .split_once(',')
+                .map(|(_, depth)| depth)
+        })
+        .and_then(|value| value.trim().parse().ok());
     if out.elapsed.is_none() {
         out.elapsed = field(comment, "mt")
             .and_then(|value| value.parse::<f64>().ok())
@@ -129,6 +135,40 @@ pub fn parse_annotation(comment: &str) -> MoveAnnotation {
         out.elapsed = out.elapsed.or(cute.elapsed);
     }
     out
+}
+
+/// The `[%eval]` command for a White-relative evaluation: `[%eval 0.35,24]` with
+/// the search depth, `[%eval #-3]` for a mate in that many moves. A mate whose
+/// distance is not known (`cp` at ±`MATE_CP` without `mate`) cannot be written.
+pub fn eval_command(cp: i32, mate: Option<i32>, depth: Option<u32>) -> Option<String> {
+    let value = match mate {
+        Some(mate) => format!("#{mate}"),
+        None if cp.abs() >= MATE_CP => return None,
+        None => format!("{:.2}", f64::from(cp) / 100.0),
+    };
+    Some(match depth.filter(|depth| *depth > 0) {
+        Some(depth) => format!("[%eval {value},{depth}]"),
+        None => format!("[%eval {value}]"),
+    })
+}
+
+/// `comment` with its `[%eval]` command replaced by `command`, or with `command`
+/// added in front when it has none.
+pub fn with_eval_command(comment: &str, command: &str) -> String {
+    if let Some(start) = comment.find("[%eval")
+        && let Some(end) = comment[start..].find(']')
+    {
+        return format!(
+            "{}{command}{}",
+            &comment[..start],
+            &comment[start + end + 1..]
+        );
+    }
+    if comment.trim().is_empty() {
+        command.to_owned()
+    } else {
+        format!("{command} {}", comment.trim_start())
+    }
 }
 
 /// A comment without its embedded `[%...]` commands, for display.
@@ -183,6 +223,35 @@ pub fn move_times(tree: &GameTree, line: &[NodeId]) -> Vec<Option<f64>> {
 mod tests {
     use super::*;
     use crate::parse_pgn;
+
+    #[test]
+    fn eval_commands_round_trip_and_replace_the_old_one() {
+        assert_eq!(
+            eval_command(35, None, Some(24)).as_deref(),
+            Some("[%eval 0.35,24]")
+        );
+        assert_eq!(
+            eval_command(-120, None, None).as_deref(),
+            Some("[%eval -1.20]")
+        );
+        assert_eq!(
+            eval_command(-MATE_CP, Some(-3), Some(30)).as_deref(),
+            Some("[%eval #-3,30]")
+        );
+        assert_eq!(eval_command(MATE_CP, None, Some(30)), None);
+        let note = parse_annotation("[%eval 0.35,24]");
+        assert_eq!((note.eval_cp, note.depth), (Some(35), Some(24)));
+        assert_eq!(parse_annotation("[%eval #-3,30]").eval_cp, Some(-MATE_CP));
+        assert_eq!(
+            with_eval_command("Good [%eval 0.10] [%clk 0:01:00]", "[%eval 0.35,24]"),
+            "Good [%eval 0.35,24] [%clk 0:01:00]"
+        );
+        assert_eq!(with_eval_command("", "[%eval 0.35]"), "[%eval 0.35]");
+        assert_eq!(
+            with_eval_command("Sharp", "[%eval 0.35]"),
+            "[%eval 0.35] Sharp"
+        );
+    }
 
     #[test]
     fn lichess_commands() {

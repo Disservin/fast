@@ -302,6 +302,8 @@ pub struct AnalyseScreen {
     evals: HashMap<NodeId, i32>,
     /// Search depth behind each eval, for the depth graph.
     depths: HashMap<NodeId, u32>,
+    /// White-relative mate distance behind an eval at ±`MATE_CP`, where known.
+    mates: HashMap<NodeId, i32>,
     /// The child last visited from each node, so stepping forward returns into the
     /// line you came back from rather than always the main line.
     last_child: HashMap<NodeId, NodeId>,
@@ -414,13 +416,17 @@ impl AnalyseScreen {
             }),
             cx.subscribe_in(&live, window, |this, _, event, _, cx| match event {
                 LiveEvent::Updated => this.rebuild_rows(cx),
-                LiveEvent::Eval(node, cp, depth) => {
+                LiveEvent::Eval(node, score, depth) => {
                     // Keep the deeper of what is known: a game's annotations or the engine.
                     if this.depths.get(node).is_none_or(|known| *known <= *depth)
                         || !this.evals.contains_key(node)
                     {
-                        this.evals.insert(*node, *cp);
+                        this.evals.insert(*node, crate::live::score_cp(*score));
                         this.depths.insert(*node, *depth);
+                        match score {
+                            Score::Mate(mate) => this.mates.insert(*node, *mate),
+                            Score::Cp(_) => this.mates.remove(node),
+                        };
                     }
                     cx.notify();
                 }
@@ -493,6 +499,7 @@ impl AnalyseScreen {
             live,
             rows: Vec::new(),
             depths: HashMap::new(),
+            mates: HashMap::new(),
             last_child: HashMap::new(),
             selected: None,
             row_chosen: false,
@@ -1174,6 +1181,7 @@ impl AnalyseScreen {
         self.current = GameTree::ROOT;
         self.evals.clear();
         self.depths.clear();
+        self.mates.clear();
         self.last_child.clear();
         // Evals and depths recorded in the game itself (Lichess, TCEC) fill the graphs
         // straight away, for reviewing games already played.
@@ -1252,9 +1260,9 @@ impl AnalyseScreen {
         }
     }
 
-    /// Writes the game, with variations and comments, to a PGN file.
+    /// Writes the game, with variations, comments and engine evals, to a PGN file.
     pub fn save_pgn_as(&mut self, cx: &mut Context<Self>) {
-        let pgn = write_pgn(&self.tree);
+        let pgn = write_pgn(&self.annotated_tree());
         let model = self.model.clone();
         crate::model::pick_path(
             self.model.clone(),
@@ -1523,6 +1531,9 @@ impl AnalyseScreen {
             if let Some(id) = node_at(position.ply as usize) {
                 self.evals.insert(id, position.eval_cp.clamp(-mate, mate));
                 self.depths.insert(id, position.depth);
+                if let Some(distance) = position.mate_distance {
+                    self.mates.insert(id, distance);
+                }
             }
         }
         self.db_game = Some(origin);
@@ -1547,9 +1558,35 @@ impl AnalyseScreen {
         self.model.toast("FEN copied.", cx);
     }
 
-    /// Copies the whole game, headers and variations included.
+    /// The game with each analysed move's evaluation written into its comment as a
+    /// `[%eval]` command, so saved and copied PGN keeps the analysis. An eval the
+    /// game already carries stays unless the engine searched deeper.
+    fn annotated_tree(&self) -> GameTree {
+        let mut tree = self.tree.clone();
+        for (&id, &cp) in &self.evals {
+            if id == GameTree::ROOT {
+                continue;
+            }
+            let depth = self.depths.get(&id).copied();
+            let node = tree.node(id);
+            let note =
+                chess_core::parse_move_annotation(&node.comment, !node.ply.is_multiple_of(2));
+            if note.eval_cp.is_some() && note.depth.unwrap_or(0) >= depth.unwrap_or(0) {
+                continue;
+            }
+            let Some(command) = chess_core::eval_command(cp, self.mates.get(&id).copied(), depth)
+            else {
+                continue;
+            };
+            let comment = chess_core::with_eval_command(&node.comment, &command);
+            tree.node_mut(id).comment = comment;
+        }
+        tree
+    }
+
+    /// Copies the whole game, headers, variations and engine evals included.
     fn copy_pgn(&mut self, cx: &mut Context<Self>) {
-        cx.write_to_clipboard(ClipboardItem::new_string(write_pgn(&self.tree)));
+        cx.write_to_clipboard(ClipboardItem::new_string(write_pgn(&self.annotated_tree())));
         self.copy_menu = false;
         self.model.toast("PGN copied.", cx);
     }
@@ -1675,7 +1712,7 @@ impl AnalyseScreen {
         if let Some(origin) = self.db_game.clone() {
             return self.save_to_db_game(origin, cx);
         }
-        let mut tree = self.tree.clone();
+        let mut tree = self.annotated_tree();
         let player = self.model.read(cx).config.player_name.clone();
         if tree.header("White").is_none_or(|white| white == "White") {
             tree.set_header("White", &player);
@@ -1722,11 +1759,12 @@ impl AnalyseScreen {
     /// Writes the board's game, comments and variations included, over the stored game
     /// it was opened from.
     fn save_to_db_game(&mut self, origin: DbGame, cx: &mut Context<Self>) {
-        let pgn = write_pgn(&self.tree);
+        let pgn = write_pgn(&self.annotated_tree());
+        // Unsaved changes are judged on the game without the evals added here.
+        let written = write_pgn(&self.tree);
         let model = self.model.clone();
         let DbGame { path, id, name } = origin;
         cx.spawn(async move |this, cx| {
-            let written = pgn.clone();
             let saved = cx
                 .background_spawn(async move { Database::open(&path)?.replace_game(id, &pgn) })
                 .await;
@@ -2041,9 +2079,16 @@ impl AnalyseScreen {
         let context_this = this.clone();
         // Only a move drawn in this frame counts; the start position has none.
         self.scoresheet_current.set(None);
+        let evals = self
+            .evals
+            .iter()
+            .filter(|(id, _)| **id != GameTree::ROOT)
+            .map(|(&id, &cp)| (id, eval_label(cp, self.mates.get(&id).copied()).into()))
+            .collect();
         let props = ScoresheetProps {
             current: self.current,
             current_bounds: self.scoresheet_current.clone(),
+            evals: Rc::new(evals),
             notation,
             on_select: Rc::new(move |id, window, cx| {
                 select_this.update(cx, |screen, cx| screen.jump(id, window, cx));
@@ -3692,7 +3737,7 @@ impl AnalyseScreen {
                         ui::i18n::t("Copy PGN from here"),
                         Box::new(move |_, cx| {
                             copy_this.update(cx, |screen, cx| {
-                                let text = write_pgn_from(&screen.tree, id);
+                                let text = write_pgn_from(&screen.annotated_tree(), id);
                                 cx.write_to_clipboard(ClipboardItem::new_string(text));
                                 screen.context_menu = None;
                                 screen.model.toast("PGN copied.", cx);
@@ -4029,9 +4074,29 @@ impl Render for AnalyseScreen {
     }
 }
 
+/// A White-relative evaluation as the scoresheet shows it beside a move: pawns
+/// ("+0.35"), or a mate ("#3", "#-2", and "#" or "-#" when its distance
+/// is not known).
+fn eval_label(cp: i32, mate: Option<i32>) -> String {
+    match mate {
+        Some(mate) => format!("#{mate}"),
+        None if cp >= chess_core::annotation::MATE_CP => "#".to_owned(),
+        None if cp <= -chess_core::annotation::MATE_CP => "-#".to_owned(),
+        None => Score::Cp(cp).display(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn scoresheet_evals_are_short() {
+        assert_eq!(eval_label(35, None), "+0.35");
+        assert_eq!(eval_label(-120, None), "-1.20");
+        assert_eq!(eval_label(2000, Some(3)), "#3");
+        assert_eq!(eval_label(-2000, None), "-#");
+    }
 
     #[test]
     fn opening_multiple_files_keeps_every_game_and_reports_individual_failures() {
