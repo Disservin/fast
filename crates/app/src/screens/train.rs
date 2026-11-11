@@ -478,18 +478,22 @@ impl TrainScreen {
         self.start_drill(cx);
     }
 
+    /// Puts the leaks the Leaks panel lists, where the repertoire has a prepared
+    /// answer, at the front of the session: each asks for the prepared move in the
+    /// position where a game left the repertoire. The rest of the session stays queued
+    /// behind them, without repeating those positions.
     fn drill_leaks(&mut self, cx: &mut Context<Self>) {
         let model = self.model.read(cx);
-        let drills: Vec<Drill> = model
-            .leaks
-            .iter()
+        let drills: Vec<Drill> = shown_leaks(&model.leaks)
             .filter_map(|leak| {
                 Some(Drill {
                     path: leak.path.clone(),
                     answer: leak.prepared.clone()?,
                     note: format!(
-                        "You played {} here in {} games; the repertoire answer is prepared.",
-                        leak.played, leak.games
+                        "You played {} here in {} games. The repertoire move is {}.",
+                        leak.played,
+                        leak.games,
+                        leak.prepared.as_deref().unwrap_or_default()
                     ),
                 })
             })
@@ -499,10 +503,20 @@ impl TrainScreen {
             cx.notify();
             return;
         }
-        self.finished = 0;
-        self.total = drills.len();
-        self.queue = drills;
+        let key = |drill: &Drill| {
+            (
+                trainer::Repertoire::position_key(&drill.path),
+                drill.answer.clone(),
+            )
+        };
+        let added: std::collections::HashSet<_> = drills.iter().map(key).collect();
+        let before = self.queue.len();
+        self.queue.retain(|drill| !added.contains(&key(drill)));
+        let replaced = before - self.queue.len();
+        self.total = (self.total + drills.len()).saturating_sub(replaced);
+        self.queue.splice(0..0, drills);
         self.start_drill(cx);
+        self.persist_session(cx);
     }
 
     fn submit_line(&mut self, text: &str, window: &mut Window, cx: &mut Context<Self>) {
@@ -1107,7 +1121,6 @@ impl TrainScreen {
     }
 
     fn render_leaks(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        const MIN_LEAK_GAMES: u32 = 2;
         const MIN_GAP_GAMES: u32 = 5;
         let this = cx.entity();
         let model = self.model.read(cx);
@@ -1143,12 +1156,7 @@ impl TrainScreen {
         };
         let mut body = v_flex();
         let mut shown = 0;
-        for leak in model
-            .leaks
-            .iter()
-            .filter(|leak| leak.games >= MIN_LEAK_GAMES)
-            .take(2)
-        {
+        for leak in shown_leaks(&model.leaks) {
             let number = leak.path.len() as u32;
             let played = chess_core::notation::numbered(number + 1, &leak.played);
             let title = match &leak.prepared {
@@ -1241,13 +1249,25 @@ impl TrainScreen {
                     .child(
                         btn("drill-leaks", "Drill these lines")
                             .primary()
-                            .disabled(!model.leaks.iter().any(|leak| leak.prepared.is_some()))
+                            .disabled(
+                                !shown_leaks(&model.leaks).any(|leak| leak.prepared.is_some()),
+                            )
                             .on_click(move |_, cx| {
                                 this.update(cx, |screen, cx| screen.drill_leaks(cx));
                             }),
                     ),
             )
     }
+}
+
+/// The leaks the Leaks panel lists, and the ones Drill these lines practises: the
+/// first two seen in at least two games.
+fn shown_leaks(leaks: &[trainer::Leak]) -> impl Iterator<Item = &trainer::Leak> {
+    const MIN_LEAK_GAMES: u32 = 2;
+    leaks
+        .iter()
+        .filter(|leak| leak.games >= MIN_LEAK_GAMES)
+        .take(2)
 }
 
 /// The drill board: as large as the window allows, since its controls sit in the

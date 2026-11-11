@@ -481,3 +481,7 @@ Progress counts finished queue entries, excluding the unanswered question and
 entries awaiting repetition. An exhausted queue distinguishes a completed session
 from an empty repertoire or a day with no scheduled positions; the persisted
 session counters preserve this distinction after restarting.
+Drill these lines practises the leaks the Leaks panel lists (the first two seen in
+at least two games) that have a prepared move. They go to the front of the current
+session; queued drills for the same position and answer are dropped so nothing is
+asked twice, and the rest of the session stays behind them.
