@@ -188,6 +188,23 @@ pub fn strip_commands(comment: &str) -> String {
     out.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+/// Replaces the readable comment while preserving clock, evaluation and other PGN commands.
+pub fn with_comment_text(comment: &str, text: &str) -> String {
+    let mut result = text.trim().to_owned();
+    let mut rest = comment;
+    while let Some(start) = rest.find("[%") {
+        let Some(end) = rest[start..].find(']') else {
+            break;
+        };
+        if !result.is_empty() {
+            result.push(' ');
+        }
+        result.push_str(&rest[start..=start + end]);
+        rest = &rest[start + end + 1..];
+    }
+    result
+}
+
 /// "180+2" → (180 s, 2 s); "40/7200:3600" and "-" are not understood.
 pub fn parse_time_control(text: &str) -> Option<(f64, f64)> {
     let (base, inc) = text.split_once('+').unwrap_or((text, "0"));
@@ -223,6 +240,22 @@ pub fn move_times(tree: &GameTree, line: &[NodeId]) -> Vec<Option<f64>> {
 mod tests {
     use super::*;
     use crate::parse_pgn;
+
+    /// Editing prose keeps imported timing and evaluations through a PGN round trip.
+    #[test]
+    fn editing_comment_preserves_commands() {
+        let original = "Old note [%clk 0:00:07] [%emt 0:00:03] [%eval 0.35]";
+        let updated = with_comment_text(original, "A better plan");
+        assert_eq!(strip_commands(&updated), "A better plan");
+        assert_eq!(parse_annotation(&updated), parse_annotation(original));
+        assert_eq!(
+            with_comment_text(original, ""),
+            "[%clk 0:00:07] [%emt 0:00:03] [%eval 0.35]"
+        );
+        let tree = parse_pgn(&format!("1. e4 {{{updated}}} *")).unwrap();
+        let exported = crate::write_pgn(&tree[0]);
+        assert!(exported.contains(&updated));
+    }
 
     #[test]
     fn eval_commands_round_trip_and_replace_the_old_one() {

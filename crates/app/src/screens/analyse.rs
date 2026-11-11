@@ -310,7 +310,7 @@ pub struct AnalyseScreen {
     note: Entity<TextareaState>,
     note_hash: u64,
     comment: Entity<TextareaState>,
-    editing_comment: bool,
+    editing_comment: Option<NodeId>,
     fen_input: Entity<InputState>,
     /// Edit position is open, with the position being set up.
     editor: Option<PositionEditor>,
@@ -509,7 +509,7 @@ impl AnalyseScreen {
             note,
             note_hash: 0,
             comment,
-            editing_comment: false,
+            editing_comment: None,
             fen_input,
             editor: None,
             context_menu: None,
@@ -2216,7 +2216,7 @@ impl AnalyseScreen {
                     .child(self.scoresheet_follower())
                     .vertical_scrollbar(&self.scoresheet_scroll),
             )
-            .when(self.editing_comment, |column| {
+            .when(self.editing_comment.is_some(), |column| {
                 let comment = self.comment.clone();
                 let save = this.clone();
                 column.child(
@@ -2234,9 +2234,13 @@ impl AnalyseScreen {
                                 .on_click(move |_, cx| {
                                     save.update(cx, |screen, cx| {
                                         let text = screen.comment.read(cx).value().to_string();
-                                        let current = screen.current;
-                                        screen.tree.node_mut(current).comment = text;
-                                        screen.editing_comment = false;
+                                        if let Some(node) = screen.editing_comment.take() {
+                                            let updated = chess_core::with_comment_text(
+                                                &screen.tree.node(node).comment,
+                                                &text,
+                                            );
+                                            screen.tree.node_mut(node).comment = updated;
+                                        }
                                         cx.notify();
                                     });
                                 }),
@@ -2268,8 +2272,15 @@ impl AnalyseScreen {
                                 let this = this.clone();
                                 move |window, cx| {
                                     this.update(cx, |screen, cx| {
-                                        screen.editing_comment = !screen.editing_comment;
-                                        let text = screen.tree.node(screen.current).comment.clone();
+                                        screen.editing_comment = if screen.editing_comment.is_some()
+                                        {
+                                            None
+                                        } else {
+                                            Some(screen.current)
+                                        };
+                                        let text = chess_core::strip_commands(
+                                            &screen.tree.node(screen.current).comment,
+                                        );
                                         screen.comment.update(cx, |state, cx| {
                                             state.set_value(text, window, cx);
                                         });
