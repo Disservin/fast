@@ -191,6 +191,10 @@ pub fn translate(language: Language, text: &str) -> &str {
             "Other names for My games and leak detection. Separate names with semicolons." => {
                 "Weitere Namen für Meine Partien und Schwachstellen. Namen durch Semikolons trennen."
             }
+            "Move to the removed folder" => "In den Ordner removed verschieben",
+            "Removed databases are kept in the removed folder." => {
+                "Entfernte Datenbanken bleiben im Ordner removed erhalten."
+            }
             "Your name in game headers" => "Ihr Name in den Partiedaten",
             "Name" => "Name",
             "Rating" => "Wertung",
@@ -202,6 +206,7 @@ pub fn translate(language: Language, text: &str) -> &str {
             "Save" => "Speichern",
             "Delete" => "Löschen",
             "Remove" => "Entfernen",
+            "Could not remove database" => "Datenbank konnte nicht entfernt werden",
             "Add" => "Hinzufügen",
             "Edit" => "Bearbeiten",
             "Reset" => "Zurücksetzen",

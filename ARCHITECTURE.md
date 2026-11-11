@@ -248,7 +248,10 @@ The UI thread never blocks on engines or databases.
   Editing or deleting a game removes its position-index rows by recomputing its own hashes, so
   it never scans the whole `positions` table. A database's display name lives in its `meta`
   table; duplicating uses `VACUUM INTO`. Settings › Databases edits the aliases used
-  by My games and leak detection. The Database sidebar can create an empty
+  by My games and leak detection. Removing a reference database checkpoints its WAL
+  in a background task, moves the file into `databases/removed`, clears linked accounts
+  and saved database preferences, then emits `ModelEvent::Databases`. My games is protected.
+  The Database sidebar can create an empty
   database on a background task, reserving a unique file with `create_new`, then selecting
   it and opening the inline name editor.
 - **Games table:** ids for the filter are loaded once and rows are paged on demand as

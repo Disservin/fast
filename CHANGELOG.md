@@ -4,6 +4,8 @@ Settings › Changelog shows this file. Keep entries to one short line each.
 
 ## Since 0.1.0
 
+- Settings: remove reference databases under Databases and keep their files recoverable.
+
 - Settings: edit player aliases under Databases.
 
 - Train: the Leaks header fits narrow panels without overflowing.
