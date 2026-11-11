@@ -205,6 +205,9 @@ from draws. Changing the picker updates both views. Uncached queries clear stale
 show a loading state and report lookup errors without caching them; clicking a move
 adds it to the analysed line and advances the board.
 
+The Database screen keeps collection selection and management actions in a full-width
+top toolbar, with a horizontally scrolling collection strip. The left column contains
+only search filters, beside the game table and optional preview.
 Database collection management lives in `screens/database/management.rs`. It loads
 collection statistics, saves names/descriptions in SQLite `meta`, merges exact player
 names and previews duplicate or empty-game IDs on background workers. Cleanup uses

@@ -224,6 +224,8 @@ pub struct DatabaseScreen {
     workspace: WeakEntity<Workspace>,
     selected_db: Option<PathBuf>,
     db_snapshot: Option<DbEntry>,
+    /// Stable keyboard focus for the collection tabs in the top toolbar.
+    collection_focus: HashMap<PathBuf, gpui::FocusHandle>,
     player: Entity<InputState>,
     colour: TextSelect,
     result: TextSelect,
@@ -532,6 +534,7 @@ impl DatabaseScreen {
             workspace,
             selected_db,
             db_snapshot: None,
+            collection_focus: HashMap::new(),
             player,
             colour,
             result,
@@ -2376,11 +2379,21 @@ impl DatabaseScreen {
         cx.notify();
     }
 
-    fn render_left(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+    /// Keeps collection choices and management actions visible above the game workspace.
+    fn render_collections(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let this = cx.entity();
         let entries = self.model.read(cx).databases.clone();
-        let mut list = v_flex().mb(px(20.));
+        let mut list = h_flex()
+            .id("database-collections")
+            .w_full()
+            .min_w_0()
+            .overflow_x_scroll();
         for (index, entry) in entries.iter().enumerate() {
+            let focus = self
+                .collection_focus
+                .entry(entry.path.clone())
+                .or_insert_with(|| cx.focus_handle().tab_stop(true))
+                .clone();
             let selected = self.selected_db.as_ref() == Some(&entry.path);
             let renamable = self.can_rename(&entry.path, cx);
             let rename_input = self
@@ -2392,7 +2405,9 @@ impl DatabaseScreen {
                 let cancel = this.clone();
                 list = list.child(
                     div()
-                        .h(px(35.))
+                        .h(px(40.))
+                        .w(px(260.))
+                        .flex_none()
                         .flex()
                         .items_center()
                         .border_b_1()
@@ -2411,6 +2426,8 @@ impl DatabaseScreen {
             }
             let path = entry.path.clone();
             let this_click = this.clone();
+            let keys = this.clone();
+            let key_path = path.clone();
             let (rename_this, duplicate_this) = (this.clone(), this.clone());
             let (rename_path, duplicate_path) = (entry.path.clone(), entry.path.clone());
             let reimport_this = this.clone();
@@ -2433,7 +2450,27 @@ impl DatabaseScreen {
             list = list.child(
                 h_flex()
                     .id(("db", index))
-                    .h(px(35.))
+                    .key_context("FastButton")
+                    .track_focus(&focus)
+                    .focus_visible(|row| row.border_2().border_color(rgb(T.accent)))
+                    .on_key_down(move |event: &gpui::KeyDownEvent, _, cx| {
+                        if !event.keystroke.modifiers.modified()
+                            && matches!(event.keystroke.key.as_str(), "enter" | "space")
+                        {
+                            cx.stop_propagation();
+                            keys.update(cx, |screen, cx| {
+                                screen.selected_db = Some(key_path.clone());
+                                screen.selected = None;
+                                screen.apply_filter(cx);
+                            });
+                        }
+                    })
+                    .h(px(40.))
+                    .w(px(260.))
+                    .flex_none()
+                    .px(px(12.))
+                    .border_r_1()
+                    .border_color(rgb(T.divider))
                     .justify_between()
                     .gap(px(8.))
                     .when(selected, |row| row.bg(rgb(T.selected)))
@@ -2548,6 +2585,75 @@ impl DatabaseScreen {
                     )),
             );
         }
+        let busy = self.collection_busy();
+        v_flex()
+            .flex_none()
+            .w_full()
+            .min_w_0()
+            .bg(rgb(T.surface))
+            .border_b_1()
+            .border_color(rgb(T.border))
+            .child(
+                h_flex()
+                    .flex_wrap()
+                    .justify_between()
+                    .gap(px(12.))
+                    .px(px(16.))
+                    .py(px(12.))
+                    .child(section_label("Databases"))
+                    .child(
+                        h_flex()
+                            .gap(px(6.))
+                            .child({
+                                let this = this.clone();
+                                btn("add-database", "Add database")
+                                    .compact()
+                                    .primary()
+                                    .disabled(busy && self.collection_control.is_none())
+                                    .on_click(move |window, cx| {
+                                        this.update(cx, |screen, cx| {
+                                            screen.open_add_database(window, cx)
+                                        });
+                                    })
+                            })
+                            .child({
+                                let this = this.clone();
+                                btn("manage-database", "Manage")
+                                    .compact()
+                                    .disabled(self.selected_db.is_none() || busy)
+                                    .on_click(move |window, cx| {
+                                        this.update(cx, |screen, cx| {
+                                            screen.open_manager(window, cx)
+                                        });
+                                    })
+                            })
+                            .child({
+                                let this = this.clone();
+                                btn("new-database", "New")
+                                    .compact()
+                                    .tooltip(ui::i18n::t("Create an empty database"))
+                                    .on_click(move |window, cx| {
+                                        this.update(cx, |screen, cx| screen.create_db(window, cx));
+                                    })
+                            })
+                            .child({
+                                let this = this.clone();
+                                btn("import", "Import games").compact().on_click(
+                                    move |window, cx| {
+                                        this.update(cx, |screen, cx| {
+                                            screen.prompt_import(window, cx)
+                                        });
+                                    },
+                                )
+                            }),
+                    ),
+            )
+            .child(list)
+    }
+
+    /// Keeps game-search controls together beside the results table.
+    fn render_left(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let this = cx.entity();
         let reached = self.reached;
         let only_left = self.only_left_rep;
         let only_annotated = self.only_annotated;
@@ -2690,50 +2796,6 @@ impl DatabaseScreen {
             .bg(rgb(T.surface))
             .border_r_1()
             .border_color(rgb(T.border))
-            .child(
-                h_flex()
-                    .justify_between()
-                    .items_center()
-                    .mb(px(5.))
-                    .child(section_label(ui::i18n::t("Databases")))
-                    .child(
-                        h_flex()
-                            .gap(px(6.))
-                            .flex_none()
-                            .child({
-                                let create_this = this.clone();
-                                btn("new-database", "New")
-                                    .mini()
-                                    .tooltip("Create an empty database")
-                                    .on_click(move |window, cx| {
-                                        create_this.update(cx, |screen, cx| {
-                                            screen.create_db(window, cx)
-                                        });
-                                    })
-                            })
-                            .child({
-                                let import_this = this.clone();
-                                btn("import", "Import")
-                                    .mini()
-                                    .tooltip(
-                                        "Import a PGN file, or download games from Lichess or Chess.com",
-                                    )
-                                    .on_click(move |window, cx| {
-                                        import_this.update(cx, |screen, cx| {
-                                            screen.prompt_import(window, cx)
-                                        });
-                                    })
-                            }),
-                    ),
-            )
-            .child(list)
-            .child(h_flex().gap(px(6.)).mb(px(16.))
-                .child({ let this = this.clone(); btn("add-database", "Add database").compact().disabled(self.collection_busy() && self.collection_control.is_none()).on_click(move |window, cx| {
-                    this.update(cx, |screen, cx| screen.open_add_database(window, cx));
-                }) })
-                .child({ let this = this.clone(); btn("manage-database", "Manage").compact().disabled(self.selected_db.is_none() || self.collection_busy()).on_click(move |window, cx| {
-                    this.update(cx, |screen, cx| screen.open_manager(window, cx));
-                }) }))
             .child(
                 h_flex()
                     .justify_between()
@@ -5150,6 +5212,7 @@ impl Render for DatabaseScreen {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // The table needs its fixed columns, so the preview makes way on narrow windows.
         let show_preview = window.viewport_size().width >= px(1320.);
+        let collections = self.render_collections(cx);
         let left = self.render_left(cx);
         let header = self.render_main_header(cx);
         let stats = self.render_stats();
@@ -5168,35 +5231,42 @@ impl Render for DatabaseScreen {
         let manager = self.render_manager(cx);
         let add_database = self.render_add_database(cx);
         let collection_bar = self.render_collection_bar(cx);
-        h_flex()
+        v_flex()
             .relative()
-            .items_start()
             .size_full()
-            .child(left)
+            .child(collections)
             .child(
-                v_flex()
+                h_flex()
                     .flex_1()
-                    .min_w_0()
-                    .h_full()
-                    .px(px(24.))
-                    .pt(px(24.))
-                    .pb(px(16.))
-                    .gap(px(16.))
-                    .child(header)
-                    .children(import_bar)
-                    .children(download_bar)
-                    .children(collection_bar)
-                    .child(stats)
+                    .min_h_0()
+                    .w_full()
+                    .items_start()
+                    .child(left)
                     .child(
-                        h_flex()
-                            .items_start()
+                        v_flex()
                             .flex_1()
-                            .min_h_0()
+                            .min_w_0()
+                            .h_full()
+                            .px(px(24.))
+                            .pt(px(24.))
+                            .pb(px(16.))
                             .gap(px(16.))
-                            .child(div().flex_1().min_w_0().h_full().child(table))
-                            .when(show_preview, |row| {
-                                row.child(panel().w(px(293.)).flex_none().child(preview))
-                            }),
+                            .child(header)
+                            .children(import_bar)
+                            .children(download_bar)
+                            .children(collection_bar)
+                            .child(stats)
+                            .child(
+                                h_flex()
+                                    .items_start()
+                                    .flex_1()
+                                    .min_h_0()
+                                    .gap(px(16.))
+                                    .child(div().flex_1().min_w_0().h_full().child(table))
+                                    .when(show_preview, |row| {
+                                        row.child(panel().w(px(293.)).flex_none().child(preview))
+                                    }),
+                            ),
                     ),
             )
             .children(review_dialog)
