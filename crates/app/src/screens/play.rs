@@ -2362,7 +2362,12 @@ impl PlayScreen {
     fn render_side(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let this = cx.entity();
         let game = self.game.as_ref();
-        let mut list = v_flex().mt(px(8.)).font_family(MONO).text_size(px(13.));
+        let mut list = v_flex()
+            .w_full()
+            .min_w_0()
+            .font_family(MONO)
+            .text_size(px(13.));
+        let mut columns = None;
         let mut opening_text = String::from("Starting position");
         if let Some(game) = game {
             let ids = game.tree.path_to(game.current);
@@ -2377,19 +2382,23 @@ impl PlayScreen {
             }
             cells.extend(ids.iter().map(|&id| Some(id)));
             if game.self_play() {
-                list = list.child(
+                columns = Some(
                     h_flex()
-                        .h(px(24.))
+                        .h(px(28.))
+                        .flex_none()
                         .bg(rgb(T.surface_2))
-                        .pl(px(36.))
+                        .mt(px(8.))
+                        .mr(px(16.))
+                        .pl(px(48.))
+                        .gap(px(12.))
                         .children((0..2).map(|_| {
                             h_flex()
                                 .flex_1()
                                 .min_w_0()
-                                .gap(px(4.))
+                                .gap(px(6.))
                                 .child(section_label("Move").flex_1().min_w_0())
-                                .child(section_label("Eval").w(px(44.)).text_right())
-                                .child(section_label("Time").w(px(44.)).text_right())
+                                .child(section_label("Eval").w(px(52.)).text_right())
+                                .child(section_label("Time").w(px(56.)).text_right())
                         })),
                 );
             }
@@ -2404,26 +2413,27 @@ impl PlayScreen {
                     h_flex()
                         .flex_1()
                         .min_w_0()
-                        .gap(px(4.))
+                        .gap(px(6.))
                         .child(
-                            div()
-                                .flex_1()
-                                .min_w_0()
-                                .whitespace_nowrap()
-                                .when(current, |pill| {
-                                    pill.px(px(6.))
-                                        .rounded(px(4.))
-                                        .bg(rgb(T.accent))
-                                        .text_color(rgb(T.accent_fg))
-                                })
-                                .child(san),
+                            h_flex().flex_1().min_w_0().child(
+                                div()
+                                    .flex_none()
+                                    .px(px(4.))
+                                    .whitespace_nowrap()
+                                    .when(current, |pill| {
+                                        pill.rounded(px(4.))
+                                            .bg(rgb(T.accent))
+                                            .text_color(rgb(T.accent_fg))
+                                    })
+                                    .child(san),
+                            ),
                         )
                         .when(game.self_play() && id.is_some(), |row| {
                             let (eval, time) =
                                 values.unwrap_or_else(|| ("—".to_owned(), "—".to_owned()));
                             row.child(
                                 mono(eval)
-                                    .w(px(44.))
+                                    .w(px(52.))
                                     .flex_none()
                                     .text_size(px(12.))
                                     .text_right()
@@ -2432,7 +2442,7 @@ impl PlayScreen {
                             )
                             .child(
                                 mono(time)
-                                    .w(px(44.))
+                                    .w(px(56.))
                                     .flex_none()
                                     .text_size(px(12.))
                                     .text_right()
@@ -2443,7 +2453,10 @@ impl PlayScreen {
                 };
                 list = list.child(
                     h_flex()
-                        .h(px(27.))
+                        .w_full()
+                        .h(px(28.))
+                        .flex_none()
+                        .gap(px(12.))
                         .border_b_1()
                         .border_color(rgb(T.divider))
                         .child(
@@ -2477,16 +2490,19 @@ impl PlayScreen {
                             |row| row.child(ui::widgets::badge("Chess960")),
                         ),
                     )
+                    .children(columns)
                     .child(
                         div()
                             .relative()
+                            .min_w_0()
+                            .pr(px(16.))
                             .child(
                                 div()
                                     .id("play-moves-scroll")
+                                    .w_full()
                                     .max_h(px(220.))
                                     .overflow_y_scroll()
                                     .track_scroll(&self.moves_scroll)
-                                    .pr(px(12.))
                                     .child(list),
                             )
                             .child(
