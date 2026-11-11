@@ -6,10 +6,12 @@ use std::time::{Duration, Instant};
 use chess_core::{Color, GameTree, Move, NodeId, Position, classify, shakmaty::uci::UciMove};
 use engine::{EngineConfig, EngineEvent, EngineHandle, Limits, OptionKind, SearchRequest};
 use gpui::{
-    AppContext as _, Context, Entity, FontWeight, IntoElement, Pixels, Point, Render, SharedString,
-    Subscription, Task, WeakEntity, Window, anchored, deferred, div, point, prelude::*, px, rgb,
+    AppContext as _, Context, Entity, FontWeight, IntoElement, Pixels, Point, Render, ScrollHandle,
+    SharedString, Subscription, Task, WeakEntity, Window, anchored, deferred, div, point,
+    prelude::*, px, rgb,
 };
 use gpui_component::{
+    scroll::{Scrollbar, ScrollbarMode},
     select::SelectEvent,
     slider::{Slider, SliderEvent, SliderState},
 };
@@ -242,6 +244,10 @@ pub struct PlayScreen {
     workspace: WeakEntity<Workspace>,
     board: Entity<BoardView>,
     pv_board: Entity<BoardView>,
+    /// Follows each played move while allowing the move list to scroll independently.
+    moves_scroll: ScrollHandle,
+    /// An earlier move being reviewed while the game continues at its live position.
+    viewed: Option<NodeId>,
     pv_hover: Option<(usize, usize)>,
     pv_at: Option<Point<Pixels>>,
     /// The engine the user plays against.
@@ -423,6 +429,8 @@ impl PlayScreen {
             workspace,
             board,
             pv_board,
+            moves_scroll: ScrollHandle::new(),
+            viewed: None,
             pv_hover: None,
             pv_at: None,
             opponent,
@@ -513,6 +521,8 @@ impl PlayScreen {
                 }
             }
         }
+        self.moves_scroll.scroll_to_bottom();
+        self.viewed = None;
         self.game = Some(Game {
             tree,
             current: node,
@@ -840,6 +850,8 @@ impl PlayScreen {
         }
         self.pv_hover = None;
         self.pv_at = None;
+        self.moves_scroll.scroll_to_bottom();
+        self.viewed = None;
         self.game = Some(game);
         self.show_setup = false;
         if self_play {
@@ -976,12 +988,12 @@ impl PlayScreen {
 
     fn sync_board(&mut self, animate: bool, cx: &mut Context<Self>) {
         let Some(game) = &self.game else { return };
-        let node = game.tree.node(game.current);
+        let node = game.tree.node(self.viewed.unwrap_or(game.current));
         let pos = node.pos.clone();
         let last = node.mv.as_ref().and_then(|mv| Some((mv.from()?, mv.to())));
         let user = game.user;
         let active = game.result.is_none();
-        let interactive = active && !game.self_play();
+        let interactive = active && !game.self_play() && self.viewed.is_none();
         let premoves = game.premoves && interactive;
         let premove = game.premove.filter(|_| premoves);
         self.board.update(cx, |board, cx| {
@@ -991,6 +1003,63 @@ impl PlayScreen {
             board.set_premoves(premoves, cx);
             board.set_premove(premove, cx);
         });
+    }
+
+    /// Reviews the previous or next played move without changing the live game.
+    pub fn step(&mut self, delta: i32, cx: &mut Context<Self>) {
+        let Some(game) = &self.game else { return };
+        let current = self.viewed.unwrap_or(game.current);
+        let target = review_step(&game.tree, game.current, current, delta);
+        if let Some(target) = target {
+            self.review(target, cx);
+        }
+    }
+
+    /// Shows the starting position without interrupting the running engines.
+    pub fn go_first(&mut self, cx: &mut Context<Self>) {
+        if self.game.is_some() {
+            self.review(GameTree::ROOT, cx);
+        }
+    }
+
+    /// Returns to the live position and resumes following new moves.
+    pub fn go_last(&mut self, cx: &mut Context<Self>) {
+        if let Some(game) = &self.game {
+            self.review(game.current, cx);
+        }
+    }
+
+    /// Keeps the displayed board, selected move and scroll position together.
+    fn review(&mut self, target: NodeId, cx: &mut Context<Self>) {
+        let Some(game) = &self.game else { return };
+        if target == self.viewed.unwrap_or(game.current) {
+            return;
+        }
+        self.viewed = (target != game.current).then_some(target);
+        if self.viewed.is_none() {
+            self.moves_scroll.scroll_to_bottom();
+        } else {
+            let ids = game.tree.path_to(game.current);
+            let first_black = ids
+                .first()
+                .is_some_and(|&id| game.tree.node(id).ply % 2 == 0);
+            let row = ids
+                .iter()
+                .position(|&id| id == target)
+                .map_or(0, |index| (index + usize::from(first_black)) / 2);
+            self.moves_scroll
+                .set_offset(point(px(0.), -px(row as f32 * 27.)));
+        }
+        let node = game.tree.node(target);
+        if let Some(mv) = &node.mv {
+            self.model
+                .read(cx)
+                .config
+                .board
+                .play_move_sound(mv, &node.pos, None);
+        }
+        self.sync_board(true, cx);
+        cx.notify();
     }
 
     /// Applies a move from either side: clock, tree, and game-end detection.
@@ -1004,6 +1073,9 @@ impl PlayScreen {
             game.black_ms += game.increment_ms[1];
         }
         game.current = game.tree.add_move(game.current, mv);
+        if self.viewed.is_none() {
+            self.moves_scroll.scroll_to_bottom();
+        }
         let mut recovery_tree = game.tree.clone();
         recovery_tree.set_header("FastWhiteMs", &game.white_ms.to_string());
         recovery_tree.set_header("FastBlackMs", &game.black_ms.to_string());
@@ -1043,7 +1115,7 @@ impl PlayScreen {
     fn user_move(&mut self, mv: Move, cx: &mut Context<Self>) {
         let Some(game) = &self.game else { return };
         let turn = game.tree.node(game.current).pos.turn();
-        if game.result.is_some() || game.self_play() || turn != game.user {
+        if self.viewed.is_some() || game.result.is_some() || game.self_play() || turn != game.user {
             return;
         }
         self.apply_move(mv, cx);
@@ -1248,6 +1320,8 @@ impl PlayScreen {
             engine.stop();
         }
         game.current = node;
+        self.viewed = None;
+        self.moves_scroll.scroll_to_bottom();
         let keep = game.tree.node(node).children.first().copied();
         if let Some(keep) = keep {
             game.tree.delete_from(keep);
@@ -1988,7 +2062,7 @@ impl PlayScreen {
             for (index, pair) in cells.chunks(2).enumerate() {
                 let number = first_ply.div_ceil(2) as usize + index;
                 let cell = |id: Option<NodeId>| {
-                    let current = id == Some(game.current);
+                    let current = id == Some(self.viewed.unwrap_or(game.current));
                     let san = id
                         .map(|id| game.tree.node(id).san.clone())
                         .unwrap_or_default();
@@ -2042,10 +2116,19 @@ impl PlayScreen {
                     )
                     .child(
                         div()
-                            .id("play-moves-scroll")
-                            .max_h(px(220.))
-                            .overflow_y_scroll()
-                            .child(list),
+                            .relative()
+                            .child(
+                                div()
+                                    .id("play-moves-scroll")
+                                    .max_h(px(220.))
+                                    .overflow_y_scroll()
+                                    .track_scroll(&self.moves_scroll)
+                                    .pr(px(12.))
+                                    .child(list),
+                            )
+                            .child(
+                                Scrollbar::vertical(&self.moves_scroll).mode(ScrollbarMode::Always),
+                            ),
                     )
                     .child(
                         div()
@@ -2107,6 +2190,17 @@ impl PlayScreen {
                         this.update(cx, |screen, cx| screen.analyse_game(window, cx));
                     }),
             )
+    }
+}
+
+/// Steps along the played game rather than a side variation or an engine PV.
+fn review_step(tree: &GameTree, live: NodeId, viewed: NodeId, delta: i32) -> Option<NodeId> {
+    if delta < 0 {
+        tree.node(viewed).parent
+    } else {
+        tree.path_to(live)
+            .into_iter()
+            .find(|&id| tree.node(id).parent == Some(viewed))
     }
 }
 
@@ -2252,6 +2346,24 @@ impl Render for PlayScreen {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Browsing follows the played line even while new moves and side lines are added.
+    #[test]
+    fn review_tracks_the_live_line_without_changing_it() {
+        let mut tree = GameTree::new();
+        let e4 = tree.add_san(GameTree::ROOT, "e4").unwrap();
+        let c5 = tree.add_san(e4, "c5").unwrap();
+        let e5 = tree.add_san(e4, "e5").unwrap();
+        assert_eq!(review_step(&tree, e5, e4, 1), Some(e5));
+        assert_eq!(review_step(&tree, c5, e4, 1), Some(c5));
+        assert_eq!(review_step(&tree, e5, e5, -1), Some(e4));
+        assert_eq!(review_step(&tree, e5, GameTree::ROOT, -1), None);
+        assert_eq!(review_step(&tree, e5, e5, 1), None);
+        let nf3 = tree.add_san(e5, "Nf3").unwrap();
+        assert_eq!(review_step(&tree, nf3, e4, 1), Some(e5));
+        assert_eq!(review_step(&tree, nf3, e5, 1), Some(nf3));
+        assert_eq!(tree.node(nf3).san, "Nf3");
+    }
 
     /// Books seed the played line and reject empty or unsupported files.
     #[test]

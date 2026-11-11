@@ -4,6 +4,10 @@ Settings › Changelog shows this file. Keep entries to one short line each.
 
 ## Since 0.1.0
 
+- Play: arrow keys browse the visible game, updating the board and selected move while engines continue playing.
+
+- Play: the move list follows each new move automatically and has a scrollbar for browsing earlier moves.
+
 - Play: long move lists scroll independently, hovering over PV moves previews the board, and engine matches remember clock values, units and search limits.
 
 - Play: engine matches close setup on start, play both sides, and show moves and live engine evaluations and PVs beside the board.

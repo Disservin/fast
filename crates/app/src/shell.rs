@@ -2485,20 +2485,36 @@ impl Render for Workspace {
                 }
             }))
             .on_action(cx.listener(|this, _: &PrevMove, window, cx| {
-                this.analyse
-                    .update(cx, |screen, cx| screen.step(-1, window, cx));
+                if this.mode == Mode::Play {
+                    this.play.update(cx, |screen, cx| screen.step(-1, cx));
+                } else {
+                    this.analyse
+                        .update(cx, |screen, cx| screen.step(-1, window, cx));
+                }
             }))
             .on_action(cx.listener(|this, _: &NextMove, window, cx| {
-                this.analyse
-                    .update(cx, |screen, cx| screen.step(1, window, cx));
+                if this.mode == Mode::Play {
+                    this.play.update(cx, |screen, cx| screen.step(1, cx));
+                } else {
+                    this.analyse
+                        .update(cx, |screen, cx| screen.step(1, window, cx));
+                }
             }))
             .on_action(cx.listener(|this, _: &FirstMove, window, cx| {
-                this.analyse
-                    .update(cx, |screen, cx| screen.go_first(window, cx));
+                if this.mode == Mode::Play {
+                    this.play.update(cx, |screen, cx| screen.go_first(cx));
+                } else {
+                    this.analyse
+                        .update(cx, |screen, cx| screen.go_first(window, cx));
+                }
             }))
             .on_action(cx.listener(|this, _: &LastMove, window, cx| {
-                this.analyse
-                    .update(cx, |screen, cx| screen.go_last(window, cx));
+                if this.mode == Mode::Play {
+                    this.play.update(cx, |screen, cx| screen.go_last(cx));
+                } else {
+                    this.analyse
+                        .update(cx, |screen, cx| screen.go_last(window, cx));
+                }
             }))
             .on_action(cx.listener(|this, _: &ToggleEngine, _, cx| {
                 this.analyse
