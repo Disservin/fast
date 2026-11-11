@@ -297,6 +297,7 @@ pub struct SettingsScreen {
     animation: Entity<SliderState>,
     volume: Entity<SliderState>,
     player_name: Entity<InputState>,
+    player_aliases: Entity<InputState>,
     /// The window's workspace, for starting account updates on the Database tab.
     workspace: gpui::WeakEntity<crate::shell::Workspace>,
     /// Nodes per position for backwards analysis; applied on Enter or leaving the field.
@@ -368,6 +369,12 @@ impl SettingsScreen {
         });
         let name = model.read(cx).config.player_name.clone();
         let player_name = new_input(name, ui::i18n::t("Your name in game headers"), window, cx);
+        let player_aliases = new_input(
+            model.read(cx).config.player_aliases.join("; "),
+            ui::i18n::t("Separate names with semicolons"),
+            window,
+            cx,
+        );
         let nodes = model.read(cx).config.backward_nodes;
         let backward_nodes = new_input(nodes.to_string(), "e.g. 500000 or 500k", window, cx);
         let path_input = cx.new(|cx| InputState::new(window, cx));
@@ -442,6 +449,23 @@ impl SettingsScreen {
                     });
                 }
             }),
+            cx.subscribe_in(&player_aliases, window, |this, state, event, _, cx| {
+                if matches!(event, InputEvent::Blur | InputEvent::PressEnter { .. }) {
+                    let value = state.read(cx).value().to_string();
+                    this.model.update(cx, |model, cx| {
+                        let previous = model.config.player_aliases.clone();
+                        model.config.player_aliases.clear();
+                        for name in value.split(';') {
+                            model.config.add_player_alias(name);
+                        }
+                        if model.config.player_aliases != previous {
+                            model.save_config(cx);
+                            model.refresh_leaks(cx);
+                            cx.emit(ModelEvent::Databases);
+                        }
+                    });
+                }
+            }),
             cx.subscribe_in(&backward_nodes, window, |this, state, event, window, cx| {
                 if matches!(event, InputEvent::Blur | InputEvent::PressEnter { .. }) {
                     let text = state.read(cx).value().to_string();
@@ -478,6 +502,7 @@ impl SettingsScreen {
             animation,
             volume,
             player_name,
+            player_aliases,
             workspace,
             backward_nodes,
             backward_error: None,
@@ -2795,6 +2820,10 @@ impl SettingsScreen {
                     "How you appear in PGN headers. Used for My games and leak detection.",
                 )),
                 div().w(px(320.)).child(text_input(&self.player_name)),
+            )).child(option_row(
+                "Player aliases",
+                Some(ui::i18n::t("Other names for My games and leak detection. Separate names with semicolons.")),
+                div().w(px(320.)).child(text_input(&self.player_aliases)),
             )))
             .child(
                 section(ui::i18n::t("Accounts"))

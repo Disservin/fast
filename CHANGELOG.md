@@ -4,6 +4,8 @@ Settings › Changelog shows this file. Keep entries to one short line each.
 
 ## Since 0.1.0
 
+- Settings: edit player aliases under Databases.
+
 - Train: the Leaks header fits narrow panels without overflowing.
 
 - Analyse: My moves hides the My games and Repertoire columns in the moves table.

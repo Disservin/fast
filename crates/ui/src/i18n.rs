@@ -186,6 +186,11 @@ pub fn translate(language: Language, text: &str) -> &str {
             "You" => "Spieler",
             "Files" => "Dateien",
             "Player name" => "Spielername",
+            "Player aliases" => "Weitere Spielernamen",
+            "Separate names with semicolons" => "Namen durch Semikolons trennen",
+            "Other names for My games and leak detection. Separate names with semicolons." => {
+                "Weitere Namen für Meine Partien und Schwachstellen. Namen durch Semikolons trennen."
+            }
             "Your name in game headers" => "Ihr Name in den Partiedaten",
             "Name" => "Name",
             "Rating" => "Wertung",
