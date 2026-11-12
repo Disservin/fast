@@ -369,6 +369,8 @@ pub struct PlayScreen {
     allow_takebacks: bool,
     allow_premoves: bool,
     game: Option<Game>,
+    /// The FEN of the start position shown on the board while a new game is set up.
+    preview: Option<String>,
     /// Replies scheduled from the demo opponent.
     demo_task: Option<Task<()>>,
     _subscriptions: Vec<Subscription>,
@@ -485,6 +487,10 @@ impl PlayScreen {
                 BoardEvent::Square { .. } => {}
             }),
             cx.subscribe(&start_from, |_, _, _: &SelectEvent<_>, cx| cx.notify()),
+            cx.subscribe(
+                &start_fen,
+                |_, _, _: &gpui_component::input::InputEvent, cx| cx.notify(),
+            ),
             cx.subscribe_in(
                 &model,
                 window,
@@ -549,6 +555,7 @@ impl PlayScreen {
             allow_takebacks: false,
             allow_premoves: true,
             game: None,
+            preview: None,
             demo_task: None,
             _subscriptions: subscriptions,
         };
@@ -975,6 +982,7 @@ impl PlayScreen {
         self.moves_scroll.scroll_to_bottom();
         self.viewed = None;
         self.game = Some(game);
+        self.preview = None;
         self.show_setup = false;
         if self_play {
             let saved = self.engine_times.each_ref().map(|time| time.saved(cx));
@@ -1133,6 +1141,41 @@ impl PlayScreen {
         self.board
             .update(cx, |board, cx| board.set_interactive(false, cx));
         cx.notify();
+    }
+
+    /// Shows the chosen start position, such as a Chess960 setup, while a new game is
+    /// being set up, and the game again once setup is left.
+    fn refresh_preview(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let previewing = match &self.game {
+            None => true,
+            Some(game) => self.mode == Mode::Engines && self.show_setup && game.result.is_some(),
+        };
+        if !previewing {
+            if self.preview.take().is_some() {
+                self.sync_board(false, cx);
+            }
+            return;
+        }
+        // An invalid FEN or Chess960 number keeps the last valid preview.
+        let Some(tree) = self.start_tree(window, cx) else {
+            return;
+        };
+        let last = tree
+            .line_from(GameTree::ROOT)
+            .last()
+            .copied()
+            .unwrap_or(GameTree::ROOT);
+        let fen = tree.fen(last);
+        if self.preview.as_ref() == Some(&fen) {
+            return;
+        }
+        self.preview = Some(fen);
+        let pos = tree.node(last).pos.clone();
+        self.board.update(cx, |board, cx| {
+            board.set_position(pos, None, false, cx);
+            board.set_interactive(false, cx);
+            board.set_premove(None, cx);
+        });
     }
 
     fn sync_board(&mut self, animate: bool, cx: &mut Context<Self>) {
@@ -2663,6 +2706,7 @@ impl Render for PlayScreen {
                 None => self.recovery = Some(recovery),
             }
         }
+        self.refresh_preview(window, cx);
         if self.mode == Mode::Engines {
             let viewport = window.viewport_size();
             let setup_open = self.show_setup || self.game.is_none();
