@@ -4,16 +4,25 @@ use super::*;
 
 impl AnalyseScreen {
     pub(super) fn update_arrows(&mut self, cx: &mut Context<Self>) {
-        // A hovered move in Line preview shows just that move. The line can change under
-        // a still mouse, so it is drawn again from the line shown now; a move that is no
-        // longer there ends the hover.
+        // A hovered move in Line preview that can be played on the board shows just that
+        // move. Later moves are only on the peek board: their arrows would make no sense
+        // here. The line can change under a still mouse, so it is read again from the
+        // line shown now; a move that is no longer there ends the hover.
         if let Some(index) = self.pv_hover {
-            if let Some(arrow) = self.hovered_arrow(index) {
-                self.board
-                    .update(cx, |board, cx| board.set_arrows(vec![arrow], cx));
-                return;
+            match self.hovered_move(index) {
+                Some(mv) if index == self.shown_moves() => {
+                    let arrows: Vec<Arrow> = mv
+                        .from()
+                        .map(|from| Arrow::new(from, mv.to()))
+                        .into_iter()
+                        .collect();
+                    self.board
+                        .update(cx, |board, cx| board.set_arrows(arrows, cx));
+                    return;
+                }
+                Some(_) => {}
+                None => self.pv_hover = None,
             }
-            self.pv_hover = None;
         }
         // A highlighted range is already drawn on the board.
         if self.pv_view.as_ref().is_some_and(PvView::is_range) {

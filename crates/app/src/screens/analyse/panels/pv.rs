@@ -98,7 +98,8 @@ impl AnalyseScreen {
         }
     }
 
-    /// Hovering a move draws it on the board and marks it in the line.
+    /// Hovering a move marks it in the line and shows the position after it beside the
+    /// cursor. The next move to play is also drawn as an arrow on the board.
     pub(super) fn hover_pv_move(
         &mut self,
         index: usize,
@@ -130,12 +131,7 @@ impl AnalyseScreen {
         // A line that stops applying before this move has no position to show.
         self.pv_peek_at = (moves.len() > index).then(|| window.mouse_position());
         let squares = moves.get(index).and_then(move_squares);
-        let arrows: Vec<Arrow> = squares
-            .map(|(from, to)| Arrow::new(from, to))
-            .into_iter()
-            .collect();
-        self.board
-            .update(cx, |board, cx| board.set_arrows(arrows, cx));
+        self.update_arrows(cx);
         // The peek board shows the position after the move, the way the main board faces.
         let flipped = self.board.read(cx).is_flipped();
         let mut prefs = self.model.read(cx).config.board.prefs();
@@ -369,14 +365,17 @@ impl AnalyseScreen {
         }
     }
 
-    /// The arrow for move `index` of the line Line preview lists now, if that line
-    /// still reaches it.
-    pub(crate) fn hovered_arrow(&self, index: usize) -> Option<Arrow> {
+    /// Move `index` of the line Line preview lists now, if that line still reaches it.
+    pub(crate) fn hovered_move(&self, index: usize) -> Option<Move> {
         let sans = self.preview_line(self.selected_row());
         let base = &self.tree.node(self.current).pos;
         let (_, moves) = replay(base, &sans[..sans.len().min(index + 1)]);
-        let (from, to) = moves.get(index).and_then(move_squares)?;
-        Some(Arrow::new(from, to))
+        moves.get(index).copied()
+    }
+
+    /// How many moves of the previewed line the board has played.
+    pub(crate) fn shown_moves(&self) -> usize {
+        self.pv_view.as_ref().map_or(0, PvView::played)
     }
 
     /// The position on the board, including a previewed line.
