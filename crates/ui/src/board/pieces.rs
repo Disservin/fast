@@ -9,7 +9,7 @@ pub(super) fn soften_white(theme: BoardTheme) -> bool {
 }
 
 /// The share of a square a piece picture fills, here and in board images.
-pub const PIECE_SCALE: f32 = 0.86;
+pub const PIECE_SCALE: f32 = 0.94;
 
 /// The fill for one-colour pieces (Letters and Flat) of `colour` on this board.
 pub fn piece_colour(theme: BoardTheme, colour: Color) -> u32 {
@@ -107,8 +107,8 @@ impl BoardView {
                 .into_any_element(),
             PieceSet::Flat => svg()
                 .path(PieceSet::Flat.asset(piece))
-                .size(relative(0.92))
-                .m(relative(0.04))
+                .size(relative(0.96))
+                .m(relative(0.02))
                 .text_color(rgb(piece_color))
                 .into_any_element(),
             PieceSet::Letters => div()
