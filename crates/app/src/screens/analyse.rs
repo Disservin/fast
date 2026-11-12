@@ -289,7 +289,7 @@ pub struct AnalyseScreen {
     /// unsaved changes.
     db_saved_pgn: String,
     /// The stored review's findings for that game, with the move each one is on.
-    db_findings: Vec<(NodeId, crate::screens::database::ReviewMark)>,
+    db_findings: Vec<(NodeId, crate::review::ReviewMark)>,
     pub tree: GameTree,
     pub current: NodeId,
     board: Entity<BoardView>,
@@ -1552,7 +1552,7 @@ impl AnalyseScreen {
             0 => Some(GameTree::ROOT),
             ply => main.get(ply - 1).copied(),
         };
-        let findings = crate::screens::database::review_marks(details)
+        let findings = crate::review::review_marks(details)
             .into_iter()
             .filter_map(|mark| Some((node_at(mark.ply + 1)?, mark)))
             .collect();

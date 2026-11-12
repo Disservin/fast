@@ -32,6 +32,7 @@ mod opening_data;
 mod persistence;
 mod process_guard;
 mod recovery;
+mod review;
 mod screens;
 mod shell;
 mod snapshot;
