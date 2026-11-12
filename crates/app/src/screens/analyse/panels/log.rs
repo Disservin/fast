@@ -2,9 +2,6 @@
 
 use super::*;
 
-/// Selected log text, which has to read clearly under every line colour.
-pub(super) const LOG_SELECTION_BG: u32 = 0x34507A;
-
 /// Text selected in the Log panel, as (line, byte) positions in `log_lines`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct LogSelection {
@@ -121,7 +118,7 @@ impl AnalyseScreen {
                 (
                     range,
                     HighlightStyle {
-                        background_color: Some(rgb(LOG_SELECTION_BG).into()),
+                        background_color: Some(rgb(T.selected).into()),
                         ..Default::default()
                     },
                 )

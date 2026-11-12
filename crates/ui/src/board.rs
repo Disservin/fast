@@ -764,15 +764,8 @@ impl BoardView {
         cell: Pixels,
         id: impl Into<ElementId>,
     ) -> gpui::AnyElement {
-        let soften_white = piece.color == Color::White
-            && !matches!(self.prefs.theme, BoardTheme::Walnut | BoardTheme::Paper);
-        let piece_color = if soften_white {
-            0xD0D2D5
-        } else if piece.color == Color::White {
-            0xFFFFFF
-        } else {
-            0x14161A
-        };
+        let soften_white = piece.color == Color::White && soften_white(self.prefs.theme);
+        let piece_color = piece_colour(self.prefs.theme, piece.color);
         match self.prefs.pieces {
             PieceSet::Classic
             | PieceSet::Cburnett
@@ -802,6 +795,25 @@ impl BoardView {
                 .child(piece.role.upper_char().to_string())
                 .into_any_element(),
         }
+    }
+}
+
+/// The arrow colours an engine can use instead of move quality, in Settings › Engines.
+/// Saved engines keep the chosen value, so these stay fixed across palettes.
+pub const ENGINE_ARROW_COLOURS: [u32; 5] = [0x4E9DE0, 0xE09B45, 0x50B890, 0xB181D9, 0xE26878];
+
+/// Whether white pieces are toned down on this board, so they do not glare on its
+/// light squares.
+fn soften_white(theme: BoardTheme) -> bool {
+    !matches!(theme, BoardTheme::Walnut | BoardTheme::Paper)
+}
+
+/// The fill for one-colour pieces (Letters and Flat) of `colour` on this board.
+pub fn piece_colour(theme: BoardTheme, colour: Color) -> u32 {
+    match colour {
+        Color::White if soften_white(theme) => 0xD0D2D5,
+        Color::White => 0xFFFFFF,
+        Color::Black => 0x14161A,
     }
 }
 

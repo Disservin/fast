@@ -314,27 +314,20 @@ impl SettingsScreen {
                     "Overrides move-quality colours for this engine",
                 )),
                 h_flex().gap(px(6.)).children(
-                    [
-                        None,
-                        Some(0x4e9de0),
-                        Some(0xe09b45),
-                        Some(0x50b890),
-                        Some(0xb181d9),
-                        Some(0xe26878),
-                    ]
-                    .into_iter()
-                    .enumerate()
-                    .map(|(index, color)| {
-                        btn(
-                            ("engine-arrow-color", index),
-                            if color.is_none() { "Auto" } else { "●" },
-                        )
-                        .selected(config.arrow_color == color)
-                        .on_click(this.listen(move |screen, _, cx| {
-                            screen.set_engine_use(|engine| engine.arrow_color = color, cx)
-                        }))
-                        .dot(color.unwrap_or(T.arrow))
-                    }),
+                    std::iter::once(None)
+                        .chain(ui::board::ENGINE_ARROW_COLOURS.map(Some))
+                        .enumerate()
+                        .map(|(index, color)| {
+                            btn(
+                                ("engine-arrow-color", index),
+                                if color.is_none() { "Auto" } else { "●" },
+                            )
+                            .selected(config.arrow_color == color)
+                            .on_click(this.listen(move |screen, _, cx| {
+                                screen.set_engine_use(|engine| engine.arrow_color = color, cx)
+                            }))
+                            .dot(color.unwrap_or(T.arrow))
+                        }),
                 ),
             ))
             .child(self.render_option_grid(config, cx));

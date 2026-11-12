@@ -119,6 +119,7 @@ impl SettingsScreen {
             .size(px(44.))
             .into_any_element()
         };
+        let board_theme = config.prefs().theme;
         let sets: [(SavedPieces, &str, gpui::AnyElement); 7] = [
             (
                 SavedPieces::Classic,
@@ -151,7 +152,10 @@ impl SettingsScreen {
                 div()
                     .text_size(px(32.))
                     .font_weight(FontWeight::BOLD)
-                    .text_color(rgb(0x14161A))
+                    .text_color(rgb(ui::board::piece_colour(
+                        board_theme,
+                        chess_core::Color::Black,
+                    )))
                     .child("N")
                     .into_any_element(),
             ),
@@ -161,7 +165,10 @@ impl SettingsScreen {
                 svg()
                     .path("pieces/merida/bN.svg")
                     .size(px(34.))
-                    .text_color(rgb(0x14161A))
+                    .text_color(rgb(ui::board::piece_colour(
+                        board_theme,
+                        chess_core::Color::Black,
+                    )))
                     .into_any_element(),
             ),
         ];
@@ -179,7 +186,7 @@ impl SettingsScreen {
                             .items_center()
                             .justify_center()
                             .rounded(px(2.))
-                            .bg(rgb(config.prefs().theme.colors().0))
+                            .bg(rgb(board_theme.colors().0))
                             .child(preview),
                     )
                     .child(tile_label(name)),

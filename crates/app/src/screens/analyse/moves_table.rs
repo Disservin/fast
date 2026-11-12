@@ -77,7 +77,7 @@ pub(super) fn wdl_percentages(wdl: Option<Wdl>) -> Option<[f64; 3]> {
         .then(|| [wdl.win, wdl.draw, wdl.loss].map(|value| f64::from(value) * 100.0 / total as f64))
 }
 
-/// White win / draw / Black win. Missing data is shown explicitly.
+/// White win / draw / Black win, in the eval bar's colours. Missing data is shown explicitly.
 pub(super) fn wdl_bar(wdl: Option<Wdl>) -> gpui::AnyElement {
     let Some(wdl) = wdl.filter(|wdl| wdl_percentages(Some(*wdl)).is_some()) else {
         return div().text_as(11., T.muted).child("—").into_any_element();
@@ -89,9 +89,9 @@ pub(super) fn wdl_bar(wdl: Option<Wdl>) -> gpui::AnyElement {
         .rounded(px(1.))
         .children(
             [
-                (wdl.win, 0xE8EAED),
-                (wdl.draw, 0x7F8893),
-                (wdl.loss, 0x262B33),
+                (wdl.win, T.fg),
+                (wdl.draw, T.bar),
+                (wdl.loss, T.tour_tile_border),
             ]
             .into_iter()
             .filter(|(value, _)| *value > 0)
