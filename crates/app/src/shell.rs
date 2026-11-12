@@ -74,11 +74,23 @@ actions!(
     ]
 );
 
+/// A random number that differs on every call, for picks such as a Chess960 position.
+pub(crate) fn random_u64() -> u64 {
+    use std::hash::{BuildHasher as _, Hasher as _};
+    // The clock alone is coarse on some systems (100 ns steps on Windows), so its low
+    // digits repeat. Each `RandomState` has fresh keys, which SipHash spreads evenly.
+    let mut hasher = std::collections::hash_map::RandomState::new().build_hasher();
+    hasher.write_u128(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |time| time.as_nanos()),
+    );
+    hasher.finish()
+}
+
 /// A Chess960 start position number picked at random.
 pub(crate) fn random_chess960_number() -> u16 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(518, |time| (time.subsec_nanos() % 960) as u16)
+    (random_u64() % 960) as u16
 }
 
 /// The application menus: native on macOS, drawn in the top bar elsewhere.

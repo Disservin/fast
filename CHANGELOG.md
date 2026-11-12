@@ -2,6 +2,10 @@
 
 Settings › Changelog shows this file. Describe the finished changes since each release, combining related work into one short line.
 
+## Since 0.1.3
+
+- Chess960: Random picks any of the 960 start positions, not only every tenth, and Play's random colour is no longer always White on Windows.
+
 ## 0.1.3
 
 - Play: match two engines with separate strength, threads, hash, clocks and search limits, plus a PGN or EPD opening book.

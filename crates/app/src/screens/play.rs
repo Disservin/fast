@@ -871,11 +871,7 @@ impl PlayScreen {
             ColourChoice::White => Color::White,
             ColourChoice::Black => Color::Black,
             ColourChoice::Random => {
-                if std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map_or(0, |elapsed| elapsed.subsec_nanos())
-                    .is_multiple_of(2)
-                {
+                if crate::shell::random_u64().is_multiple_of(2) {
                     Color::White
                 } else {
                     Color::Black
