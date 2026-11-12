@@ -1166,12 +1166,7 @@ fn format_ms(ms: u64) -> String {
     } else if ms < 60_000 {
         format!("{:.1} s", ms as f64 / 1000.)
     } else {
-        let secs = ms / 1000;
-        if secs < 3600 {
-            format!("{}m {:02}s", secs / 60, secs % 60)
-        } else {
-            format!("{}h {:02}m", secs / 3600, (secs % 3600) / 60)
-        }
+        crate::format::format_duration(ms / 1000)
     }
 }
 

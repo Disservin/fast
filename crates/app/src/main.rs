@@ -20,6 +20,7 @@ mod event_reader;
 mod explorer;
 mod fastchess;
 mod file_dialog;
+mod format;
 mod game_download;
 mod kibitz;
 mod licenses;

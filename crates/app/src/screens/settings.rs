@@ -24,11 +24,11 @@ use ui::{
     widgets::{badge, btn, check, h_flex, key_cap, mono, panel, section_label, segmented, v_flex},
 };
 
+use crate::format::format_count;
 use crate::{
     config::{SavedCoordinates, SavedPieces, SavedTheme},
     controls::{TextSelect, engine_icon, new_input, new_select, select_el, text_input},
     model::{AppModel, ModelEvent, ToastExt as _, pick_path, split_engine_name},
-    screens::database::format_count,
     shell,
 };
 
@@ -3269,7 +3269,7 @@ impl SettingsScreen {
             // Nothing measured yet, or nothing saved of that kind.
             bytes
                 .filter(|bytes| *bytes > 0)
-                .map_or_else(|| "—".to_owned(), crate::storage::format_bytes)
+                .map_or_else(|| "—".to_owned(), crate::format::format_bytes)
         };
         let size_cell = |text: String| {
             mono(text)
@@ -3441,7 +3441,7 @@ impl SettingsScreen {
 /// The drive holding Fast's data: a bar of space used by other files, by Fast and free,
 /// with the figures beside it.
 fn drive_strip(disk: crate::storage::DiskSpace, fast: u64) -> Div {
-    use crate::storage::format_bytes;
+    use crate::format::format_bytes;
     let total = disk.total.max(1) as f32;
     let used = disk.total.saturating_sub(disk.free);
     let others = used.saturating_sub(fast);

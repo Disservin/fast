@@ -26,6 +26,7 @@ use ui::{
     },
 };
 
+use crate::format::{format_count, now_seconds};
 use crate::{
     controls::{TextSelect, field, new_input, new_select, select_el, text_input},
     game_download::{DownloadEvent, DownloadPhase, DownloadRequest, Endpoints, Site},
@@ -4558,25 +4559,6 @@ fn import_message(summary: &db::ImportSummary) -> String {
 /// A whole number typed in a field, or `None` when it is empty or unreadable.
 fn number(input: &Entity<InputState>, cx: &gpui::App) -> Option<i64> {
     input.read(cx).value().trim().parse().ok()
-}
-
-/// Seconds since 1970 (UTC), now.
-fn now_seconds() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |elapsed| elapsed.as_secs() as i64)
-}
-
-pub fn format_count(count: u64) -> String {
-    let digits = count.to_string();
-    let mut out = String::new();
-    for (index, digit) in digits.chars().enumerate() {
-        if index > 0 && (digits.len() - index).is_multiple_of(3) {
-            out.push(',');
-        }
-        out.push(digit);
-    }
-    out
 }
 
 /// Lichess-style accuracy from a win-percentage loss (0..100).

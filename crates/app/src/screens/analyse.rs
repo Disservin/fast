@@ -2964,7 +2964,7 @@ impl AnalyseScreen {
                                 }),
                         )
                         .child(
-                            mono(crate::screens::database::format_count(entry.games))
+                            mono(crate::format::format_count(entry.games))
                                 .flex_none()
                                 .text_size(px(12.))
                                 .text_color(rgb(T.muted)),

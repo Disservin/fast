@@ -555,7 +555,7 @@ impl TournamentScreen {
                         format!(
                             "Deleted {count} tournament folder{}, freed {}",
                             if count == 1 { "" } else { "s" },
-                            fastchess::format_bytes(freed)
+                            crate::format::format_bytes(freed)
                         ),
                         cx,
                     ),
@@ -2836,7 +2836,7 @@ impl TournamentScreen {
     /// The tournaments folder with its disk usage, and a button that deletes what is in it.
     fn render_folder(&self, folder: PathBuf, cx: &mut Context<Self>) -> Div {
         let size = match self.folder_size {
-            Some(size) => fastchess::format_bytes(size),
+            Some(size) => crate::format::format_bytes(size),
             None => "measuring…".to_owned(),
         };
         let busy = self.run.as_ref().is_some_and(Run::active);
@@ -3754,18 +3754,9 @@ fn eta(run: &Run) -> String {
     }
     let remaining = run.total.max(run.played()).saturating_sub(run.played());
     let average = time.as_secs_f64() / f64::from(count);
-    format_duration(average * remaining as f64 / run.concurrency as f64)
-}
-
-fn format_duration(secs: f64) -> String {
-    let secs = secs.round() as u64;
-    if secs < 60 {
-        format!("{secs}s")
-    } else if secs < 3600 {
-        format!("{}m {:02}s", secs / 60, secs % 60)
-    } else {
-        format!("{}h {:02}m", secs / 3600, secs / 60 % 60)
-    }
+    crate::format::format_duration(
+        (average * remaining as f64 / run.concurrency as f64).round() as u64,
+    )
 }
 
 fn search_text(search: &Search) -> String {

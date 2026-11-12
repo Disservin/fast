@@ -130,21 +130,6 @@ pub fn dir_size(path: &Path) -> u64 {
         .sum()
 }
 
-/// Sizes like 512 B, 3.4 MB or 1.2 GB.
-pub fn format_bytes(bytes: u64) -> String {
-    const UNITS: [&str; 4] = ["KB", "MB", "GB", "TB"];
-    if bytes < 1000 {
-        return format!("{bytes} B");
-    }
-    let mut value = bytes as f64 / 1000.;
-    let mut unit = 0;
-    while value >= 1000. && unit + 1 < UNITS.len() {
-        value /= 1000.;
-        unit += 1;
-    }
-    format!("{value:.1} {}", UNITS[unit])
-}
-
 /// Deletes every tournament folder except `keep`, and returns how many went and the bytes
 /// freed. Stops at the first folder it cannot delete.
 pub fn clear_tournaments(data: &Path, keep: Option<&Path>) -> Result<(usize, u64)> {
@@ -1265,8 +1250,6 @@ mod tests {
         assert_eq!(clear_tournaments(data.path(), Some(&kept)).unwrap(), (1, 4));
         assert!(!root.join("a").exists());
         assert!(kept.join("games.pgn").exists());
-        assert_eq!(format_bytes(999), "999 B");
-        assert_eq!(format_bytes(1_300_000), "1.3 MB");
     }
 
     fn setup(participants: Vec<Participant>) -> Setup {

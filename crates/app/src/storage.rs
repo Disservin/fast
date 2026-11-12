@@ -239,21 +239,6 @@ fn size(path: &Path) -> u64 {
         .sum()
 }
 
-/// A byte count as a player reads it: "820 B", "14.2 MB", "1.3 GB".
-pub fn format_bytes(bytes: u64) -> String {
-    const UNITS: [&str; 4] = ["KB", "MB", "GB", "TB"];
-    if bytes < 1000 {
-        return format!("{bytes} B");
-    }
-    let mut value = bytes as f64 / 1000.;
-    let mut unit = 0;
-    while value >= 999.95 && unit + 1 < UNITS.len() {
-        value /= 1000.;
-        unit += 1;
-    }
-    format!("{value:.1} {}", UNITS[unit])
-}
-
 /// Shows a folder in the system's file manager.
 pub fn reveal_folder(path: &Path) {
     #[cfg(target_os = "windows")]
@@ -321,15 +306,5 @@ mod tests {
         let disk = disk_space(&dir.path().join("not/yet/created")).unwrap();
         assert!(disk.total > 0);
         assert!(disk.free <= disk.total);
-    }
-
-    #[test]
-    fn formats_bytes() {
-        assert_eq!(format_bytes(0), "0 B");
-        assert_eq!(format_bytes(999), "999 B");
-        assert_eq!(format_bytes(1_000), "1.0 KB");
-        assert_eq!(format_bytes(14_230_000), "14.2 MB");
-        assert_eq!(format_bytes(999_960), "1.0 MB");
-        assert_eq!(format_bytes(1_300_000_000), "1.3 GB");
     }
 }

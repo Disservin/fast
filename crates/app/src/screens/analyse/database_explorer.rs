@@ -9,7 +9,7 @@ use ui::{
 };
 
 use super::AnalyseScreen;
-use crate::screens::database::format_count;
+use crate::format::format_count;
 
 /// Adds the move counts and results for the explorer's total row.
 fn total_stats(moves: &[MoveStat]) -> MoveStat {
