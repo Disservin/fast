@@ -16,6 +16,7 @@ mod database_sources;
 mod debug_window;
 mod demo;
 mod engine_catalog;
+mod event_reader;
 mod explorer;
 mod fastchess;
 mod file_dialog;

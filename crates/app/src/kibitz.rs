@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use chess_core::{GameTree, Move, NodeId, Position};
 use engine::{EngineConfig, EngineEvent, EngineHandle, EngineId, SearchRequest};
-use gpui::{AsyncApp, Context, Task, WeakEntity};
+use gpui::{Context, Task};
 
 use crate::{config::KibitzConfig, live::LiveLine};
 
@@ -143,24 +143,12 @@ impl Kibitz {
     }
 
     fn spawn_reader(&self, handle: &EngineHandle, cx: &mut Context<Self>) -> Task<()> {
-        let events = handle.events();
-        cx.spawn(async move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
-            while let Ok(first) = events.recv().await {
-                let mut batch = vec![first];
-                while let Ok(event) = events.try_recv() {
-                    batch.push(event);
-                }
-                if this
-                    .update(cx, |this, cx| this.apply_events(batch, cx))
-                    .is_err()
-                {
-                    return;
-                }
-                cx.background_executor()
-                    .timer(std::time::Duration::from_millis(100))
-                    .await;
-            }
-        })
+        crate::event_reader::spawn_batched(
+            handle.events(),
+            Some(std::time::Duration::from_millis(100)),
+            cx,
+            Self::apply_events,
+        )
     }
 
     fn apply_events(&mut self, batch: Vec<EngineEvent>, cx: &mut Context<Self>) {

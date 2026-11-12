@@ -1063,10 +1063,9 @@ impl PlayScreen {
         color: Color,
         cx: &mut Context<Self>,
     ) -> Task<()> {
-        let events = handle.events();
-        cx.spawn(async move |this, cx| {
-            while let Ok(event) = events.recv().await {
-                let alive = this.update(cx, |this, cx| match event {
+        crate::event_reader::spawn_batched(handle.events(), None, cx, move |this, batch, cx| {
+            for event in batch {
+                match event {
                     EngineEvent::Ready(info) => {
                         if let Some(game) = &mut this.game
                             && !info.name.trim().is_empty()
@@ -1100,9 +1099,6 @@ impl PlayScreen {
                             .toast(format!("The engine stopped: {reason}"), cx);
                         this.finish("Engine stopped".to_owned(), cx);
                     }
-                });
-                if alive.is_err() {
-                    return;
                 }
             }
         })

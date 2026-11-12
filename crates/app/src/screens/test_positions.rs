@@ -381,41 +381,30 @@ impl TestPositionsScreen {
             cancel.clone(),
             tx,
         );
-        let reader = cx.spawn(async move |this: WeakEntity<Self>, cx| {
-            while let Ok(first) = rx.recv().await {
-                // Take everything already queued, then draw once.
-                let mut batch = vec![first];
-                while let Ok(more) = rx.try_recv() {
-                    batch.push(more);
-                }
-                let alive = this.update(cx, |screen, cx| {
-                    let Some(run) = &mut screen.run else { return };
-                    for event in batch {
-                        match event {
-                            RunEvent::Cell {
-                                engine,
-                                position,
-                                cell,
-                            } => {
-                                if let Some(slot) = run
-                                    .cells
-                                    .get_mut(engine)
-                                    .and_then(|column| column.get_mut(position))
-                                {
-                                    *slot = cell;
-                                }
-                            }
-                            RunEvent::Finished => {
-                                run.finished = Some(run.started.elapsed());
-                            }
+        // Takes everything already queued, then draws once.
+        let reader = crate::event_reader::spawn_batched(rx, None, cx, |screen, batch, cx| {
+            let Some(run) = &mut screen.run else { return };
+            for event in batch {
+                match event {
+                    RunEvent::Cell {
+                        engine,
+                        position,
+                        cell,
+                    } => {
+                        if let Some(slot) = run
+                            .cells
+                            .get_mut(engine)
+                            .and_then(|column| column.get_mut(position))
+                        {
+                            *slot = cell;
                         }
                     }
-                    cx.notify();
-                });
-                if alive.is_err() {
-                    return;
+                    RunEvent::Finished => {
+                        run.finished = Some(run.started.elapsed());
+                    }
                 }
             }
+            cx.notify();
         });
         let ticker = cx.spawn(async move |this: WeakEntity<Self>, cx| {
             loop {

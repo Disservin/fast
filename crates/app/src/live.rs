@@ -11,7 +11,7 @@ use engine::{
     AnalysisUpdate, EngineConfig, EngineEvent, EngineHandle, EngineId, EngineLog, EngineStatus,
     Limits, LogKind, Score, SearchRequest, Wdl,
 };
-use gpui::{App, AsyncApp, Context, Entity, EventEmitter, Task, WeakEntity};
+use gpui::{App, Context, Entity, EventEmitter, Task};
 
 use crate::{
     config::AnalysisLimit,
@@ -419,23 +419,12 @@ impl LiveAnalysis {
         handle: &EngineHandle,
         cx: &mut Context<Self>,
     ) -> Task<()> {
-        let events = handle.events();
-        cx.spawn(async move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
-            while let Ok(first) = events.recv().await {
-                let mut batch = vec![first];
-                // Coalesce whatever else arrived, then wait out the throttle window.
-                while let Ok(event) = events.try_recv() {
-                    batch.push(event);
-                }
-                let alive = this
-                    .update(cx, |this, cx| this.apply_events(id, batch, cx))
-                    .is_ok();
-                if !alive {
-                    return;
-                }
-                cx.background_executor().timer(THROTTLE).await;
-            }
-        })
+        crate::event_reader::spawn_batched(
+            handle.events(),
+            Some(THROTTLE),
+            cx,
+            move |this, batch, cx| this.apply_events(id, batch, cx),
+        )
     }
 
     fn apply_events(&mut self, id: EngineId, batch: Vec<EngineEvent>, cx: &mut Context<Self>) {
