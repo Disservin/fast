@@ -146,14 +146,14 @@ impl BoardView {
                             .child(((b'a' + file as u8) as char).to_string()),
                     );
                 }
-                if self.circles.contains(&square) {
+                if let Some(color) = self.circles.get(&square) {
                     sq = sq.child(
                         div()
                             .absolute()
                             .inset(px(3.))
                             .rounded_full()
                             .border(px(3.))
-                            .border_color(rgb(T.arrow)),
+                            .border_color(rgb(*color)),
                     );
                 }
                 row = row.child(sq);

@@ -156,7 +156,7 @@ impl BoardView {
                 cx.notify();
             }
             MouseButton::Right => {
-                self.right_from = Some(square);
+                self.right_from = Some((square, brush(&event.modifiers)));
             }
             _ => {}
         }
@@ -219,22 +219,33 @@ impl BoardView {
                 cx.notify();
             }
             MouseButton::Right => {
-                let Some(from) = self.right_from.take() else {
+                let Some((from, color)) = self.right_from.take() else {
                     return;
                 };
                 let Some(to) = self.square_at(event.position) else {
                     return;
                 };
+                // Drawing a shape again in its colour removes it; in another colour,
+                // recolours it.
                 if from == to {
-                    if !self.circles.remove(&to) {
-                        self.circles.insert(to);
+                    if self.circles.get(&to) == Some(&color) {
+                        self.circles.remove(&to);
+                    } else {
+                        self.circles.insert(to, color);
                     }
                 } else {
-                    let arrow = Arrow::new(from, to);
-                    if let Some(index) = self.user_arrows.iter().position(|a| *a == arrow) {
-                        self.user_arrows.remove(index);
-                    } else {
-                        self.user_arrows.push(arrow);
+                    match self
+                        .user_arrows
+                        .iter()
+                        .position(|a| a.from == from && a.to == to)
+                    {
+                        Some(index) if self.user_arrows[index].color == Some(color) => {
+                            self.user_arrows.remove(index);
+                        }
+                        Some(index) => self.user_arrows[index].color = Some(color),
+                        None => self
+                            .user_arrows
+                            .push(Arrow::new(from, to).with_color(color)),
                     }
                 }
                 cx.notify();

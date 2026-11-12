@@ -71,7 +71,7 @@ decoration is kept to a minimum.
   | `accent`, `accent_hover`, `accent_fg` | What is active or chosen: current move, primary buttons, focus rings, progress fill, checked boxes |
   | `good`, `warn` | Positive status (Known, ready) and caution (Due, leaks, deviations) |
   | `q_best` … `q_blunder` | Move quality for arrows and labels |
-  | `arrow` | User-drawn board arrows |
+  | `arrow` | Engine arrows without a quality colour (user-drawn arrows use Lichess' fixed brushes) |
   | `engine_a`, `engine_b`, `chip_*`, `live_*`, `danger_*`, `tour_*` | Tournament tab |
 
 - Text must have a contrast of at least 4.5:1 against its background.

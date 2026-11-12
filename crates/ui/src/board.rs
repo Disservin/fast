@@ -1,6 +1,6 @@
 //! The chess board: rendering, click and drag moves, arrows, circles, promotion.
 
-use std::{collections::HashSet, time::Duration};
+use std::{collections::HashMap, time::Duration};
 
 use chess_core::{
     Chess, Color, Move, Position, Role, Square,
@@ -8,9 +8,9 @@ use chess_core::{
 };
 use gpui::{
     Animation, AnimationExt as _, App, Bounds, Context, ElementId, EventEmitter, FontWeight,
-    IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, PathBuilder, Pixels,
-    Point, Render, SharedString, Styled, Window, canvas, deferred, div, img, point, prelude::*, px,
-    relative, rgb, rgba, svg,
+    IntoElement, Modifiers, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, PathBuilder,
+    Pixels, Point, Render, SharedString, Styled, Window, canvas, deferred, div, img, point,
+    prelude::*, px, relative, rgb, rgba, svg,
 };
 
 use crate::theme::{MONO, SANS, T};
@@ -213,6 +213,24 @@ pub fn last_move_color(base: u32) -> u32 {
     blend(base, 0x9BC700, 0.41)
 }
 
+/// Lichess' green, red, blue and yellow brushes for arrows and circles.
+const BRUSH_GREEN: u32 = 0x15781B;
+const BRUSH_RED: u32 = 0x882020;
+const BRUSH_BLUE: u32 = 0x003088;
+const BRUSH_YELLOW: u32 = 0xE68F00;
+
+/// The colour an arrow or circle is drawn in with these keys held, as on Lichess:
+/// Shift or Ctrl for red, Alt for blue, both for yellow, and none for green.
+pub fn brush(modifiers: &Modifiers) -> u32 {
+    let red = modifiers.shift || modifiers.control;
+    match (red, modifiers.alt) {
+        (true, true) => BRUSH_YELLOW,
+        (true, false) => BRUSH_RED,
+        (false, true) => BRUSH_BLUE,
+        (false, false) => BRUSH_GREEN,
+    }
+}
+
 /// Lichess' selected-square and move-destination green, rgba(20, 85, 30, 0.5).
 pub const DEST_GREEN: (f32, f32, f32, f32) = (20., 85., 30., 0.5);
 
@@ -315,10 +333,12 @@ pub struct BoardView {
     /// Arrows set by the owning screen (engine or table selection).
     arrows: Vec<Arrow>,
     user_arrows: Vec<Arrow>,
-    circles: HashSet<Square>,
+    /// Circled squares and their colour.
+    circles: HashMap<Square, u32>,
     selected: Option<Square>,
     drag: Option<Drag>,
-    right_from: Option<Square>,
+    /// Where a right-button drag started and the colour it draws in.
+    right_from: Option<(Square, u32)>,
     promotion: Option<Promotion>,
     bounds: Bounds<Pixels>,
     animate_serial: u64,
@@ -349,7 +369,7 @@ impl BoardView {
             move_tag: None,
             arrows: Vec::new(),
             user_arrows: Vec::new(),
-            circles: HashSet::new(),
+            circles: HashMap::new(),
             selected: None,
             drag: None,
             right_from: None,
@@ -529,13 +549,36 @@ mod tests {
     }
 
     #[test]
+    fn modifier_keys_pick_the_lichess_brushes() {
+        let keys = |shift, control, alt| Modifiers {
+            shift,
+            control,
+            alt,
+            ..Modifiers::default()
+        };
+        assert_eq!(brush(&keys(false, false, false)), BRUSH_GREEN);
+        assert_eq!(brush(&keys(true, false, false)), BRUSH_RED);
+        assert_eq!(brush(&keys(false, true, false)), BRUSH_RED);
+        assert_eq!(brush(&keys(false, false, true)), BRUSH_BLUE);
+        assert_eq!(brush(&keys(true, false, true)), BRUSH_YELLOW);
+        assert_eq!(brush(&keys(false, true, true)), BRUSH_YELLOW);
+    }
+
+    #[test]
     fn every_move_glyph_has_a_badge() {
         let glyphs: Vec<_> = (1..=6)
             .map(|nag| MoveTag::from_nag(nag).map(|tag| tag.appearance().0))
             .collect();
         assert_eq!(
             glyphs,
-            [Some("!"), Some("?"), Some("!!"), Some("??"), Some("!?"), Some("?!")]
+            [
+                Some("!"),
+                Some("?"),
+                Some("!!"),
+                Some("??"),
+                Some("!?"),
+                Some("?!")
+            ]
         );
     }
 
