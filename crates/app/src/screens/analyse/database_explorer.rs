@@ -8,7 +8,7 @@ use ui::{
     widgets::{btn, h_flex, mono, section_label, v_flex},
 };
 
-use super::AnalyseScreen;
+use super::*;
 use crate::format::format_count;
 
 /// Adds the move counts and results for the explorer's total row.
@@ -245,6 +245,408 @@ impl AnalyseScreen {
             );
         }
         body.into_any_element()
+    }
+}
+
+/// A database name short enough for the Reference column's heading: "Reference: OTB
+/// masters" becomes "masters", other names stay whole and are truncated if needed.
+pub(super) fn explorer_label(name: &str) -> String {
+    if name.contains(':') {
+        reference_column_title(name)
+    } else {
+        name.to_owned()
+    }
+}
+
+impl AnalyseScreen {
+    /// The database the Reference column counts: this tab's choice, the open game's
+    /// database, the last database picked anywhere, then the first reference database.
+    pub fn explorer_database(&self, cx: &gpui::App) -> Option<DbEntry> {
+        let model = self.model.read(cx);
+        let paths: Vec<std::path::PathBuf> = model
+            .databases
+            .iter()
+            .map(|entry| entry.path.clone())
+            .collect();
+        let pick = crate::explorer::pick_database(
+            self.explorer_db.as_deref(),
+            self.db_game.as_ref().map(|game| game.path.as_path()),
+            model.config.explorer_default.as_deref(),
+            model.reference_db().map(|entry| entry.path.as_path()),
+            &paths,
+        )?;
+        model
+            .databases
+            .iter()
+            .find(|entry| entry.path == pick)
+            .cloned()
+    }
+
+    /// The databases the opening tree can use, the open game's database first.
+    pub(super) fn explorer_choices(&self, cx: &gpui::App) -> Vec<DbEntry> {
+        let mut entries = self.model.read(cx).databases.clone();
+        if let Some(game) = &self.db_game
+            && let Some(index) = entries.iter().position(|entry| entry.path == game.path)
+        {
+            let entry = entries.remove(index);
+            entries.insert(0, entry);
+        }
+        entries
+    }
+
+    /// The database this tab chose for its opening tree, for saving the session.
+    pub fn explorer_choice(&self) -> Option<&std::path::Path> {
+        self.explorer_db.as_deref()
+    }
+
+    /// Restores a saved choice for the opening tree, ignoring a database that no
+    /// longer exists.
+    pub fn restore_explorer_choice(
+        &mut self,
+        path: Option<std::path::PathBuf>,
+        cx: &mut Context<Self>,
+    ) {
+        self.explorer_db = path.filter(|path| {
+            self.model
+                .read(cx)
+                .databases
+                .iter()
+                .any(|entry| &entry.path == path)
+        });
+        self.query_databases(cx);
+    }
+
+    /// Makes the opening tree count `path`, remembering it for this tab and as the
+    /// default for tabs that have not chosen.
+    pub(super) fn choose_explorer_db(&mut self, path: std::path::PathBuf, cx: &mut Context<Self>) {
+        self.explorer_menu = None;
+        self.explorer_db = Some(path.clone());
+        self.model.update(cx, |model, cx| {
+            if model.config.explorer_default.as_ref() != Some(&path) {
+                model.config.explorer_default = Some(path);
+                model.save_config(cx);
+            }
+        });
+        self.query_databases(cx);
+        cx.notify();
+    }
+
+    /// Steps the opening tree to the next database in the picker's order.
+    pub fn next_explorer_db(&mut self, cx: &mut Context<Self>) {
+        let choices = self.explorer_choices(cx);
+        if choices.is_empty() {
+            return;
+        }
+        let current = self.explorer_database(cx).map(|entry| entry.path);
+        let index = choices
+            .iter()
+            .position(|entry| Some(&entry.path) == current.as_ref())
+            .map_or(0, |index| (index + 1) % choices.len());
+        let path = choices[index].path.clone();
+        self.choose_explorer_db(path, cx);
+    }
+
+    /// A database was added, changed or removed: cached counts are dropped, and a
+    /// removed opening-tree database falls back with a note saying which one is used.
+    pub(super) fn databases_changed(&mut self, cx: &mut Context<Self>) {
+        self.move_cache.clear();
+        let known: Vec<std::path::PathBuf> = self
+            .model
+            .read(cx)
+            .databases
+            .iter()
+            .map(|entry| entry.path.clone())
+            .collect();
+        if self
+            .explorer_db
+            .as_ref()
+            .is_some_and(|path| !known.contains(path))
+        {
+            self.explorer_db = None;
+        }
+        let removed = self
+            .explorer_used
+            .as_ref()
+            .is_some_and(|path| !known.contains(path));
+        if removed && let Some(entry) = self.explorer_database(cx) {
+            let message = ui::i18n::tf("Opening tree now uses {}", &[&entry.name]);
+            self.model.toast(message, cx);
+        }
+        self.query_databases(cx);
+    }
+
+    pub(super) fn query_databases(&mut self, cx: &mut Context<Self>) {
+        self.reference_error = None;
+        let hash = position_hash(&self.analysed_pos());
+        let reference = self.explorer_database(cx).map(|entry| entry.path);
+        self.explorer_used = reference.clone();
+        let model = self.model.read(cx);
+        let mine = model.my_games().map(|entry| entry.path.clone());
+        // All the user's names, one per line, as the cache key and the query's names.
+        let player = model.config.my_names().join("\n");
+        // Answers already known come from the cache; only the rest are queried.
+        let cached = |path: &Option<std::path::PathBuf>, player: &str| match path {
+            None => Some(Vec::new()),
+            Some(path) => self.move_cache.get(path, hash, player).cloned(),
+        };
+        let (cached_reference, cached_mine) = (cached(&reference, ""), cached(&mine, &player));
+        if let (Some(reference), Some(mine)) = (&cached_reference, &cached_mine) {
+            self.db_task = None;
+            self.reference = reference.clone();
+            self.mine = mine.clone();
+            self.rebuild_rows(cx);
+            return;
+        }
+        let (query_reference, query_mine) = (
+            reference.clone().filter(|_| cached_reference.is_none()),
+            mine.clone().filter(|_| cached_mine.is_none()),
+        );
+        self.reference = cached_reference.clone().unwrap_or_default();
+        self.mine = cached_mine.clone().unwrap_or_default();
+        self.rebuild_rows(cx);
+        let query_player = player.clone();
+        let task = cx.background_spawn(async move {
+            let query = |path: Option<std::path::PathBuf>, player: &str| {
+                let path = path?;
+                Some(
+                    Database::open(path)
+                        .and_then(|db| {
+                            let names: Vec<String> = player
+                                .split('\n')
+                                .filter(|name| !name.is_empty())
+                                .map(str::to_owned)
+                                .collect();
+                            if names.is_empty() {
+                                db.moves_from(hash)
+                            } else {
+                                db.moves_from_players(hash, &names)
+                            }
+                        })
+                        .map_err(|err| err.to_string()),
+                )
+            };
+            (query(query_reference, ""), query(query_mine, &query_player))
+        });
+        // Dropping the previous task cancels a stale query.
+        self.db_task = Some(cx.spawn(async move |this, cx| {
+            let (found_reference, found_mine) = task.await;
+            let _ = this.update(cx, |this, cx| {
+                this.db_task = None;
+                let found_reference = found_reference.and_then(|result| match result {
+                    Ok(moves) => Some(moves),
+                    Err(err) => {
+                        this.reference_error = Some(err);
+                        None
+                    }
+                });
+                let found_mine = found_mine.and_then(|result| result.ok());
+                if let (Some(path), Some(moves)) = (&reference, &found_reference) {
+                    this.move_cache
+                        .insert(path.clone(), hash, String::new(), moves.clone());
+                }
+                if let (Some(path), Some(moves)) = (&mine, &found_mine) {
+                    this.move_cache
+                        .insert(path.clone(), hash, player.clone(), moves.clone());
+                }
+                this.reference = found_reference.or(cached_reference).unwrap_or_default();
+                this.mine = found_mine.or(cached_mine).unwrap_or_default();
+                this.rebuild_rows(cx);
+            });
+        }));
+    }
+
+    /// Opens or closes the opening tree's database list, keeping keyboard focus on
+    /// the picker so the arrow keys move through it.
+    pub(super) fn toggle_explorer_menu(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.explorer_menu = match self.explorer_menu {
+            Some(_) => None,
+            None => Some(self.explorer_current_index(cx)),
+        };
+        self.explorer_focus.focus(window, cx);
+        cx.notify();
+    }
+
+    /// Where the database in use sits in the picker's list.
+    pub(super) fn explorer_current_index(&self, cx: &gpui::App) -> usize {
+        let current = self.explorer_database(cx).map(|entry| entry.path);
+        self.explorer_choices(cx)
+            .iter()
+            .position(|entry| Some(&entry.path) == current.as_ref())
+            .unwrap_or(0)
+    }
+
+    /// Keys on the focused picker: Enter, Space or Down open it; the arrows move,
+    /// Enter picks and Escape closes. Returns whether the key was used.
+    pub(super) fn explorer_key(&mut self, key: &str, cx: &mut Context<Self>) -> bool {
+        let count = self.explorer_choices(cx).len();
+        match (self.explorer_menu, key) {
+            (None, "enter" | "space" | "down") if count > 0 => {
+                self.explorer_menu = Some(self.explorer_current_index(cx));
+            }
+            (Some(index), "down") => self.explorer_menu = Some((index + 1) % count.max(1)),
+            (Some(index), "up") => {
+                self.explorer_menu = Some((index + count.max(1) - 1) % count.max(1))
+            }
+            (Some(index), "enter" | "space") => {
+                if let Some(entry) = self.explorer_choices(cx).get(index) {
+                    let path = entry.path.clone();
+                    self.choose_explorer_db(path, cx);
+                }
+            }
+            (Some(_), "escape" | "tab") => {
+                self.explorer_menu = None;
+                cx.notify();
+                return key == "escape";
+            }
+            _ => return false,
+        }
+        cx.notify();
+        true
+    }
+
+    /// The Reference column's heading: the opening tree's database, which opens a
+    /// list of every database to count instead. It keeps the column's width.
+    pub(super) fn render_explorer_picker(
+        &self,
+        width: f32,
+        cx: &mut Context<Self>,
+    ) -> gpui::AnyElement {
+        let this = cx.entity();
+        let name = self.explorer_database(cx).map_or_else(
+            || ui::i18n::t("Reference").to_owned(),
+            |entry| explorer_label(&entry.name),
+        );
+        let open = self.explorer_menu;
+        let (click, keys) = (this.clone(), this.clone());
+        let button = h_flex()
+            .id("explorer-picker")
+            .key_context("FastButton")
+            .track_focus(&self.explorer_focus)
+            .w_full()
+            .h(px(24.))
+            .pl(px(4.))
+            .pr(px(2.))
+            .gap(px(4.))
+            .rounded(px(4.))
+            .border_1()
+            .border_color(gpui::transparent_black())
+            .cursor_pointer()
+            .hover(|style| style.bg(rgb(T.hover)))
+            .focus_visible(|style| style.border_2().border_color(rgb(T.accent)))
+            .when(open.is_none(), |button| {
+                button.tooltip(|window, cx| {
+                    gpui_component::tooltip::Tooltip::new(ui::i18n::t(
+                        "Choose the database for the opening tree",
+                    ))
+                    .build(window, cx)
+                })
+            })
+            .on_click(move |event, window, cx| {
+                // Enter and Space are handled with the arrow keys in `explorer_key`.
+                if !event.is_keyboard() {
+                    click.update(cx, |screen, cx| screen.toggle_explorer_menu(window, cx));
+                }
+            })
+            .on_key_down(move |event: &gpui::KeyDownEvent, _, cx| {
+                if event.keystroke.modifiers.modified() {
+                    return;
+                }
+                let key = event.keystroke.key.clone();
+                if keys.update(cx, |screen, cx| screen.explorer_key(&key, cx)) {
+                    cx.stop_propagation();
+                }
+            })
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .truncate()
+                    .text_size(px(11.))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .font_family(ui::SANS)
+                    .text_color(rgb(if open.is_some() { T.fg } else { T.muted }))
+                    .child(name.to_uppercase()),
+            )
+            .child(ui::widgets::icon(
+                "icons/chevron-down.svg",
+                px(12.),
+                T.muted,
+            ));
+        let menu = open.map(|highlight| {
+            let game_db = self.db_game.as_ref().map(|game| game.path.clone());
+            let mut list = v_flex()
+                .id("explorer-menu")
+                .w(px(260.))
+                .py(px(4.))
+                .rounded(px(6.))
+                .bg(rgb(T.surface))
+                .border_1()
+                .border_color(rgb(T.border_strong))
+                .on_mouse_down_out({
+                    let this = this.clone();
+                    move |_, _, cx| {
+                        this.update(cx, |screen, cx| {
+                            screen.explorer_menu = None;
+                            cx.notify();
+                        })
+                    }
+                });
+            for (index, entry) in self.explorer_choices(cx).into_iter().enumerate() {
+                let this = this.clone();
+                let highlighted = highlight == index;
+                let is_game_db = game_db.as_ref() == Some(&entry.path);
+                let path = entry.path.clone();
+                list = list.child(
+                    h_flex()
+                        .id(("explorer-choice", index))
+                        .min_h(px(30.))
+                        .px(px(10.))
+                        .gap(px(8.))
+                        .justify_between()
+                        .cursor_pointer()
+                        .font_family(ui::SANS)
+                        .text_size(px(13.))
+                        .text_color(rgb(T.fg))
+                        .when(highlighted, |row| row.bg(rgb(T.selected)))
+                        .when(!highlighted, |row| {
+                            row.hover(|style| style.bg(rgb(T.hover)))
+                        })
+                        .on_mouse_down(MouseButton::Left, move |_, _, cx| {
+                            cx.stop_propagation();
+                            let path = path.clone();
+                            this.update(cx, |screen, cx| screen.choose_explorer_db(path, cx));
+                        })
+                        .child(
+                            v_flex()
+                                .min_w_0()
+                                .py(px(4.))
+                                .child(div().truncate().child(entry.name.clone()))
+                                .when(is_game_db, |cell| {
+                                    cell.child(
+                                        div()
+                                            .text_size(px(11.))
+                                            .text_color(rgb(T.muted))
+                                            .child(ui::i18n::t("This game's database")),
+                                    )
+                                }),
+                        )
+                        .child(
+                            mono(crate::format::format_count(entry.games))
+                                .flex_none()
+                                .text_size(px(12.))
+                                .text_color(rgb(T.muted)),
+                        ),
+                );
+            }
+            gpui::deferred(gpui::anchored().child(div().mt(px(2.)).occlude().child(list)))
+                .with_priority(1)
+        });
+        div()
+            .w(px(width))
+            .flex_none()
+            .child(button)
+            .children(menu)
+            .into_any_element()
     }
 }
 
