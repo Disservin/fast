@@ -19,11 +19,7 @@ impl Render for BoardView {
         let entity = cx.entity();
         // The parent decides the element size; this reads the last laid-out bounds.
         let cell = (self.bounds.size.width / 8.).max(px(8.));
-        let hidden = self
-            .drag
-            .as_ref()
-            .filter(|drag| drag.moved)
-            .map(|drag| drag.from);
+        let hidden = self.drag.as_ref().map(|drag| drag.from);
         let editing = self.edit.is_some();
         let checked = (!editing).then(|| checked_king(&self.pos)).flatten();
         let targets: Vec<Square> = if self.prefs.show_legal && self.interactive && !editing {
@@ -58,7 +54,7 @@ impl Render for BoardView {
             root = root.child(outside_coordinates(self.flipped, cell));
         }
         // The dragged piece floats above everything else.
-        if let Some(drag) = self.drag.as_ref().filter(|drag| drag.moved) {
+        if let Some(drag) = &self.drag {
             let offset = drag.position - self.bounds.origin - point(cell / 2., cell / 2.);
             root = root.child(deferred(
                 div()

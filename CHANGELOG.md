@@ -4,6 +4,7 @@ Settings › Changelog shows this file. Describe the finished changes since each
 
 ## Since 0.1.3
 
+- Board: pressing anywhere in a piece's square immediately picks it up under the pointer.
 - Board: clicking the selected piece deselects it.
 - Analyse: search limits now have a Time, Depth, Nodes or Infinite selector and an editable value instead of fixed presets.
 - Analyse: Cloud scores in the moves table are from White's side, like the engine evals, instead of the side to move.
