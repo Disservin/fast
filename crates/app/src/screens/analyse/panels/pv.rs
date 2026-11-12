@@ -366,3 +366,245 @@ impl AnalyseScreen {
         cx.notify();
     }
 }
+
+impl AnalyseScreen {
+    /// The moves Line preview lists: the previewed line, or else the selected row's.
+    pub(crate) fn preview_line(&self, selected: Option<&MoveRow>) -> Vec<String> {
+        match (&self.pv_view, selected) {
+            (Some(view), _) => view.sans.clone(),
+            (None, Some(row)) if !row.pv.is_empty() => row.pv.clone(),
+            (None, Some(row)) => vec![row.san.clone()],
+            (None, None) => Vec::new(),
+        }
+    }
+
+    /// The arrow for move `index` of the line Line preview lists now, if that line
+    /// still reaches it.
+    pub(crate) fn hovered_arrow(&self, index: usize) -> Option<Arrow> {
+        let sans = self.preview_line(self.selected_row());
+        let base = &self.tree.node(self.current).pos;
+        let (_, moves) = replay(base, &sans[..sans.len().min(index + 1)]);
+        let (from, to) = moves.get(index).and_then(move_squares)?;
+        Some(Arrow::new(from, to))
+    }
+
+    /// The position on the board, including a previewed line.
+    pub(crate) fn shown_pos(&self) -> Chess {
+        let moves = self
+            .pv_view
+            .as_ref()
+            .map_or(&[][..], |view| &view.sans[..view.played()]);
+        replay(&self.tree.node(self.current).pos, moves).0
+    }
+
+    /// The position on the board, which the engine and the table are also following.
+    pub(crate) fn analysed_pos(&self) -> Chess {
+        replay(&self.tree.node(self.current).pos, self.preview_moves()).0
+    }
+
+    pub(crate) fn analysed_ply(&self) -> u32 {
+        self.tree.node(self.current).ply + self.preview_moves().len() as u32
+    }
+
+    pub(crate) fn analysed_san_path(&self) -> Vec<String> {
+        let mut path = self.base_san_path();
+        path.extend_from_slice(self.preview_moves());
+        path
+    }
+
+    /// Picking a table row during a preview continues the line with that row. Returns
+    /// false when there is no preview to continue.
+    pub(crate) fn continue_pv_with(&mut self, key: &RowKey, cx: &mut Context<Self>) -> bool {
+        let Some(played) = self.pv_view.as_ref().map(PvView::played) else {
+            return false;
+        };
+        // The table shows the game position's moves, not the preview's.
+        if played == 0 || self.pv_kibitz {
+            self.exit_pv_preview(cx);
+            return false;
+        }
+        let continuation = self
+            .rows
+            .iter()
+            .find(|row| key.matches(row))
+            .map(|row| {
+                if row.pv.is_empty() {
+                    vec![row.san.clone()]
+                } else {
+                    row.pv.clone()
+                }
+            })
+            .unwrap_or_default();
+        if let Some(view) = &mut self.pv_view {
+            view.sans.truncate(played);
+            view.sans.extend(continuation);
+            view.anchor = played - 1;
+            view.head = played - 1;
+        }
+        self.row_chosen = true;
+        self.selected = Some(key.clone());
+        self.update_arrows(cx);
+        cx.notify();
+        true
+    }
+
+    /// Ends any highlight and returns the board, engine and table to the game position.
+    pub(crate) fn exit_pv_preview(&mut self, cx: &mut Context<Self>) {
+        if self.pv_view.take().is_none() {
+            return;
+        }
+        self.pv_dragging = false;
+        self.pv_played = None;
+        self.pv_hover = None;
+        let kibitz = std::mem::take(&mut self.pv_kibitz);
+        if !kibitz {
+            self.selected = None;
+            self.row_chosen = false;
+        }
+        let node = self.tree.node(self.current);
+        let pos = node.pos.clone();
+        let last = node.mv.as_ref().and_then(move_squares);
+        self.board.update(cx, |board, cx| {
+            board.set_position(pos, last, false, cx);
+            board.set_arrows(Vec::new(), cx);
+            board.set_interactive(true, cx);
+        });
+        if kibitz {
+            // The main analysis never left the game position, but the table held its
+            // selection for the preview: let it follow the best line again, and draw
+            // the arrows for what the table shows now.
+            self.kibitz.update(cx, |kibitz, cx| kibitz.stop(cx));
+            self.rebuild_rows(cx);
+        } else {
+            let (tree, current) = (self.tree.clone(), self.current);
+            self.live
+                .update(cx, |live, cx| live.set_position(&tree, current, cx));
+            self.query_databases(cx);
+        }
+        cx.notify();
+    }
+
+    /// Copies the highlighted moves, or the whole line if none are highlighted.
+    pub(crate) fn copy_pv(&mut self, cx: &mut Context<Self>) {
+        let ply = self.tree.node(self.current).ply;
+        let text = match &self.pv_view {
+            Some(view) => {
+                let (start, end) = view.range();
+                format_pv(ply + start as u32, &view.sans[start..=end])
+            }
+            None => match self.selected_row() {
+                Some(row) if !row.pv.is_empty() => format_pv(ply, &row.pv),
+                Some(row) => format_pv(ply, std::slice::from_ref(&row.san)),
+                None => return,
+            },
+        };
+        cx.write_to_clipboard(ClipboardItem::new_string(text));
+        self.model.toast("Line copied.", cx);
+    }
+
+    /// The kibitz engine's view of the previewed position, apart from the main analysis:
+    /// its name, score, depth and best line.
+    pub(crate) fn render_kibitz_row(&self, cx: &gpui::App) -> Option<AnyElement> {
+        let view = self.pv_view.as_ref().filter(|_| self.pv_kibitz)?;
+        let kibitz = self.kibitz.read(cx);
+        let line = kibitz.line.as_ref();
+        let ply = self.tree.node(self.current).ply + view.played() as u32;
+        let score = line
+            .and_then(|line| line.score)
+            .map_or_else(|| "—".to_owned(), engine::Score::display);
+        let depth = line.map_or_else(|| "—".to_owned(), |line| line.update.depth.to_string());
+        let best = line
+            .filter(|line| !line.sans.is_empty())
+            .map(|line| format_pv(ply, &line.sans))
+            .unwrap_or_else(|| {
+                if kibitz.running {
+                    ui::i18n::t("Searching…").to_owned()
+                } else {
+                    "—".to_owned()
+                }
+            });
+        let figure = |label: &'static str, value: String| {
+            v_flex()
+                .flex_none()
+                .child(
+                    div()
+                        .text_size(px(10.))
+                        .text_color(rgb(T.faint))
+                        .child(ui::i18n::t(label).to_uppercase()),
+                )
+                .child(
+                    mono(value)
+                        .whitespace_nowrap()
+                        .text_size(px(12.))
+                        .text_color(rgb(T.fg_2)),
+                )
+        };
+        Some(
+            h_flex()
+                .mt(px(10.))
+                .gap(px(14.))
+                .items_center()
+                .child(
+                    v_flex().flex_none().child(section_label("Kibitz")).child(
+                        div()
+                            .text_size(px(12.))
+                            .text_color(rgb(T.muted))
+                            .whitespace_nowrap()
+                            .child(kibitz.name.clone()),
+                    ),
+                )
+                .child(figure("Eval", score))
+                .child(figure("Depth", depth))
+                .child(
+                    mono(best)
+                        .flex_1()
+                        .min_w_0()
+                        .truncate()
+                        .text_size(px(12.))
+                        .text_color(rgb(T.fg_2)),
+                )
+                .into_any_element(),
+        )
+    }
+
+    /// Heading text while the board shows something other than the game position.
+    pub(crate) fn pv_preview_label(&self, ply: u32) -> Option<String> {
+        let view = self.pv_view.as_ref()?;
+        let (start, end) = view.range();
+        let line = format_pv(ply + start as u32, &view.sans[start..=end]);
+        Some(format!("previewing {line}"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn replay_stops_at_a_move_that_does_not_apply() {
+        let line = ["e4", "e5", "e4", "Nf6"].map(String::from);
+        let (_, moves) = replay(&Chess::default(), &line);
+        assert_eq!(moves.len(), 2);
+    }
+
+    #[test]
+    fn highlight_ranges_work_in_either_direction() {
+        let view = PvView {
+            sans: Vec::new(),
+            anchor: 5,
+            head: 2,
+        };
+        assert_eq!(view.range(), (2, 5));
+        assert!(view.contains(3));
+        assert!(!view.contains(6));
+        assert!(view.is_range());
+        assert_eq!(view.played(), 2);
+        let single = PvView {
+            sans: Vec::new(),
+            anchor: 3,
+            head: 3,
+        };
+        assert!(!single.is_range());
+        assert_eq!(single.played(), 4);
+    }
+}

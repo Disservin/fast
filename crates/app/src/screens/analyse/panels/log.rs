@@ -385,6 +385,13 @@ impl AnalyseScreen {
     }
 }
 
+impl AnalyseScreen {
+    pub(crate) fn current_log_key(&self, cx: &gpui::App) -> Option<(EngineId, u64, bool)> {
+        self.panel_log(cx)
+            .map(|(id, log)| (id, log.revision(), self.log_show_info))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
