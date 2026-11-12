@@ -409,7 +409,7 @@ impl SettingsScreen {
                 div()
                     .px(px(12.))
                     .mb(px(14.))
-                    .child(section_label(ui::i18n::t("Settings"))),
+                    .child(section_label("Settings")),
             )
             .child(nav)
     }

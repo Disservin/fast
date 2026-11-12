@@ -168,7 +168,7 @@ pub(super) fn results_body(n: &fastchess::Results, a: &str, b: &str) -> Div {
 pub(super) fn eta(run: &Run) -> String {
     let (time, count) = run.game_time;
     if count == 0 || run.concurrency == 0 {
-        return "–".into();
+        return "—".into();
     }
     let remaining = run.total.max(run.played()).saturating_sub(run.played());
     let average = time.as_secs_f64() / f64::from(count);
@@ -657,7 +657,7 @@ impl TournamentScreen {
             .map(|search| pv_to_san(&pos, &search.pv))
             .filter(|sans| !sans.is_empty())
             .map(|sans| format_pv(start_ply, &sans))
-            .unwrap_or_else(|| "–".into());
+            .unwrap_or_else(|| "—".into());
         let detail = |name: &Option<String>, search: &Search| {
             v_flex()
                 .gap(px(2.))

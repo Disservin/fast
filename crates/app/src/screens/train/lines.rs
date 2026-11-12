@@ -217,7 +217,7 @@ impl TrainScreen {
                     .px(px(18.))
                     .pt(px(16.))
                     .pb(px(10.))
-                    .child(section_label(ui::i18n::t("Repertoire")).mb(px(9.)))
+                    .child(section_label("Repertoire").mb(px(9.)))
                     .child(
                         h_flex()
                             .justify_between()

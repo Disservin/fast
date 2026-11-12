@@ -304,7 +304,7 @@ impl LiveWall {
             .map(|search| pv_to_san(&pos, &search.pv))
             .filter(|sans| !sans.is_empty())
             .map(|sans| format_pv(ply(&pos), &sans))
-            .unwrap_or_else(|| "–".into());
+            .unwrap_or_else(|| "—".into());
 
         let engine = |side: &str, name: &Option<String>, search: &Search| {
             let searching = game.thinking.is_some() && game.thinking == *name;
@@ -355,7 +355,7 @@ impl LiveWall {
                     .child(text_block(
                         &format!("Moves ({} plies)", game.moves.len()),
                         if moves.is_empty() {
-                            "–".into()
+                            "—".into()
                         } else {
                             moves
                         },

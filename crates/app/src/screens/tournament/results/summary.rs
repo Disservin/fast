@@ -47,7 +47,7 @@ pub(super) fn locked_summary(run: &Run) -> Div {
                 }
             })
         })
-        .unwrap_or_else(|| "–".into());
+        .unwrap_or_else(|| "—".into());
     let book = kv(&flag_values(args, "-openings"), "file")
         .map(|file| {
             Path::new(file)
@@ -73,20 +73,20 @@ pub(super) fn locked_summary(run: &Run) -> Div {
         ("Time control", limit),
         (
             "Hash",
-            format!("{} MB", kv(&each, "option.Hash").unwrap_or("–")),
+            format!("{} MB", kv(&each, "option.Hash").unwrap_or("—")),
         ),
         (
             "Threads",
-            kv(&each, "option.Threads").unwrap_or("–").to_owned(),
+            kv(&each, "option.Threads").unwrap_or("—").to_owned(),
         ),
         ("Schedule", schedule),
         (
             "Rounds",
-            flag_value(args, "-rounds").unwrap_or("–").to_owned(),
+            flag_value(args, "-rounds").unwrap_or("—").to_owned(),
         ),
         (
             "Concurrency",
-            flag_value(args, "-concurrency").unwrap_or("–").to_owned(),
+            flag_value(args, "-concurrency").unwrap_or("—").to_owned(),
         ),
         ("Book", book),
     ];
@@ -99,8 +99,8 @@ pub(super) fn locked_summary(run: &Run) -> Div {
         let sprt = flag_values(args, "-sprt");
         format!(
             "elo0 {}, elo1 {}",
-            kv(&sprt, "elo0").unwrap_or("–"),
-            kv(&sprt, "elo1").unwrap_or("–")
+            kv(&sprt, "elo0").unwrap_or("—"),
+            kv(&sprt, "elo1").unwrap_or("—")
         )
     } else {
         "Off".to_owned()
@@ -109,9 +109,9 @@ pub(super) fn locked_summary(run: &Run) -> Div {
         let draw = flag_values(args, "-draw");
         format!(
             "From move {}, {} moves within ±{} cp",
-            kv(&draw, "movenumber").unwrap_or("–"),
-            kv(&draw, "movecount").unwrap_or("–"),
-            kv(&draw, "score").unwrap_or("–")
+            kv(&draw, "movenumber").unwrap_or("—"),
+            kv(&draw, "movecount").unwrap_or("—"),
+            kv(&draw, "score").unwrap_or("—")
         )
     } else {
         "Off".to_owned()
@@ -120,8 +120,8 @@ pub(super) fn locked_summary(run: &Run) -> Div {
         let resign = flag_values(args, "-resign");
         format!(
             "{} moves beyond {} cp{}",
-            kv(&resign, "movecount").unwrap_or("–"),
-            kv(&resign, "score").unwrap_or("–"),
+            kv(&resign, "movecount").unwrap_or("—"),
+            kv(&resign, "score").unwrap_or("—"),
             if kv(&resign, "twosided") == Some("true") {
                 ", both engines"
             } else {

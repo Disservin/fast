@@ -186,7 +186,7 @@ impl TournamentScreen {
         let add = cx.entity();
         v_flex()
             .gap(px(8.))
-            .child(section_label(ui::i18n::t("Engines")))
+            .child(section_label("Engines"))
             .child(list)
             .child(
                 h_flex().child(
@@ -225,7 +225,7 @@ impl TournamentScreen {
         v_flex()
             .gap(px(14.))
             .child(self.render_engines(cx))
-            .child(section_label(ui::i18n::t("Time")))
+            .child(section_label("Time"))
             .child(choice(
                 "tournament-limit",
                 Limit::ALL.map(|limit| (limit, limit.label())),
@@ -238,7 +238,7 @@ impl TournamentScreen {
                 Limit::MoveTime => self.move_time.render("Time per move"),
                 _ => field(self.limit.hint(), text_input(&self.limit_value).mono()),
             })
-            .child(section_label(ui::i18n::t("Games")))
+            .child(section_label("Games"))
             .child(pair(
                 field("Rounds", text_input(&self.rounds)),
                 field("Concurrency", text_input(&self.concurrency)),
@@ -349,7 +349,7 @@ impl TournamentScreen {
     fn render_pairing_settings(&self, cx: &mut Context<Self>) -> Div {
         v_flex()
             .gap(px(14.))
-            .child(section_label(ui::i18n::t("Engines")))
+            .child(section_label("Engines"))
             .child(pair(
                 field("Hash (MB)", text_input(&self.hash)),
                 field("Threads", text_input(&self.threads)),

@@ -93,7 +93,7 @@ pub(super) fn player_row(game: &LiveGame, white: bool, names: &[String], to_move
     let label = name.clone().unwrap_or_else(|| "…".into());
     let clock = clock
         .map(tournament_live::format_clock)
-        .unwrap_or_else(|| "–".into());
+        .unwrap_or_else(|| "—".into());
     h_flex()
         .h(px(26.))
         .flex_none()
@@ -137,7 +137,7 @@ pub(crate) fn game_card(
     let eval = search
         .score
         .map(Score::format)
-        .unwrap_or_else(|| "–".into());
+        .unwrap_or_else(|| "—".into());
     let depth = search
         .depth
         .map(|depth| format!(" / d{depth}"))
@@ -287,7 +287,7 @@ pub(super) fn search_text(search: &Search) -> String {
 
 /// An engine's search as columns: Eval, Depth and Nodes over their values.
 pub(crate) fn search_stats(search: &Search) -> Div {
-    let dash = || "–".to_owned();
+    let dash = || "—".to_owned();
     let column = |label: &'static str, value: String| {
         v_flex()
             .flex_1()

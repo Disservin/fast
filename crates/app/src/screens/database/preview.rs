@@ -181,7 +181,7 @@ impl DatabaseScreen {
     ) -> impl IntoElement + use<> {
         let this = cx.entity();
         let mut column = v_flex().p(px(16.));
-        column = column.child(section_label(ui::i18n::t("Preview")).mb(px(9.)));
+        column = column.child(section_label("Preview").mb(px(9.)));
         if let Some(preview) = &self.preview {
             let row = &preview.row;
             let mut meta = Vec::new();
