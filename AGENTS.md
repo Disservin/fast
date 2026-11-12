@@ -28,6 +28,13 @@ first screen.
 - `ui` holds the design tokens (`theme.rs`), the shared widgets (`widgets.rs`) and the
   shared views: board, scoresheet, timeline, eval bar and graph.
 - `crates/app` (the package is named `fast`) holds the window, the tabs, the screens and the configuration.
+- A screen is a root file plus a folder with one file per concern (see `ARCHITECTURE.md` ›
+  Module layout). Keep files under about 1,000 lines: when one grows past that, split it by
+  concern rather than adding to it. Split render functions longer than about 200 lines into
+  named helpers.
+- Before writing a control or helper inline, check `ui::widgets`, `controls.rs`, `format.rs`
+  and `event_reader.rs`. Steppers, sortable headings, dialogs, panel headers, inline rename
+  fields, number and size formatting, and engine event loops already exist there.
 - Never block the UI thread. Engines run on their own threads, and database work runs in
   `cx.background_spawn`.
 
@@ -108,8 +115,11 @@ decoration is kept to a minimum.
   Online use `.selected(open)` the same way.
 - Use `check()` for checkboxes and `badge()` / `stat()` for small tags. Shortcuts are shown
   with `key_cap()`.
-- Number settings use compact one-line steppers: a label, then `−`, a fixed-width value and
-  `+`, sized to their content rather than stretched across the panel.
+- Number settings use `stepper()`: a label, then `−`, a fixed-width value and `+`, sized to
+  their content rather than stretched across the panel.
+- Dialogs use `dialog()`, which puts a 44px header with a close button over `modal()`. Sortable
+  table columns use `sort_heading()`, and panel headers with a title and actions use
+  `panel_header()`.
 - Everything must be reachable by keyboard and show a visible focus ring: a 2px `accent` border.
 - Icons are Lucide SVGs in `assets/icons`, usually at 16px. Engines show `engine_icon()`.
 

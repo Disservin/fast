@@ -57,6 +57,28 @@ a separate Zed git rev, which would give two incompatible copies of GPUI. Bump t
 - `Workspace` routes between screens and owns global shortcuts. Its key context is dropped while
   a text field has focus, so typing never triggers shortcuts.
 
+## Module layout
+
+Each screen is a root file and a folder of the same name. The root file (`screens/database.rs`)
+holds the screen's state struct, its constructor, its `Render` impl and the module list. Each file
+in the folder (`screens/database/filter.rs`, `import.rs`, `table.rs` and so on) adds an
+`impl DatabaseScreen` block for one concern and starts with `use super::*;`. The root file
+imports the items its submodules share, so siblings reach each other through it. Tests sit in
+the file whose code they cover. The shell follows the same pattern (`shell.rs` and `shell/`:
+actions, tabs, tab bar, session, top bar, window chrome).
+
+Code shared across screens lives outside them:
+
+- `ui::widgets`: `btn`, `stepper`, `sort_heading`, `dialog`, `panel_header`, `segmented`,
+  `check` and the other design-system controls.
+- `controls.rs`: styled inputs, time and clock inputs, and `Rename`, the inline rename field
+  used by tabs and databases.
+- `event_reader.rs`: `spawn_batched`, the loop that takes engine or test-suite events off a
+  channel in batches and applies them to a view.
+- `format.rs`: counts, byte sizes, durations and the current time.
+- `review.rs`: engine review of stored games (accuracy and findings), used by Database and
+  Analyse. It has no GPUI code.
+
 ## Window decorations
 
 The window asks for native decorations. Some Wayland compositors, including WSLg, decline, and
