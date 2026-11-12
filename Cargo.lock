@@ -1326,7 +1326,6 @@ name = "db"
 version = "0.1.3"
 dependencies = [
  "chess_core",
- "log",
  "pgn-reader",
  "rusqlite",
  "tempfile",

@@ -9,7 +9,6 @@ chess_core.workspace = true
 pgn-reader.workspace = true
 rusqlite.workspace = true
 thiserror.workspace = true
-log.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

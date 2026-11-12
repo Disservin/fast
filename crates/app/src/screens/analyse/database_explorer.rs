@@ -2,7 +2,7 @@
 
 use chess_core::{display_san, shakmaty::san::San};
 use db::MoveStat;
-use gpui::{Context, IntoElement, div, prelude::*, px, rgb};
+use gpui::{Context, IntoElement, div, px, rgb};
 use ui::{
     T,
     widgets::{btn, h_flex, mono, section_label, v_flex},
