@@ -73,8 +73,7 @@ impl DatabaseScreen {
                 if let Err(err) = result {
                     model.toast(format!("Could not rename the database: {err}"), cx);
                 }
-                model.refresh_databases();
-                cx.emit(ModelEvent::Databases);
+                model.refresh_databases(cx);
             });
         })
         .detach();
@@ -95,6 +94,7 @@ impl DatabaseScreen {
             name.trim().to_owned()
         };
         let dir = self.model.read(cx).paths.databases_dir();
+        let entry_name: SharedString = name.clone().into();
         let task = cx.background_spawn(async move {
             std::fs::create_dir_all(&dir)?;
             for number in 1_u64.. {
@@ -117,13 +117,21 @@ impl DatabaseScreen {
             let result = task.await;
             let _ = this.update_in(cx, |this, window, cx| match result {
                 Ok(path) => {
-                    this.model.update(cx, |model, _| model.refresh_databases());
+                    // List the empty database at once, so it can be renamed before the
+                    // re-scan finishes.
+                    this.model.update(cx, |model, cx| {
+                        model.databases.push(crate::model::DbEntry {
+                            path: path.clone(),
+                            name: entry_name,
+                            games: 0,
+                            source_file: None,
+                        });
+                        model.refresh_databases(cx);
+                    });
                     this.show_newest(path.clone(), window, cx);
                     if rename {
                         this.start_rename(path, window, cx);
                     }
-                    this.model
-                        .update(cx, |_, cx| cx.emit(ModelEvent::Databases));
                 }
                 Err(err) => this.model.toast(
                     format!("{}: {err}", ui::i18n::t("Could not create the database")),
@@ -172,14 +180,12 @@ impl DatabaseScreen {
                             model.toast(format!("Could not duplicate the database: {err}"), cx)
                         }
                     }
-                    model.refresh_databases();
+                    model.refresh_databases(cx);
                 });
                 if result.is_ok() {
                     this.selected_db = Some(dest);
                     this.selected = None;
                 }
-                this.model
-                    .update(cx, |_, cx| cx.emit(ModelEvent::Databases));
             });
         })
         .detach();
@@ -221,9 +227,8 @@ impl DatabaseScreen {
                     Ok(count) => model.toast(format!("Deleted {} games.", format_count(count)), cx),
                     Err(err) => model.toast(format!("Could not delete: {err}"), cx),
                 }
-                model.refresh_databases();
+                model.refresh_databases(cx);
                 model.refresh_leaks(cx);
-                cx.emit(ModelEvent::Databases);
             });
         })
         .detach();

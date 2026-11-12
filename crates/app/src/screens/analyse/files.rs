@@ -419,8 +419,7 @@ impl AnalyseScreen {
                     }
                     Err(err) => model.toast(format!("Could not save the game: {err}"), cx),
                 }
-                model.refresh_databases();
-                cx.emit(ModelEvent::Databases);
+                model.refresh_databases(cx);
             });
         })
         .detach();
@@ -455,9 +454,8 @@ impl AnalyseScreen {
                     Ok(false) => model.toast("Could not save: the game is no longer there.", cx),
                     Err(err) => model.toast(format!("Could not save the game: {err}"), cx),
                 }
-                model.refresh_databases();
+                model.refresh_databases(cx);
                 model.refresh_leaks(cx);
-                cx.emit(ModelEvent::Databases);
             });
         })
         .detach();

@@ -80,6 +80,7 @@ pub struct AppModel {
     pub pending_path: Option<PendingPath>,
     leak_task: Option<Task<()>>,
     config_save_task: Option<Task<()>>,
+    database_scan: Option<Task<()>>,
     config_writer: Arc<crate::config_writer::ConfigWriter>,
     pub manager: EngineManager,
     pub engine_status: std::collections::BTreeMap<EngineId, EngineStatus>,
@@ -313,11 +314,12 @@ impl AppModel {
             pending_path: None,
             leak_task: None,
             config_save_task: None,
+            database_scan: None,
             config_writer: Arc::default(),
             manager: EngineManager::default(),
             engine_status,
         };
-        model.refresh_databases();
+        model.databases = scan_databases(&model.paths.databases_dir());
         model
     }
 
@@ -365,9 +367,8 @@ impl AppModel {
                         .database_sorts
                         .remove(&removed_path.to_string_lossy().to_string());
                     model.save_config(cx);
-                    model.refresh_databases();
+                    model.refresh_databases(cx);
                     model.refresh_leaks(cx);
-                    cx.emit(ModelEvent::Databases);
                 }
                 Err(error) => model.toast(
                     format!("{}: {error}", ui::i18n::t("Could not remove database")),
@@ -378,42 +379,25 @@ impl AppModel {
         .detach();
     }
 
-    /// Re-scans the databases directory.
-    pub fn refresh_databases(&mut self) {
+    /// Re-scans the databases directory in the background, then announces the new list
+    /// with [`ModelEvent::Databases`]. A newer scan replaces one still running.
+    pub fn refresh_databases(&mut self, cx: &mut Context<Self>) {
         let dir = self.paths.databases_dir();
-        let mut entries = Vec::new();
-        if let Ok(read) = std::fs::read_dir(&dir) {
-            for file in read.flatten() {
-                let path = file.path();
-                if path.extension().is_none_or(|ext| ext != "sqlite") {
-                    continue;
-                }
-                match Database::open(&path)
-                    .and_then(|db| Ok((db.name()?, db.game_count()?, db.source_file()?)))
-                {
-                    Ok((name, games, source_file)) => entries.push(DbEntry {
-                        path,
-                        name: name.into(),
-                        games,
-                        source_file,
-                    }),
-                    Err(err) => log::warn!("skipping {}: {err}", path.display()),
-                }
-            }
-        }
-        // "My games" first, then reference databases, each alphabetical.
-        entries.sort_by_key(|entry| {
-            let name = entry.name.to_string();
-            let rank = if name == "My games" {
-                0
-            } else if name.starts_with("Reference") {
-                1
-            } else {
-                2
-            };
-            (rank, file_key(&entry.path))
-        });
-        self.databases = entries;
+        let scan = cx.background_spawn(async move { scan_databases(&dir) });
+        self.database_scan = Some(cx.spawn(async move |this, cx| {
+            let entries = scan.await;
+            let _ = this.update(cx, |model, cx| {
+                model.databases = entries;
+                model.database_scan = None;
+                cx.emit(ModelEvent::Databases);
+                cx.notify();
+            });
+        }));
+    }
+
+    /// Whether a re-scan is running, so a database just created may be missing from the list.
+    pub fn scanning_databases(&self) -> bool {
+        self.database_scan.is_some()
     }
 
     /// The database holding the user's own games, created on demand.
@@ -697,6 +681,43 @@ impl AppModel {
 }
 
 /// Opens the raw-output window for a running engine, or says how to start it.
+/// Every database in `dir` with its name, game count and source file: "My games" first,
+/// then reference databases, each alphabetical. Unreadable files are skipped.
+pub fn scan_databases(dir: &Path) -> Vec<DbEntry> {
+    let mut entries = Vec::new();
+    if let Ok(read) = std::fs::read_dir(dir) {
+        for file in read.flatten() {
+            let path = file.path();
+            if path.extension().is_none_or(|ext| ext != "sqlite") {
+                continue;
+            }
+            match Database::open(&path)
+                .and_then(|db| Ok((db.name()?, db.game_count()?, db.source_file()?)))
+            {
+                Ok((name, games, source_file)) => entries.push(DbEntry {
+                    path,
+                    name: name.into(),
+                    games,
+                    source_file,
+                }),
+                Err(err) => log::warn!("skipping {}: {err}", path.display()),
+            }
+        }
+    }
+    entries.sort_by_key(|entry| {
+        let name = entry.name.to_string();
+        let rank = if name == "My games" {
+            0
+        } else if name.starts_with("Reference") {
+            1
+        } else {
+            2
+        };
+        (rank, file_key(&entry.path))
+    });
+    entries
+}
+
 /// Shows a toast through a handle to the model, for screens that hold one.
 pub trait ToastExt {
     fn toast(&self, text: impl Into<SharedString>, cx: &mut App);
@@ -797,6 +818,29 @@ pub fn split_engine_name(id_name: &str, fallback: &str) -> (String, String) {
 
 #[cfg(test)]
 mod tests {
+    /// The scan lists "My games" first, then reference databases, then the rest, and
+    /// skips files that are not databases.
+    #[test]
+    fn scan_lists_my_games_first_and_skips_other_files() {
+        let dir = tempfile::tempdir().unwrap();
+        for (file, name) in [
+            ("b.sqlite", "Club games"),
+            ("a.sqlite", "Reference: masters"),
+            ("my.sqlite", "My games"),
+        ] {
+            db::Database::open(dir.path().join(file))
+                .unwrap()
+                .set_details(name, "")
+                .unwrap();
+        }
+        std::fs::write(dir.path().join("notes.txt"), "not a database").unwrap();
+        let entries = super::scan_databases(dir.path());
+        let names: Vec<&str> = entries.iter().map(|entry| entry.name.as_ref()).collect();
+        assert_eq!(names, ["My games", "Reference: masters", "Club games"]);
+        assert!(entries.iter().all(|entry| entry.games == 0));
+        assert!(super::scan_databases(&dir.path().join("missing")).is_empty());
+    }
+
     /// Collection names remain readable and safe as Windows and Linux save suggestions.
     #[test]
     fn pgn_save_names_are_portable() {

@@ -4,6 +4,7 @@ Settings › Changelog shows this file. Describe the finished changes since each
 
 ## Since 0.1.3
 
+- Database: the window no longer pauses while large databases are re-counted after an import, download or edit.
 - Analyse: the WDL bar matches the eval bar and the Log selection follows the palette, so both read clearly in Paper and Sand.
 - Settings: the Soft, Click, Bell, Deep wood and Thud sound sets are gone, and settings that used one now play Classic.
 - Tournament: the games table headings sort by keyboard and match the database's, and New tournament opens as a flat dialog like the others.

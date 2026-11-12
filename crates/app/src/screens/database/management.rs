@@ -158,8 +158,7 @@ impl DatabaseScreen {
                         screen.selected_db = Some(path);
                         screen.selected = None;
                         screen.model.update(cx, |model, cx| {
-                            model.refresh_databases();
-                            cx.emit(ModelEvent::Databases);
+                            model.refresh_databases(cx);
                         });
                         screen.clear_filters(window, cx);
                         screen.model.toast("Database added.", cx);
@@ -316,9 +315,8 @@ impl DatabaseScreen {
                             }
                         }
                         screen.model.update(cx, |model, cx| {
-                            model.refresh_databases();
+                            model.refresh_databases(cx);
                             model.refresh_leaks(cx);
-                            cx.emit(ModelEvent::Databases);
                         });
                     }
                     Err(err) => {

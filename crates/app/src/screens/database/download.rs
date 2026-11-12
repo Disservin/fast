@@ -227,9 +227,8 @@ impl DatabaseScreen {
                 let database = running.database.clone();
                 let screen = cx.entity().downgrade();
                 this.model.update(cx, |model, cx| {
-                    model.refresh_databases();
+                    model.refresh_databases(cx);
                     model.refresh_leaks(cx);
-                    cx.emit(ModelEvent::Databases);
                     if let Some(message) = message {
                         if outcome.is_ok() {
                             model.toast_with_action(

@@ -157,9 +157,8 @@ impl DatabaseScreen {
                         ),
                         None => model.toast(message, cx),
                     }
-                    model.refresh_databases();
+                    model.refresh_databases(cx);
                     model.refresh_leaks(cx);
-                    cx.emit(ModelEvent::Databases);
                 });
             });
         })

@@ -7,12 +7,14 @@ impl DatabaseScreen {
     /// new ones arrive.
     pub(super) fn run_query(&mut self, cx: &mut Context<Self>) {
         self.filter_task = None;
-        let entries = self.model.read(cx).databases.clone();
-        if self
+        let model = self.model.read(cx);
+        let entries = model.databases.clone();
+        // A database created a moment ago may not be listed until the re-scan finishes.
+        let missing = self
             .selected_db
             .as_ref()
-            .is_none_or(|path| !entries.iter().any(|e| &e.path == path))
-        {
+            .is_none_or(|path| !entries.iter().any(|e| &e.path == path));
+        if missing && (self.selected_db.is_none() || !model.scanning_databases()) {
             self.selected_db = entries.first().map(|entry| entry.path.clone());
         }
         self.db_snapshot = self

@@ -222,10 +222,9 @@ impl SettingsScreen {
                                 model.config = crate::config::Config::load(&model.paths.config_file);
                                 if let Ok(bytes) = std::fs::read(model.paths.repertoire_file()) && let Ok(rep) = serde_json::from_slice(&bytes) { model.repertoire = rep; }
                                 model.notes = db::NoteStore::open(model.paths.notes_file()).ok();
-                                model.refresh_databases();
+                                model.refresh_databases(cx);
                                 cx.emit(crate::model::ModelEvent::Restored);
                                 cx.emit(crate::model::ModelEvent::Repertoire);
-                                cx.emit(crate::model::ModelEvent::Databases);
                                 cx.emit(crate::model::ModelEvent::BoardPrefs);
                                 model.toast("Backup restored. Restart Fast to reload all settings and study state.", cx);
                             }
