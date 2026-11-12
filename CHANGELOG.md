@@ -4,8 +4,8 @@ Settings › Changelog shows this file. Describe the finished changes since each
 
 ## Since 0.1.3
 
+- Board: clicking the selected piece deselects it.
 - Analyse: search limits now have a Time, Depth, Nodes or Infinite selector and an editable value instead of fixed presets.
-
 - Analyse: Cloud scores in the moves table are from White's side, like the engine evals, instead of the side to move.
 - Analyse: ?!, ? and ?? badges from live analysis wait for depth 10, and Settings › Board can turn them off so only game reviews badge moves.
 - Analyse: hovering a later move in Line preview no longer draws an impossible arrow on the board; only the next move to play gets one.

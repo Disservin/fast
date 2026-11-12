@@ -108,7 +108,7 @@ impl BoardView {
                             moved: false,
                         });
                     }
-                    self.selected = Some(square);
+                    self.selected = (self.selected != Some(square)).then_some(square);
                 } else {
                     self.selected = None;
                     if self.premove.is_some() {
@@ -149,7 +149,7 @@ impl BoardView {
                             moved: false,
                         });
                     }
-                    self.selected = Some(square);
+                    self.selected = (self.selected != Some(square)).then_some(square);
                 } else {
                     self.selected = None;
                 }
