@@ -68,7 +68,7 @@ the file whose code they cover. The shell follows the same pattern (`shell.rs` a
 actions, tabs, tab bar, session, top bar, window chrome).
 Large modules outside the screens are split the same way: `ui::board` (arrows, input, moves,
 pieces, render), `fastchess` (files, setup, command, output, process) and `live` (cache,
-engines, search).
+engines, search) and `demo` (games, repertoire, engines).
 
 Code shared across screens lives outside them:
 
