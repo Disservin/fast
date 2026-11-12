@@ -89,9 +89,9 @@ impl TournamentScreen {
         let engines = self.model.read(cx).config.engines.clone();
         let mut list = v_flex().gap(px(6.));
         if engines.is_empty() && self.extra_engines.is_empty() {
-            list = list.child(div().text_size(px(13.)).text_color(rgb(T.muted)).child(
-                ui::i18n::t("No engines yet. Add them in Settings › Engines, or add an executable here."),
-            ));
+            list = list.child(div().text_as(13., T.muted).child(ui::i18n::t(
+                "No engines yet. Add them in Settings › Engines, or add an executable here.",
+            )));
         }
         for engine in engines {
             let id = engine.id;
@@ -165,8 +165,7 @@ impl TournamentScreen {
                                     .overflow_hidden()
                                     .text_ellipsis()
                                     .whitespace_nowrap()
-                                    .text_size(px(12.))
-                                    .text_color(rgb(T.muted))
+                                    .text_as(12., T.muted)
                                     .child(SharedString::from(engine.cmd.display().to_string())),
                             ),
                     )
@@ -296,12 +295,12 @@ impl TournamentScreen {
                 ),
             ))
             .when(self.chess960, |column| {
-                column.child(div().text_size(px(12.)).text_color(rgb(T.muted)).child(
+                column.child(div().text_as(12., T.muted).child(
                     ui::i18n::t("Chess960 needs a book of Chess960 start positions."),
                 ))
             })
             .child(field("Opening book", select_el(&self.book)))
-            .child(div().text_size(px(12.)).text_color(rgb(T.muted)).child(
+            .child(div().text_as(12., T.muted).child(
                 ui::i18n::t("Recommended: UHO_Lichess_4852_v1.epd. Stockfish books download on first use. Choose Custom file to use a local book.")
             ))
             .child(field(
@@ -382,8 +381,7 @@ impl TournamentScreen {
                     .overflow_hidden()
                     .whitespace_nowrap()
                     .text_ellipsis()
-                    .text_size(px(12.))
-                    .text_color(rgb(T.muted))
+                    .text_as(12., T.muted)
                     .child(ui::i18n::t(
                         "Hash and threads, pairing, adjudication, tablebases, saved games, extra options",
                     )),
@@ -586,8 +584,7 @@ impl TournamentScreen {
             .when(self.pgn.notation != "san", |column| {
                 column.child(
                     div()
-                        .text_size(px(12.))
-                        .text_color(rgb(T.warn))
+                        .text_as(12., T.warn)
                         .child(ui::i18n::t("Games in LAN or UCI may not open in Analyse.")),
                 )
             })

@@ -10,6 +10,16 @@ use gpui::{
 
 use crate::theme::{MONO, SANS, T};
 
+/// Sets text size and colour together, the pair nearly every label needs.
+pub trait TextExt: Styled + Sized {
+    /// Text at `size` pixels in the palette colour `colour`, such as `T.muted`.
+    fn text_as(self, size: f32, colour: u32) -> Self {
+        self.text_size(px(size)).text_color(rgb(colour))
+    }
+}
+
+impl<E: Styled> TextExt for E {}
+
 pub fn h_flex() -> Div {
     div().flex().flex_row().items_center()
 }

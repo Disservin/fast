@@ -382,9 +382,9 @@ impl TrainScreen {
                         })
                         .when(answered, |column| {
                             column
-                                .children(explanation.map(|text| {
-                                    div().text_size(px(13.)).text_color(rgb(T.fg_2)).child(text)
-                                }))
+                                .children(
+                                    explanation.map(|text| div().text_as(13., T.fg_2).child(text)),
+                                )
                                 .child(grade_rows)
                                 .child(
                                     tool("why", "Why this move?", Self::why, this.clone())

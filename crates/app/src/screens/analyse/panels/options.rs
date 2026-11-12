@@ -70,8 +70,7 @@ impl AnalyseScreen {
                 .child(
                     div()
                         .mr(px(2.))
-                        .text_size(px(13.))
-                        .text_color(rgb(T.muted))
+                        .text_as(13., T.muted)
                         .child(ui::i18n::t("Lines")),
                 )
                 .child(
@@ -382,8 +381,7 @@ impl AnalyseScreen {
             .child(
                 div()
                     .mr(px(4.))
-                    .text_size(px(12.))
-                    .text_color(rgb(T.muted))
+                    .text_as(12., T.muted)
                     .child(ui::i18n::t(label).to_owned()),
             )
             .child(

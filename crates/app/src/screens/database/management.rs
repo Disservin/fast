@@ -399,16 +399,11 @@ impl DatabaseScreen {
                     &add.source
                 }),
             ))
-            .child(
-                div()
-                    .text_size(px(13.))
-                    .text_color(rgb(T.muted))
-                    .child(ui::i18n::t(if add.web {
-                        "Download a PGN, PGN.gz or ZIP file over HTTPS."
-                    } else {
-                        "Import PGN, PGN.gz or ZIP, or copy a Fast SQLite database."
-                    })),
-            );
+            .child(div().text_as(13., T.muted).child(ui::i18n::t(if add.web {
+                "Download a PGN, PGN.gz or ZIP file over HTTPS."
+            } else {
+                "Import PGN, PGN.gz or ZIP, or copy a Fast SQLite database."
+            })));
         if !busy {
             let this = this.clone();
             body = body.child(
@@ -458,12 +453,7 @@ impl DatabaseScreen {
             );
         }
         if let Some(error) = &self.collection_error {
-            body = body.child(
-                div()
-                    .text_size(px(13.))
-                    .text_color(rgb(T.warn))
-                    .child(error.clone()),
-            );
+            body = body.child(div().text_as(13., T.warn).child(error.clone()));
         }
         let act = this.clone();
         body = body.child(if busy {
@@ -582,11 +572,11 @@ impl DatabaseScreen {
         }
         body = body.child(h_flex().child({ let this = this.clone(); btn("explore-collection", "Explore games").compact().disabled(busy).on_click(move |window, cx| { this.update(cx, |screen, cx| { screen.manager = None; screen.clear_filters(window, cx); }); }) }))
             .child(section_label("Merge players"))
-            .child(div().text_size(px(13.)).text_color(rgb(T.muted)).child(ui::i18n::t("Replace this exact player name on both sides of every game.")))
+            .child(div().text_as(13., T.muted).child(ui::i18n::t("Replace this exact player name on both sides of every game.")))
             .child(h_flex().gap(px(8.)).child(div().flex_1().min_w_0().child(text_input(&manager.from))).child(div().flex_1().min_w_0().child(text_input(&manager.into))))
             .child(h_flex().child({ let this = this.clone(); btn("merge-players", "Merge players").compact().disabled(busy).on_click(move |_, cx| { this.update(cx, |screen, cx| screen.manage_collection(Action::Merge, cx)); }) }))
             .child(section_label("Clean up"))
-            .child(div().text_size(px(13.)).text_color(rgb(T.muted)).child(ui::i18n::t("Review the number of games before confirming removal. Different annotations are kept.")))
+            .child(div().text_as(13., T.muted).child(ui::i18n::t("Review the number of games before confirming removal. Different annotations are kept.")))
             .child(h_flex().gap(px(8.)).children([(Action::Duplicates, "Remove duplicates"), (Action::Empty, "Remove empty games")].into_iter().enumerate().map(|(index, (action, label))| {
                 let this = this.clone(); btn(("clean-collection", index), label).compact().disabled(busy).on_click(move |_, cx| { this.update(cx, |screen, cx| screen.manage_collection(action, cx)); })
             })));
@@ -615,12 +605,7 @@ impl DatabaseScreen {
             );
         }
         if let Some(error) = &manager.error {
-            body = body.child(
-                div()
-                    .text_size(px(13.))
-                    .text_color(rgb(T.warn))
-                    .child(error.clone()),
-            );
+            body = body.child(div().text_as(13., T.warn).child(error.clone()));
         }
         body = body.child(h_flex().child({
             let this = this.clone();

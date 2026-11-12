@@ -12,7 +12,7 @@ use gpui::{
 use gpui_component::{Root, scroll::ScrollableElement};
 use ui::{
     MONO, SANS, T,
-    widgets::{btn, h_flex, v_flex},
+    widgets::{TextExt, btn, h_flex, v_flex},
 };
 
 /// How often the window looks for new output.
@@ -185,12 +185,7 @@ impl Render for DebugWindow {
                                     .font_weight(gpui::FontWeight::SEMIBOLD)
                                     .child(self.title.clone()),
                             )
-                            .child(
-                                div()
-                                    .text_size(px(12.))
-                                    .text_color(rgb(T.muted))
-                                    .child(format!("{count} lines")),
-                            ),
+                            .child(div().text_as(12., T.muted).child(format!("{count} lines"))),
                     )
                     .child(
                         h_flex()

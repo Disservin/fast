@@ -40,8 +40,7 @@ pub(super) fn render_changelog() -> Div {
                         .py(px(6.))
                         .border_b_1()
                         .border_color(rgb(T.divider))
-                        .text_size(px(13.))
-                        .text_color(rgb(T.fg_2))
+                        .text_as(13., T.fg_2)
                         .child(entry.trim()),
                 ),
             );
@@ -294,8 +293,7 @@ impl SettingsScreen {
                         mono(license)
                             .w(asset_license)
                             .flex_shrink_0()
-                            .text_size(px(12.))
-                            .text_color(rgb(T.fg_2)),
+                            .text_as(12., T.fg_2),
                     )
                     .child(
                         div()
@@ -353,8 +351,7 @@ impl SettingsScreen {
                                     mono(library.version.clone())
                                         .w(col_version)
                                         .flex_shrink_0()
-                                        .text_size(px(12.))
-                                        .text_color(rgb(T.muted)),
+                                        .text_as(12., T.muted),
                                 )
                                 .child(
                                     mono(library.license.clone())
@@ -362,8 +359,7 @@ impl SettingsScreen {
                                         .flex_shrink_0()
                                         .overflow_hidden()
                                         .whitespace_nowrap()
-                                        .text_size(px(12.))
-                                        .text_color(rgb(T.fg_2)),
+                                        .text_as(12., T.fg_2),
                                 )
                                 .children(repository.map(|url| {
                                     div()
@@ -387,8 +383,7 @@ impl SettingsScreen {
             .child(
                 section("Fast").child(
                     div()
-                        .text_size(px(14.))
-                        .text_color(rgb(T.fg_2))
+                        .text_as(14., T.fg_2)
                         .child(format!(
                             "Fast is free software under {FAST_LICENSE}. The libraries and assets below keep their own licences."
                         )),
@@ -400,8 +395,7 @@ impl SettingsScreen {
                     .child(
                         div()
                             .mb(px(10.))
-                            .text_size(px(13.))
-                            .text_color(rgb(T.muted))
+                            .text_as(13., T.muted)
                             .child(format!(
                                 "{} Rust crates from Cargo.lock, including ones only built on other platforms. Most common: {summary}.",
                                 all.len()
@@ -414,8 +408,7 @@ impl SettingsScreen {
                             .child(div().w(px(320.)).child(text_input(&self.license_filter)))
                             .child(
                                 div()
-                                    .text_size(px(13.))
-                                    .text_color(rgb(T.muted))
+                                    .text_as(13., T.muted)
                                     .child(format!("{count} shown")),
                             ),
                     )

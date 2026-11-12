@@ -28,19 +28,9 @@ pub(super) fn drive_strip(disk: crate::storage::DiskSpace, fast: u64) -> Div {
                                 color
                             })),
                     )
-                    .child(
-                        div()
-                            .text_size(px(10.))
-                            .text_color(rgb(T.faint))
-                            .child(ui::i18n::t(caption)),
-                    ),
+                    .child(div().text_as(10., T.faint).child(ui::i18n::t(caption))),
             )
-            .child(
-                mono(value)
-                    .whitespace_nowrap()
-                    .text_size(px(12.))
-                    .text_color(rgb(T.fg_2)),
-            )
+            .child(mono(value).whitespace_nowrap().text_as(12., T.fg_2))
     };
     h_flex()
         .px(px(16.))
@@ -78,17 +68,11 @@ pub(super) fn drive_strip(disk: crate::storage::DiskSpace, fast: u64) -> Div {
             v_flex()
                 .flex_none()
                 .gap(px(1.))
-                .child(
-                    div()
-                        .text_size(px(10.))
-                        .text_color(rgb(T.faint))
-                        .child(ui::i18n::t("DRIVE")),
-                )
+                .child(div().text_as(10., T.faint).child(ui::i18n::t("DRIVE")))
                 .child(
                     mono(format_bytes(disk.total))
                         .whitespace_nowrap()
-                        .text_size(px(12.))
-                        .text_color(rgb(T.fg_2)),
+                        .text_as(12., T.fg_2),
                 ),
         )
 }
@@ -295,8 +279,7 @@ impl SettingsScreen {
                 .whitespace_nowrap()
                 .flex()
                 .justify_end()
-                .text_size(px(13.))
-                .text_color(rgb(T.fg_2))
+                .text_as(13., T.fg_2)
         };
         let row = |name: &str, about: &str, bytes: Option<u64>| {
             h_flex()
@@ -318,8 +301,7 @@ impl SettingsScreen {
                         .min_w_0()
                         .overflow_hidden()
                         .whitespace_nowrap()
-                        .text_size(px(13.))
-                        .text_color(rgb(T.muted))
+                        .text_as(13., T.muted)
                         .child(ui::i18n::t(about).to_owned()),
                 )
                 .child(size_cell(size(bytes)))
@@ -396,8 +378,7 @@ impl SettingsScreen {
                         .min_w_0()
                         .overflow_hidden()
                         .whitespace_nowrap()
-                        .text_size(px(12.))
-                        .text_color(rgb(T.fg_2)),
+                        .text_as(12., T.fg_2),
                 )
                 .child(
                     btn(id, "Open folder")
@@ -418,16 +399,10 @@ impl SettingsScreen {
                         "Everything else",
                         paths.data_dir.clone(),
                     ))
-                    .child(
-                        div()
-                            .pt(px(10.))
-                            .text_size(px(12.))
-                            .text_color(rgb(T.muted))
-                            .child(ui::i18n::t(
-                                "Everything stays on this computer. Back up these folders to keep \
+                    .child(div().pt(px(10.)).text_as(12., T.muted).child(ui::i18n::t(
+                        "Everything stays on this computer. Back up these folders to keep \
                                  your games, repertoire and analysis.",
-                            )),
-                    ),
+                    ))),
             )
             .child(
                 panel()

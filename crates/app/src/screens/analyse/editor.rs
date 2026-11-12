@@ -7,7 +7,7 @@ use chess_core::{
 use gpui::{Context, IntoElement, MouseButton, SharedString, div, img, prelude::*, px, rgb};
 use ui::{
     T,
-    widgets::{btn, check, h_flex, icon_btn, v_flex},
+    widgets::{TextExt, btn, check, h_flex, icon_btn, v_flex},
 };
 
 use super::AnalyseScreen;
@@ -333,8 +333,7 @@ impl AnalyseScreen {
                 .child(
                     div()
                         .w(px(48.))
-                        .text_size(px(13.))
-                        .text_color(rgb(T.muted))
+                        .text_as(13., T.muted)
                         .child(ui::i18n::t(label).to_owned()),
                 )
                 .child(castle(first))
@@ -346,12 +345,7 @@ impl AnalyseScreen {
             .child(
                 h_flex()
                     .gap(px(16.))
-                    .child(
-                        div()
-                            .text_size(px(13.))
-                            .text_color(rgb(T.muted))
-                            .child(ui::i18n::t("Castling")),
-                    )
+                    .child(div().text_as(13., T.muted).child(ui::i18n::t("Castling")))
                     .child(
                         check("editor-chess960", editor.is_chess960(), "Chess960")
                             .text(13.)
@@ -397,8 +391,7 @@ impl AnalyseScreen {
                     .gap(px(6.))
                     .child(
                         div()
-                            .text_size(px(13.))
-                            .text_color(rgb(T.muted))
+                            .text_as(13., T.muted)
                             .mr(px(4.))
                             .child(ui::i18n::t("To move")),
                     )

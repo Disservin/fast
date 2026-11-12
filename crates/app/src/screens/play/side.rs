@@ -90,16 +90,8 @@ impl PlayScreen {
                             .text_size(px(14.))
                             .child(name),
                     )
-                    .children(
-                        rating
-                            .map(|rating| mono(rating).text_size(px(13.)).text_color(rgb(T.muted))),
-                    )
-                    .children(status.map(|text| {
-                        div()
-                            .text_size(px(13.))
-                            .text_color(rgb(T.muted))
-                            .child(text)
-                    }))
+                    .children(rating.map(|rating| mono(rating).text_as(13., T.muted)))
+                    .children(status.map(|text| div().text_as(13., T.muted).child(text)))
                     .children(material),
             )
             .child(
@@ -422,16 +414,10 @@ impl PlayScreen {
                 .gap(px(1.))
                 .child(
                     div()
-                        .text_size(px(10.))
-                        .text_color(rgb(T.faint))
+                        .text_as(10., T.faint)
                         .child(ui::i18n::t(caption).to_uppercase()),
                 )
-                .child(
-                    mono(value)
-                        .whitespace_nowrap()
-                        .text_size(px(12.))
-                        .text_color(rgb(T.fg_2)),
-                )
+                .child(mono(value).whitespace_nowrap().text_as(12., T.fg_2))
         };
         let depth = if line.depth == 0 {
             dash()
@@ -574,8 +560,7 @@ impl PlayScreen {
         let body = if count == 0 {
             div()
                 .p(px(16.))
-                .text_size(px(13.))
-                .text_color(rgb(T.muted))
+                .text_as(13., T.muted)
                 .child(ui::i18n::t("Nothing logged yet."))
                 .into_any_element()
         } else {
@@ -771,13 +756,7 @@ impl PlayScreen {
                                 Scrollbar::vertical(&self.moves_scroll).mode(ScrollbarMode::Always),
                             ),
                     )
-                    .child(
-                        div()
-                            .mt(px(10.))
-                            .text_size(px(13.))
-                            .text_color(rgb(T.muted))
-                            .child(opening_text),
-                    )
+                    .child(div().mt(px(10.)).text_as(13., T.muted).child(opening_text))
                     .children(result.map(|text| {
                         div()
                             .mt(px(8.))

@@ -10,7 +10,7 @@ use gpui::{
 
 use crate::{
     theme::{MONO, SANS, T},
-    widgets::{h_flex, v_flex},
+    widgets::{TextExt, h_flex, v_flex},
 };
 
 const NUMBER_W: f32 = 42.;
@@ -103,8 +103,7 @@ fn eval_text(id: NodeId, props: &ScoresheetProps) -> Option<impl IntoElement + u
             .ml(px(4.))
             .flex_none()
             .whitespace_nowrap()
-            .text_size(px(11.))
-            .text_color(rgb(T.muted))
+            .text_as(11., T.muted)
             .child(text),
     )
 }
@@ -451,8 +450,7 @@ pub fn scoresheet_inline(tree: &GameTree, props: &ScoresheetProps) -> impl IntoE
                 div()
                     .font_family(SANS)
                     .italic()
-                    .text_size(px(13.))
-                    .text_color(rgb(T.muted))
+                    .text_as(13., T.muted)
                     .child(SharedString::from(text)),
             ),
         };

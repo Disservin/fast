@@ -80,11 +80,7 @@ pub(super) fn wdl_percentages(wdl: Option<Wdl>) -> Option<[f64; 3]> {
 /// White win / draw / Black win. Missing data is shown explicitly.
 pub(super) fn wdl_bar(wdl: Option<Wdl>) -> gpui::AnyElement {
     let Some(wdl) = wdl.filter(|wdl| wdl_percentages(Some(*wdl)).is_some()) else {
-        return div()
-            .text_size(px(11.))
-            .text_color(rgb(T.muted))
-            .child("—")
-            .into_any_element();
+        return div().text_as(11., T.muted).child("—").into_any_element();
     };
     h_flex()
         .h(px(10.))
@@ -311,8 +307,7 @@ impl AnalyseScreen {
                 div()
                     .px(px(16.))
                     .py(px(8.))
-                    .text_size(px(12.))
-                    .text_color(rgb(T.muted))
+                    .text_as(12., T.muted)
                     .child(ui::i18n::t("No games reach this position")),
             );
         }
@@ -321,8 +316,7 @@ impl AnalyseScreen {
                 div()
                     .px(px(16.))
                     .py(px(20.))
-                    .text_size(px(13.))
-                    .text_color(rgb(T.muted))
+                    .text_as(13., T.muted)
                     .child(if no_engines {
                         "No candidate moves yet. Add an engine in Settings › Engines, or import a database."
                     } else {
@@ -534,23 +528,20 @@ impl AnalyseScreen {
                 div()
                     .w(px(COL_SF))
                     .flex_none()
-                    .text_size(px(13.))
-                    .text_color(rgb(T.fg_2))
+                    .text_as(13., T.fg_2)
                     .child(score),
             )
             .when(view.show_wdl, |row_el| {
-                row_el.child(
-                    div().w(px(COL_WDL)).flex_none().pr(px(12.)).child(
-                        match wdl_percentages(row.wdl) {
-                            Some([w, d, l]) => v_flex().gap(px(2.)).child(wdl_bar(row.wdl)).child(
-                                mono(format!("{w:.0} / {d:.0} / {l:.0}%"))
-                                    .text_size(px(10.))
-                                    .text_color(rgb(T.fg_2)),
-                            ),
-                            None => mono("—").text_size(px(13.)).text_color(rgb(T.fg_2)),
-                        },
-                    ),
-                )
+                row_el.child(div().w(px(COL_WDL)).flex_none().pr(px(12.)).child(
+                    match wdl_percentages(row.wdl) {
+                        Some([w, d, l]) => {
+                            v_flex().gap(px(2.)).child(wdl_bar(row.wdl)).child(
+                                mono(format!("{w:.0} / {d:.0} / {l:.0}%")).text_as(10., T.fg_2),
+                            )
+                        }
+                        None => mono("—").text_as(13., T.fg_2),
+                    },
+                ))
             })
             .when(view.online, |row_el| {
                 row_el
@@ -582,8 +573,7 @@ impl AnalyseScreen {
                     .w(px(COL_REF))
                     .flex_none()
                     .pl(px(4.))
-                    .text_size(px(13.))
-                    .text_color(rgb(T.fg_2))
+                    .text_as(13., T.fg_2)
                     .when_some(count_target, |cell, (path, hash, label)| {
                         cell.hover(|style| style.text_color(rgb(T.accent)).underline())
                             .tooltip(|window, cx| {
@@ -616,8 +606,7 @@ impl AnalyseScreen {
                         div()
                             .w(px(COL_MY))
                             .flex_none()
-                            .text_size(px(13.))
-                            .text_color(rgb(T.fg_2))
+                            .text_as(13., T.fg_2)
                             .child(stat_text(&row.mine)),
                     )
                     .child(

@@ -424,14 +424,9 @@ impl SettingsScreen {
         let mut body = v_flex()
             .gap(px(12.))
             .child(section_label("Download an engine"))
-            .child(
-                div()
-                    .text_size(px(13.))
-                    .text_color(rgb(T.muted))
-                    .child(ui::i18n::t(
-                        "Downloads require an internet connection. Installed engines run offline.",
-                    )),
-            );
+            .child(div().text_as(13., T.muted).child(ui::i18n::t(
+                "Downloads require an internet connection. Installed engines run offline.",
+            )));
         let busy = self.install_cancel.is_some() || self.probing_engine;
         match crate::engine_catalog::Catalog::bundled() {
             Err(err) => body = body.child(format!("Engine catalog unavailable: {err:#}")),
@@ -461,7 +456,7 @@ impl SettingsScreen {
                     body = body.child(h_flex().gap(px(16.)).items_start()
                     .child(v_flex().flex_1().min_w_0().gap(px(4.))
                         .child(h_flex().gap(px(8.)).child(format!("{} {}", entry.name, entry.version)).child(badge(entry.license)))
-                        .child(div().text_size(px(12.)).text_color(rgb(T.muted)).child(entry.description))
+                        .child(div().text_as(12., T.muted).child(entry.description))
                         .when(!supported, |column| column.child(format!("No catalog build for {} / {}. You can still add a local executable.", std::env::consts::OS, std::env::consts::ARCH))))
                     .child(btn(("engine-site", index), "Website").h(30.).on_click(move |_, cx| cx.open_url(&homepage)))
                     .child(btn(("engine-source", index), ui::i18n::t("Source")).h(30.).on_click(move |_, cx| cx.open_url(&source)))
@@ -591,18 +586,9 @@ impl SettingsScreen {
                                     .font_weight(FontWeight::BOLD)
                                     .child(SharedString::from(engine.name.clone())),
                             )
-                            .child(
-                                mono(engine.version.clone())
-                                    .text_size(px(13.))
-                                    .text_color(rgb(T.muted)),
-                            ),
+                            .child(mono(engine.version.clone()).text_as(13., T.muted)),
                     )
-                    .child(
-                        mono("UCI")
-                            .w(col_protocol)
-                            .text_size(px(13.))
-                            .text_color(rgb(T.fg_2)),
-                    )
+                    .child(mono("UCI").w(col_protocol).text_as(13., T.fg_2))
                     .child(
                         div()
                             .w(col_used)
@@ -619,15 +605,9 @@ impl SettingsScreen {
             );
         }
         if model.config.engines.is_empty() {
-            table = table.child(
-                div()
-                    .p(px(20.))
-                    .text_size(px(14.))
-                    .text_color(rgb(T.muted))
-                    .child(ui::i18n::t(
-                        "No engines yet. Add a UCI engine executable with Add from file.",
-                    )),
-            );
+            table = table.child(div().p(px(20.)).text_as(14., T.muted).child(ui::i18n::t(
+                "No engines yet. Add a UCI engine executable with Add from file.",
+            )));
         }
         let detail = self
             .selected_engine
@@ -642,8 +622,7 @@ impl SettingsScreen {
                     .gap(px(10.))
                     .child(
                         div()
-                            .text_size(px(13.))
-                            .text_color(rgb(T.muted))
+                            .text_as(13., T.muted)
                             .child(ui::i18n::t("Leaving an Analyse tab")),
                     )
                     .child(segmented(
@@ -667,25 +646,20 @@ impl SettingsScreen {
                         },
                     )),
             )
-            .child(
-                div()
-                    .text_size(px(12.))
-                    .text_color(rgb(T.muted))
-                    .child(ui::i18n::t(match leave {
-                        LeaveAnalyse::Keep => {
-                            "The engines keep searching while a tab other than Analyse is \
+            .child(div().text_as(12., T.muted).child(ui::i18n::t(match leave {
+                LeaveAnalyse::Keep => {
+                    "The engines keep searching while a tab other than Analyse is \
                              shown. Switching to another Analyse tab hands them over."
-                        }
-                        LeaveAnalyse::Pause => {
-                            "The search pauses and keeps its lines. The tab shows a pause \
+                }
+                LeaveAnalyse::Pause => {
+                    "The search pauses and keeps its lines. The tab shows a pause \
                              mark and stays paused when you come back, until you resume (P)."
-                        }
-                        LeaveAnalyse::Stop => {
-                            "The search stops and starts again from your position when you \
+                }
+                LeaveAnalyse::Stop => {
+                    "The search stops and starts again from your position when you \
                              come back."
-                        }
-                    })),
-            );
+                }
+            })));
         v_flex()
             .gap(px(21.))
             .child(header)

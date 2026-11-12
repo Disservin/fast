@@ -29,16 +29,10 @@ impl AnalyseScreen {
                 .flex_none()
                 .child(
                     div()
-                        .text_size(px(10.))
-                        .text_color(rgb(T.faint))
+                        .text_as(10., T.faint)
                         .child(ui::i18n::t(label).to_uppercase()),
                 )
-                .child(
-                    mono(value)
-                        .whitespace_nowrap()
-                        .text_size(px(12.))
-                        .text_color(rgb(T.fg_2)),
-                )
+                .child(mono(value).whitespace_nowrap().text_as(12., T.fg_2))
         };
         h_flex()
             .flex_wrap()
@@ -158,7 +152,7 @@ impl AnalyseScreen {
                 .gap(px(6.))
                 .mt(px(12.))
                 .child(bar)
-                .child(labels.text_size(px(12.)).text_color(rgb(T.muted)))
+                .child(labels.text_as(12., T.muted))
         });
         // Hook for future move explanations; only demo mode has text today.
         let explanation = selected
@@ -200,8 +194,7 @@ impl AnalyseScreen {
                 .gap(px(3.))
                 .child(
                     div()
-                        .text_size(px(12.))
-                        .text_color(rgb(T.muted))
+                        .text_as(12., T.muted)
                         .overflow_hidden()
                         .text_ellipsis()
                         .whitespace_nowrap()
@@ -275,13 +268,9 @@ impl AnalyseScreen {
                     .border_color(rgb(T.divider))
                     .when(pv.is_none(), |inset| {
                         inset.child(
-                            div()
-                                .py(px(4.))
-                                .text_size(px(13.))
-                                .text_color(rgb(T.muted))
-                                .child(ui::i18n::t(
-                                    "Click a move in the table to preview its line",
-                                )),
+                            div().py(px(4.)).text_as(13., T.muted).child(ui::i18n::t(
+                                "Click a move in the table to preview its line",
+                            )),
                         )
                     })
                     .children(pv),

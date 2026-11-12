@@ -46,8 +46,7 @@ impl DatabaseScreen {
             .when(from_bad || to_bad, |dates| {
                 dates.child(
                     div()
-                        .text_size(px(12.))
-                        .text_color(rgb(T.warn))
+                        .text_as(12., T.warn)
                         .child(ui::i18n::t("Use 2020, 2020.05 or 2020.05.17")),
                 )
             });
@@ -290,8 +289,7 @@ impl DatabaseScreen {
                 |body| {
                     body.child(
                         div()
-                            .text_color(rgb(T.warn))
-                            .text_size(px(13.))
+                            .text_as(13., T.warn)
                             .child(ui::i18n::t("Enter a valid reference FEN")),
                     )
                 },
@@ -320,8 +318,7 @@ impl DatabaseScreen {
             })
             .child(
                 div()
-                    .text_size(px(13.))
-                    .text_color(rgb(T.muted))
+                    .text_as(13., T.muted)
                     .child(ui::i18n::t("Exact matches, either side to move")),
             );
         if self.pattern_control.is_some() {
@@ -358,8 +355,7 @@ impl DatabaseScreen {
             body = body
                 .child(
                     div()
-                        .text_size(px(13.))
-                        .text_color(rgb(T.warn))
+                        .text_as(13., T.warn)
                         .child(ui::i18n::t("Build the structure index to search")),
                 )
                 .child(

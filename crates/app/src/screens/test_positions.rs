@@ -20,7 +20,7 @@ use gpui::{
 use gpui_component::input::InputState;
 use ui::{
     MONO, T,
-    widgets::{btn, check, h_flex, meter, section_label, segmented, v_flex},
+    widgets::{TextExt, btn, check, h_flex, meter, section_label, segmented, v_flex},
 };
 
 use crate::{

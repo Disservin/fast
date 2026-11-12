@@ -143,8 +143,7 @@ impl TrainScreen {
                     format_pv(0, path)
                 })
                 .px(px(16.))
-                .text_size(px(13.))
-                .text_color(rgb(T.fg)),
+                .text_as(13., T.fg),
             );
         }
         for (index, row) in rows.into_iter().enumerate().filter(|_| !recalling) {
@@ -182,7 +181,7 @@ impl TrainScreen {
                                 .bg(rgb(T.accent)),
                         )
                     })
-                    .child(mono(row.label).text_size(px(14.)).text_color(rgb(T.fg)))
+                    .child(mono(row.label).text_as(14., T.fg))
                     .child(
                         div()
                             .text_size(px(12.))
@@ -226,11 +225,7 @@ impl TrainScreen {
                                     .font_weight(FontWeight::SEMIBOLD)
                                     .child(SharedString::from(rep.name.clone())),
                             )
-                            .child(
-                                mono(format!("{} pos.", rep.positions()))
-                                    .text_size(px(14.))
-                                    .text_color(rgb(T.muted)),
-                            ),
+                            .child(mono(format!("{} pos.", rep.positions())).text_as(14., T.muted)),
                     )
                     .child(
                         h_flex()
@@ -245,8 +240,7 @@ impl TrainScreen {
                         h_flex()
                             .mt(px(6.))
                             .gap(px(14.))
-                            .text_size(px(13.))
-                            .text_color(rgb(T.muted))
+                            .text_as(13., T.muted)
                             .child(format!("{known}% known"))
                             .child(format!("{learning}% learning"))
                             .child(format!("{new}% new")),

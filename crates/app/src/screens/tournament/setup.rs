@@ -209,7 +209,7 @@ impl TournamentScreen {
         let load = cx.entity();
         v_flex()
             .gap(px(10.))
-            .child(div().text_size(px(13.)).text_color(rgb(T.muted)).child(
+            .child(div().text_as(13., T.muted).child(
                 "A command line starts a new tournament; a config.json continues one, \
                          including its results so far.",
             ))
@@ -276,8 +276,7 @@ impl TournamentScreen {
                             .child(
                                 h_flex()
                                     .gap(px(12.))
-                                    .text_size(px(12.))
-                                    .text_color(rgb(T.muted))
+                                    .text_as(12., T.muted)
                                     .child(SharedString::from(format!(
                                         "{} games saved",
                                         saved.games
@@ -355,12 +354,11 @@ impl TournamentScreen {
                 },
             ))
             .child(body)
-            .children(self.form_error.clone().map(|error| {
-                div()
-                    .text_size(px(13.))
-                    .text_color(rgb(T.warn))
-                    .child(error)
-            }))
+            .children(
+                self.form_error
+                    .clone()
+                    .map(|error| div().text_as(13., T.warn).child(error)),
+            )
             .child(
                 btn("tournament-start", "Start tournament")
                     .primary()

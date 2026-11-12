@@ -142,16 +142,14 @@ impl TournamentScreen {
             .child(section_label("fastchess"))
             .child(
                 div()
-                    .text_size(px(13.))
-                    .text_color(rgb(T.muted))
+                    .text_as(13., T.muted)
                     .child(SharedString::from(status)),
             )
-            .children(self.install_status.clone().map(|status| {
-                div()
-                    .text_size(px(13.))
-                    .text_color(rgb(T.fg_2))
-                    .child(status)
-            }))
+            .children(
+                self.install_status
+                    .clone()
+                    .map(|status| div().text_as(13., T.fg_2).child(status)),
+            )
             .child(
                 h_flex()
                     .gap(px(6.))
@@ -213,9 +211,10 @@ impl TournamentScreen {
                 h_flex()
                     .gap(px(6.))
                     .items_center()
-                    .child(div().text_size(px(12.)).text_color(rgb(T.warn)).child(
-                        SharedString::from(format!("Delete {} of saved games and configs?", size)),
-                    ))
+                    .child(div().text_as(12., T.warn).child(SharedString::from(format!(
+                        "Delete {} of saved games and configs?",
+                        size
+                    ))))
                     .child(
                         btn("tournament-clear-confirm", "Delete")
                             .compact()
@@ -246,11 +245,7 @@ impl TournamentScreen {
             };
         v_flex()
             .gap(px(6.))
-            .child(
-                mono(format!("Folder: {} ({size})", folder.display()))
-                    .text_size(px(12.))
-                    .text_color(rgb(T.muted)),
-            )
+            .child(mono(format!("Folder: {} ({size})", folder.display())).text_as(12., T.muted))
             .child(actions)
     }
 }

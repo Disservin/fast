@@ -7,7 +7,7 @@ use chess_core::{GameTree, Position};
 use gpui::{Context, Div, FontWeight, Task, div, prelude::*, px, rgb};
 use ui::{
     T,
-    widgets::{h_flex, stat},
+    widgets::{TextExt, h_flex, stat},
 };
 
 use super::{AnalyseScreen, MoveRow};
@@ -301,18 +301,12 @@ fn source(name: &'static str, service: &'static str) -> Div {
                 .text_color(rgb(T.fg_2))
                 .child(name),
         )
-        .child(
-            div()
-                .text_size(px(11.))
-                .text_color(rgb(T.faint))
-                .child(service),
-        )
+        .child(div().text_as(11., T.faint).child(service))
 }
 
 fn note(text: impl Into<gpui::SharedString>) -> Div {
     div()
-        .text_size(px(13.))
-        .text_color(rgb(T.muted))
+        .text_as(13., T.muted)
         .child(ui::i18n::t(&text.into()).to_owned())
 }
 

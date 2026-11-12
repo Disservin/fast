@@ -217,21 +217,11 @@ impl AnalyseScreen {
             .border_b_1()
             .border_color(rgb(T.border))
             .child(section_label("Log"))
-            .child(
-                div()
-                    .text_size(px(12.))
-                    .text_color(rgb(T.muted))
-                    .child(name),
-            )
+            .child(div().text_as(12., T.muted).child(name))
             .when(holding, |row| {
-                row.child(
-                    div()
-                        .text_size(px(12.))
-                        .text_color(rgb(T.warn))
-                        .child(ui::i18n::t(
-                            "Held while selected. Ctrl+C copies, Esc releases.",
-                        )),
-                )
+                row.child(div().text_as(12., T.warn).child(ui::i18n::t(
+                    "Held while selected. Ctrl+C copies, Esc releases.",
+                )))
             })
             .child(div().flex_1())
             .child(
@@ -324,8 +314,7 @@ impl AnalyseScreen {
         let body: AnyElement = if count == 0 {
             div()
                 .p(px(16.))
-                .text_size(px(13.))
-                .text_color(rgb(T.muted))
+                .text_as(13., T.muted)
                 .child(ui::i18n::t(
                     "Nothing logged yet. Start the engine to see its UCI traffic.",
                 ))

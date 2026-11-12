@@ -397,8 +397,7 @@ impl Workspace {
                     .bg(rgb(T.surface))
                     .border_1()
                     .border_color(rgb(T.border))
-                    .text_size(px(13.))
-                    .text_color(rgb(T.fg))
+                    .text_as(13., T.fg)
                     .occlude()
                     .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                     .on_mouse_down_out(cx.listener(|this, _, _, cx| {
@@ -522,16 +521,14 @@ impl Workspace {
                                 div()
                                     .font_family(SANS)
                                     .font_weight(FontWeight::BOLD)
-                                    .text_size(px(15.))
-                                    .text_color(rgb(T.fg))
+                                    .text_as(15., T.fg)
                                     .child(ui::i18n::t("Fast")),
                             )
                             .children(menu_bar)
                             .when(show_crumb, |row| {
                                 row.child(
                                     div()
-                                        .text_size(px(13.))
-                                        .text_color(rgb(T.muted))
+                                        .text_as(13., T.muted)
                                         .child(SharedString::from(format!("/ {crumb}"))),
                                 )
                             }),
@@ -591,8 +588,7 @@ impl Workspace {
                     .bg(rgb(T.selected))
                     .border_1()
                     .border_color(rgb(T.border_strong))
-                    .text_size(px(14.))
-                    .text_color(rgb(T.fg))
+                    .text_as(14., T.fg)
                     .child(div().flex_1().min_w_0().child(toast.text.clone()))
                     .children(action),
             );

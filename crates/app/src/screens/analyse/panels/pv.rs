@@ -285,15 +285,9 @@ impl AnalyseScreen {
                         .flex_none()
                         .mt(px(6.))
                         .gap(px(10.))
-                        .child(
-                            div()
-                                .flex_1()
-                                .text_size(px(12.))
-                                .text_color(rgb(T.muted))
-                                .child(ui::i18n::t(
-                                    "Drag across moves to highlight. Ctrl+C copies, Esc returns.",
-                                )),
-                        )
+                        .child(div().flex_1().text_as(12., T.muted).child(ui::i18n::t(
+                            "Drag across moves to highlight. Ctrl+C copies, Esc returns.",
+                        )))
                         .child(
                             btn("pv-back", "Back to game")
                                 .compact()
@@ -528,16 +522,10 @@ impl AnalyseScreen {
                 .flex_none()
                 .child(
                     div()
-                        .text_size(px(10.))
-                        .text_color(rgb(T.faint))
+                        .text_as(10., T.faint)
                         .child(ui::i18n::t(label).to_uppercase()),
                 )
-                .child(
-                    mono(value)
-                        .whitespace_nowrap()
-                        .text_size(px(12.))
-                        .text_color(rgb(T.fg_2)),
-                )
+                .child(mono(value).whitespace_nowrap().text_as(12., T.fg_2))
         };
         Some(
             h_flex()
@@ -547,8 +535,7 @@ impl AnalyseScreen {
                 .child(
                     v_flex().flex_none().child(section_label("Kibitz")).child(
                         div()
-                            .text_size(px(12.))
-                            .text_color(rgb(T.muted))
+                            .text_as(12., T.muted)
                             .whitespace_nowrap()
                             .child(kibitz.name.clone()),
                     ),
@@ -560,8 +547,7 @@ impl AnalyseScreen {
                         .flex_1()
                         .min_w_0()
                         .truncate()
-                        .text_size(px(12.))
-                        .text_color(rgb(T.fg_2)),
+                        .text_as(12., T.fg_2),
                 )
                 .into_any_element(),
         )

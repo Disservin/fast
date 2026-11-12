@@ -113,12 +113,7 @@ pub(super) fn player_row(game: &LiveGame, white: bool, names: &[String], to_move
                 .font_weight(FontWeight::SEMIBOLD)
                 .child(SharedString::from(label)),
         )
-        .children(to_move.then(|| {
-            div()
-                .text_size(px(11.))
-                .text_color(rgb(T.live_fg))
-                .child(ui::i18n::t("to move"))
-        }))
+        .children(to_move.then(|| div().text_as(11., T.live_fg).child(ui::i18n::t("to move"))))
         .child(
             div()
                 .px(px(8.))
@@ -178,8 +173,7 @@ pub(crate) fn game_card(
                 .flex_none()
                 .items_center()
                 .justify_between()
-                .text_size(px(12.))
-                .text_color(rgb(T.muted))
+                .text_as(12., T.muted)
                 .child(SharedString::from(format!("Game #{}", game.number)))
                 .child(SharedString::from(format!("{eval}{depth}"))),
         )
@@ -211,8 +205,7 @@ pub(crate) fn eval_graph(game: &LiveGame, names: &[String], height: f32) -> Div 
     let sides = [side(true), side(false)];
     let legend = h_flex()
         .gap(px(14.))
-        .text_size(px(12.))
-        .text_color(rgb(T.fg_2))
+        .text_as(12., T.fg_2)
         .children(sides.iter().map(|(name, colour, _)| {
             h_flex()
                 .gap(px(6.))
@@ -310,17 +303,11 @@ pub(crate) fn search_stats(search: &Search) -> Div {
             .flex_1()
             .min_w_0()
             .gap(px(2.))
-            .child(
-                div()
-                    .text_size(px(11.))
-                    .text_color(rgb(T.muted))
-                    .child(ui::i18n::t(label)),
-            )
+            .child(div().text_as(11., T.muted).child(ui::i18n::t(label)))
             .child(
                 div()
                     .font_family(MONO)
-                    .text_size(px(14.))
-                    .text_color(rgb(T.fg))
+                    .text_as(14., T.fg)
                     .whitespace_nowrap()
                     .child(SharedString::from(value)),
             )

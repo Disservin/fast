@@ -270,12 +270,7 @@ impl AnalyseScreen {
                                     })
                             })),
                     )
-                    .child(
-                        div()
-                            .text_size(px(13.))
-                            .text_color(rgb(T.muted))
-                            .child(opening),
-                    ),
+                    .child(div().text_as(13., T.muted).child(opening)),
             )
             .children(self.render_db_game_strip(cx))
             .child(

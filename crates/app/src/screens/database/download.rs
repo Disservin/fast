@@ -301,43 +301,26 @@ impl DatabaseScreen {
                     .gap(px(14.))
                     .child(
                         v_flex()
-                            .child(
-                                div()
-                                    .text_size(px(10.))
-                                    .text_color(rgb(T.faint))
-                                    .child(ui::i18n::t("GAMES")),
-                            )
-                            .child(
-                                mono(format_count(running.games))
-                                    .text_size(px(12.))
-                                    .text_color(rgb(T.fg_2)),
-                            ),
+                            .child(div().text_as(10., T.faint).child(ui::i18n::t("GAMES")))
+                            .child(mono(format_count(running.games)).text_as(12., T.fg_2)),
                     )
                     .child(
                         v_flex()
                             .child(
                                 div()
-                                    .text_size(px(10.))
-                                    .text_color(rgb(T.faint))
+                                    .text_as(10., T.faint)
                                     .child(ui::i18n::t("ALREADY STORED")),
                             )
-                            .child(
-                                mono(format_count(running.duplicates))
-                                    .text_size(px(12.))
-                                    .text_color(rgb(T.fg_2)),
-                            ),
+                            .child(mono(format_count(running.duplicates)).text_as(12., T.fg_2)),
                     ),
             )
             .child(bar)
-            .child(div().text_size(px(13.)).text_color(rgb(T.fg)).child(status))
+            .child(div().text_as(13., T.fg).child(status))
             .children(running.months.map(|(done, total)| {
-                div()
-                    .text_size(px(13.))
-                    .text_color(rgb(T.muted))
-                    .child(ui::i18n::tf(
-                        "{} of {} months",
-                        &[&done.to_string(), &total.to_string()],
-                    ))
+                div().text_as(13., T.muted).child(ui::i18n::tf(
+                    "{} of {} months",
+                    &[&done.to_string(), &total.to_string()],
+                ))
             }))
     }
 
@@ -374,7 +357,7 @@ impl DatabaseScreen {
                                 v_flex()
                                     .gap(px(4.))
                                     .child(div().text_size(px(14.)).child(text))
-                                    .child(mono(counts).text_size(px(12.)).text_color(rgb(T.fg_2))),
+                                    .child(mono(counts).text_as(12., T.fg_2)),
                             )
                             .child(
                                 btn("cancel-download", ui::i18n::t("Cancel"))

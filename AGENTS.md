@@ -88,6 +88,7 @@ decoration is kept to a minimum.
   and `faint`. The value under them is 12px mono in `fg_2`.
 - Weights: regular for text, medium for buttons and names, semibold for labels and emphasised
   numbers.
+- Set text size and colour together with `.text_as(13., T.muted)` (`ui::widgets::TextExt`).
 
 ### Shape and spacing
 

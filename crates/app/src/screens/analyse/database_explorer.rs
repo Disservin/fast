@@ -5,7 +5,7 @@ use db::MoveStat;
 use gpui::{Context, IntoElement, div, px, rgb};
 use ui::{
     T,
-    widgets::{btn, h_flex, mono, section_label, v_flex},
+    widgets::{TextExt, btn, h_flex, mono, section_label, v_flex},
 };
 
 use super::*;
@@ -124,8 +124,7 @@ impl AnalyseScreen {
                         } else {
                             ui::i18n::tf("{} games", &[&format_count(total.games)])
                         })
-                        .text_size(px(12.))
-                        .text_color(rgb(T.muted)),
+                        .text_as(12., T.muted),
                     ),
             )
             .child(
@@ -205,24 +204,19 @@ impl AnalyseScreen {
             rows = rows.child(
                 div()
                     .p(px(16.))
-                    .text_size(px(13.))
-                    .text_color(rgb(T.warn))
+                    .text_as(13., T.warn)
                     .child(ui::i18n::tf("Could not query database: {}", &[error])),
             );
         } else if self.reference.is_empty() {
-            rows = rows.child(
-                div()
-                    .p(px(16.))
-                    .text_size(px(13.))
-                    .text_color(rgb(T.muted))
-                    .child(ui::i18n::t(if loading {
-                        "Loading…"
-                    } else if database.is_none() {
-                        "Add a database in Settings › Databases."
-                    } else {
-                        "No games reach this position."
-                    })),
-            );
+            rows = rows.child(div().p(px(16.)).text_as(13., T.muted).child(ui::i18n::t(
+                if loading {
+                    "Loading…"
+                } else if database.is_none() {
+                    "Add a database in Settings › Databases."
+                } else {
+                    "No games reach this position."
+                },
+            )));
         }
         body = body.child(rows);
         if total.games > 0 {
@@ -605,8 +599,7 @@ impl AnalyseScreen {
                         .justify_between()
                         .cursor_pointer()
                         .font_family(ui::SANS)
-                        .text_size(px(13.))
-                        .text_color(rgb(T.fg))
+                        .text_as(13., T.fg)
                         .when(highlighted, |row| row.bg(rgb(T.selected)))
                         .when(!highlighted, |row| {
                             row.hover(|style| style.bg(rgb(T.hover)))
@@ -624,8 +617,7 @@ impl AnalyseScreen {
                                 .when(is_game_db, |cell| {
                                     cell.child(
                                         div()
-                                            .text_size(px(11.))
-                                            .text_color(rgb(T.muted))
+                                            .text_as(11., T.muted)
                                             .child(ui::i18n::t("This game's database")),
                                     )
                                 }),
@@ -633,8 +625,7 @@ impl AnalyseScreen {
                         .child(
                             mono(crate::format::format_count(entry.games))
                                 .flex_none()
-                                .text_size(px(12.))
-                                .text_color(rgb(T.muted)),
+                                .text_as(12., T.muted),
                         ),
                 );
             }

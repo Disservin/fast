@@ -22,7 +22,8 @@ use gpui_component::{
 use ui::{
     BoardView, MONO, T,
     widgets::{
-        badge, btn, check, h_flex, icon_btn, mono, panel, section_label, segmented, stat, v_flex,
+        TextExt, badge, btn, check, h_flex, icon_btn, mono, panel, section_label, segmented, stat,
+        v_flex,
     },
 };
 

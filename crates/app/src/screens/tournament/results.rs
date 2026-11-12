@@ -232,12 +232,7 @@ impl TournamentScreen {
             .items_center()
             .flex_wrap()
             .child(name_chip(a, engine_colour(&run.names, a), 22.))
-            .child(
-                div()
-                    .text_size(px(22.))
-                    .text_color(rgb(T.muted))
-                    .child(ui::i18n::t("vs")),
-            )
+            .child(div().text_as(22., T.muted).child(ui::i18n::t("vs")))
             .child(name_chip(b, engine_colour(&run.names, b), 22.));
 
         let open_last = run.games.front().map(|game| (game.game, game.pgn_index));
@@ -356,8 +351,7 @@ impl TournamentScreen {
                         .border_1()
                         .border_color(rgb(T.danger_border))
                         .bg(rgb(T.danger_bg))
-                        .text_size(px(13.))
-                        .text_color(rgb(T.danger_fg))
+                        .text_as(13., T.danger_fg)
                         .cursor_pointer()
                         .child(ui::i18n::t("Stop"))
                         .on_click(move |_, _, cx| stop.update(cx, |screen, cx| screen.stop(cx))),
@@ -399,8 +393,7 @@ impl TournamentScreen {
                     .child(
                         h_flex()
                             .justify_between()
-                            .text_size(px(13.))
-                            .text_color(rgb(T.muted))
+                            .text_as(13., T.muted)
                             .child(
                                 h_flex()
                                     .gap(px(14.))
@@ -444,8 +437,7 @@ impl TournamentScreen {
             log = log.child(
                 div()
                     .font_family(MONO)
-                    .text_size(px(12.))
-                    .text_color(rgb(T.fg_2))
+                    .text_as(12., T.fg_2)
                     .child(SharedString::from(line.clone())),
             );
         }
@@ -710,7 +702,7 @@ impl TournamentScreen {
                             ),
                         )
                         .child(eval_graph(game, names, 110.))
-                        .child(div().text_size(px(12.)).text_color(rgb(T.muted)).child(
+                        .child(div().text_as(12., T.muted).child(
                             SharedString::from(format!(
                                 "Game {}, move {}, {} plies played. Click the board's card again to close.",
                                 game.number,

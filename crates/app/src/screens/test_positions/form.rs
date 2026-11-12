@@ -244,9 +244,9 @@ impl TestPositionsScreen {
         let engines = self.model.read(cx).config.engines.clone();
         let mut list = v_flex().gap(px(6.));
         if engines.is_empty() {
-            list = list.child(div().text_size(px(13.)).text_color(rgb(T.muted)).child(
-                ui::i18n::t("No engines yet. Add them in Settings › Engines."),
-            ));
+            list = list.child(div().text_as(13., T.muted).child(ui::i18n::t(
+                "No engines yet. Add them in Settings › Engines.",
+            )));
         }
         for engine in engines {
             let id = engine.id;
@@ -289,8 +289,7 @@ impl TestPositionsScreen {
         };
         let mate_note = (self.settings.goal == TestGoal::Mate).then(|| {
             div()
-                .text_size(px(12.))
-                .text_color(rgb(T.muted))
+                .text_as(12., T.muted)
                 .child(ui::i18n::t(
                     "Engines search with go mate N from each dm, stopping at the limit below if they have not found it. A shorter mate counts too.",
                 ))
@@ -368,8 +367,7 @@ impl TestPositionsScreen {
             ))
             .child(
                 div()
-                    .text_size(px(12.))
-                    .text_color(rgb(T.muted))
+                    .text_as(12., T.muted)
                     .child(ui::i18n::t(if self.settings.parallel {
                         "All engines run at the same time, each split over this many processes."
                     } else {

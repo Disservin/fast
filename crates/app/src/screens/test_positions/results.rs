@@ -133,9 +133,9 @@ impl TestPositionsScreen {
                                             tally.solved, run.positions
                                         ))),
                                 )
-                                .child(div().text_size(px(13.)).text_color(rgb(T.muted)).child(
-                                    SharedString::from(format!("{:.1}% of run", share * 100.)),
-                                )),
+                                .child(div().text_as(13., T.muted).child(SharedString::from(
+                                    format!("{:.1}% of run", share * 100.),
+                                ))),
                         )
                         .child(meter(
                             tally.done as f32 / run.positions.max(1) as f32,
@@ -144,8 +144,7 @@ impl TestPositionsScreen {
                         .child(
                             h_flex()
                                 .justify_between()
-                                .text_size(px(12.))
-                                .text_color(rgb(T.muted))
+                                .text_as(12., T.muted)
                                 .child(SharedString::from(format!(
                                     "{} of {} run",
                                     tally.done, run.positions

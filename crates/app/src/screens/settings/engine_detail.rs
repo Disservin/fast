@@ -390,7 +390,7 @@ impl SettingsScreen {
                                             .gap(px(10.))
                                             .items_baseline()
                                             .child(div().text_size(px(20.)).font_weight(FontWeight::SEMIBOLD).child(name.clone()))
-                                            .child(mono(config.version.clone()).text_size(px(16.)).text_color(rgb(T.muted))),
+                                            .child(mono(config.version.clone()).text_as(16., T.muted)),
                                     )
                                     .child(
                                         h_flex()
@@ -459,8 +459,7 @@ impl SettingsScreen {
                     )
                     .child(
                         div()
-                            .text_size(px(12.))
-                            .text_color(rgb(T.muted))
+                            .text_as(12., T.muted)
                             .child(ui::i18n::t("Sends debug on and shows the raw engine output in its own window")),
                     )
                     .when(debug, |row| {
@@ -533,8 +532,7 @@ impl SettingsScreen {
                         )
                         .children(detail.map(|detail| {
                             div()
-                                .text_size(px(11.))
-                                .text_color(rgb(T.faint))
+                                .text_as(11., T.faint)
                                 .child(SharedString::from(detail))
                         })),
                 )
@@ -711,12 +709,7 @@ impl SettingsScreen {
             );
         }
         if config.profiles.is_empty() {
-            chips = chips.child(
-                div()
-                    .text_size(px(13.))
-                    .text_color(rgb(T.muted))
-                    .child(ui::i18n::t("None yet")),
-            );
+            chips = chips.child(div().text_as(13., T.muted).child(ui::i18n::t("None yet")));
         }
         let save_this = this;
         detail_row(

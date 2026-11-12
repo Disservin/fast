@@ -27,8 +27,7 @@ pub(super) fn locked_summary(run: &Run) -> Div {
                         .child(
                             div()
                                 .font_family(MONO)
-                                .text_size(px(11.))
-                                .text_color(rgb(T.muted))
+                                .text_as(11., T.muted)
                                 .overflow_hidden()
                                 .whitespace_nowrap()
                                 .text_ellipsis()

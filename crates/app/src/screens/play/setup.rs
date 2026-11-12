@@ -207,15 +207,9 @@ impl PlayScreen {
                         )
                         .mb(px(6.)),
                     )
-                    .child(
-                        div()
-                            .text_size(px(12.))
-                            .text_color(rgb(T.muted))
-                            .mb(px(14.))
-                            .child(ui::i18n::t(
-                                "Optional local file. Uses the first game or position.",
-                            )),
-                    )
+                    .child(div().text_as(12., T.muted).mb(px(14.)).child(ui::i18n::t(
+                        "Optional local file. Uses the first game or position.",
+                    )))
             })
             .when(self.time_index.is_none() && !self_play, |column| {
                 column.child(div().mb(px(14.)).child(self.custom_time.render()))
@@ -345,8 +339,7 @@ impl PlayScreen {
                 column.child(
                     div()
                         .mt(px(10.))
-                        .text_size(px(13.))
-                        .text_color(rgb(T.muted))
+                        .text_as(13., T.muted)
                         .child(ui::i18n::t("Add an engine in Settings › Engines to play.")),
                 )
             })
@@ -451,8 +444,7 @@ impl PlayScreen {
                     .child(
                         h_flex()
                             .justify_between()
-                            .text_size(px(13.))
-                            .text_color(rgb(T.muted))
+                            .text_as(13., T.muted)
                             .child(ui::i18n::t("Strength"))
                             .when(limited, |row| {
                                 row.child(mono(choice.elo.to_string()).text_color(rgb(T.fg_2)))

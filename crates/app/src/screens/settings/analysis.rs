@@ -181,18 +181,16 @@ impl SettingsScreen {
                     .child(div().w(px(180.)).child(text_input(&self.backward_nodes)))
                     .child(
                         div()
-                            .text_size(px(13.))
-                            .text_color(rgb(T.muted))
+                            .text_as(13., T.muted)
                             .child(format!("{} per position", engine::format_nodes(current))),
                     ),
             )
             .child(presets)
-            .children(self.backward_error.clone().map(|error| {
-                div()
-                    .text_size(px(12.))
-                    .text_color(rgb(T.warn))
-                    .child(error)
-            }));
+            .children(
+                self.backward_error
+                    .clone()
+                    .map(|error| div().text_as(12., T.warn).child(error)),
+            );
         v_flex()
             .gap(px(16.))
             .child(page_title(ui::i18n::t("Analysis")))
@@ -208,16 +206,10 @@ impl SettingsScreen {
                         )),
                         field,
                     ))
-                    .child(
-                        div()
-                            .pt(px(10.))
-                            .text_size(px(12.))
-                            .text_color(rgb(T.muted))
-                            .child(ui::i18n::t(
-                                "Start it with Analyse backwards above the game graph, or its \
+                    .child(div().pt(px(10.)).text_as(12., T.muted).child(ui::i18n::t(
+                        "Start it with Analyse backwards above the game graph, or its \
                                  shortcut. The search limit for ordinary analysis is not used.",
-                            )),
-                    ),
+                    ))),
             )
     }
 }

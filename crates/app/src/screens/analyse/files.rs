@@ -289,12 +289,7 @@ impl AnalyseScreen {
                 .cursor_pointer()
                 .hover(|style| style.bg(rgb(T.hover)))
                 .child(ui::i18n::t(label).to_owned())
-                .child(
-                    div()
-                        .text_size(px(12.))
-                        .text_color(rgb(T.muted))
-                        .child(hint),
-                )
+                .child(div().text_as(12., T.muted).child(hint))
         };
         let fen_this = this.clone();
         let pgn_this = this;

@@ -321,8 +321,7 @@ impl DatabaseScreen {
                     || "—".to_owned(),
                     |entry| ui::i18n::tf("{} games", &[&format_count(entry.games)]),
                 ))
-                .text_size(px(13.))
-                .text_color(rgb(T.muted))
+                .text_as(13., T.muted)
                 .whitespace_nowrap(),
             )
             .child(div().flex_1())
@@ -373,8 +372,7 @@ impl DatabaseScreen {
                     .child(div().text_size(px(14.)).child(question))
                     .child(
                         div()
-                            .text_size(px(13.))
-                            .text_color(rgb(T.muted))
+                            .text_as(13., T.muted)
                             .child(ui::i18n::t("Their reviews go too. This cannot be undone.")),
                     ),
             )

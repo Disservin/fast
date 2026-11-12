@@ -16,7 +16,9 @@ use gpui_component::{
 };
 use ui::{
     Arrow, CoordinateStyle, MONO, T,
-    widgets::{btn, check, h_flex, header_tab, icon_btn, mono, panel, section_label, v_flex},
+    widgets::{
+        TextExt, btn, check, h_flex, header_tab, icon_btn, mono, panel, section_label, v_flex,
+    },
 };
 
 use super::{AnalyseScreen, MoveRow, RowKey};
@@ -125,12 +127,7 @@ impl AnalyseScreen {
                 .w(px(width))
                 .flex_none()
                 .gap(px(1.))
-                .child(
-                    div()
-                        .text_size(px(11.))
-                        .text_color(rgb(T.muted))
-                        .child(title),
-                )
+                .child(div().text_as(11., T.muted).child(title))
                 .child(
                     mono(text)
                         .whitespace_nowrap()
@@ -308,15 +305,9 @@ impl AnalyseScreen {
         }
         if engines.is_empty() {
             return body
-                .child(
-                    div()
-                        .p(px(16.))
-                        .text_size(px(13.))
-                        .text_color(rgb(T.muted))
-                        .child(ui::i18n::t(
-                            "No engines yet. Add one in Settings › Engines.",
-                        )),
-                )
+                .child(div().p(px(16.)).text_as(13., T.muted).child(ui::i18n::t(
+                    "No engines yet. Add one in Settings › Engines.",
+                )))
                 .into_any_element();
         }
         if tab == EngineTab::Engines {
@@ -407,8 +398,7 @@ impl AnalyseScreen {
                     div()
                         .flex_1()
                         .min_w(px(90.))
-                        .text_size(px(13.))
-                        .text_color(rgb(T.fg_2))
+                        .text_as(13., T.fg_2)
                         .child(ui::i18n::t("Search limit")),
                 )
                 .child(limits),
@@ -444,13 +434,7 @@ impl AnalyseScreen {
             .child(
                 h_flex()
                     .gap(px(6.))
-                    .child(
-                        div()
-                            .flex_1()
-                            .text_size(px(13.))
-                            .text_color(rgb(T.fg_2))
-                            .child(summary),
-                    )
+                    .child(div().flex_1().text_as(13., T.fg_2).child(summary))
                     .when(!restricted.is_empty(), |row| {
                         row.child(
                             btn("search-all-moves", ui::i18n::t("All moves"))

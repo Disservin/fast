@@ -42,8 +42,7 @@ pub(super) fn option_row(
                 )
                 .children(hint.map(|hint| {
                     div()
-                        .text_size(px(13.))
-                        .text_color(rgb(T.muted))
+                        .text_as(13., T.muted)
                         .pr(px(12.))
                         .child(ui::i18n::t(hint))
                 })),
@@ -71,12 +70,7 @@ pub(super) fn detail_row(
                         .text_size(px(14.))
                         .child(SharedString::from(ui::i18n::t(label).to_owned())),
                 )
-                .children(hint.map(|hint| {
-                    div()
-                        .text_size(px(13.))
-                        .text_color(rgb(T.muted))
-                        .child(ui::i18n::t(hint))
-                })),
+                .children(hint.map(|hint| div().text_as(13., T.muted).child(ui::i18n::t(hint)))),
         )
         .child(div().flex_1().min_w_0().child(control))
 }

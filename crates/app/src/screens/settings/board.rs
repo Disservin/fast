@@ -18,10 +18,7 @@ pub(super) fn tile(id: impl Into<gpui::ElementId>, selected: bool) -> gpui::Stat
 }
 
 pub(super) fn tile_label(text: &'static str) -> Div {
-    div()
-        .text_size(px(13.))
-        .text_color(rgb(T.fg_2))
-        .child(ui::i18n::t(text))
+    div().text_as(13., T.fg_2).child(ui::i18n::t(text))
 }
 
 pub(super) fn board_check(
@@ -328,8 +325,7 @@ impl SettingsScreen {
                         } else {
                             ui::i18n::t("Off").to_owned()
                         })
-                        .text_size(px(13.))
-                        .text_color(rgb(T.muted)),
+                        .text_as(13., T.muted),
                     ),
             ))
             .child(option_row(
@@ -342,11 +338,7 @@ impl SettingsScreen {
                             .w(px(160.))
                             .child(Slider::new(&self.animation).bg(rgb(T.accent))),
                     )
-                    .child(
-                        mono(format!("{} ms", config.animation_ms))
-                            .text_size(px(13.))
-                            .text_color(rgb(T.muted)),
-                    ),
+                    .child(mono(format!("{} ms", config.animation_ms)).text_as(13., T.muted)),
             ))
             .child(option_row(ui::i18n::t("Notation"), None, {
                 let mut row = h_flex().gap(px(6.));

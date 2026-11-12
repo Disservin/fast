@@ -21,7 +21,9 @@ use gpui_component::{
 use ui::{
     MONO, T,
     board::theme_swatch,
-    widgets::{badge, btn, check, h_flex, key_cap, mono, panel, section_label, segmented, v_flex},
+    widgets::{
+        TextExt, badge, btn, check, h_flex, key_cap, mono, panel, section_label, segmented, v_flex,
+    },
 };
 
 use crate::format::format_count;

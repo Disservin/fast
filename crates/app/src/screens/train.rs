@@ -9,7 +9,7 @@ use gpui_component::input::{InputEvent, InputState};
 use trainer::{Card, Drill, Grade, RepStatus};
 use ui::{
     Arrow, BoardEvent, BoardView, MONO, T,
-    widgets::{BtnKind, badge, btn, h_flex, mono, panel, section_label, v_flex},
+    widgets::{BtnKind, TextExt, badge, btn, h_flex, mono, panel, section_label, v_flex},
 };
 
 use crate::{
@@ -331,7 +331,7 @@ impl TrainScreen {
                             }),
                     )
                     .children(
-                        context.map(|text| mono(text).text_size(px(14.)).text_color(rgb(T.muted))),
+                        context.map(|text| mono(text).text_as(14., T.muted)),
                     ),
             )
             .when(has_drill, |column| {
@@ -401,8 +401,7 @@ impl Render for TrainScreen {
                 .gap(px(8.))
                 .child(
                     div()
-                        .text_size(px(12.))
-                        .text_color(rgb(T.muted))
+                        .text_as(12., T.muted)
                         .child(format!("{history} completed reviews")),
                 )
                 .child(

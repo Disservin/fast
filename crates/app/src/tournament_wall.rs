@@ -17,7 +17,7 @@ use gpui_component::Root;
 use ui::{
     BoardPrefs, BoardView, MONO, T,
     board::snap_board_size,
-    widgets::{btn, h_flex, section_label, v_flex},
+    widgets::{TextExt, btn, h_flex, section_label, v_flex},
 };
 
 use crate::{
@@ -434,8 +434,7 @@ impl Render for LiveWall {
                     )
                     .child(
                         div()
-                            .text_size(px(13.))
-                            .text_color(rgb(T.muted))
+                            .text_as(13., T.muted)
                             .child(SharedString::from(status)),
                     ),
             )

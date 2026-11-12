@@ -223,12 +223,7 @@ impl AnalyseScreen {
                                 .font_weight(FontWeight::MEDIUM)
                                 .child(name),
                         )
-                        .child(
-                            mono(rating)
-                                .flex_none()
-                                .text_size(px(12.))
-                                .text_color(rgb(T.muted)),
-                        ),
+                        .child(mono(rating).flex_none().text_as(12., T.muted)),
                 )
                 .children(material(side))
         };
@@ -255,8 +250,7 @@ impl AnalyseScreen {
             ))
             .flex_none()
             .whitespace_nowrap()
-            .text_size(px(12.))
-            .text_color(rgb(T.muted))
+            .text_as(12., T.muted)
         };
         let nav = |id: &'static str,
                    icon: &'static str,
@@ -295,12 +289,7 @@ impl AnalyseScreen {
                                     .font_weight(FontWeight::SEMIBOLD)
                                     .child(status),
                             )
-                            .children(after.map(|text| {
-                                div()
-                                    .text_size(px(14.))
-                                    .text_color(rgb(T.muted))
-                                    .child(text)
-                            })),
+                            .children(after.map(|text| div().text_as(14., T.muted).child(text))),
                     )
                     .child(
                         mono(eval_text)

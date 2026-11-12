@@ -20,7 +20,9 @@ use gpui_component::{
 };
 use ui::{
     BoardEvent, BoardView, MONO, T,
-    widgets::{btn, check, h_flex, header_tab, mono, panel, section_label, segmented, v_flex},
+    widgets::{
+        TextExt, btn, check, h_flex, header_tab, mono, panel, section_label, segmented, v_flex,
+    },
 };
 
 use crate::{

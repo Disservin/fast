@@ -556,12 +556,7 @@ impl DatabaseScreen {
                             .truncate()
                             .child(SharedString::from(name.clone())),
                     )
-                    .child(
-                        mono(format_count(*games))
-                            .flex_none()
-                            .text_size(px(12.))
-                            .text_color(rgb(T.muted)),
-                    ),
+                    .child(mono(format_count(*games)).flex_none().text_as(12., T.muted)),
             );
         }
         Some(

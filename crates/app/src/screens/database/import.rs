@@ -250,8 +250,7 @@ impl DatabaseScreen {
             div()
                 .w(px(72.))
                 .flex_none()
-                .text_size(px(13.))
-                .text_color(rgb(T.muted))
+                .text_as(13., T.muted)
                 .child(ui::i18n::t(text).to_owned())
         };
         let model = self.model.clone();
@@ -304,14 +303,9 @@ impl DatabaseScreen {
                             model.edit_config(cx, |config| config.import_structure_index = value)
                         })
                     })
-                    .child(
-                        div()
-                            .text_size(px(13.))
-                            .text_color(rgb(T.muted))
-                            .child(ui::i18n::t(
-                                "Turn this off for very large reference files where size matters.",
-                            )),
-                    );
+                    .child(div().text_as(13., T.muted).child(ui::i18n::t(
+                        "Turn this off for very large reference files where size matters.",
+                    )));
                 let (cancel, choose) = (this.clone(), this.clone());
                 footer
                     .child(btn("import-cancel", "Cancel").on_click(move |_, cx| {
@@ -417,20 +411,13 @@ impl DatabaseScreen {
                                     })
                                 }),
                         )
-                        .child(div().text_size(px(13.)).text_color(rgb(T.muted)).child(
-                            ui::i18n::tf(
-                                "Fast connects to {} to fetch the games. Nothing else is sent.",
-                                &[site.host()],
-                            ),
-                        ));
+                        .child(div().text_as(13., T.muted).child(ui::i18n::tf(
+                            "Fast connects to {} to fetch the games. Nothing else is sent.",
+                            &[site.host()],
+                        )));
                 }
                 if let Some(error) = &self.download_error {
-                    body = body.child(
-                        div()
-                            .text_size(px(13.))
-                            .text_color(rgb(T.warn))
-                            .child(error.clone()),
-                    );
+                    body = body.child(div().text_as(13., T.warn).child(error.clone()));
                 }
                 let (close, act) = (this.clone(), this.clone());
                 let running = self.downloading.is_some();
@@ -503,14 +490,9 @@ impl DatabaseScreen {
                         "Replace the games in {} with {}?",
                         &[&name, &file.display().to_string()],
                     )))
-                    .child(
-                        div()
-                            .text_size(px(13.))
-                            .text_color(rgb(T.muted))
-                            .child(ui::i18n::t(
-                                "Edits and reviews of these games are lost. This cannot be undone.",
-                            )),
-                    ),
+                    .child(div().text_as(13., T.muted).child(ui::i18n::t(
+                        "Edits and reviews of these games are lost. This cannot be undone.",
+                    ))),
             )
             .child(
                 h_flex()
@@ -552,22 +534,19 @@ impl DatabaseScreen {
             .gap(px(8.))
             .child(
                 div()
-                    .text_size(px(13.))
-                    .text_color(rgb(T.muted))
+                    .text_as(13., T.muted)
                     .child(ui::i18n::t(
                         "These games kept their moves, but a variation with an illegal move was left out. Numbers count games in the file from 1.",
                     )),
             )
             .child(
                 mono(shown.join(", "))
-                    .text_size(px(13.))
-                    .text_color(rgb(T.fg_2)),
+                    .text_as(13., T.fg_2),
             )
             .when(more > 0, |body| {
                 body.child(
                     div()
-                        .text_size(px(13.))
-                        .text_color(rgb(T.muted))
+                        .text_as(13., T.muted)
                         .child(ui::i18n::tf("and {} more", &[&format_count(more as u64)])),
                 )
             });

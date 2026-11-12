@@ -13,7 +13,7 @@ use gpui_component::input::{InputEvent, InputState, TextareaState};
 use gpui_component::menu::{ContextMenuExt, PopupMenuItem};
 use ui::{
     SANS, T,
-    widgets::{Btn, BtnKind, btn, h_flex, icon_btn, v_flex},
+    widgets::{Btn, BtnKind, TextExt, btn, h_flex, icon_btn, v_flex},
 };
 
 use crate::{

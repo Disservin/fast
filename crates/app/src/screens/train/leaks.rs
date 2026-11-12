@@ -100,12 +100,7 @@ impl TrainScreen {
                                 .text_color(rgb(if warn { T.warn } else { T.muted })),
                         ),
                 )
-                .child(
-                    div()
-                        .text_size(px(13.))
-                        .text_color(rgb(T.muted))
-                        .child(subtitle),
-                )
+                .child(div().text_as(13., T.muted).child(subtitle))
         };
         let mut body = v_flex();
         let mut shown = 0;
@@ -161,8 +156,7 @@ impl TrainScreen {
                     .py(px(12.))
                     .border_t_1()
                     .border_color(rgb(T.border))
-                    .text_size(px(13.))
-                    .text_color(rgb(T.muted))
+                    .text_as(13., T.muted)
                     .child(
                         "No leaks found. Import your games to see where you leave the repertoire.",
                     ),
@@ -184,8 +178,7 @@ impl TrainScreen {
                     )
                     .child(
                         div()
-                            .text_size(px(12.))
-                            .text_color(rgb(T.muted))
+                            .text_as(12., T.muted)
                             .child(ui::i18n::t("Where you left the repertoire")),
                     ),
             )

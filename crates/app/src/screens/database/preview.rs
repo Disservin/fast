@@ -208,8 +208,7 @@ impl DatabaseScreen {
                 )
                 .child(
                     div()
-                        .text_size(px(12.))
-                        .text_color(rgb(T.muted))
+                        .text_as(12., T.muted)
                         .mb(px(9.))
                         .child(meta.join(", ")),
                 );

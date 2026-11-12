@@ -122,8 +122,7 @@ pub(crate) fn shortcut_hint(keystroke: &str) -> Div {
     key_cap(key_names(keystroke).join(" "))
         .h(px(20.))
         .px(px(5.))
-        .text_size(px(11.))
-        .text_color(rgb(T.fg_2))
+        .text_as(11., T.fg_2)
 }
 
 impl SettingsScreen {
@@ -273,14 +272,10 @@ impl SettingsScreen {
                                 .gap(px(8.))
                                 .child(if capturing {
                                     div()
-                                        .text_size(px(13.))
-                                        .text_color(rgb(T.warn))
+                                        .text_as(13., T.warn)
                                         .child(ui::i18n::t("Press a key… (Esc cancels)"))
                                 } else if current.is_empty() {
-                                    div()
-                                        .text_size(px(13.))
-                                        .text_color(rgb(T.muted))
-                                        .child(ui::i18n::t("None"))
+                                    div().text_as(13., T.muted).child(ui::i18n::t("None"))
                                 } else {
                                     keycaps(Some(&current))
                                 })

@@ -31,11 +31,7 @@ impl SettingsScreen {
                     .child(
                         h_flex()
                             .gap(px(16.))
-                            .child(
-                                mono(format_count(entry.games))
-                                    .text_size(px(14.))
-                                    .text_color(rgb(T.muted)),
-                            )
+                            .child(mono(format_count(entry.games)).text_as(14., T.muted))
                             .child(
                                 btn(("remove-database", index), "Remove")
                                     .compact()
@@ -82,8 +78,7 @@ impl SettingsScreen {
                         div()
                             .w(px(84.))
                             .flex_none()
-                            .text_size(px(13.))
-                            .text_color(rgb(T.muted))
+                            .text_as(13., T.muted)
                             .child(account.site.name()),
                     )
                     .child(
@@ -99,8 +94,7 @@ impl SettingsScreen {
                             .w(px(140.))
                             .flex_none()
                             .truncate()
-                            .text_size(px(13.))
-                            .text_color(rgb(T.fg_2))
+                            .text_as(13., T.fg_2)
                             .child(database),
                     )
                     .child(
@@ -108,8 +102,7 @@ impl SettingsScreen {
                             .w(px(96.))
                             .flex_none()
                             .whitespace_nowrap()
-                            .text_size(px(13.))
-                            .text_color(rgb(T.fg_2)),
+                            .text_as(13., T.fg_2),
                     )
                     .child(btn(("account-update", index), "Update").compact().on_click(
                         move |_, cx| {
@@ -133,15 +126,9 @@ impl SettingsScreen {
             );
         }
         if model.config.accounts.is_empty() {
-            accounts = accounts.child(
-                div()
-                    .py(px(10.))
-                    .text_size(px(13.))
-                    .text_color(rgb(T.muted))
-                    .child(ui::i18n::t(
-                        "No accounts yet. Use Import › Lichess or Chess.com on the Database screen.",
-                    )),
-            );
+            accounts = accounts.child(div().py(px(10.)).text_as(13., T.muted).child(ui::i18n::t(
+                "No accounts yet. Use Import › Lichess or Chess.com on the Database screen.",
+            )));
         }
         v_flex()
             .gap(px(16.))
@@ -163,8 +150,7 @@ impl SettingsScreen {
                     .child(
                         div()
                             .mt(px(10.))
-                            .text_size(px(13.))
-                            .text_color(rgb(T.muted))
+                            .text_as(13., T.muted)
                             .child(ui::i18n::t(
                                 "Updates only run when you ask. Each one fetches the games played since the last.",
                             )),
@@ -172,13 +158,12 @@ impl SettingsScreen {
             )
             .child(
                 section(ui::i18n::t("Files")).child(rows).child(
-                    div().mt(px(10.)).text_size(px(13.)).text_color(rgb(T.muted))
+                    div().mt(px(10.)).text_as(13., T.muted)
                         .child(ui::i18n::t("Removed databases are kept in the removed folder.")),
                 ).child(
                     div()
                         .mt(px(10.))
-                        .text_size(px(13.))
-                        .text_color(rgb(T.muted))
+                        .text_as(13., T.muted)
                         .child(format!("Stored in {location}")),
                 ),
             )

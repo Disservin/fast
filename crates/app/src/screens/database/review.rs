@@ -454,8 +454,7 @@ impl DatabaseScreen {
                     div()
                         .w(px(130.))
                         .flex_none()
-                        .text_size(px(13.))
-                        .text_color(rgb(T.muted))
+                        .text_as(13., T.muted)
                         .child(ui::i18n::t(label)),
                 )
                 .child(div().flex_1().min_w_0().child(control))
@@ -478,8 +477,7 @@ impl DatabaseScreen {
             .flex_wrap()
             .into_any_element(),
             None => div()
-                .text_size(px(13.))
-                .text_color(rgb(T.warn))
+                .text_as(13., T.warn)
                 .child(ui::i18n::t(
                     "Choose an engine for batch review in Settings › Engines.",
                 ))

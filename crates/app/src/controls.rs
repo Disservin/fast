@@ -10,7 +10,7 @@ use gpui_component::{
 };
 use ui::{
     T,
-    widgets::{check, h_flex},
+    widgets::{TextExt, check, h_flex},
 };
 
 pub type TextSelect = Entity<SelectState<SearchableVec<SharedString>>>;
@@ -104,12 +104,7 @@ impl RenderOnce for TextField {
                         input.prefix(ui::widgets::icon(path, px(14.), T.muted))
                     })
                     .when_some(self.suffix, |input, suffix| {
-                        input.suffix(
-                            div()
-                                .text_size(px(13.))
-                                .text_color(rgb(T.muted))
-                                .child(suffix),
-                        )
+                        input.suffix(div().text_as(13., T.muted).child(suffix))
                     })
                     .when_some(self.hint.filter(|_| !focused), |input, hint| {
                         input.suffix(hint)

@@ -43,8 +43,7 @@ pub(super) fn heading(text: impl Into<SharedString>) -> Div {
 
 pub(super) fn small(text: impl Into<SharedString>) -> Div {
     div()
-        .text_size(px(12.))
-        .text_color(rgb(T.muted))
+        .text_as(12., T.muted)
         .child(ui::i18n::t(&text.into()).to_owned())
 }
 

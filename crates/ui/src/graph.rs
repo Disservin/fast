@@ -9,6 +9,7 @@ use gpui::{
     div, point, prelude::*, px, quad, relative, rgb, size,
 };
 
+use crate::widgets::TextExt;
 use crate::{
     theme::{MONO, T},
     timeline::ScrubHandler,
@@ -192,8 +193,7 @@ pub fn graph(props: GraphProps) -> impl IntoElement {
                 .whitespace_nowrap()
                 .line_height(px(14.))
                 .font_family(MONO)
-                .text_size(px(10.))
-                .text_color(rgb(T.muted))
+                .text_as(10., T.muted)
                 .child(label.clone())
         })
         .collect();

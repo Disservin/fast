@@ -451,12 +451,7 @@ impl DatabaseScreen {
                         .when(winner, |text| text.font_weight(FontWeight::BOLD))
                         .child(SharedString::from(name.to_owned())),
                 )
-                .children(elo.map(|elo| {
-                    mono(elo.to_string())
-                        .flex_none()
-                        .text_color(rgb(T.muted))
-                        .text_size(px(14.))
-                }))
+                .children(elo.map(|elo| mono(elo.to_string()).flex_none().text_as(14., T.muted)))
                 .when(annotated, |cell| {
                     cell.child(
                         div()
@@ -493,8 +488,7 @@ impl DatabaseScreen {
                     .pr(px(14.))
                     .flex()
                     .justify_end()
-                    .text_size(px(12.))
-                    .text_color(rgb(T.faint)),
+                    .text_as(12., T.faint),
             )
             .child(name(&game.white, game.white_elo, white_won, game.annotated))
             .child(name(&game.black, game.black_elo, black_won, false))
@@ -520,8 +514,7 @@ impl DatabaseScreen {
                 )
                 .w(px(W_ACC))
                 .flex_none()
-                .text_size(px(13.))
-                .text_color(rgb(T.fg)),
+                .text_as(13., T.fg),
             )
     }
 }
