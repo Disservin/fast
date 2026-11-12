@@ -4,6 +4,7 @@ Settings › Changelog shows this file. Describe the finished changes since each
 
 ## Since 0.1.3
 
+- Board: pieces are drawn larger, filling more of their squares.
 - Tournament: missing values show the same dash as the rest of the app.
 - Analyse: the Log panel header is the same height as the other panel headers.
 - Test positions, Analyse: table headings sit on the same shaded, ruled header row as every other table.

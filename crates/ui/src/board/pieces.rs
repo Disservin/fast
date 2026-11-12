@@ -8,6 +8,9 @@ pub(super) fn soften_white(theme: BoardTheme) -> bool {
     !matches!(theme, BoardTheme::Walnut | BoardTheme::Paper)
 }
 
+/// The share of a square a piece picture fills, here and in board images.
+pub const PIECE_SCALE: f32 = 0.86;
+
 /// The fill for one-colour pieces (Letters and Flat) of `colour` on this board.
 pub fn piece_colour(theme: BoardTheme, colour: Color) -> u32 {
     match colour {
@@ -98,14 +101,14 @@ impl BoardView {
             | PieceSet::MpChess
             | PieceSet::Fantasy => img(self.prefs.pieces.asset(piece))
                 .id(id)
-                .size(relative(0.74))
-                .m(relative(0.13))
+                .size(relative(PIECE_SCALE))
+                .m(relative((1. - PIECE_SCALE) / 2.))
                 .opacity(if soften_white { 0.82 } else { 1.0 })
                 .into_any_element(),
             PieceSet::Flat => svg()
                 .path(PieceSet::Flat.asset(piece))
-                .size(relative(0.86))
-                .m(relative(0.07))
+                .size(relative(0.92))
+                .m(relative(0.04))
                 .text_color(rgb(piece_color))
                 .into_any_element(),
             PieceSet::Letters => div()

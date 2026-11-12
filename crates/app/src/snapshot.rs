@@ -11,11 +11,10 @@ use gpui::AssetSource;
 use resvg::{tiny_skia, usvg};
 
 use crate::assets::Assets;
+use ui::board::PIECE_SCALE;
 
 /// Side of one square in the image, in pixels.
 const SQUARE: u32 = 100;
-/// The pieces fill this share of a square, as on the board itself.
-const PIECE_SCALE: f32 = 0.74;
 
 /// How the board looks in the image.
 pub struct BoardLook {
