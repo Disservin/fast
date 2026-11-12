@@ -64,27 +64,33 @@ impl AnalyseScreen {
         let workspace = self.workspace.clone();
         let target_window = window.window_handle();
         crate::model::pick_paths(self.model.clone(), "Open games", cx, move |paths, cx| {
-            let (games, errors) = read_game_files(&paths);
-            let _ = target_window.update(cx, |_, window, cx| {
-                let mut games = games.into_iter();
-                if let Some(first) = games.next()
-                    && let Some(this) = this.upgrade()
-                {
-                    this.update(cx, |screen, cx| screen.load_tree(first, window, cx));
-                }
-                if let Some(workspace) = workspace.upgrade() {
-                    workspace.update(cx, |workspace, cx| {
-                        for tree in games {
-                            workspace.open_analysis(tree, window, cx);
-                        }
-                    });
-                }
-                if !errors.is_empty()
-                    && let Some(this) = this.upgrade()
-                {
-                    this.update(cx, |screen, cx| screen.model.toast(errors.join("; "), cx));
-                }
-            });
+            let read = cx
+                .background_executor()
+                .spawn(async move { read_game_files(&paths) });
+            cx.spawn(async move |cx| {
+                let (games, errors) = read.await;
+                let _ = target_window.update(cx, |_, window, cx| {
+                    let mut games = games.into_iter();
+                    if let Some(first) = games.next()
+                        && let Some(this) = this.upgrade()
+                    {
+                        this.update(cx, |screen, cx| screen.load_tree(first, window, cx));
+                    }
+                    if let Some(workspace) = workspace.upgrade() {
+                        workspace.update(cx, |workspace, cx| {
+                            for tree in games {
+                                workspace.open_analysis(tree, window, cx);
+                            }
+                        });
+                    }
+                    if !errors.is_empty()
+                        && let Some(this) = this.upgrade()
+                    {
+                        this.update(cx, |screen, cx| screen.model.toast(errors.join("; "), cx));
+                    }
+                });
+            })
+            .detach();
         });
     }
 
