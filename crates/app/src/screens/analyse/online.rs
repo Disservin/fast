@@ -268,14 +268,20 @@ pub(super) fn tb_cell(tb: &TbRow) -> (String, u32) {
     (text, outcome_color(tb.outcome))
 }
 
-/// The Cloud column: chessdb.cn's score, brightest for its best moves.
-pub(super) fn cloud_cell(cloud: &crate::online::CloudMove) -> (String, u32) {
+/// The Cloud column: chessdb.cn's score from White's side, brightest for its best moves.
+pub(super) fn cloud_cell(cloud: &crate::online::CloudMove, white_to_move: bool) -> (String, u32) {
     let color = match cloud.rank {
         2 => T.good,
         1 => T.fg_2,
         _ => T.muted,
     };
-    (cloud_score(cloud.score), color)
+    // chessdb.cn scores for the side to move; the table shows evals for White.
+    let score = if white_to_move {
+        cloud.score
+    } else {
+        -cloud.score
+    };
+    (cloud_score(score), color)
 }
 
 /// Better results for the side to move rank higher.

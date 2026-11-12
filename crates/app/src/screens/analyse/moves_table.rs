@@ -422,7 +422,10 @@ impl AnalyseScreen {
         };
         let dash = || ("—".to_owned(), T.muted);
         let (tb_text, tb_color) = row.tb.as_ref().map_or_else(dash, online::tb_cell);
-        let (cloud_text, cloud_color) = row.cloud.as_ref().map_or_else(dash, online::cloud_cell);
+        let (cloud_text, cloud_color) = row
+            .cloud
+            .as_ref()
+            .map_or_else(dash, |cloud| online::cloud_cell(cloud, view.white_to_move));
         // A count opens the Database tab on the games reaching the position after it.
         let count_target = view
             .explorer
