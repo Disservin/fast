@@ -18,7 +18,7 @@ pub use queries::{
 
 use std::path::{Path, PathBuf};
 
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{Connection, OptionalExtension};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -107,6 +107,33 @@ CREATE TABLE IF NOT EXISTS review_summaries (
 ) WITHOUT ROWID;
 "#;
 
+/// Columns added after the first schema, with their types, so older files gain them on open.
+const ADDED_COLUMNS: [(&str, &str, &str); 5] = [
+    ("games", "chess960", "INTEGER NOT NULL DEFAULT 0"),
+    ("games", "start_fen", "TEXT NOT NULL DEFAULT ''"),
+    ("games", "annotated", "TEXT"),
+    ("games", "site", "TEXT NOT NULL DEFAULT ''"),
+    ("review_positions", "mate_distance", "INTEGER"),
+];
+
+/// A value stored in the `meta` table, such as the database's name.
+pub(crate) fn meta(conn: &Connection, key: &str) -> Result<Option<String>> {
+    Ok(conn
+        .query_row("SELECT value FROM meta WHERE key = ?1", [key], |row| {
+            row.get(0)
+        })
+        .optional()?)
+}
+
+/// Stores `value` under `key` in the `meta` table.
+pub(crate) fn set_meta(conn: &Connection, key: &str, value: &str) -> Result<()> {
+    conn.execute(
+        "INSERT OR REPLACE INTO meta (key, value) VALUES (?1, ?2)",
+        [key, value],
+    )?;
+    Ok(())
+}
+
 /// One open database file. Not `Sync`: open a separate connection per thread.
 pub struct Database {
     conn: Connection,
@@ -118,77 +145,23 @@ impl Database {
         let path = path.as_ref().to_path_buf();
         let conn = open_sqlite(&path)?;
         conn.execute_batch(SCHEMA)?;
-        let has_chess960 = {
-            let mut stmt = conn.prepare("PRAGMA table_info(games)")?;
-            stmt.query_map([], |row| row.get::<_, String>(1))?
-                .collect::<rusqlite::Result<Vec<_>>>()?
-                .iter()
-                .any(|column| column == "chess960")
-        };
-        if !has_chess960 {
-            conn.execute(
-                "ALTER TABLE games ADD COLUMN chess960 INTEGER NOT NULL DEFAULT 0",
-                [],
-            )?;
-        }
-        let has_start_fen = {
-            let mut columns = conn.prepare("PRAGMA table_info(games)")?;
-            columns
+        for (table, column, kind) in ADDED_COLUMNS {
+            let mut info = conn.prepare(&format!("PRAGMA table_info({table})"))?;
+            let columns = info
                 .query_map([], |row| row.get::<_, String>(1))?
-                .collect::<rusqlite::Result<Vec<_>>>()?
-                .iter()
-                .any(|column| column == "start_fen")
-        };
-        if !has_start_fen {
-            conn.execute(
-                "ALTER TABLE games ADD COLUMN start_fen TEXT NOT NULL DEFAULT ''",
-                [],
-            )?;
-        }
-        let has_annotated = {
-            let mut columns = conn.prepare("PRAGMA table_info(games)")?;
-            columns
-                .query_map([], |row| row.get::<_, String>(1))?
-                .collect::<rusqlite::Result<Vec<_>>>()?
-                .iter()
-                .any(|column| column == "annotated")
-        };
-        if !has_annotated {
-            conn.execute("ALTER TABLE games ADD COLUMN annotated TEXT", [])?;
-        }
-        let has_site = {
-            let mut columns = conn.prepare("PRAGMA table_info(games)")?;
-            columns
-                .query_map([], |row| row.get::<_, String>(1))?
-                .collect::<rusqlite::Result<Vec<_>>>()?
-                .iter()
-                .any(|column| column == "site")
-        };
-        if !has_site {
-            conn.execute(
-                "ALTER TABLE games ADD COLUMN site TEXT NOT NULL DEFAULT ''",
-                [],
-            )?;
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            if !columns.iter().any(|name| name == column) {
+                conn.execute(
+                    &format!("ALTER TABLE {table} ADD COLUMN {column} {kind}"),
+                    [],
+                )?;
+            }
         }
         // Finds a downloaded game by its URL, so downloading again skips it.
         conn.execute(
             "CREATE INDEX IF NOT EXISTS games_site ON games (site) WHERE site LIKE 'http%'",
             [],
         )?;
-        let has_mate_distance = {
-            let mut columns = conn.prepare("PRAGMA table_info(review_positions)")?;
-            columns
-                .query_map([], |row| row.get::<_, String>(1))?
-                .collect::<rusqlite::Result<Vec<_>>>()?
-                .iter()
-                .any(|column| column == "mate_distance")
-        };
-        if !has_mate_distance {
-            conn.execute(
-                "ALTER TABLE review_positions ADD COLUMN mate_distance INTEGER",
-                [],
-            )?;
-        }
         Ok(Self { conn, path })
     }
 
@@ -198,13 +171,7 @@ impl Database {
 
     /// Display name, falling back to the file stem.
     pub fn name(&self) -> Result<String> {
-        let stored: Option<String> = self
-            .conn
-            .query_row("SELECT value FROM meta WHERE key = 'name'", [], |row| {
-                row.get(0)
-            })
-            .optional()?;
-        Ok(stored.unwrap_or_else(|| {
+        Ok(meta(&self.conn, "name")?.unwrap_or_else(|| {
             self.path
                 .file_stem()
                 .map(|stem| stem.to_string_lossy().into_owned())
@@ -213,33 +180,17 @@ impl Database {
     }
 
     pub fn set_name(&self, name: &str) -> Result<()> {
-        self.conn.execute(
-            "INSERT OR REPLACE INTO meta (key, value) VALUES ('name', ?1)",
-            params![name],
-        )?;
-        Ok(())
+        set_meta(&self.conn, "name", name)
     }
 
     /// The PGN file this database was last imported from, if any, for re-importing it.
     pub fn source_file(&self) -> Result<Option<PathBuf>> {
-        let stored: Option<String> = self
-            .conn
-            .query_row(
-                "SELECT value FROM meta WHERE key = 'source_file'",
-                [],
-                |row| row.get(0),
-            )
-            .optional()?;
-        Ok(stored.map(PathBuf::from))
+        Ok(meta(&self.conn, "source_file")?.map(PathBuf::from))
     }
 
     /// Remembers the PGN file this database was imported from.
     pub fn set_source_file(&self, file: &Path) -> Result<()> {
-        self.conn.execute(
-            "INSERT OR REPLACE INTO meta (key, value) VALUES ('source_file', ?1)",
-            params![file.to_string_lossy().into_owned()],
-        )?;
-        Ok(())
+        set_meta(&self.conn, "source_file", &file.to_string_lossy())
     }
 
     /// Removes every game, its positions and reviews, before importing the file again.
@@ -258,5 +209,49 @@ impl Database {
             .conn
             .query_row("SELECT COUNT(*) FROM games", [], |row| row.get(0))?;
         Ok(count as u64)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn opening_an_older_file_adds_the_newer_columns() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("old.sqlite");
+        Connection::open(&path)
+            .unwrap()
+            .execute_batch(
+                "CREATE TABLE games (id INTEGER PRIMARY KEY, white TEXT NOT NULL,
+                    black TEXT NOT NULL, white_elo INTEGER, black_elo INTEGER,
+                    result TEXT NOT NULL, date TEXT NOT NULL, eco TEXT NOT NULL,
+                    event TEXT NOT NULL, round TEXT NOT NULL, source TEXT NOT NULL,
+                    time_class TEXT NOT NULL, plies INTEGER NOT NULL, accuracy REAL,
+                    left_rep TEXT, moves TEXT NOT NULL);
+                 CREATE TABLE review_positions (game_id INTEGER NOT NULL,
+                    job_key TEXT NOT NULL, ply INTEGER NOT NULL, fen TEXT NOT NULL,
+                    eval_cp INTEGER NOT NULL, depth INTEGER NOT NULL, pv TEXT NOT NULL,
+                    PRIMARY KEY (game_id, job_key, ply)) WITHOUT ROWID;",
+            )
+            .unwrap();
+        let db = Database::open(&path).unwrap();
+        for (table, column, _) in ADDED_COLUMNS {
+            let columns: Vec<String> = db
+                .conn
+                .prepare(&format!("PRAGMA table_info({table})"))
+                .unwrap()
+                .query_map([], |row| row.get(1))
+                .unwrap()
+                .collect::<rusqlite::Result<_>>()
+                .unwrap();
+            assert!(
+                columns.iter().any(|name| name == column),
+                "{table}.{column}"
+            );
+        }
+        // Opening again finds every column and adds nothing twice.
+        drop(db);
+        Database::open(&path).unwrap();
     }
 }

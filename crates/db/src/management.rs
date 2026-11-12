@@ -1,6 +1,6 @@
 //! Database descriptions, collection statistics and maintenance previews.
 
-use rusqlite::{OptionalExtension, params};
+use rusqlite::params;
 
 use crate::{Database, Result};
 
@@ -16,26 +16,14 @@ pub struct DatabaseStats {
 impl Database {
     /// The user's description of this collection, empty until one is saved.
     pub fn description(&self) -> Result<String> {
-        Ok(self
-            .conn
-            .query_row(
-                "SELECT value FROM meta WHERE key = 'description'",
-                [],
-                |row| row.get(0),
-            )
-            .optional()?
-            .unwrap_or_default())
+        Ok(crate::meta(&self.conn, "description")?.unwrap_or_default())
     }
 
     /// Stores a collection's name and description together.
     pub fn set_details(&mut self, name: &str, description: &str) -> Result<()> {
         self.in_transaction(|db| {
             db.set_name(name)?;
-            db.conn.execute(
-                "INSERT OR REPLACE INTO meta (key, value) VALUES ('description', ?1)",
-                params![description],
-            )?;
-            Ok(())
+            crate::set_meta(&db.conn, "description", description)
         })
     }
 

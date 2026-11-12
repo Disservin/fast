@@ -2,7 +2,7 @@
 
 use crate::{Database, ImportControl, Result};
 use chess_core::{GameTree, Position, PositionPattern, Variant, shakmaty::san::San};
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{Connection, params};
 
 /// Stores the first occurrence of each consecutive pawn/material pattern in a game.
 pub(crate) fn index_game(
@@ -57,15 +57,7 @@ pub(crate) fn index_game(
 impl Database {
     /// Whether this database maintains an index for exact structure/material searches.
     pub fn has_structure_index(&self) -> Result<bool> {
-        Ok(self
-            .conn
-            .query_row(
-                "SELECT value FROM meta WHERE key = 'structure_index'",
-                [],
-                |row| row.get::<_, String>(0),
-            )
-            .optional()?
-            .is_some_and(|value| value == "1"))
+        Ok(crate::meta(&self.conn, "structure_index")?.is_some_and(|value| value == "1"))
     }
 
     /// Indexes existing games, retaining the previous complete index if cancelled.
@@ -103,10 +95,7 @@ impl Database {
         if control.is_cancelled() {
             return Ok(false);
         }
-        tx.execute(
-            "INSERT OR REPLACE INTO meta (key, value) VALUES ('structure_index', '1')",
-            [],
-        )?;
+        crate::set_meta(&tx, "structure_index", "1")?;
         tx.commit()?;
         progress(done, total);
         Ok(true)
