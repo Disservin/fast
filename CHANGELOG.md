@@ -4,6 +4,7 @@ Settings › Changelog shows this file. Describe the finished changes since each
 
 ## Since 0.1.3
 
+- Play: engine matches show each engine's depth, nodes, hash use and thinking time on the current move.
 - Play: the board shows the chosen start position, such as a Chess960 setup, while a new game is set up.
 - Play: New game stops the running engine match instead of letting it play on.
 - Chess960: Random picks any of the 960 start positions, not only every tenth, and Play's random colour is no longer always White on Windows.

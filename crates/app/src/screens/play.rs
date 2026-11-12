@@ -179,6 +179,11 @@ struct GameAnalysis {
     nodes: Option<u64>,
     search_id: Option<u64>,
     depth: u32,
+    seldepth: Option<u32>,
+    /// Transposition table use, in permille.
+    hashfull: Option<u32>,
+    /// How long the engine thought about its last move.
+    think_ms: Option<u64>,
     score: Option<engine::Score>,
     pv: Vec<PvMove>,
 }
@@ -1060,9 +1065,7 @@ impl PlayScreen {
 
     fn start_clock(&mut self, cx: &mut Context<Self>) {
         let Some(game) = &mut self.game else { return };
-        if game.fixed_limits.iter().all(Option::is_some) {
-            return;
-        }
+        // Runs under per-move search limits too, so the thinking time stays current.
         game.last_tick = Instant::now();
         game._clock = Some(cx.spawn(async move |this, cx| {
             loop {
@@ -1093,6 +1096,7 @@ impl PlayScreen {
         game.elapsed_ms = game.elapsed_ms.saturating_add(elapsed);
         let turn = game.tree.node(game.current).pos.turn();
         if game.fixed_limits[usize::from(turn == Color::Black)].is_some() {
+            cx.notify();
             return true;
         }
         let clock = if turn == Color::White {
@@ -1291,6 +1295,9 @@ impl PlayScreen {
                     .push_str(&format!(" [%nodes {nodes}]"));
             }
         }
+        if game.self_play() {
+            game.analysis[usize::from(turn == Color::Black)].think_ms = Some(game.elapsed_ms);
+        }
         game.elapsed_ms = 0;
         if self.viewed.is_none() {
             self.moves_scroll.scroll_to_bottom();
@@ -1463,6 +1470,10 @@ impl PlayScreen {
         }
         if update.depth > 0 {
             line.depth = update.depth;
+            line.seldepth = update.seldepth;
+        }
+        if let Some(hashfull) = update.hashfull {
+            line.hashfull = Some(hashfull);
         }
         if !update.bound {
             if let Some(score) = update.score {
@@ -2300,6 +2311,7 @@ impl PlayScreen {
     fn render_analysis(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let mut column = panel().p(px(16.)).child(section_label("Engines"));
         if let Some(game) = &self.game {
+            let moving = usize::from(game.tree.node(game.current).pos.turn() == Color::Black);
             for (index, name) in [
                 game.white.as_ref().map_or("—", |white| white.name.as_str()),
                 game.opponent_name.as_str(),
@@ -2329,20 +2341,15 @@ impl PlayScreen {
                                         .child(name.to_owned()),
                                 ),
                         )
-                        .child(
-                            h_flex()
-                                .gap(px(16.))
-                                .child(mono(
-                                    line.score
-                                        .map_or_else(|| "—".to_owned(), |score| score.display()),
-                                ))
-                                .child(section_label("Depth"))
-                                .child(mono(if line.depth == 0 {
-                                    "—".to_owned()
-                                } else {
-                                    line.depth.to_string()
-                                })),
-                        )
+                        .child(Self::render_search_stats(
+                            line,
+                            // The side to move shows its time so far on this move.
+                            if game.result.is_none() && index == moving {
+                                Some(game.elapsed_ms)
+                            } else {
+                                line.think_ms
+                            },
+                        ))
                         .child({
                             let mut flow = div()
                                 .flex()
@@ -2409,6 +2416,64 @@ impl PlayScreen {
             }
         }
         column
+    }
+
+    /// One engine's score and search effort in fixed columns, so values stay in place
+    /// as they update: depth, nodes, hash use and thinking time.
+    fn render_search_stats(line: &GameAnalysis, time_ms: Option<u64>) -> gpui::Div {
+        let dash = || "—".to_owned();
+        let cell = |caption: &'static str, value: String, width: f32| {
+            v_flex()
+                .w(px(width))
+                .flex_none()
+                .gap(px(1.))
+                .child(
+                    div()
+                        .text_size(px(10.))
+                        .text_color(rgb(T.faint))
+                        .child(ui::i18n::t(caption).to_uppercase()),
+                )
+                .child(
+                    mono(value)
+                        .whitespace_nowrap()
+                        .text_size(px(12.))
+                        .text_color(rgb(T.fg_2)),
+                )
+        };
+        let depth = if line.depth == 0 {
+            dash()
+        } else {
+            match line.seldepth {
+                Some(sel) => format!("{}/{sel}", line.depth),
+                None => line.depth.to_string(),
+            }
+        };
+        h_flex()
+            .gap(px(8.))
+            .child(
+                mono(line.score.map_or_else(dash, |score| score.display()))
+                    .w(px(64.))
+                    .flex_none()
+                    .whitespace_nowrap()
+                    .font_weight(FontWeight::SEMIBOLD),
+            )
+            .child(cell("Depth", depth, 56.))
+            .child(cell(
+                "Nodes",
+                line.nodes.map_or_else(dash, engine::format_nodes),
+                72.,
+            ))
+            .child(cell(
+                "Hash",
+                line.hashfull
+                    .map_or_else(dash, |full| format!("{:.0}%", f64::from(full) / 10.)),
+                44.,
+            ))
+            .child(cell(
+                "Time",
+                time_ms.map_or_else(dash, super::analyse::search_time),
+                64.,
+            ))
     }
 
     fn render_side(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {

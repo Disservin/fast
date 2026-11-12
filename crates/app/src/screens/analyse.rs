@@ -3839,7 +3839,7 @@ fn read_game_files(paths: &[std::path::PathBuf]) -> (Vec<GameTree>, Vec<String>)
 const MOVE_ROW_H: f32 = 46.;
 
 /// Search time as "850 ms", "12.4 s" or "3:05".
-fn search_time(ms: u64) -> String {
+pub(crate) fn search_time(ms: u64) -> String {
     match ms {
         0..1_000 => format!("{ms} ms"),
         1_000..60_000 => format!("{:.1} s", ms as f64 / 1000.),
