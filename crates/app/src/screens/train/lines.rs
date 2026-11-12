@@ -89,33 +89,40 @@ impl TrainScreen {
         );
     }
 
+    /// Adds every line of the games in a PGN file to the repertoire. The file is read and
+    /// split into lines in the background.
     pub(super) fn add_lines_from(&mut self, path: std::path::PathBuf, cx: &mut Context<Self>) {
-        let read = std::fs::read_to_string(&path);
-        let message = match read
-            .map_err(|err| format!("Could not read the file: {err}"))
-            .and_then(|text| {
-                parse_pgn(&text).map_err(|err| format!("Could not read the PGN: {err}"))
-            }) {
-            Ok(games) => {
-                let mut added = 0;
-                self.model.update(cx, |model, cx| {
-                    for game in &games {
-                        for line in tree_lines(game) {
-                            let refs: Vec<&str> = line.iter().map(String::as_str).collect();
-                            if model.repertoire.add_line(&refs).is_ok() {
-                                added += 1;
+        let read = cx.background_spawn(async move {
+            let text = std::fs::read_to_string(&path)
+                .map_err(|err| format!("Could not read the file: {err}"))?;
+            let games = parse_pgn(&text).map_err(|err| format!("Could not read the PGN: {err}"))?;
+            Ok::<_, String>(games.iter().flat_map(tree_lines).collect::<Vec<_>>())
+        });
+        cx.spawn(async move |this, cx| {
+            let lines = read.await;
+            let _ = this.update(cx, |this, cx| {
+                let message = match lines {
+                    Ok(lines) => {
+                        let mut added = 0;
+                        this.model.update(cx, |model, cx| {
+                            for line in &lines {
+                                let refs: Vec<&str> = line.iter().map(String::as_str).collect();
+                                if model.repertoire.add_line(&refs).is_ok() {
+                                    added += 1;
+                                }
                             }
-                        }
+                            model.save_repertoire(cx);
+                            model.refresh_leaks(cx);
+                        });
+                        this.reload_queue(cx);
+                        format!("Added {added} lines to the repertoire.")
                     }
-                    model.save_repertoire(cx);
-                    model.refresh_leaks(cx);
-                });
-                self.reload_queue(cx);
-                format!("Added {added} lines to the repertoire.")
-            }
-            Err(message) => message,
-        };
-        self.model.toast(message, cx);
+                    Err(message) => message,
+                };
+                this.model.toast(message, cx);
+            });
+        })
+        .detach();
     }
 
     pub(super) fn render_tree(
