@@ -215,23 +215,9 @@ impl SettingsScreen {
                 ("restore-replace", "Restore and replace conflicts", true),
             ] {
                 let model = model.clone();
-                body = body.child(btn(id, label).on_click(model.listen(move |model, _, cx| {
-                    if let Some(archive) = model.pending_backup.take() {
-                        match model.restore_backup(&archive, replace, cx) {
-                            Ok(()) => {
-                                model.config = crate::config::Config::load(&model.paths.config_file);
-                                if let Ok(bytes) = std::fs::read(model.paths.repertoire_file()) && let Ok(rep) = serde_json::from_slice(&bytes) { model.repertoire = rep; }
-                                model.notes = db::NoteStore::open(model.paths.notes_file()).ok();
-                                model.refresh_databases(cx);
-                                cx.emit(crate::model::ModelEvent::Restored);
-                                cx.emit(crate::model::ModelEvent::Repertoire);
-                                cx.emit(crate::model::ModelEvent::BoardPrefs);
-                                model.toast("Backup restored. Restart Fast to reload all settings and study state.", cx);
-                            }
-                            Err(err) => { model.pending_backup = Some(archive); model.toast(format!("Restore failed: {err:#}"), cx); }
-                        }
-                    }
-                })));
+                body = body.child(btn(id, label).on_click(
+                    model.listen(move |model, _, cx| model.restore_pending_backup(replace, cx)),
+                ));
             }
             body = body.child(
                 btn("cancel-restore", "Cancel restore").on_click(model.listen(

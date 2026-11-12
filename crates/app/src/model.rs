@@ -525,11 +525,19 @@ impl AppModel {
         self.config_save_task = Some(cx.spawn(async move |this, cx| {
             let result = worker.await;
             let _ = this.update(cx, |model, cx| {
-                if !model.config_writer.is_current(revision) { return; }
+                if !model.config_writer.is_current(revision) {
+                    return;
+                }
                 match result {
                     Ok(true) => model.unsaved_config = false,
-                    Ok(false) => {},
-                    Err(err) => model.toast(format!("Settings remain unsaved: {err:#}. Check storage permissions and retry by changing the setting."), cx),
+                    Ok(false) => {}
+                    Err(err) => model.toast(
+                        format!(
+                            "Settings remain unsaved: {err:#}. Check storage permissions and \
+                             retry by changing the setting."
+                        ),
+                        cx,
+                    ),
                 }
                 cx.notify();
             });
@@ -545,27 +553,71 @@ impl AppModel {
         self.config_save_task.take()
     }
 
-    /// Prevents an older pending settings snapshot from overwriting a restored profile.
-    pub fn restore_backup(
-        &mut self,
-        archive: &crate::backup::Archive,
-        replace: bool,
-        cx: &mut Context<Self>,
-    ) -> Result<()> {
+    /// Restores the backup waiting for confirmation on a background thread, replacing
+    /// conflicting files when `replace` is set, then reloads the settings, repertoire and
+    /// notes it brought back. On failure the backup stays pending so the user can retry.
+    pub fn restore_pending_backup(&mut self, replace: bool, cx: &mut Context<Self>) {
+        let Some(archive) = self.pending_backup.take() else {
+            return;
+        };
         self.config_save_task = None;
         self.config_writer.changed();
-        let result = self.config_writer.exclusive(|| {
-            if self.unsaved_config {
-                self.config.save(&self.paths.config_file)?;
+        let writer = self.config_writer.clone();
+        let unsaved = self.unsaved_config.then(|| self.config.clone());
+        let paths = self.paths.clone();
+        let work = cx.background_spawn(async move {
+            let restored = writer.exclusive(|| {
+                if let Some(config) = &unsaved {
+                    config.save(&paths.config_file)?;
+                }
+                archive.restore(&paths, replace)?;
+                // Settings saves queued while the files were replaced are now stale.
+                writer.changed();
+                Ok(())
+            });
+            match restored {
+                Ok(()) => {
+                    let config = Config::load(&paths.config_file);
+                    let repertoire = std::fs::read(paths.repertoire_file())
+                        .ok()
+                        .and_then(|bytes| serde_json::from_slice::<Repertoire>(&bytes).ok());
+                    let notes = NoteStore::open(paths.notes_file()).ok();
+                    Ok((config, repertoire, notes))
+                }
+                Err(err) => Err((err, archive)),
             }
-            archive.restore(&self.paths, replace)
         });
-        if result.is_ok() {
-            self.unsaved_config = false;
-        } else if self.unsaved_config {
-            self.save_config(cx);
-        }
-        result
+        cx.spawn(async move |this, cx| {
+            let result = work.await;
+            let _ = this.update(cx, |model, cx| match result {
+                Ok((config, repertoire, notes)) => {
+                    model.unsaved_config = false;
+                    model.config = config;
+                    if let Some(repertoire) = repertoire {
+                        model.repertoire = repertoire;
+                    }
+                    model.notes = notes;
+                    model.refresh_databases(cx);
+                    cx.emit(ModelEvent::Restored);
+                    cx.emit(ModelEvent::Repertoire);
+                    cx.emit(ModelEvent::BoardPrefs);
+                    model.toast(
+                        "Backup restored. Restart Fast to reload all settings and study state.",
+                        cx,
+                    );
+                }
+                Err((err, archive)) => {
+                    model.pending_backup = Some(archive);
+                    if model.unsaved_config {
+                        model.save_config(cx);
+                    }
+                    model.toast(format!("Restore failed: {err:#}"), cx);
+                }
+            });
+        })
+        .detach();
+        self.toast("Restoring backup…", cx);
+        cx.notify();
     }
 
     pub fn save_repertoire(&mut self, cx: &mut Context<Self>) {

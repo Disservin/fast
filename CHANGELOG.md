@@ -4,6 +4,7 @@ Settings › Changelog shows this file. Describe the finished changes since each
 
 ## Since 0.1.3
 
+- Settings: restoring a backup runs in the background, so the window stays responsive while files are copied back.
 - Tournament: opening a game from a long tournament no longer freezes the window while its PGN is read.
 - Train: adding lines from a large PGN file no longer freezes the window.
 - Analyse: opening large PGN files no longer freezes the window while they are read.
