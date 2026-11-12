@@ -66,6 +66,8 @@ in the folder (`screens/database/filter.rs`, `import.rs`, `table.rs` and so on) 
 imports the items its submodules share, so siblings reach each other through it. Tests sit in
 the file whose code they cover. The shell follows the same pattern (`shell.rs` and `shell/`:
 actions, tabs, tab bar, session, top bar, window chrome).
+The Analyse search-limit controls live in `screens/analyse/panels/limit.rs`, with their own
+input state and subscriptions to keep the value and Infinite toggle in sync.
 Large modules outside the screens are split the same way: `ui::board` (arrows, input, moves,
 pieces, render), `ui::widgets` (buttons, inputs, dialogs, ext), `fastchess` (files, setup,
 command, output, process), `live` (cache, engines, search) and `demo` (games, repertoire,

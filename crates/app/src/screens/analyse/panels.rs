@@ -29,6 +29,7 @@ use crate::model::ToastExt as _;
 
 pub use self::{log::LogSelection, pv::PvView};
 
+pub(super) mod limit;
 mod log;
 mod options;
 mod pv;
@@ -59,15 +60,6 @@ fn limit_progress(stats: &engine::AnalysisUpdate, limit: AnalysisLimit) -> Optio
     };
     Some(fraction.clamp(0., 1.) as f32)
 }
-
-const LIMITS: [(AnalysisLimit, &str); 6] = [
-    (AnalysisLimit::Infinite, "∞"),
-    (AnalysisLimit::Depth(20), "d20"),
-    (AnalysisLimit::Depth(30), "d30"),
-    (AnalysisLimit::Seconds(10), "10s"),
-    (AnalysisLimit::Seconds(30), "30s"),
-    (AnalysisLimit::Seconds(60), "60s"),
-];
 
 /// Plays SAN moves from a position, stopping at the first that does not apply.
 pub(super) fn replay(base: &Chess, sans: &[String]) -> (Chess, Vec<Move>) {
@@ -306,18 +298,6 @@ impl AnalyseScreen {
             }
             return self.render_engines_tab(body, chosen, cx).into_any_element();
         }
-        let mut limits = h_flex().gap(px(4.));
-        for (index, (value, label)) in LIMITS.into_iter().enumerate() {
-            limits = limits.child(
-                btn(("limit", index), label)
-                    .mono()
-                    .compact()
-                    .selected(limit == value)
-                    .on_click(this.listen(move |screen, _, cx| {
-                        screen.live.update(cx, |live, cx| live.set_limit(value, cx));
-                    })),
-            );
-        }
         // Options apply to the engine chosen on the Engines tab, so its name leads the row.
         if let Some(config) = &chosen {
             body = body.child(self.render_engine_options_row(config, cx));
@@ -336,7 +316,7 @@ impl AnalyseScreen {
                         .text_as(13., T.fg_2)
                         .child(ui::i18n::t("Search limit")),
                 )
-                .child(limits),
+                .child(self.limit_controls.clone()),
         );
         body.child(self.render_search_moves(cx)).into_any_element()
     }

@@ -704,6 +704,8 @@ pub fn translate(language: Language, text: &str) -> &str {
             "Save comment" => "Kommentar speichern",
             "Save current" => "Aktuelle speichern",
             "Scoresheet" => "Partieformular",
+            "Value" => "Wert",
+            "s" => "s",
             "Search limit" => "Suchlimit",
             "Search until stopped, instead of up to the search limit" => {
                 "Suchen bis zum Anhalten statt bis zum Suchlimit"

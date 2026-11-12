@@ -151,6 +151,8 @@ pub struct AnalyseScreen {
     comment: Entity<TextareaState>,
     editing_comment: Option<NodeId>,
     fen_input: Entity<InputState>,
+    /// The search type and editable value shared with the Infinite toggle.
+    limit_controls: Entity<panels::limit::SearchLimitControls>,
     /// Edit position is open, with the position being set up.
     editor: Option<PositionEditor>,
     context_menu: Option<(NodeId, Point<Pixels>)>,
@@ -236,6 +238,9 @@ impl AnalyseScreen {
     ) -> Self {
         let board = cx.new(|_| BoardView::new("analyse-board"));
         let live = cx.new(|cx| LiveAnalysis::new(model.clone(), cx));
+        let limit_controls = cx.new(|cx| {
+            panels::limit::SearchLimitControls::new(model.clone(), live.clone(), window, cx)
+        });
         let kibitz = cx.new(|_| crate::kibitz::Kibitz::default());
         let note = cx.new(|cx| {
             TextareaState::new(window, cx).placeholder(ui::i18n::t("Add a note for this position"))
@@ -351,6 +356,7 @@ impl AnalyseScreen {
             comment,
             editing_comment: None,
             fen_input,
+            limit_controls,
             editor: None,
             context_menu: None,
             copy_menu: false,
