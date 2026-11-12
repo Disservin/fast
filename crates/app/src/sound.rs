@@ -33,28 +33,27 @@ pub enum Sound {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SoundProfile {
+    /// Earlier versions offered synthesised Soft, Click, Bell, Deep wood and Thud sets;
+    /// settings that chose one now load as Classic.
     #[default]
+    #[serde(
+        alias = "soft",
+        alias = "click",
+        alias = "bell",
+        alias = "deep_wood",
+        alias = "thud"
+    )]
     Classic,
     Wood,
-    Soft,
-    Click,
-    Bell,
-    DeepWood,
-    Thud,
     Futuristic,
     Nes,
     Piano,
     Sfx,
 }
 impl SoundProfile {
-    pub const ALL: [Self; 11] = [
+    pub const ALL: [Self; 6] = [
         Self::Classic,
         Self::Wood,
-        Self::Soft,
-        Self::Click,
-        Self::Bell,
-        Self::DeepWood,
-        Self::Thud,
         Self::Futuristic,
         Self::Nes,
         Self::Piano,
@@ -64,11 +63,6 @@ impl SoundProfile {
         match self {
             Self::Classic => "Classic",
             Self::Wood => "Wood",
-            Self::Soft => "Soft",
-            Self::Click => "Click",
-            Self::Bell => "Bell",
-            Self::DeepWood => "Deep wood",
-            Self::Thud => "Thud",
             Self::Futuristic => "Futuristic",
             Self::Nes => "NES",
             Self::Piano => "Piano",
@@ -350,89 +344,16 @@ fn classic(sound: Sound) -> Vec<f32> {
     }
 }
 
-/// Alternate profiles use distinct envelopes and timbres, including event cues.
+/// The samples of one sound in `profile`. Every profile plays the same wrong-answer cue.
 pub fn synthesise_profile(profile: SoundProfile, sound: Sound) -> Vec<f32> {
-    if sound == Sound::Wrong {
-        return synthesise(sound);
-    }
     match profile {
-        SoundProfile::Classic => return classic(sound),
-        SoundProfile::Wood => return synthesise(sound),
+        _ if sound == Sound::Wrong => synthesise(sound),
+        SoundProfile::Classic => classic(sound),
+        SoundProfile::Wood => synthesise(sound),
         SoundProfile::Futuristic | SoundProfile::Nes | SoundProfile::Piano | SoundProfile::Sfx => {
-            return lichess(profile, sound);
-        }
-        _ => {}
-    }
-    let length = match sound {
-        Sound::Move => 100,
-        Sound::Capture => 150,
-        Sound::Castle => 200,
-        Sound::Check => 200,
-        Sound::GameEnd => 650,
-        Sound::Wrong => 260,
-    };
-    let mut out = vec![0.0; ms(length)];
-    let pitch = match sound {
-        Sound::Move => 330.0,
-        Sound::Capture => 220.0,
-        Sound::Castle => 275.0,
-        Sound::Check => 440.0,
-        Sound::GameEnd => 330.0,
-        Sound::Wrong => 233.0,
-    };
-    match profile {
-        SoundProfile::Soft => {
-            tone(&mut out, 0, pitch * 0.45, 0.38, 0.018);
-            tone(&mut out, 0, pitch * 0.9, 0.10, 0.009);
-        }
-        SoundProfile::Click => knock(&mut out, 0, 0.65, pitch, 0.008, 0x9E37_79B9),
-        SoundProfile::Bell => {
-            tone(&mut out, 0, pitch, 0.30, 0.045);
-            tone(&mut out, 0, pitch * 1.5, 0.07, 0.025);
-        }
-        SoundProfile::DeepWood => {
-            knock(&mut out, 0, 1.0, pitch * 0.38, 0.035, 0x9E37_79B9);
-        }
-        SoundProfile::Thud => {
-            tone(&mut out, 0, pitch * 0.23, 0.65, 0.025);
-            tone(&mut out, 0, pitch * 0.36, 0.16, 0.012);
-        }
-        SoundProfile::Wood
-        | SoundProfile::Classic
-        | SoundProfile::Futuristic
-        | SoundProfile::Nes
-        | SoundProfile::Piano
-        | SoundProfile::Sfx => unreachable!(),
-    }
-    if matches!(sound, Sound::Castle | Sound::GameEnd) {
-        let multiplier = match profile {
-            SoundProfile::DeepWood => 0.45,
-            SoundProfile::Thud => 0.28,
-            _ => 1.5,
-        };
-        tone(&mut out, ms(80), pitch * multiplier, 0.20, 0.04);
-    }
-    // Two low-pass stages remove bright impact harmonics from the darker profiles.
-    if matches!(profile, SoundProfile::DeepWood | SoundProfile::Thud) {
-        let cutoff = if profile == SoundProfile::Thud {
-            300.0
-        } else {
-            500.0
-        };
-        let alpha = 1.0 - (-std::f32::consts::TAU * cutoff / RATE as f32).exp();
-        let (mut first, mut second) = (0.0, 0.0);
-        for sample in &mut out {
-            first += alpha * (*sample - first);
-            second += alpha * (first - second);
-            *sample = second;
+            lichess(profile, sound)
         }
     }
-    let fade = ms(8).min(out.len());
-    let start = out.len() - fade;
-    for (index, sample) in out[start..].iter_mut().enumerate() {
-        *sample *= 1.0 - index as f32 / fade as f32;
-    }
-    out
 }
 
 /// The samples of one sound, mono at [`RATE`].
@@ -663,25 +584,6 @@ mod tests {
                 cue,
                 "{profile:?}"
             );
-        }
-    }
-
-    #[test]
-    fn darker_profiles_keep_all_event_cues_in_the_low_register() {
-        for profile in [SoundProfile::DeepWood, SoundProfile::Thud] {
-            for sound in [
-                Sound::Move,
-                Sound::Capture,
-                Sound::Castle,
-                Sound::Check,
-                Sound::GameEnd,
-            ] {
-                let frequency = median_frequency(&synthesise_profile(profile, sound));
-                assert!(
-                    (40.0..220.0).contains(&frequency),
-                    "{profile:?} {sound:?}: {frequency} Hz"
-                );
-            }
         }
     }
 

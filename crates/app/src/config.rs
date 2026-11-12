@@ -873,6 +873,29 @@ mod tests {
         assert_eq!(Config::default().language, Language::English);
     }
 
+    /// A sound set that was removed loads as Classic instead of resetting every setting.
+    #[test]
+    fn removed_sound_profiles_load_as_classic() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        let mut config = Config {
+            player_name: "someone".to_owned(),
+            ..Default::default()
+        };
+        config.board.sound_profile = crate::sound::SoundProfile::Piano;
+        let text = toml::to_string_pretty(&config)
+            .unwrap()
+            .replace("sound_profile = \"piano\"", "sound_profile = \"thud\"");
+        assert!(text.contains("\"thud\""));
+        std::fs::write(&path, text).unwrap();
+        let loaded = Config::load(&path);
+        assert_eq!(loaded.player_name, "someone");
+        assert_eq!(
+            loaded.board.sound_profile,
+            crate::sound::SoundProfile::Classic
+        );
+    }
+
     #[test]
     fn config_round_trips_through_toml() {
         let dir = tempfile::tempdir().unwrap();
@@ -884,7 +907,7 @@ mod tests {
         config.language = Language::German;
         config.ui_theme = ui::UiTheme::Sand;
         config.board.theme = SavedTheme::Moss;
-        config.board.sound_profile = crate::sound::SoundProfile::Bell;
+        config.board.sound_profile = crate::sound::SoundProfile::Piano;
         config.board.notation = Notation::Figurine;
         config.analysis_limit = AnalysisLimit::Depth(30);
         config.view.sort = LineSort::Depth;
