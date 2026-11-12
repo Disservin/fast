@@ -7,9 +7,10 @@ pub(super) fn tile(id: impl Into<gpui::ElementId>, selected: bool) -> gpui::Stat
         .id(id)
         .flex()
         .flex_col()
+        .items_center()
         .gap(px(6.))
         .p(px(8.))
-        .w(px(74.))
+        .w(px(84.))
         .rounded(px(6.))
         .cursor_pointer()
         .border_1()
@@ -18,7 +19,10 @@ pub(super) fn tile(id: impl Into<gpui::ElementId>, selected: bool) -> gpui::Stat
 }
 
 pub(super) fn tile_label(text: &'static str) -> Div {
-    div().text_as(13., T.fg_2).child(ui::i18n::t(text))
+    div()
+        .text_as(13., T.fg_2)
+        .whitespace_nowrap()
+        .child(ui::i18n::t(text))
 }
 
 pub(super) fn board_check(
