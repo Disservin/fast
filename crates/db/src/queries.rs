@@ -986,7 +986,7 @@ impl Database {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{ImportControl, ImportOptions, import_games};
+    use crate::ImportOptions;
     use chess_core::{Chess, Position, position_hash, shakmaty::san::San};
 
     const GAMES: &str = r#"[White "me"]
@@ -1025,18 +1025,7 @@ mod tests {
 "#;
 
     fn database() -> (tempfile::TempDir, Database) {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("t.sqlite");
-        let summary = import_games(
-            &path,
-            GAMES.as_bytes(),
-            &ImportOptions::default(),
-            &ImportControl::default(),
-            |_| {},
-        )
-        .unwrap();
-        assert_eq!(summary.games, 3);
-        (dir, Database::open(&path).unwrap())
+        crate::test_db(GAMES, &ImportOptions::default())
     }
 
     fn hash_after(moves: &[&str]) -> u64 {
@@ -1346,14 +1335,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("q.sqlite");
         let pgn = "[Date \"2019.??.??\"]\n\n1. e4 *\n\n[Date \"????.??.??\"]\n\n1. d4 *\n";
-        import_games(
-            &path,
-            pgn.as_bytes(),
-            &ImportOptions::default(),
-            &ImportControl::default(),
-            |_| {},
-        )
-        .unwrap();
+        crate::import_text(&path, pgn, &ImportOptions::default());
         let db = Database::open(&path).unwrap();
         let year = Filter {
             date_from: date_bound("2019", false),

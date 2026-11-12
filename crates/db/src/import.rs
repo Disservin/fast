@@ -709,14 +709,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("x.sqlite");
         let text = "1. e4 e5 1-0\n\n1. e5 e4 1-0\n\n1. d4 d5 0-1\n";
-        let summary = import_games(
-            &path,
-            text.as_bytes(),
-            &ImportOptions::default(),
-            &ImportControl::default(),
-            |_| {},
-        )
-        .unwrap();
+        let summary = crate::import_text(&path, text, &ImportOptions::default());
         assert_eq!(summary.games, 2);
         assert_eq!(summary.skipped, 1);
         assert_eq!(Database::open(&path).unwrap().game_count().unwrap(), 2);
@@ -745,14 +738,7 @@ mod tests {
             keep_annotations: keep,
             ..Default::default()
         };
-        let summary = import_games(
-            &path,
-            text.as_bytes(),
-            &options,
-            &ImportControl::default(),
-            |_| {},
-        )
-        .unwrap();
+        let summary = crate::import_text(&path, text, &options);
         (dir, Database::open(&path).unwrap(), summary)
     }
 
@@ -860,16 +846,7 @@ mod tests {
             skip_known_urls: true,
             ..Default::default()
         };
-        let run = || {
-            import_games(
-                &path,
-                DOWNLOADED.as_bytes(),
-                &options,
-                &ImportControl::default(),
-                |_| {},
-            )
-            .unwrap()
-        };
+        let run = || crate::import_text(&path, DOWNLOADED, &options);
         let first = run();
         assert_eq!((first.games, first.duplicates), (2, 0));
         // 2024-03-02 00:00:01 UTC.
@@ -877,14 +854,7 @@ mod tests {
         let second = run();
         assert_eq!((second.games, second.duplicates), (0, 2));
         // A file import keeps games that share a URL.
-        let plain = import_games(
-            &path,
-            DOWNLOADED.as_bytes(),
-            &ImportOptions::default(),
-            &ImportControl::default(),
-            |_| {},
-        )
-        .unwrap();
+        let plain = crate::import_text(&path, DOWNLOADED, &ImportOptions::default());
         assert_eq!(plain.games, 2);
     }
 

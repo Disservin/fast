@@ -105,24 +105,15 @@ impl Database {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Filter, ImportOptions, import_games};
+    use crate::{Filter, ImportOptions};
 
     /// Imports a tiny capture sequence with optional structure indexing.
     fn fixture(indexed: bool) -> (tempfile::TempDir, Database) {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("games.sqlite");
-        import_games(
-            &path,
-            "1. e4 d5 2. exd5 Qxd5 *".as_bytes(),
-            &ImportOptions {
-                build_structure_index: indexed,
-                ..Default::default()
-            },
-            &ImportControl::default(),
-            |_| {},
-        )
-        .unwrap();
-        (dir, Database::open(path).unwrap())
+        let options = ImportOptions {
+            build_structure_index: indexed,
+            ..Default::default()
+        };
+        crate::test_db("1. e4 d5 2. exd5 Qxd5 *", &options)
     }
 
     #[test]
@@ -184,14 +175,7 @@ mod tests {
         assert_eq!(database.filtered_ids(&empty).unwrap(), vec![1]);
         database.delete_games(&[1]).unwrap();
         assert!(database.filtered_ids(&empty).unwrap().is_empty());
-        import_games(
-            database.path(),
-            "1. d4 d5 *".as_bytes(),
-            &ImportOptions::default(),
-            &ImportControl::default(),
-            |_| {},
-        )
-        .unwrap();
+        crate::import_text(database.path(), "1. d4 d5 *", &ImportOptions::default());
         assert_eq!(database.filtered_ids(&filter).unwrap().len(), 1);
     }
 
@@ -199,14 +183,11 @@ mod tests {
     fn cancelling_a_build_rolls_back_and_keeps_the_old_complete_index() {
         let (_dir, mut database) = fixture(true);
         let path = database.path().to_path_buf();
-        import_games(
+        crate::import_text(
             &path,
-            "1. d4 d5 *\n\n".repeat(101).as_bytes(),
+            &"1. d4 d5 *\n\n".repeat(101),
             &ImportOptions::default(),
-            &ImportControl::default(),
-            |_| {},
-        )
-        .unwrap();
+        );
         let count = |database: &Database| {
             database
                 .conn

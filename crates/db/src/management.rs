@@ -70,30 +70,21 @@ impl Database {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::{ImportControl, ImportOptions, import_games};
+    use crate::ImportOptions;
     use chess_core::{Chess, position_hash};
 
     /// Maintenance keeps index entries, annotations and unrelated player names intact.
     #[test]
     fn manages_collection_without_losing_distinct_games() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("games.sqlite");
         let games = "[White \"Alice\"]\n[Black \"Bob\"]\n[Event \"Open\"]\n[Result \"1-0\"]\n\n1. e4 e5 1-0\n\n";
         let annotated = games.replace("e4 e5", "e4 {Keep this note} e5");
         let empty = "[White \"Alicia\"]\n[Black \"ALICE\"]\n[Result \"*\"]\n\n*\n";
-        import_games(
-            &path,
-            format!("{games}{games}{annotated}{empty}").as_bytes(),
-            &ImportOptions {
-                keep_annotations: true,
-                ..Default::default()
-            },
-            &ImportControl::default(),
-            |_| {},
-        )
-        .unwrap();
-        let mut database = Database::open(&path).unwrap();
+        let options = ImportOptions {
+            keep_annotations: true,
+            ..Default::default()
+        };
+        let (_dir, mut database) =
+            crate::test_db(&format!("{games}{games}{annotated}{empty}"), &options);
         database.set_details("Collection", "A description").unwrap();
         assert_eq!(database.name().unwrap(), "Collection");
         assert_eq!(database.description().unwrap(), "A description");

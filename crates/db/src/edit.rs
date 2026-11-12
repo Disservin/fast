@@ -285,24 +285,13 @@ impl Database {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Filter, ImportControl, ImportOptions, ReviewPosition, import_games};
+    use crate::{Filter, ImportOptions, ReviewPosition};
 
     const GAMES: &str = "[White \"me\"]\n[Black \"alice\"]\n[Result \"1-0\"]\n\n1. e4 c5 2. Nf3 d6 1-0\n\n\
         [White \"bob\"]\n[Black \"me\"]\n[Result \"0-1\"]\n\n1. d4 d5 0-1\n";
 
     fn database() -> (tempfile::TempDir, Database) {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("games.sqlite");
-        import_games(
-            &path,
-            GAMES.as_bytes(),
-            &ImportOptions::default(),
-            &ImportControl::default(),
-            |_| {},
-        )
-        .unwrap();
-        let db = Database::open(&path).unwrap();
-        (dir, db)
+        crate::test_db(GAMES, &ImportOptions::default())
     }
 
     fn ids(db: &Database) -> Vec<i64> {

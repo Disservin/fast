@@ -212,6 +212,29 @@ impl Database {
     }
 }
 
+/// Imports the games of `pgn` into the database at `path`, for tests.
+#[cfg(test)]
+pub(crate) fn import_text(path: &Path, pgn: &str, options: &ImportOptions) -> ImportSummary {
+    import_games(
+        path,
+        pgn.as_bytes(),
+        options,
+        &ImportControl::default(),
+        |_| {},
+    )
+    .unwrap()
+}
+
+/// A new database in a temporary directory holding the games of `pgn`, for tests.
+#[cfg(test)]
+pub(crate) fn test_db(pgn: &str, options: &ImportOptions) -> (tempfile::TempDir, Database) {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("games.sqlite");
+    import_text(&path, pgn, options);
+    let db = Database::open(&path).unwrap();
+    (dir, db)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
