@@ -199,36 +199,6 @@ impl TournamentScreen {
             )
     }
 
-    /// A segmented control whose choice is stored with `set`.
-    pub(super) fn choice<V, F>(
-        &self,
-        id: &'static str,
-        options: &[(V, &'static str)],
-        selected: V,
-        cx: &mut Context<Self>,
-        set: F,
-    ) -> gpui::Div
-    where
-        V: Copy + PartialEq + 'static,
-        F: Fn(&mut Self, V) + 'static,
-    {
-        let this = cx.entity();
-        segmented(
-            id,
-            options
-                .iter()
-                .map(|(value, label)| (*value, ui::i18n::t(label).into(), false))
-                .collect(),
-            selected,
-            move |value, _, cx| {
-                this.update(cx, |screen, cx| {
-                    set(screen, value);
-                    cx.notify();
-                })
-            },
-        )
-    }
-
     /// The New tournament form: the basic settings, then the advanced ones when open.
     pub(super) fn render_form(
         &self,
@@ -255,25 +225,17 @@ impl TournamentScreen {
 
     /// What most tournaments need: who plays, how fast, how many games, which book.
     fn render_basic_settings(&self, cx: &mut Context<Self>) -> Div {
-        let limit_this = cx.entity();
         let browse = cx.entity();
         v_flex()
             .gap(px(14.))
             .child(self.render_engines(cx))
             .child(section_label(ui::i18n::t("Time")))
-            .child(segmented(
+            .child(choice(
                 "tournament-limit",
-                Limit::ALL
-                    .iter()
-                    .map(|limit| (*limit, SharedString::from(limit.label()), false))
-                    .collect(),
+                Limit::ALL.map(|limit| (limit, limit.label())),
                 self.limit,
-                move |limit, _, cx| {
-                    limit_this.update(cx, |screen, cx| {
-                        screen.limit = limit;
-                        cx.notify();
-                    })
-                },
+                cx,
+                |screen, limit| screen.limit = limit,
             ))
             .child(match self.limit {
                 Limit::TimeControl => self.clock_input.render(),
@@ -287,9 +249,9 @@ impl TournamentScreen {
             ))
             .child(field(
                 "Variant",
-                self.choice(
+                choice(
                     "tournament-variant",
-                    &[(false, "Standard"), (true, "Chess960")],
+                    [(false, "Standard"), (true, "Chess960")],
                     self.chess960,
                     cx,
                     |screen, on| screen.chess960 = on,
@@ -332,9 +294,9 @@ impl TournamentScreen {
                     ))
                     .child(field(
                         "Elo model",
-                        self.choice(
+                        choice(
                             "tournament-sprt-model",
-                            &[
+                            [
                                 ("normalized", "Normalized"),
                                 ("logistic", "Logistic"),
                                 ("bayesian", "BayesElo"),
@@ -393,9 +355,6 @@ impl TournamentScreen {
 
     /// Engine hash, threads and arguments, and how the engines are paired.
     fn render_pairing_settings(&self, cx: &mut Context<Self>) -> Div {
-        let type_this = cx.entity();
-        let games_this = cx.entity();
-        let order_this = cx.entity();
         v_flex()
             .gap(px(14.))
             .child(section_label(ui::i18n::t("Engines")))
@@ -405,35 +364,21 @@ impl TournamentScreen {
             ))
             .child(field("Engine arguments", text_input(&self.engine_args)))
             .child(section_label("Pairing"))
-            .child(segmented(
+            .child(choice(
                 "tournament-type",
-                vec![
-                    (false, "Round robin".into(), false),
-                    (true, "Gauntlet".into(), false),
-                ],
+                [(false, "Round robin"), (true, "Gauntlet")],
                 self.gauntlet,
-                move |gauntlet, _, cx| {
-                    type_this.update(cx, |screen, cx| {
-                        screen.gauntlet = gauntlet;
-                        cx.notify();
-                    })
-                },
+                cx,
+                |screen, gauntlet| screen.gauntlet = gauntlet,
             ))
             .child(field(
                 "Games per round",
-                segmented(
+                choice(
                     "tournament-games",
-                    vec![
-                        (1, "1".into(), false),
-                        (2, "2, colours swapped".into(), false),
-                    ],
+                    [(1, "1"), (2, "2, colours swapped")],
                     self.games_per_round,
-                    move |games, _, cx| {
-                        games_this.update(cx, |screen, cx| {
-                            screen.games_per_round = games;
-                            cx.notify();
-                        })
-                    },
+                    cx,
+                    |screen, games| screen.games_per_round = games,
                 ),
             ))
             .child(
@@ -457,19 +402,12 @@ impl TournamentScreen {
             .child(pair(
                 field(
                     "Book order",
-                    segmented(
+                    choice(
                         "tournament-order",
-                        vec![
-                            (true, ui::i18n::t("Random").into(), false),
-                            (false, "Sequential".into(), false),
-                        ],
+                        [(true, "Random"), (false, "Sequential")],
                         self.random_order,
-                        move |random, _, cx| {
-                            order_this.update(cx, |screen, cx| {
-                                screen.random_order = random;
-                                cx.notify();
-                            })
-                        },
+                        cx,
+                        |screen, random| screen.random_order = random,
                     ),
                 ),
                 field("Plies from book", text_input(&self.plies)),
@@ -542,9 +480,9 @@ impl TournamentScreen {
                         ),
                         field("Up to pieces", text_input(&self.tb_pieces)),
                     ))
-                    .child(self.choice(
+                    .child(choice(
                         "tournament-tb-adjudicate",
-                        &[
+                        [
                             ("BOTH", "Wins and draws"),
                             ("WIN_LOSS", "Wins only"),
                             ("DRAW", "Draws only"),
@@ -570,9 +508,9 @@ impl TournamentScreen {
             .child(section_label("Saved games"))
             .child(field(
                 "Notation",
-                self.choice(
+                choice(
                     "tournament-pgn-notation",
-                    &[("san", "SAN"), ("lan", "LAN"), ("uci", "UCI")],
+                    [("san", "SAN"), ("lan", "LAN"), ("uci", "UCI")],
                     self.pgn.notation,
                     cx,
                     |screen, notation| screen.pgn.notation = notation,

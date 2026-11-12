@@ -10,7 +10,7 @@ use gpui_component::{
 };
 use ui::{
     T,
-    widgets::{Listen, TextExt, check, h_flex},
+    widgets::{Listen, Segment, TextExt, check, h_flex, segmented},
 };
 
 pub type TextSelect = Entity<SelectState<SearchableVec<SharedString>>>;
@@ -128,6 +128,25 @@ pub fn toggle<V: 'static, F: Fn(&mut V, bool) + 'static>(
             set(screen, on);
             cx.notify();
         }))
+}
+
+/// A segmented control whose choice is stored with `set`, redrawing the screen.
+pub fn choice<V: 'static, C: Copy + PartialEq + 'static>(
+    id: &'static str,
+    options: impl IntoIterator<Item = impl Into<Segment<C>>>,
+    selected: C,
+    cx: &mut Context<V>,
+    set: impl Fn(&mut V, C) + 'static,
+) -> Div {
+    segmented(
+        id,
+        options,
+        selected,
+        cx.entity().listen_with(move |screen, value, _, cx| {
+            set(screen, value);
+            cx.notify();
+        }),
+    )
 }
 
 /// The unit after a hash size field: MB, with the size in GB beside it once it

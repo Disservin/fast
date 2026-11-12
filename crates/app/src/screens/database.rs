@@ -22,14 +22,14 @@ use gpui_component::{
 use ui::{
     BoardView, MONO, T,
     widgets::{
-        Listen, TextExt, badge, btn, check, h_flex, icon_btn, mono, panel, section_label,
-        segmented, stat, v_flex,
+        Listen, TextExt, badge, btn, check, h_flex, icon_btn, mono, panel, section_label, stat,
+        v_flex,
     },
 };
 
 use crate::format::{format_count, now_seconds};
 use crate::{
-    controls::{TextSelect, field, new_input, new_select, select_el, text_input},
+    controls::{TextSelect, choice, field, new_input, new_select, select_el, text_input},
     game_download::{DownloadEvent, DownloadPhase, DownloadRequest, Endpoints, Site},
     model::{AppModel, ConfigExt as _, DbEntry, ModelEvent, ToastExt as _, pick_path},
     shell::Workspace,

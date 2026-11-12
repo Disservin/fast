@@ -508,18 +508,13 @@ impl DatabaseScreen {
         let max_engines = max_review_engines();
         let running = self.reviewing.is_some();
         let close = cx.entity();
-        let (engine_this, limit_this, side_this, scope_this) =
-            (cx.entity(), cx.entity(), cx.entity(), cx.entity());
         let set_engines = |next: u32| {
-            let this = cx.entity();
-            move |_: &mut gpui::Window, cx: &mut gpui::App| {
-                this.update(cx, |screen, cx| {
-                    screen
-                        .model
-                        .edit_config(cx, |config| config.review_engines = next);
-                    cx.notify();
-                })
-            }
+            close.listen(move |screen, _, cx| {
+                screen
+                    .model
+                    .edit_config(cx, |config| config.review_engines = next);
+                cx.notify();
+            })
         };
         let (fewer, more) = (
             engines.saturating_sub(1).max(1),
@@ -538,20 +533,9 @@ impl DatabaseScreen {
                 .child(div().flex_1().min_w_0().child(control))
         };
         let engine_control = match chosen_engine {
-            Some(chosen) => segmented(
-                "review-engine",
-                available
-                    .iter()
-                    .map(|(id, name)| (*id, name.clone(), false))
-                    .collect(),
-                chosen,
-                move |id, _, cx| {
-                    engine_this.update(cx, |screen, cx| {
-                        screen.review_engine = Some(id);
-                        cx.notify();
-                    })
-                },
-            )
+            Some(chosen) => choice("review-engine", available, chosen, cx, |screen, id| {
+                screen.review_engine = Some(id)
+            })
             .flex_wrap()
             .into_any_element(),
             None => div()
@@ -561,51 +545,33 @@ impl DatabaseScreen {
                 ))
                 .into_any_element(),
         };
-        let limit_control = segmented(
+        let limit_control = choice(
             "review-limit",
             ReviewLimit::ALL
                 .iter()
                 .enumerate()
-                .map(|(index, limit)| (index, limit.label().into(), false))
-                .collect(),
+                .map(|(index, limit)| (index, limit.label())),
             self.review_limit,
-            move |index, _, cx| {
-                limit_this.update(cx, |screen, cx| {
-                    screen.review_limit = index;
-                    cx.notify();
-                })
-            },
+            cx,
+            |screen, index| screen.review_limit = index,
         )
         .flex_wrap();
-        let side_control = segmented(
+        let side_control = choice(
             "review-side",
             ["Filtered player", "White", "Black", "Both"]
                 .into_iter()
-                .enumerate()
-                .map(|(index, label)| (index, label.into(), false))
-                .collect(),
+                .enumerate(),
             self.review_side,
-            move |index, _, cx| {
-                side_this.update(cx, |screen, cx| {
-                    screen.review_side = index;
-                    cx.notify();
-                })
-            },
+            cx,
+            |screen, index| screen.review_side = index,
         )
         .flex_wrap();
-        let scope_control = segmented(
+        let scope_control = choice(
             "review-scope",
-            vec![
-                (false, "Filtered games".into(), false),
-                (true, "Selected game".into(), false),
-            ],
+            [(false, "Filtered games"), (true, "Selected game")],
             self.review_selected_only,
-            move |selected_only, _, cx| {
-                scope_this.update(cx, |screen, cx| {
-                    screen.review_selected_only = selected_only;
-                    cx.notify();
-                })
-            },
+            cx,
+            |screen, selected_only| screen.review_selected_only = selected_only,
         );
         let parallel = ui::widgets::stepper("review-engines", engines.to_string())
             .value_width(28.)

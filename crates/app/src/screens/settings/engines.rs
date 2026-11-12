@@ -658,14 +658,10 @@ impl SettingsScreen {
                     )
                     .child(segmented(
                         "leave-analyse",
-                        vec![
-                            (
-                                LeaveAnalyse::Keep,
-                                ui::i18n::t("Keep analysing").into(),
-                                false,
-                            ),
-                            (LeaveAnalyse::Pause, ui::i18n::t("Pause").into(), false),
-                            (LeaveAnalyse::Stop, ui::i18n::t("Stop").into(), false),
+                        [
+                            (LeaveAnalyse::Keep, "Keep analysing"),
+                            (LeaveAnalyse::Pause, "Pause"),
+                            (LeaveAnalyse::Stop, "Stop"),
                         ],
                         leave,
                         move |value, _, cx| {

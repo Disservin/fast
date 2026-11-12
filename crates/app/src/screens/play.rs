@@ -21,13 +21,12 @@ use gpui_component::{
 use ui::{
     BoardEvent, BoardView, MONO, T,
     widgets::{
-        Listen, TextExt, btn, check, h_flex, header_tab, mono, panel, section_label, segmented,
-        v_flex,
+        Listen, TextExt, btn, check, h_flex, header_tab, mono, panel, section_label, v_flex,
     },
 };
 
 use crate::{
-    controls::{TextSelect, field, new_input, new_select, select_el, text_input},
+    controls::{TextSelect, choice, field, new_input, new_select, select_el, text_input},
     model::{AppModel, ConfigExt as _, ModelEvent, ToastExt as _},
     shell::Workspace,
 };

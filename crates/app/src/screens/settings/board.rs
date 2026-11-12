@@ -92,23 +92,16 @@ impl SettingsScreen {
         let config = self.model.read(cx).config.board.clone();
         let boards = self.render_board_tiles(&config, cx);
         let pieces = self.render_piece_tiles(&config, cx);
-        let coords_this = this.clone();
         let check_row = self.render_board_checks(&config, cx);
-        let sound_this = this.clone();
         let preview_this = this.clone();
         let sound_choices = segmented(
             "sound-profile",
-            crate::sound::SoundProfile::ALL
-                .into_iter()
-                .map(|profile| (profile, profile.name().into(), false))
-                .collect(),
+            crate::sound::SoundProfile::ALL.map(|profile| (profile, profile.name())),
             config.sound_profile,
-            move |profile, _, cx| {
-                sound_this.update(cx, |screen, cx| {
-                    screen.update_board(cx, |board| board.sound_profile = profile);
-                    screen.model.read(cx).config.board.play_sample();
-                })
-            },
+            this.listen_with(|screen, profile, _, cx| {
+                screen.update_board(cx, |board| board.sound_profile = profile);
+                screen.model.read(cx).config.board.play_sample();
+            }),
         )
         .flex_wrap()
         .gap_y(px(6.));
@@ -120,25 +113,15 @@ impl SettingsScreen {
                 None,
                 segmented(
                     "coords",
-                    vec![
-                        (
-                            SavedCoordinates::OnSquares,
-                            ui::i18n::t("On squares").into(),
-                            false,
-                        ),
-                        (
-                            SavedCoordinates::Outside,
-                            ui::i18n::t("Outside").into(),
-                            false,
-                        ),
-                        (SavedCoordinates::Off, ui::i18n::t("Off").into(), false),
+                    [
+                        (SavedCoordinates::OnSquares, "On squares"),
+                        (SavedCoordinates::Outside, "Outside"),
+                        (SavedCoordinates::Off, "Off"),
                     ],
                     config.coordinates,
-                    move |value, _, cx| {
-                        coords_this.update(cx, |screen, cx| {
-                            screen.update_board(cx, |board| board.coordinates = value);
-                        });
-                    },
+                    this.listen_with(|screen, value, _, cx| {
+                        screen.update_board(cx, |board| board.coordinates = value)
+                    }),
                 ),
             ))
             .child(option_row(

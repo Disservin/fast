@@ -80,21 +80,23 @@ impl SettingsScreen {
                 })
             },
         );
-        let mut choices = vec![(None, ui::i18n::t("First analysis engine").into(), false)];
+        let mut choices = vec![(None, SharedString::from("First analysis engine"))];
         choices.extend(
             engines
                 .into_iter()
-                .map(|(id, name)| (Some(id), SharedString::from(name), false)),
+                .map(|(id, name)| (Some(id), name.into())),
         );
         let chosen = kibitz
             .engine
-            .filter(|id| choices.iter().any(|(choice, ..)| *choice == Some(*id)));
-        let engine_this = this.clone();
-        let engine_choice = segmented("kibitz-engine", choices, chosen, move |value, _, cx| {
-            engine_this.update(cx, |screen, cx| {
+            .filter(|id| choices.iter().any(|(choice, _)| *choice == Some(*id)));
+        let engine_choice = segmented(
+            "kibitz-engine",
+            choices,
+            chosen,
+            this.listen_with(|screen, value, _, cx| {
                 screen.update_kibitz(cx, |kibitz| kibitz.engine = value)
-            })
-        })
+            }),
+        )
         .flex_wrap()
         .gap_y(px(6.));
         let cores = std::thread::available_parallelism()

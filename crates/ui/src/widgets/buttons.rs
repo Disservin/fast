@@ -347,16 +347,49 @@ impl RenderOnce for HeaderTab {
     }
 }
 
-/// A row of buttons where exactly one option is selected.
+/// One option of a segmented control: its value, its label and whether it can be
+/// chosen. Built from `(value, label)` or `(value, label, disabled)`.
+pub struct Segment<V> {
+    value: V,
+    label: SharedString,
+    disabled: bool,
+}
+
+impl<V, S: Into<SharedString>> From<(V, S)> for Segment<V> {
+    fn from((value, label): (V, S)) -> Self {
+        Self {
+            value,
+            label: label.into(),
+            disabled: false,
+        }
+    }
+}
+
+impl<V, S: Into<SharedString>> From<(V, S, bool)> for Segment<V> {
+    fn from((value, label, disabled): (V, S, bool)) -> Self {
+        Self {
+            value,
+            label: label.into(),
+            disabled,
+        }
+    }
+}
+
+/// A row of buttons where exactly one option is selected. Labels are translated.
 pub fn segmented<V: Copy + PartialEq + 'static>(
     id: &'static str,
-    options: Vec<(V, SharedString, bool)>,
+    options: impl IntoIterator<Item = impl Into<Segment<V>>>,
     selected: V,
     on_select: impl Fn(V, &mut Window, &mut App) + 'static,
 ) -> Div {
     let on_select = Rc::new(on_select);
     let mut row = h_flex().gap(px(6.));
-    for (index, (value, label, disabled)) in options.into_iter().enumerate() {
+    for (index, option) in options.into_iter().enumerate() {
+        let Segment {
+            value,
+            label,
+            disabled,
+        } = option.into();
         let on_select = on_select.clone();
         row = row.child(
             btn((id, index), label)

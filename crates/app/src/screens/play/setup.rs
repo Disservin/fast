@@ -64,20 +64,15 @@ impl PlayScreen {
             .read(cx)
             .selected_index(cx)
             .is_some_and(|index| index.row == 4);
-        let mode_this = this.clone();
-        let mode = segmented(
+        let mode = choice(
             "play-mode",
-            vec![
-                (Mode::VsEngine, ui::i18n::t("Vs engine").into(), false),
-                (Mode::Engines, ui::i18n::t("Engine vs engine").into(), false),
+            [
+                (Mode::VsEngine, "Vs engine"),
+                (Mode::Engines, "Engine vs engine"),
             ],
             self.mode,
-            move |mode, _, cx| {
-                mode_this.update(cx, |screen, cx| {
-                    screen.mode = mode;
-                    cx.notify();
-                });
-            },
+            cx,
+            |screen, mode| screen.mode = mode,
         );
         let engines = if self_play {
             let mut row = h_flex().items_start().gap(px(12.));

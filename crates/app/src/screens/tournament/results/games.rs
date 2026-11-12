@@ -38,24 +38,11 @@ impl TournamentScreen {
         let filter = self.games_filter;
         let counts = GameFilter::ALL.map(|f| {
             let count = run.games.iter().filter(|row| f.matches(row)).count();
-            (
-                f,
-                SharedString::from(format!("{} ({count})", f.label())),
-                false,
-            )
+            (f, format!("{} ({count})", f.label()))
         });
-        let this = cx.entity();
-        let bar = segmented(
-            "tournament-filter",
-            counts.into(),
-            filter,
-            move |f, _, cx| {
-                this.update(cx, |screen, cx| {
-                    screen.games_filter = f;
-                    cx.notify();
-                })
-            },
-        );
+        let bar = choice("tournament-filter", counts, filter, cx, |screen, f| {
+            screen.games_filter = f
+        });
         let mut rows: Vec<&GameRow> = run.games.iter().filter(|row| filter.matches(row)).collect();
         if let Some((column, descending)) = self.games_sort {
             rows.sort_by(|a, b| {

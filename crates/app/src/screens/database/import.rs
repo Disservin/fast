@@ -229,29 +229,18 @@ impl DatabaseScreen {
         let this = cx.entity();
         let keep = self.model.read(cx).config.import_keep_annotations;
         let selected_name = self.db_snapshot.as_ref().map(|entry| entry.name.clone());
-        let source_this = this.clone();
-        let source = segmented(
+        let source = choice(
             "import-source",
-            vec![
-                (ImportSource::File, ui::i18n::t("PGN file").into(), false),
-                (
-                    ImportSource::Site(Site::Lichess),
-                    Site::Lichess.name().into(),
-                    false,
-                ),
-                (
-                    ImportSource::Site(Site::ChessCom),
-                    Site::ChessCom.name().into(),
-                    false,
-                ),
+            [
+                (ImportSource::File, "PGN file"),
+                (ImportSource::Site(Site::Lichess), Site::Lichess.name()),
+                (ImportSource::Site(Site::ChessCom), Site::ChessCom.name()),
             ],
             self.import_source,
-            move |value, _, cx| {
-                source_this.update(cx, |screen, cx| {
-                    screen.import_source = value;
-                    screen.download_error = None;
-                    cx.notify();
-                })
+            cx,
+            |screen, value| {
+                screen.import_source = value;
+                screen.download_error = None;
             },
         );
         let model = self.model.clone();
@@ -389,44 +378,30 @@ impl DatabaseScreen {
         let has_account = self
             .typed_account(site, cx)
             .is_some_and(|account| account.last_game_ms.is_some());
-        let since_this = this.clone();
-        let since = segmented(
+        let since = choice(
             "download-since",
-            vec![
-                (Since::All, ui::i18n::t("All").into(), false),
-                (Since::LastYear, ui::i18n::t("Last year").into(), false),
-                (Since::LastMonth, ui::i18n::t("Last month").into(), false),
-                (
-                    Since::LastUpdate,
-                    ui::i18n::t("Since last update").into(),
-                    !has_account,
-                ),
+            [
+                (Since::All, "All", false),
+                (Since::LastYear, "Last year", false),
+                (Since::LastMonth, "Last month", false),
+                (Since::LastUpdate, "Since last update", !has_account),
             ],
             if self.download_since == Since::LastUpdate && !has_account {
                 Since::All
             } else {
                 self.download_since
             },
-            move |value, _, cx| {
-                since_this.update(cx, |screen, cx| {
-                    screen.download_since = value;
-                    cx.notify();
-                })
-            },
+            cx,
+            |screen, value| screen.download_since = value,
         );
-        let into_this = this.clone();
         let my_games = SharedString::from(ui::i18n::t("My games"));
         let into = match selected_name.clone().filter(|name| *name != my_games) {
-            Some(name) => segmented(
+            Some(name) => choice(
                 "download-into",
-                vec![(false, my_games, false), (true, name, false)],
+                [(false, my_games), (true, name)],
                 self.download_into_selected,
-                move |value, _, cx| {
-                    into_this.update(cx, |screen, cx| {
-                        screen.download_into_selected = value;
-                        cx.notify();
-                    })
-                },
+                cx,
+                |screen, value| screen.download_into_selected = value,
             ),
             None => h_flex().child(
                 div()

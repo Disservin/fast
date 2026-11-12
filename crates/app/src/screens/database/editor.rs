@@ -116,22 +116,18 @@ impl DatabaseScreen {
     pub(super) fn render_editor(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let editor = self.editing.as_ref()?;
         let this = cx.entity();
-        let result_this = this.clone();
-        let result = segmented(
+        let result = choice(
             "edit-result",
             RESULTS
                 .iter()
                 .enumerate()
-                .map(|(index, result)| (index, result_text(result).into(), false))
-                .collect(),
+                .map(|(index, result)| (index, result_text(result))),
             editor.result,
-            move |index, _, cx| {
-                result_this.update(cx, |screen, cx| {
-                    if let Some(editor) = &mut screen.editing {
-                        editor.result = index;
-                        cx.notify();
-                    }
-                })
+            cx,
+            |screen, index| {
+                if let Some(editor) = &mut screen.editing {
+                    editor.result = index;
+                }
             },
         );
         let pair = |left: AnyElement, right: AnyElement| {

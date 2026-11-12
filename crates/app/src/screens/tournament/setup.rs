@@ -321,7 +321,6 @@ impl TournamentScreen {
 
     /// The tournament setup, over the tab. Closes once fastchess starts.
     pub(super) fn render_setup(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        let source_this = cx.entity();
         let start = cx.entity();
         let close = cx.entity();
         let busy = self.run.as_ref().is_some_and(Run::active) || self.pending.is_some();
@@ -338,19 +337,14 @@ impl TournamentScreen {
             .pt(px(14.))
             .pb(px(16.))
             .child(self.render_fastchess(cx))
-            .child(segmented(
+            .child(choice(
                 "tournament-source",
-                vec![
-                    (Source::Form, "Set up".into(), false),
-                    (Source::Paste, "Paste config".into(), false),
-                ],
+                [(Source::Form, "Set up"), (Source::Paste, "Paste config")],
                 source,
-                move |source, _, cx| {
-                    source_this.update(cx, |screen, cx| {
-                        screen.source = source;
-                        screen.form_error = None;
-                        cx.notify();
-                    })
+                cx,
+                |screen, source| {
+                    screen.source = source;
+                    screen.form_error = None;
                 },
             ))
             .child(body)

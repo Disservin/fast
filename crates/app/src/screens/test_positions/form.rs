@@ -272,7 +272,6 @@ impl TestPositionsScreen {
     }
 
     pub(super) fn render_form(&self, cx: &mut Context<Self>) -> Div {
-        let goal_this = cx.entity();
         let limit_this = cx.entity();
         let browse = cx.entity();
         let start = cx.entity();
@@ -300,43 +299,37 @@ impl TestPositionsScreen {
         v_flex()
             .gap(px(14.))
             .child(section_label("Find"))
-            .child(segmented(
+            .child(choice(
                 "test-goal",
-                vec![
-                    (TestGoal::BestMove, ui::i18n::t("Best move").into(), running),
-                    (TestGoal::Mate, ui::i18n::t("Mate").into(), running),
+                [
+                    (TestGoal::BestMove, "Best move", running),
+                    (TestGoal::Mate, "Mate", running),
                 ],
                 self.settings.goal,
-                move |goal, _, cx| {
-                    goal_this.update(cx, |screen, cx| {
-                        screen.settings.goal = goal;
-                        cx.notify();
-                    })
-                },
+                cx,
+                |screen, goal| screen.settings.goal = goal,
             ))
             .children(mate_note)
             .child(self.render_engines(cx))
             .child(section_label("Search limit"))
             .child(segmented(
                 "test-limit",
-                vec![
-                    (TestLimitKind::Depth, ui::i18n::t("Depth").into(), running),
-                    (TestLimitKind::Nodes, ui::i18n::t("Nodes").into(), running),
-                    (TestLimitKind::Time, ui::i18n::t("Time").into(), running),
+                [
+                    (TestLimitKind::Depth, "Depth", running),
+                    (TestLimitKind::Nodes, "Nodes", running),
+                    (TestLimitKind::Time, "Time", running),
                 ],
                 self.settings.limit,
-                move |limit, window, cx| {
-                    limit_this.update(cx, |screen, cx| {
-                        // Keep what was typed for the old kind, show the new kind's value.
-                        let _ = screen.read_form(cx);
-                        screen.settings.limit = limit;
-                        let text = limit_text(&screen.settings);
-                        screen
-                            .limit_value
-                            .update(cx, |input, cx| input.set_value(text, window, cx));
-                        cx.notify();
-                    })
-                },
+                limit_this.listen_with(move |screen, limit, window, cx| {
+                    // Keep what was typed for the old kind, show the new kind's value.
+                    let _ = screen.read_form(cx);
+                    screen.settings.limit = limit;
+                    let text = limit_text(&screen.settings);
+                    screen
+                        .limit_value
+                        .update(cx, |input, cx| input.set_value(text, window, cx));
+                    cx.notify();
+                }),
             ))
             .child(field(limit_hint, text_input(&self.limit_value)))
             .child(section_label("Hash"))

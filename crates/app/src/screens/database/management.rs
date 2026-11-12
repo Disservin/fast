@@ -363,24 +363,18 @@ impl DatabaseScreen {
         let add = self.add_database.as_ref()?;
         let this = cx.entity();
         let busy = self.collection_busy();
-        let switch = this.clone();
         let mut body = v_flex()
             .p(px(16.))
             .gap(px(12.))
-            .child(segmented(
+            .child(choice(
                 "add-database-source",
-                vec![
-                    (false, ui::i18n::t("Local").into(), busy),
-                    (true, ui::i18n::t("Web").into(), busy),
-                ],
+                [(false, "Local", busy), (true, "Web", busy)],
                 add.web,
-                move |web, _, cx| {
-                    switch.update(cx, |screen, cx| {
-                        if let Some(add) = &mut screen.add_database {
-                            add.web = web;
-                        }
-                        cx.notify();
-                    });
+                cx,
+                |screen, web| {
+                    if let Some(add) = &mut screen.add_database {
+                        add.web = web;
+                    }
                 },
             ))
             .child(field("Name", text_input(&add.name)))

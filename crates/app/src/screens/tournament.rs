@@ -24,12 +24,12 @@ use ui::{
     BoardView, MONO, T,
     widgets::{
         Listen, TextExt, badge, btn, check, divider, h_flex, meter, mono, panel, section_label,
-        segmented, v_flex,
+        v_flex,
     },
 };
 
 use crate::{
-    controls::{TextSelect, field, new_input, new_select, select_el, text_input, toggle},
+    controls::{TextSelect, choice, field, new_input, new_select, select_el, text_input, toggle},
     fastchess::{self, Limit, Line, Participant, Pasted, PgnOut, Setup, StopHandle},
     model::{AppModel, ConfigExt as _, ModelEvent, ToastExt as _, pick_path},
     shell::Workspace,

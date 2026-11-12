@@ -25,7 +25,7 @@ use ui::{
 
 use crate::{
     config::{TestGoal, TestLimitKind, TestPositionSettings},
-    controls::{field, new_input, text_input, toggle},
+    controls::{choice, field, new_input, text_input, toggle},
     model::{AppModel, pick_directory, pick_path},
     shell::Workspace,
     test_suite::{self, Cell, RunEvent, RunSettings, Search},
