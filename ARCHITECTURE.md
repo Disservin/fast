@@ -66,6 +66,8 @@ in the folder (`screens/database/filter.rs`, `import.rs`, `table.rs` and so on) 
 imports the items its submodules share, so siblings reach each other through it. Tests sit in
 the file whose code they cover. The shell follows the same pattern (`shell.rs` and `shell/`:
 actions, tabs, tab bar, session, top bar, window chrome).
+Large modules outside the screens are split the same way: `ui::board` (arrows, input, moves,
+pieces, render).
 
 Code shared across screens lives outside them:
 
