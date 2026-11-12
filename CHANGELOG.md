@@ -4,6 +4,7 @@ Settings › Changelog shows this file. Describe the finished changes since each
 
 ## 0.1.4
 
+- Analyse: Bars fills the game graph height so evaluation bars are visible around the centre line.
 - Analyse: Line preview keeps its evaluation when the main engine drops the previewed move while a kibitzer is running.
 - Board: larger pieces pick up immediately on press, stay where dropped and deselect when clicked again.
 - Board: draw arrows and circles in green, red, blue or yellow with Lichess-style modifier keys.

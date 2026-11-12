@@ -55,14 +55,14 @@ pub fn timeline(props: TimelineProps) -> impl IntoElement {
     } = props;
     let dragging = Rc::new(Cell::new(false));
     div()
+        .relative()
         .min_h(px(64.))
         .w_full()
         .flex_1()
         .bg(rgb(T.surface))
         .border_as(T.border)
         .rounded(px(6.))
-        .px(px(5.))
-        .py(px(5.))
+        .overflow_hidden()
         .child(
             canvas(
                 |_, _, _| {},
@@ -128,7 +128,8 @@ pub fn timeline(props: TimelineProps) -> impl IntoElement {
                     });
                 },
             )
-            .size_full(),
+            .absolute()
+            .inset(px(5.)),
         )
 }
 
