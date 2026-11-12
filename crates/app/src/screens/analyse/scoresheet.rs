@@ -49,9 +49,11 @@ impl AnalyseScreen {
                 icon_btn("sheet-expand", "icons/chevron-right.svg")
                     .compact()
                     .tooltip(ui::i18n::t("Show the scoresheet"))
-                    .on_click(move |_, cx| {
-                        expand.update(cx, |screen, cx| screen.set_scoresheet_collapsed(false, cx))
-                    }),
+                    .on_click(
+                        expand.listen(move |screen, _, cx| {
+                            screen.set_scoresheet_collapsed(false, cx)
+                        }),
+                    ),
             )
             .when_some(self.db_game.as_ref(), |rail, origin| {
                 let dirty = self.db_game_dirty();
@@ -66,7 +68,7 @@ impl AnalyseScreen {
                         .when(dirty, |button| button.dot(T.warn))
                         .disabled(!dirty)
                         .tooltip(tip)
-                        .on_click(move |_, cx| this.update(cx, |screen, cx| screen.save_game(cx))),
+                        .on_click(this.listen(move |screen, _, cx| screen.save_game(cx))),
                 )
             })
     }
@@ -77,7 +79,6 @@ impl AnalyseScreen {
         let origin = self.db_game.as_ref()?;
         let dirty = self.db_game_dirty();
         let this = cx.entity();
-        let save_this = this.clone();
         let mut strip = v_flex()
             .flex_none()
             .px(px(18.))
@@ -120,16 +121,13 @@ impl AnalyseScreen {
                             .tooltip(ui::i18n::t(
                                 "Save moves, comments and variations to the database (Ctrl+S)",
                             ))
-                            .on_click(move |_, cx| {
-                                save_this.update(cx, |screen, cx| screen.save_game(cx))
-                            }),
+                            .on_click(this.listen(move |screen, _, cx| screen.save_game(cx))),
                     ),
             );
         if !self.db_findings.is_empty() {
             let mut chips = h_flex().flex_wrap().gap(px(4.));
             for (index, (node, mark)) in self.db_findings.iter().enumerate() {
                 let node = *node;
-                let this = this.clone();
                 let tip = if mark.best.is_empty() {
                     mark.loss.clone()
                 } else {
@@ -151,9 +149,7 @@ impl AnalyseScreen {
                     .dot(quality_color(mark.quality))
                     .selected(node == self.current)
                     .tooltip(tip)
-                    .on_click(move |window, cx| {
-                        this.update(cx, |screen, cx| screen.jump(node, window, cx))
-                    }),
+                    .on_click(this.listen(move |screen, window, cx| screen.jump(node, window, cx))),
                 );
             }
             strip = strip.child(section_label("Review findings")).child(chips);
@@ -202,7 +198,6 @@ impl AnalyseScreen {
             ScoresheetStyle::Inline => scoresheet_inline(&self.tree, &props).into_any_element(),
         };
         let style_toggle = {
-            let this = this.clone();
             let (label, tip) = match style {
                 ScoresheetStyle::Table => (
                     ui::i18n::t("Table"),
@@ -216,23 +211,21 @@ impl AnalyseScreen {
             btn("sheet-style", label)
                 .mini()
                 .tooltip(tip)
-                .on_click(move |_, cx| {
-                    this.update(cx, |screen, cx| {
-                        screen.set_view(cx, |view| {
-                            view.scoresheet = match view.scoresheet {
-                                ScoresheetStyle::Table => ScoresheetStyle::Inline,
-                                ScoresheetStyle::Inline => ScoresheetStyle::Table,
-                            };
-                        });
+                .on_click(this.listen(move |screen, _, cx| {
+                    screen.set_view(cx, |view| {
+                        view.scoresheet = match view.scoresheet {
+                            ScoresheetStyle::Table => ScoresheetStyle::Inline,
+                            ScoresheetStyle::Inline => ScoresheetStyle::Table,
+                        };
                     });
-                })
+                }))
         };
         let nag_button = |id: &'static str, label: &'static str, nag: u8, this: Entity<Self>| {
             btn(id, label)
                 .w(36.)
                 .h(30.)
                 .pad(0.)
-                .on_click(move |_, cx| this.update(cx, |screen, cx| screen.annotate(nag, cx)))
+                .on_click(this.listen(move |screen, _, cx| screen.annotate(nag, cx)))
         };
         v_flex()
             .w_full()
@@ -259,15 +252,12 @@ impl AnalyseScreen {
                                 row.child(ui::widgets::badge("Chess960"))
                             })
                             .child(h_flex().gap(px(4.)).child(style_toggle).child({
-                                let this = this.clone();
                                 icon_btn("sheet-collapse", "icons/chevron-left.svg")
                                     .mini()
                                     .tooltip(ui::i18n::t("Hide the scoresheet"))
-                                    .on_click(move |_, cx| {
-                                        this.update(cx, |screen, cx| {
-                                            screen.set_scoresheet_collapsed(true, cx)
-                                        })
-                                    })
+                                    .on_click(this.listen(move |screen, _, cx| {
+                                        screen.set_scoresheet_collapsed(true, cx)
+                                    }))
                             })),
                     )
                     .child(div().text_as(13., T.muted).child(opening)),
@@ -305,19 +295,17 @@ impl AnalyseScreen {
                             btn("comment-save", "Save comment")
                                 .primary()
                                 .h(30.)
-                                .on_click(move |_, cx| {
-                                    save.update(cx, |screen, cx| {
-                                        let text = screen.comment.read(cx).value().to_string();
-                                        if let Some(node) = screen.editing_comment.take() {
-                                            let updated = chess_core::with_comment_text(
-                                                &screen.tree.node(node).comment,
-                                                &text,
-                                            );
-                                            screen.tree.node_mut(node).comment = updated;
-                                        }
-                                        cx.notify();
-                                    });
-                                }),
+                                .on_click(save.listen(move |screen, _, cx| {
+                                    let text = screen.comment.read(cx).value().to_string();
+                                    if let Some(node) = screen.editing_comment.take() {
+                                        let updated = chess_core::with_comment_text(
+                                            &screen.tree.node(node).comment,
+                                            &text,
+                                        );
+                                        screen.tree.node_mut(node).comment = updated;
+                                    }
+                                    cx.notify();
+                                })),
                         ),
                 )
             })

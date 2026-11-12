@@ -37,11 +37,9 @@ impl SettingsScreen {
                                     .compact()
                                     .disabled(!removable)
                                     .tooltip(ui::i18n::t("Move to the removed folder"))
-                                    .on_click(move |_, cx| {
-                                        this.update(cx, |screen, cx| {
-                                            screen.remove_database(path.clone(), cx)
-                                        });
-                                    }),
+                                    .on_click(this.listen(move |screen, _, cx| {
+                                        screen.remove_database(path.clone(), cx)
+                                    })),
                             ),
                     ),
             );

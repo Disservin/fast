@@ -326,23 +326,21 @@ impl DatabaseScreen {
             )
             .child(div().flex_1())
             .child({
-                let this = this.clone();
                 btn("add-database", "Add database")
                     .compact()
                     .primary()
                     .disabled(busy && self.collection_control.is_none())
-                    .on_click(move |window, cx| {
-                        this.update(cx, |screen, cx| screen.open_add_database(window, cx));
-                    })
+                    .on_click(
+                        this.listen(move |screen, window, cx| screen.open_add_database(window, cx)),
+                    )
             })
             .child({
-                let this = this.clone();
                 btn("manage-database", "Manage")
                     .compact()
                     .disabled(self.selected_db.is_none() || busy)
-                    .on_click(move |window, cx| {
-                        this.update(cx, |screen, cx| screen.open_manager(window, cx));
-                    })
+                    .on_click(
+                        this.listen(move |screen, window, cx| screen.open_manager(window, cx)),
+                    )
             })
     }
 
@@ -384,19 +382,15 @@ impl DatabaseScreen {
                     .py(px(12.))
                     .border_t_1()
                     .border_color(rgb(T.border))
-                    .child(btn("delete-cancel", "Cancel").on_click(move |_, cx| {
-                        cancel.update(cx, |screen, cx| {
+                    .child(btn("delete-cancel", "Cancel").on_click(cancel.listen(
+                        move |screen, _, cx| {
                             screen.confirm_delete = None;
                             cx.notify();
-                        })
-                    }))
-                    .child(
-                        btn("delete-confirm", "Delete")
-                            .primary()
-                            .on_click(move |_, cx| {
-                                confirm.update(cx, |screen, cx| screen.delete_confirmed(cx))
-                            }),
-                    ),
+                        },
+                    )))
+                    .child(btn("delete-confirm", "Delete").primary().on_click(
+                        confirm.listen(move |screen, _, cx| screen.delete_confirmed(cx)),
+                    )),
             );
         Some(dialog(
             "confirm-delete",

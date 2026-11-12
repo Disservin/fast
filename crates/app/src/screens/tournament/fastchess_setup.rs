@@ -218,9 +218,7 @@ impl TournamentScreen {
                     .child(
                         btn("tournament-clear-confirm", "Delete")
                             .compact()
-                            .on_click(move |_, cx| {
-                                this.update(cx, |screen, cx| screen.clear_folder(cx))
-                            }),
+                            .on_click(this.listen(move |screen, _, cx| screen.clear_folder(cx))),
                     )
                     .child(btn("tournament-clear-cancel", "Cancel").compact().on_click(
                         move |_, cx| {
@@ -235,12 +233,10 @@ impl TournamentScreen {
                     btn("tournament-clear", "Free up space")
                         .compact()
                         .disabled(busy || !has_data)
-                        .on_click(move |_, cx| {
-                            this.update(cx, |screen, cx| {
-                                screen.clear_armed = true;
-                                cx.notify();
-                            })
-                        }),
+                        .on_click(this.listen(move |screen, _, cx| {
+                            screen.clear_armed = true;
+                            cx.notify();
+                        })),
                 )
             };
         v_flex()

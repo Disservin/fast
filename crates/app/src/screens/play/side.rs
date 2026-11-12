@@ -286,13 +286,11 @@ impl PlayScreen {
                         .mini()
                         .tooltip(ui::i18n::t("Show or hide engine output"))
                         .selected(self.log_open)
-                        .on_click(move |_, cx| {
-                            this.update(cx, |screen, cx| {
-                                screen.log_open = !screen.log_open;
-                                screen.log_follow = true;
-                                cx.notify();
-                            });
-                        }),
+                        .on_click(this.listen(move |screen, _, cx| {
+                            screen.log_open = !screen.log_open;
+                            screen.log_follow = true;
+                            cx.notify();
+                        })),
                 ),
         );
         if let Some(game) = &self.game {
@@ -520,12 +518,10 @@ impl PlayScreen {
                 div().flex_none().child(
                     check("match-log-follow", self.log_follow, "Follow")
                         .text(13.)
-                        .on_change(move |value, _, cx| {
-                            follow_this.update(cx, |screen, cx| {
-                                screen.log_follow = value;
-                                cx.notify();
-                            });
-                        }),
+                        .on_change(follow_this.listen_with(move |screen, value, _, cx| {
+                            screen.log_follow = value;
+                            cx.notify();
+                        })),
                 ),
             )
             .child(
@@ -723,7 +719,6 @@ impl PlayScreen {
         let self_play = game.is_some_and(|game| game.self_play());
         let draw_this = this.clone();
         let takeback_this = this.clone();
-        let resign_this = this.clone();
         v_flex()
             .gap(px(16.))
             .child(
@@ -771,9 +766,7 @@ impl PlayScreen {
                             btn("stop-self-play", "Stop")
                                 .flex_1()
                                 .disabled(!in_game)
-                                .on_click(move |_, cx| {
-                                    resign_this.update(cx, |screen, cx| screen.resign(cx));
-                                }),
+                                .on_click(this.listen(move |screen, _, cx| screen.resign(cx))),
                         )
                     } else {
                         h_flex()
@@ -782,25 +775,25 @@ impl PlayScreen {
                                 btn("offer-draw", ui::i18n::t("Offer draw"))
                                     .flex_1()
                                     .disabled(!in_game)
-                                    .on_click(move |_, cx| {
-                                        draw_this.update(cx, |screen, cx| screen.offer_draw(cx));
-                                    }),
+                                    .on_click(
+                                        draw_this
+                                            .listen(move |screen, _, cx| screen.offer_draw(cx)),
+                                    ),
                             )
                             .child(
                                 btn("takeback", "Takeback")
                                     .flex_1()
                                     .disabled(!in_game)
-                                    .on_click(move |_, cx| {
-                                        takeback_this.update(cx, |screen, cx| screen.takeback(cx));
-                                    }),
+                                    .on_click(
+                                        takeback_this
+                                            .listen(move |screen, _, cx| screen.takeback(cx)),
+                                    ),
                             )
                             .child(
                                 btn("resign", ui::i18n::t("Resign"))
                                     .flex_1()
                                     .disabled(!in_game)
-                                    .on_click(move |_, cx| {
-                                        resign_this.update(cx, |screen, cx| screen.resign(cx));
-                                    }),
+                                    .on_click(this.listen(move |screen, _, cx| screen.resign(cx))),
                             )
                     })
                     .child(
@@ -808,9 +801,11 @@ impl PlayScreen {
                             .full()
                             .h(40.)
                             .disabled(game.is_none())
-                            .on_click(move |window, cx| {
-                                this.update(cx, |screen, cx| screen.analyse_game(window, cx));
-                            }),
+                            .on_click(
+                                this.listen(move |screen, window, cx| {
+                                    screen.analyse_game(window, cx)
+                                }),
+                            ),
                     )
             })
     }

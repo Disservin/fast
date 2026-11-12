@@ -12,7 +12,7 @@ use gpui::{
 use gpui_component::{Root, scroll::ScrollableElement};
 use ui::{
     MONO, SANS, T,
-    widgets::{TextExt, btn, h_flex, v_flex},
+    widgets::{Listen, TextExt, btn, h_flex, v_flex},
 };
 
 /// How often the window looks for new output.
@@ -194,25 +194,21 @@ impl Render for DebugWindow {
                                 btn("debug-info", "Info lines")
                                     .compact()
                                     .selected(self.show_info)
-                                    .on_click(move |_, cx| {
-                                        info_this.update(cx, |this, cx| {
-                                            this.show_info = !this.show_info;
-                                            this.revision = None;
-                                            cx.notify();
-                                        });
-                                    }),
+                                    .on_click(info_this.listen(move |this, _, cx| {
+                                        this.show_info = !this.show_info;
+                                        this.revision = None;
+                                        cx.notify();
+                                    })),
                             )
                             .child(
                                 btn("debug-follow", "Follow")
                                     .compact()
                                     .selected(self.follow)
-                                    .on_click(move |_, cx| {
-                                        follow_this.update(cx, |this, cx| {
-                                            this.follow = !this.follow;
-                                            this.revision = None;
-                                            cx.notify();
-                                        });
-                                    }),
+                                    .on_click(follow_this.listen(move |this, _, cx| {
+                                        this.follow = !this.follow;
+                                        this.revision = None;
+                                        cx.notify();
+                                    })),
                             )
                             .child(btn("debug-copy", "Copy all").compact().on_click(
                                 move |_, cx| {
@@ -226,16 +222,12 @@ impl Render for DebugWindow {
                                     cx.write_to_clipboard(ClipboardItem::new_string(text));
                                 },
                             ))
-                            .child(
-                                btn("debug-clear", "Clear")
-                                    .compact()
-                                    .on_click(move |_, cx| {
-                                        clear_this.update(cx, |this, cx| {
-                                            this.log.clear();
-                                            cx.notify();
-                                        });
-                                    }),
-                            ),
+                            .child(btn("debug-clear", "Clear").compact().on_click(
+                                clear_this.listen(move |this, _, cx| {
+                                    this.log.clear();
+                                    cx.notify();
+                                }),
+                            )),
                     ),
             )
             .child(

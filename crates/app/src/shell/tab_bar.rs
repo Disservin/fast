@@ -140,12 +140,10 @@ impl Workspace {
                                     .w(28.)
                                     .pad(4.)
                                     .tooltip(ui::i18n::t("Close"))
-                                    .on_click(move |_, cx| {
-                                        close.update(cx, |this, cx| {
-                                            this.new_tab_menu_open = false;
-                                            cx.notify();
-                                        })
-                                    }),
+                                    .on_click(close.listen(move |this, _, cx| {
+                                        this.new_tab_menu_open = false;
+                                        cx.notify();
+                                    })),
                             ),
                     )
                     .child(cards)
@@ -163,15 +161,13 @@ impl Workspace {
                                 btn("new-960-random", "Random")
                                     .icon("icons/dices.svg")
                                     .compact()
-                                    .on_click(move |window, cx| {
-                                        random.update(cx, |this, cx| {
-                                            let n = random_chess960_number();
-                                            this.chess960_number.update(cx, |input, cx| {
-                                                input.set_value(n.to_string(), window, cx)
-                                            });
-                                            cx.notify();
+                                    .on_click(random.listen(move |this, window, cx| {
+                                        let n = random_chess960_number();
+                                        this.chess960_number.update(cx, |input, cx| {
+                                            input.set_value(n.to_string(), window, cx)
                                         });
-                                    }),
+                                        cx.notify();
+                                    })),
                             )
                             .child(ui::widgets::mono(
                                 self.chess960_number
@@ -396,9 +392,10 @@ impl Workspace {
                             .w(24.)
                             .pad(3.)
                             .tooltip(ui::i18n::t("Close tab; reopen with Ctrl/Cmd+Shift+T"))
-                            .on_click(move |window, cx| {
-                                close.update(cx, |this, cx| this.close_tab(id, window, cx))
-                            }),
+                            .on_click(
+                                close
+                                    .listen(move |this, window, cx| this.close_tab(id, window, cx)),
+                            ),
                     )
                     .context_menu(move |menu, _, _| {
                         let rename = rename.clone();

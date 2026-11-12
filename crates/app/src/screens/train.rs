@@ -9,7 +9,7 @@ use gpui_component::input::{InputEvent, InputState};
 use trainer::{Card, Drill, Grade, RepStatus};
 use ui::{
     Arrow, BoardEvent, BoardView, MONO, T,
-    widgets::{BtnKind, TextExt, badge, btn, h_flex, mono, panel, section_label, v_flex},
+    widgets::{BtnKind, Listen, TextExt, badge, btn, h_flex, mono, panel, section_label, v_flex},
 };
 
 use crate::{
@@ -387,12 +387,10 @@ impl Render for TrainScreen {
                 "Mode: any prepared reply"
             },
         )
-        .on_click(move |_, cx| {
-            mode_this.update(cx, |this, cx| {
-                this.every_reply = !this.every_reply;
-                this.reload_queue(cx);
-            })
-        });
+        .on_click(mode_this.listen(move |this, _, cx| {
+            this.every_reply = !this.every_reply;
+            this.reload_queue(cx);
+        }));
         let reset = cx.entity();
         let history = self.model.read(cx).repertoire.history.len();
         let session = v_flex().gap(px(6.)).mt(px(14.)).child(mode.full()).child(
@@ -410,12 +408,10 @@ impl Render for TrainScreen {
                         .tooltip(ui::i18n::t(
                             "Discard this session and start the queue again",
                         ))
-                        .on_click(move |_, cx| {
-                            reset.update(cx, |this, cx| {
-                                this.attempts.clear();
-                                this.reload_queue(cx);
-                            })
-                        }),
+                        .on_click(reset.listen(move |this, _, cx| {
+                            this.attempts.clear();
+                            this.reload_queue(cx);
+                        })),
                 ),
         );
         let tree = self.render_tree(session, cx);

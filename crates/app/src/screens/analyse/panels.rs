@@ -17,7 +17,8 @@ use gpui_component::{
 use ui::{
     Arrow, CoordinateStyle, MONO, T,
     widgets::{
-        TextExt, btn, check, h_flex, header_tab, icon_btn, mono, panel, section_label, v_flex,
+        Listen, TextExt, btn, check, h_flex, header_tab, icon_btn, mono, panel, section_label,
+        v_flex,
     },
 };
 
@@ -189,9 +190,9 @@ impl AnalyseScreen {
                         config.use_analysis,
                         "",
                     )
-                    .on_change(move |on, _, cx| {
-                        this.update(cx, |screen, cx| screen.set_engine_analysis(id, on, cx));
-                    }),
+                    .on_change(this.listen_with(move |screen, on, _, cx| {
+                        screen.set_engine_analysis(id, on, cx)
+                    })),
                 ),
             )
             .child(crate::controls::engine_icon(config, 20.))
@@ -283,18 +284,15 @@ impl AnalyseScreen {
                 // Engine controls keep the search limit in reach.
                 .children(
                     (!engines.is_empty() && tab != EngineTab::Database).then(|| {
-                        let this = this.clone();
                         btn("infinite-search", "Infinite")
                             .mini()
                             .selected(limit == AnalysisLimit::Infinite)
                             .tooltip(ui::i18n::t(
                                 "Search until stopped, instead of up to the search limit",
                             ))
-                            .on_click(move |_, cx| {
-                                this.update(cx, |screen, cx| {
-                                    screen.live.update(cx, |live, cx| live.toggle_infinite(cx));
-                                });
-                            })
+                            .on_click(this.listen(move |screen, _, cx| {
+                                screen.live.update(cx, |live, cx| live.toggle_infinite(cx));
+                            }))
                     }),
                 ),
         );
@@ -319,17 +317,14 @@ impl AnalyseScreen {
         }
         let mut limits = h_flex().gap(px(4.));
         for (index, (value, label)) in LIMITS.into_iter().enumerate() {
-            let this = this.clone();
             limits = limits.child(
                 btn(("limit", index), label)
                     .mono()
                     .compact()
                     .selected(limit == value)
-                    .on_click(move |_, cx| {
-                        this.update(cx, |screen, cx| {
-                            screen.live.update(cx, |live, cx| live.set_limit(value, cx));
-                        });
-                    }),
+                    .on_click(this.listen(move |screen, _, cx| {
+                        screen.live.update(cx, |live, cx| live.set_limit(value, cx));
+                    })),
             );
         }
         let workspace = self.workspace.clone();
@@ -364,11 +359,9 @@ impl AnalyseScreen {
                         btn("restart-engine", "Restart engine")
                             .compact()
                             .tooltip(ui::i18n::t("Quit this engine and start it again"))
-                            .on_click(move |_, cx| {
-                                this.update(cx, |screen, cx| {
-                                    screen.live.update(cx, |live, cx| live.relaunch(id, cx));
-                                });
-                            })
+                            .on_click(this.listen(move |screen, _, cx| {
+                                screen.live.update(cx, |live, cx| live.relaunch(id, cx));
+                            }))
                     })
                     .child(
                         btn("all-options", "All options")
@@ -408,7 +401,6 @@ impl AnalyseScreen {
         let legal = pos.legal_moves();
         let restricted = self.live.read(cx).search_moves.clone();
         let open = self.search_moves_open || !restricted.is_empty();
-        let reset = this.clone();
         let toggle = this.clone();
         // "Search moves" and, beside it in muted text, how many of the legal moves.
         let count = if restricted.is_empty() {
@@ -439,14 +431,12 @@ impl AnalyseScreen {
                         row.child(
                             btn("search-all-moves", ui::i18n::t("All moves"))
                                 .compact()
-                                .on_click(move |_, cx| {
-                                    reset.update(cx, |screen, cx| {
-                                        screen.search_moves_open = false;
-                                        screen
-                                            .live
-                                            .update(cx, |live, cx| live.clear_search_moves(cx));
-                                    })
-                                }),
+                                .on_click(this.listen(move |screen, _, cx| {
+                                    screen.search_moves_open = false;
+                                    screen
+                                        .live
+                                        .update(cx, |live, cx| live.clear_search_moves(cx));
+                                })),
                         )
                     })
                     .when(restricted.is_empty(), |row| {
@@ -460,12 +450,12 @@ impl AnalyseScreen {
                             .tooltip(ui::i18n::t(
                                 "Choose the moves the engine searches from this position",
                             ))
-                            .on_click(move |_, cx| {
-                                toggle.update(cx, |screen, cx| {
+                            .on_click(toggle.listen(
+                                move |screen, _, cx| {
                                     screen.search_moves_open = !screen.search_moves_open;
                                     cx.notify();
-                                })
-                            }),
+                                },
+                            )),
                         )
                     }),
             );
@@ -493,13 +483,11 @@ impl AnalyseScreen {
                                 .tooltip(ui::i18n::t(
                                     "Toggle this move in the engine's root search",
                                 ))
-                                .on_click(move |_, cx| {
-                                    this.update(cx, |screen, cx| {
-                                        screen
-                                            .live
-                                            .update(cx, |live, cx| live.toggle_search_move(mv, cx));
-                                    })
-                                })
+                                .on_click(this.listen(move |screen, _, cx| {
+                                    screen
+                                        .live
+                                        .update(cx, |live, cx| live.toggle_search_move(mv, cx));
+                                }))
                         }),
                     )),
             );
@@ -541,13 +529,11 @@ impl AnalyseScreen {
                             .tooltip(ui::i18n::t(
                                 "Discard this saved result and run a fresh search",
                             ))
-                            .on_click(move |_, cx| {
-                                this.update(cx, |screen, cx| {
-                                    screen
-                                        .live
-                                        .update(cx, |live, cx| live.replace_cached(id, cx));
-                                });
-                            }),
+                            .on_click(this.listen(move |screen, _, cx| {
+                                screen
+                                    .live
+                                    .update(cx, |live, cx| live.replace_cached(id, cx));
+                            })),
                     ),
             )
         })

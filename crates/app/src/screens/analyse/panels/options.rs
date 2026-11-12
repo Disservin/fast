@@ -90,19 +90,14 @@ impl AnalyseScreen {
                 .child(
                     small("lines-reset", ui::i18n::t("Reset"))
                         .tooltip(ui::i18n::t("Back to each engine's default number of lines"))
-                        .on_click(move |_, cx| {
-                            reset_this.update(cx, |screen, cx| {
+                        .on_click(reset_this.listen(move |screen, _, cx| {
                                 screen.set_lines(LinesTarget::Default, cx)
-                            });
-                        }),
+                            })),
                 )
                 .child(
                     small("lines-max", "Max")
                         .tooltip(ui::i18n::t("A line for every legal move in every position (up to 256, as far as the engine allows)"))
-                        .on_click(move |_, cx| {
-                            max_this
-                                .update(cx, |screen, cx| screen.set_lines(LinesTarget::All, cx));
-                        }),
+                        .on_click(max_this.listen(move |screen, _, cx| screen.set_lines(LinesTarget::All, cx))),
                 )
         })
     }
@@ -114,9 +109,6 @@ impl AnalyseScreen {
         let live = self.live.read(cx);
         let (on, paused) = (live.on, live.paused);
         let view = self.model.read(cx).config.view.clone();
-        let all_this = this.clone();
-        let arrows_this = this.clone();
-        let mine_this = this.clone();
         let small = |id: &'static str, label: &'static str| btn(id, label).compact();
         let view_tools = h_flex()
             .flex_wrap()
@@ -126,11 +118,9 @@ impl AnalyseScreen {
                 small("all-moves", ui::i18n::t("All moves"))
                     .selected(view.all_moves)
                     .tooltip(ui::i18n::t("List every legal move, analysed or not"))
-                    .on_click(move |_, cx| {
-                        all_this.update(cx, |screen, cx| {
-                            screen.set_view(cx, |view| view.all_moves = !view.all_moves);
-                        });
-                    }),
+                    .on_click(this.listen(move |screen, _, cx| {
+                        screen.set_view(cx, |view| view.all_moves = !view.all_moves);
+                    })),
             )
             .child(
                 small("quality-arrows", "Arrows")
@@ -138,11 +128,9 @@ impl AnalyseScreen {
                     .tooltip(ui::i18n::t(
                         "An arrow per engine line, coloured from best (blue) to blunder (red)",
                     ))
-                    .on_click(move |_, cx| {
-                        arrows_this.update(cx, |screen, cx| {
-                            screen.set_view(cx, |view| view.quality_arrows = !view.quality_arrows);
-                        });
-                    }),
+                    .on_click(this.listen(move |screen, _, cx| {
+                        screen.set_view(cx, |view| view.quality_arrows = !view.quality_arrows);
+                    })),
             )
             .child(
                 small("my-moves", "My moves")
@@ -150,15 +138,11 @@ impl AnalyseScreen {
                     .tooltip(ui::i18n::t(
                         "Show what you played and your repertoire for each move",
                     ))
-                    .on_click(move |_, cx| {
-                        mine_this.update(cx, |screen, cx| {
-                            screen.set_view(cx, |view| view.my_moves = !view.my_moves);
-                        });
-                    }),
+                    .on_click(this.listen(move |screen, _, cx| {
+                        screen.set_view(cx, |view| view.my_moves = !view.my_moves);
+                    })),
             );
         let pause_this = this.clone();
-        let log_this = this.clone();
-        let online_this = this;
         let settings = h_flex()
             .flex_wrap()
             .gap(px(8.))
@@ -202,12 +186,10 @@ impl AnalyseScreen {
                     .compact()
                     .selected(self.log_panel_open)
                     .tooltip(ui::i18n::t("Show or hide engine output"))
-                    .on_click(move |_, cx| {
-                        log_this.update(cx, |screen, cx| {
-                            screen.log_panel_open = !screen.log_panel_open;
-                            cx.notify();
-                        });
-                    }),
+                    .on_click(this.listen(move |screen, _, cx| {
+                        screen.log_panel_open = !screen.log_panel_open;
+                        cx.notify();
+                    })),
             )
             .child(
                 btn("online-panel", "Online")
@@ -217,9 +199,7 @@ impl AnalyseScreen {
                         "Add the ChessTB Explorer tablebase and chessdb.cn to Moves from here. \
                          Sends each position you visit while on.",
                     )
-                    .on_click(move |_, cx| {
-                        online_this.update(cx, |screen, cx| screen.toggle_online(cx));
-                    }),
+                    .on_click(this.listen(move |screen, _, cx| screen.toggle_online(cx))),
             )
             .into_any_element();
         (toggles, settings)

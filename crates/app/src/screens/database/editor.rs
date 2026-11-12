@@ -171,16 +171,16 @@ impl DatabaseScreen {
             .py(px(12.))
             .border_t_1()
             .border_color(rgb(T.border))
-            .child(btn("edit-cancel", "Cancel").on_click(move |_, cx| {
-                cancel.update(cx, |screen, cx| {
+            .child(
+                btn("edit-cancel", "Cancel").on_click(cancel.listen(move |screen, _, cx| {
                     screen.editing = None;
                     cx.notify();
-                })
-            }))
+                })),
+            )
             .child(
                 btn("edit-save", "Save")
                     .primary()
-                    .on_click(move |_, cx| save.update(cx, |screen, cx| screen.save_editor(cx))),
+                    .on_click(save.listen(move |screen, _, cx| screen.save_editor(cx))),
             );
         Some(dialog(
             "game-editor",

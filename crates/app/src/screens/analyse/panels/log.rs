@@ -206,10 +206,6 @@ impl AnalyseScreen {
         let name = self
             .panel_engine_config(cx)
             .map_or_else(|| "No engine".to_owned(), |config| config.name);
-        let info_this = this.clone();
-        let follow_this = this.clone();
-        let copy_this = this.clone();
-        let clear_this = this.clone();
         let tools = h_flex()
             .h(px(40.))
             .px(px(16.))
@@ -228,51 +224,45 @@ impl AnalyseScreen {
                 div().flex_none().w(px(64.)).child(
                     check("log-info", self.log_show_info, "Info")
                         .text(13.)
-                        .on_change(move |value, _, cx| {
-                            info_this.update(cx, |screen, cx| {
-                                screen.log_selection = None;
-                                screen.log_show_info = value;
-                                cx.notify();
-                            });
-                        }),
+                        .on_change(this.listen_with(move |screen, value, _, cx| {
+                            screen.log_selection = None;
+                            screen.log_show_info = value;
+                            cx.notify();
+                        })),
                 ),
             )
             .child(
                 div().flex_none().w(px(80.)).child(
                     check("log-follow", self.log_follow, "Follow")
                         .text(13.)
-                        .on_change(move |value, _, cx| {
-                            follow_this.update(cx, |screen, cx| {
-                                screen.log_follow = value;
-                                cx.notify();
-                            });
-                        }),
+                        .on_change(this.listen_with(move |screen, value, _, cx| {
+                            screen.log_follow = value;
+                            cx.notify();
+                        })),
                 ),
             )
             .child(
                 btn("log-copy", ui::i18n::t("Copy"))
                     .compact()
-                    .on_click(move |_, cx| {
-                        copy_this.update(cx, |screen, cx| {
-                            // The selection if there is one, else the whole log.
-                            let (text, message) = match screen.log_selection {
-                                Some(selection) => {
-                                    (selection.text(&screen.log_lines), "Selection copied.")
-                                }
-                                None => (
-                                    screen
-                                        .log_lines
-                                        .iter()
-                                        .map(|line| line.text.as_str())
-                                        .collect::<Vec<_>>()
-                                        .join("\n"),
-                                    "Log copied.",
-                                ),
-                            };
-                            cx.write_to_clipboard(ClipboardItem::new_string(text));
-                            screen.model.toast(message, cx);
-                        });
-                    }),
+                    .on_click(this.listen(move |screen, _, cx| {
+                        // The selection if there is one, else the whole log.
+                        let (text, message) = match screen.log_selection {
+                            Some(selection) => {
+                                (selection.text(&screen.log_lines), "Selection copied.")
+                            }
+                            None => (
+                                screen
+                                    .log_lines
+                                    .iter()
+                                    .map(|line| line.text.as_str())
+                                    .collect::<Vec<_>>()
+                                    .join("\n"),
+                                "Log copied.",
+                            ),
+                        };
+                        cx.write_to_clipboard(ClipboardItem::new_string(text));
+                        screen.model.toast(message, cx);
+                    })),
             )
             .child(
                 btn("log-window", ui::i18n::t("Window"))
@@ -288,22 +278,20 @@ impl AnalyseScreen {
             .child(
                 btn("log-clear", ui::i18n::t("Clear"))
                     .compact()
-                    .on_click(move |_, cx| {
-                        clear_this.update(cx, |screen, cx| {
-                            screen.log_selection = None;
-                            let chosen = screen.panel_engine_config(cx).map(|config| config.id);
-                            if let Some(engine) = screen
-                                .live
-                                .read(cx)
-                                .engines
-                                .iter()
-                                .find(|engine| Some(engine.config.id) == chosen)
-                            {
-                                engine.log.clear();
-                            }
-                            cx.notify();
-                        });
-                    }),
+                    .on_click(this.listen(move |screen, _, cx| {
+                        screen.log_selection = None;
+                        let chosen = screen.panel_engine_config(cx).map(|config| config.id);
+                        if let Some(engine) = screen
+                            .live
+                            .read(cx)
+                            .engines
+                            .iter()
+                            .find(|engine| Some(engine.config.id) == chosen)
+                        {
+                            engine.log.clear();
+                        }
+                        cx.notify();
+                    })),
             );
         let longest = self
             .log_lines

@@ -70,11 +70,16 @@ actions, tabs, tab bar, session, top bar, window chrome).
 Code shared across screens lives outside them:
 
 - `ui::widgets`: `btn`, `stepper`, `sort_heading`, `dialog`, `panel_header`, `segmented`,
-  `check` and the other design-system controls.
-- `controls.rs`: styled inputs, time and clock inputs, and `Rename`, the inline rename field
-  used by tabs and databases.
+  `check`, `meter` and the other design-system controls. `Listen` turns a view handle into
+  widget handlers (`this.listen(|screen, window, cx| ...)`), and `TextExt::text_as` sets text
+  size and colour together.
+- `controls.rs`: styled inputs, time and clock inputs, `toggle` (a checkbox bound to a
+  setting) and `Rename`, the inline rename field used by tabs and databases.
 - `event_reader.rs`: `spawn_batched`, the loop that takes engine or test-suite events off a
-  channel in batches and applies them to a view.
+  channel in batches and applies them to a view, and `spawn_with_progress`, which runs a
+  download on a background thread and shows its progress messages.
+- `model.rs`: `ToastExt` and `ConfigExt` show a toast or change and save the settings through
+  a handle to the model.
 - `format.rs`: counts, byte sizes, durations and the current time.
 - `review.rs`: engine review of stored games (accuracy and findings), used by Database and
   Analyse. It has no GPUI code.

@@ -304,7 +304,7 @@ impl TrainScreen {
                     .flex_1()
                     .kind(kind)
                     .disabled(!answered || evidence.scheduling_grade(grade) != grade)
-                    .on_click(move |_, cx| this.update(cx, |screen, cx| screen.grade(grade, cx)))
+                    .on_click(this.listen(move |screen, _, cx| screen.grade(grade, cx)))
             };
         let grades = [
             (

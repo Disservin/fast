@@ -117,11 +117,9 @@ impl TournamentScreen {
                             .child(
                                 check(("tournament-engine", id as usize), order.is_some(), label)
                                     .text(13.)
-                                    .on_change(move |on, _, cx| {
-                                        this.update(cx, |screen, cx| {
-                                            screen.toggle_engine(id, on, cx)
-                                        })
-                                    }),
+                                    .on_change(this.listen_with(move |screen, on, _, cx| {
+                                        screen.toggle_engine(id, on, cx)
+                                    })),
                             )
                             .when(seed, |row| row.child(badge(ui::i18n::t("Seed")))),
                     )
@@ -131,15 +129,13 @@ impl TournamentScreen {
                             .tooltip(ui::i18n::t(
                                 "Run another process of this engine as an opponent",
                             ))
-                            .on_click(move |_, cx| {
-                                selfplay.update(cx, |screen, cx| {
-                                    if !screen.selected.contains(&id) {
-                                        screen.selected.push(id);
-                                    }
-                                    screen.extra_engines.push(copy.clone());
-                                    cx.notify();
-                                })
-                            }),
+                            .on_click(selfplay.listen(move |screen, _, cx| {
+                                if !screen.selected.contains(&id) {
+                                    screen.selected.push(id);
+                                }
+                                screen.extra_engines.push(copy.clone());
+                                cx.notify();
+                            })),
                     ),
             );
         }
@@ -175,12 +171,10 @@ impl TournamentScreen {
                             .w(24.)
                             .pad(3.)
                             .tooltip(ui::i18n::t("Remove"))
-                            .on_click(move |_, cx| {
-                                this.update(cx, |screen, cx| {
-                                    screen.extra_engines.remove(index);
-                                    cx.notify();
-                                })
-                            }),
+                            .on_click(this.listen(move |screen, _, cx| {
+                                screen.extra_engines.remove(index);
+                                cx.notify();
+                            })),
                     ),
             );
         }
@@ -191,9 +185,8 @@ impl TournamentScreen {
             .child(list)
             .child(
                 h_flex().child(
-                    btn("tournament-add-exe", "Add executable…").on_click(move |_, cx| {
-                        add.update(cx, |screen, cx| screen.add_executable(cx))
-                    }),
+                    btn("tournament-add-exe", "Add executable…")
+                        .on_click(add.listen(move |screen, _, cx| screen.add_executable(cx))),
                 ),
             )
     }
@@ -309,9 +302,7 @@ impl TournamentScreen {
                     .gap(px(6.))
                     .child(div().flex_1().child(text_input(&self.openings)))
                     .child(
-                        btn("tournament-book", ui::i18n::t("Browse…")).on_click(move |window, cx| {
-                            browse.update(cx, |screen, cx| screen.browse_openings(window, cx))
-                        }),
+                        btn("tournament-book", ui::i18n::t("Browse…")).on_click(browse.listen(move |screen, window, cx| screen.browse_openings(window, cx))),
                     ),
             ))
             .child(toggle(

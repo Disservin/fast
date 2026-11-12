@@ -5,7 +5,7 @@ use db::MoveStat;
 use gpui::{Context, IntoElement, div, px, rgb};
 use ui::{
     T,
-    widgets::{TextExt, btn, h_flex, mono, section_label, v_flex},
+    widgets::{Listen, TextExt, btn, h_flex, mono, section_label, v_flex},
 };
 
 use super::*;
@@ -166,19 +166,17 @@ impl AnalyseScreen {
                             .mono()
                             .w(56.)
                             .disabled(mv.is_none())
-                            .on_click(move |window, cx| {
-                                this.update(cx, |screen, cx| {
-                                    let mut line: Vec<String> = screen
-                                        .analysed_san_path()
-                                        .into_iter()
-                                        .skip(screen.base_san_path().len())
-                                        .collect();
-                                    line.push(san.clone());
-                                    if let Some(&node) = screen.add_line(&line).last() {
-                                        screen.jump(node, window, cx);
-                                    }
-                                });
-                            }),
+                            .on_click(this.listen(move |screen, window, cx| {
+                                let mut line: Vec<String> = screen
+                                    .analysed_san_path()
+                                    .into_iter()
+                                    .skip(screen.base_san_path().len())
+                                    .collect();
+                                line.push(san.clone());
+                                if let Some(&node) = screen.add_line(&line).last() {
+                                    screen.jump(node, window, cx);
+                                }
+                            })),
                     )
                     .child(
                         mono(format!(

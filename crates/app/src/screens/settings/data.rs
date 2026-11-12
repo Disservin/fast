@@ -215,7 +215,7 @@ impl SettingsScreen {
                 ("restore-replace", "Restore and replace conflicts", true),
             ] {
                 let model = model.clone();
-                body = body.child(btn(id, label).on_click(move |_, cx| model.update(cx, |model, cx| {
+                body = body.child(btn(id, label).on_click(model.listen(move |model, _, cx| {
                     if let Some(archive) = model.pending_backup.take() {
                         match model.restore_backup(&archive, replace, cx) {
                             Ok(()) => {
@@ -235,12 +235,12 @@ impl SettingsScreen {
                 })));
             }
             body = body.child(
-                btn("cancel-restore", "Cancel restore").on_click(move |_, cx| {
-                    model.update(cx, |model, cx| {
+                btn("cancel-restore", "Cancel restore").on_click(model.listen(
+                    move |model, _, cx| {
                         model.pending_backup = None;
                         cx.notify();
-                    })
-                }),
+                    },
+                )),
             );
         }
         section("Backup").child(body)
@@ -415,12 +415,12 @@ impl SettingsScreen {
                             )
                             .compact()
                             .disabled(measuring)
-                            .on_click(move |_, cx| {
-                                this.update(cx, |screen, cx| {
+                            .on_click(this.listen(
+                                move |screen, _, cx| {
                                     screen.measure_usage(cx);
                                     cx.notify();
-                                })
-                            }),
+                                },
+                            )),
                         ),
                     )
                     .children(drive)

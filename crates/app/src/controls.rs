@@ -10,7 +10,7 @@ use gpui_component::{
 };
 use ui::{
     T,
-    widgets::{TextExt, check, h_flex},
+    widgets::{Listen, TextExt, check, h_flex},
 };
 
 pub type TextSelect = Entity<SelectState<SearchableVec<SharedString>>>;
@@ -122,12 +122,12 @@ pub fn toggle<V: 'static, F: Fn(&mut V, bool) + 'static>(
     set: F,
 ) -> impl IntoElement + use<V, F> {
     let this = cx.entity();
-    check(id, on, label).text(13.).on_change(move |on, _, cx| {
-        this.update(cx, |screen, cx| {
+    check(id, on, label)
+        .text(13.)
+        .on_change(this.listen_with(move |screen, on, _, cx| {
             set(screen, on);
             cx.notify();
-        })
-    })
+        }))
 }
 
 /// The unit after a hash size field: MB, with the size in GB beside it once it

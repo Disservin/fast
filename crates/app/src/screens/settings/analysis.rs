@@ -166,11 +166,9 @@ impl SettingsScreen {
                     .h(30.)
                     .pad(10.)
                     .selected(current == nodes)
-                    .on_click(move |window, cx| {
-                        this.update(cx, |screen, cx| {
-                            screen.set_backward_nodes(nodes, window, cx)
-                        })
-                    }),
+                    .on_click(this.listen(move |screen, window, cx| {
+                        screen.set_backward_nodes(nodes, window, cx)
+                    })),
             );
         }
         let field = v_flex()

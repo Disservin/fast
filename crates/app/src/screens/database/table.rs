@@ -51,7 +51,6 @@ impl DatabaseScreen {
                         .font_weight(FontWeight::SEMIBOLD),
                     )
                     .child({
-                        let this = this.clone();
                         btn(
                             "toggle-filters",
                             if filtered > 0 {
@@ -62,12 +61,10 @@ impl DatabaseScreen {
                         )
                         .compact()
                         .selected(self.filters_open)
-                        .on_click(move |_, cx| {
-                            this.update(cx, |screen, cx| {
-                                screen.filters_open = !screen.filters_open;
-                                cx.notify();
-                            });
-                        })
+                        .on_click(this.listen(move |screen, _, cx| {
+                            screen.filters_open = !screen.filters_open;
+                            cx.notify();
+                        }))
                     })
                     .when(filtered > 0, |row| {
                         row.child({
@@ -84,7 +81,6 @@ impl DatabaseScreen {
                 h_flex()
                     .gap(px(6.))
                     .when_some(self.reviewing.as_ref(), |row, reviewing| {
-                        let this = this.clone();
                         row.when(reviewing.engines == 1, |row| {
                             row.child(
                                 mono(ui::i18n::tf(
@@ -118,18 +114,15 @@ impl DatabaseScreen {
                                 },
                             )
                             .compact()
-                            .on_click(move |_, cx| {
-                                this.update(cx, |screen, cx| screen.toggle_review_pause(cx));
-                            }),
+                            .on_click(
+                                this.listen(move |screen, _, cx| screen.toggle_review_pause(cx)),
+                            ),
                         )
                     })
                     .child({
-                        let this = this.clone();
-                        btn("import-games", "Import games")
-                            .compact()
-                            .on_click(move |window, cx| {
-                                this.update(cx, |screen, cx| screen.prompt_import(window, cx));
-                            })
+                        btn("import-games", "Import games").compact().on_click(
+                            this.listen(move |screen, window, cx| screen.prompt_import(window, cx)),
+                        )
                     })
                     .child(
                         Button::new("database-more-actions")

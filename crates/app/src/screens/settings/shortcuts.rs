@@ -293,11 +293,9 @@ impl SettingsScreen {
                                         .h(28.)
                                         .pad(10.)
                                         .disabled(current.is_empty())
-                                        .on_click(move |_, cx| {
-                                            clear_this.update(cx, |screen, cx| {
-                                                screen.assign_shortcut(action, String::new(), cx);
-                                            });
-                                        }),
+                                        .on_click(clear_this.listen(move |screen, _, cx| {
+                                            screen.assign_shortcut(action, String::new(), cx);
+                                        })),
                                 )
                                 .child(
                                     btn(("reset-shortcut", index), "Reset")

@@ -284,9 +284,7 @@ impl DatabaseScreen {
                             .tooltip(ui::i18n::t(
                                 "Saving in Analyse updates this game. Double-click a row to open it.",
                             ))
-                            .on_click(move |window, cx| {
-                                this.update(cx, |screen, cx| screen.open_in_analyse(window, cx));
-                            }),
+                            .on_click(this.listen(move |screen, window, cx| screen.open_in_analyse(window, cx))),
                     )
                     .child(
                         icon_btn("edit-game", "icons/pencil.svg")

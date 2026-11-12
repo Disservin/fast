@@ -198,9 +198,7 @@ impl TrainScreen {
                             .disabled(
                                 !shown_leaks(&model.leaks).any(|leak| leak.prepared.is_some()),
                             )
-                            .on_click(move |_, cx| {
-                                this.update(cx, |screen, cx| screen.drill_leaks(cx));
-                            }),
+                            .on_click(this.listen(move |screen, _, cx| screen.drill_leaks(cx))),
                     ),
             )
     }

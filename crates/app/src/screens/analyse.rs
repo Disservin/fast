@@ -25,7 +25,7 @@ use ui::{
     Arrow, BoardEvent, BoardView, MONO, T,
     scoresheet::{ScoresheetProps, scoresheet_body, scoresheet_inline},
     timeline::{TimelineProps, timeline},
-    widgets::{TextExt, btn, h_flex, icon_btn, mono, panel, section_label, v_flex},
+    widgets::{Listen, TextExt, btn, h_flex, icon_btn, mono, panel, section_label, v_flex},
 };
 
 use crate::{

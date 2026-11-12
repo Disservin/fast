@@ -28,11 +28,11 @@ pub(super) fn board_check(
     this: Entity<SettingsScreen>,
     set: fn(&mut crate::config::BoardConfig, bool),
 ) -> impl IntoElement {
-    div().child(check(id, value, label).on_change(move |value, _, cx| {
-        this.update(cx, |screen, cx| {
+    div().child(
+        check(id, value, label).on_change(this.listen_with(move |screen, value, _, cx| {
             screen.update_board(cx, |board| set(board, value));
-        });
-    }))
+        })),
+    )
 }
 
 impl SettingsScreen {
@@ -192,7 +192,6 @@ impl SettingsScreen {
             );
         }
         let coords_this = this.clone();
-        let notation_this = this.clone();
         let check_row = h_flex()
             .flex_wrap()
             .gap_x(px(24.))
@@ -350,17 +349,14 @@ impl SettingsScreen {
                 .into_iter()
                 .enumerate()
                 {
-                    let this = notation_this.clone();
                     row = row.child(
                         btn(("notation", index), label)
                             .mono()
                             .pad(10.)
                             .selected(config.notation == value)
-                            .on_click(move |_, cx| {
-                                this.update(cx, |screen, cx| {
-                                    screen.update_board(cx, |board| board.notation = value);
-                                });
-                            }),
+                            .on_click(this.listen(move |screen, _, cx| {
+                                screen.update_board(cx, |board| board.notation = value);
+                            })),
                     );
                 }
                 row

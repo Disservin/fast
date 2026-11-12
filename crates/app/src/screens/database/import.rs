@@ -259,12 +259,10 @@ impl DatabaseScreen {
             keep,
             "Keep comments and variations",
         )
-        .on_change(move |value, _, cx| {
-            model.update(cx, |model, cx| {
-                model.config.import_keep_annotations = value;
-                model.save_config(cx);
-            });
-        });
+        .on_change(model.listen_with(move |model, value, _, cx| {
+            model.config.import_keep_annotations = value;
+            model.save_config(cx);
+        }));
         let mut body = v_flex()
             .px(px(16.))
             .py(px(14.))
@@ -308,19 +306,19 @@ impl DatabaseScreen {
                     )));
                 let (cancel, choose) = (this.clone(), this.clone());
                 footer
-                    .child(btn("import-cancel", "Cancel").on_click(move |_, cx| {
-                        cancel.update(cx, |screen, cx| {
+                    .child(btn("import-cancel", "Cancel").on_click(cancel.listen(
+                        move |screen, _, cx| {
                             screen.import_dialog = false;
                             cx.notify();
-                        })
-                    }))
+                        },
+                    )))
                     .child(
                         btn("import-choose", "Choose PGN file…")
                             .primary()
                             .disabled(self.downloading.is_some())
-                            .on_click(move |_, cx| {
-                                choose.update(cx, |screen, cx| screen.choose_import_file(cx))
-                            }),
+                            .on_click(
+                                choose.listen(move |screen, _, cx| screen.choose_import_file(cx)),
+                            ),
                     )
             }
             ImportSource::Site(site) => {
@@ -394,22 +392,20 @@ impl DatabaseScreen {
                                     self.download_clocks,
                                     "Include clocks and evaluations",
                                 )
-                                .on_change(move |value, _, cx| {
-                                    clocks_this.update(cx, |screen, cx| {
+                                .on_change(
+                                    clocks_this.listen_with(move |screen, value, _, cx| {
                                         screen.download_clocks = value;
                                         cx.notify();
-                                    })
-                                }),
+                                    }),
+                                ),
                             )
                         })
                         .child(
                             check("download-is-me", self.download_is_me, "This is my account")
-                                .on_change(move |value, _, cx| {
-                                    me_this.update(cx, |screen, cx| {
-                                        screen.download_is_me = value;
-                                        cx.notify();
-                                    })
-                                }),
+                                .on_change(me_this.listen_with(move |screen, value, _, cx| {
+                                    screen.download_is_me = value;
+                                    cx.notify();
+                                })),
                         )
                         .child(div().text_as(13., T.muted).child(ui::i18n::tf(
                             "Fast connects to {} to fetch the games. Nothing else is sent.",
@@ -428,12 +424,10 @@ impl DatabaseScreen {
                     close_button
                 };
                 footer
-                    .child(close_button.on_click(move |_, cx| {
-                        close.update(cx, |screen, cx| {
-                            screen.import_dialog = false;
-                            cx.notify();
-                        })
-                    }))
+                    .child(close_button.on_click(close.listen(move |screen, _, cx| {
+                        screen.import_dialog = false;
+                        cx.notify();
+                    })))
                     .child(if running {
                         btn("download-stop", "Cancel download")
                             .disabled(
@@ -441,21 +435,19 @@ impl DatabaseScreen {
                                     .as_ref()
                                     .is_some_and(|running| running.control.is_cancelled()),
                             )
-                            .on_click(move |_, cx| {
-                                act.update(cx, |screen, cx| {
-                                    if let Some(running) = &screen.downloading {
-                                        running.control.cancel();
-                                    }
-                                    cx.notify();
-                                })
-                            })
+                            .on_click(act.listen(move |screen, _, cx| {
+                                if let Some(running) = &screen.downloading {
+                                    running.control.cancel();
+                                }
+                                cx.notify();
+                            }))
                     } else {
                         btn("download-start", "Download games")
                             .primary()
                             .disabled(self.importing.is_some())
-                            .on_click(move |_, cx| {
-                                act.update(cx, |screen, cx| screen.download_from_dialog(cx))
-                            })
+                            .on_click(
+                                act.listen(move |screen, _, cx| screen.download_from_dialog(cx)),
+                            )
                     })
             }
         };
@@ -502,12 +494,12 @@ impl DatabaseScreen {
                     .py(px(12.))
                     .border_t_1()
                     .border_color(rgb(T.border))
-                    .child(btn("reimport-cancel", "Cancel").on_click(move |_, cx| {
-                        cancel.update(cx, |screen, cx| {
+                    .child(btn("reimport-cancel", "Cancel").on_click(cancel.listen(
+                        move |screen, _, cx| {
                             screen.confirm_reimport = None;
                             cx.notify();
-                        })
-                    }))
+                        },
+                    )))
                     .child(btn("reimport-confirm", "Re-import").primary().on_click(
                         move |_, cx| confirm.update(cx, |screen, cx| screen.reimport_confirmed(cx)),
                     )),

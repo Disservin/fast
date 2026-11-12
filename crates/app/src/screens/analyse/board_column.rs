@@ -255,14 +255,11 @@ impl AnalyseScreen {
         let nav = |id: &'static str,
                    icon: &'static str,
                    tip: &'static str,
-                   this: Entity<Self>,
                    action: fn(&mut Self, &mut Window, &mut Context<Self>)| {
             icon_btn(id, icon)
                 .w(nav_width)
                 .tooltip(tip)
-                .on_click(move |window, cx| {
-                    this.update(cx, |screen, cx| action(screen, window, cx));
-                })
+                .on_click(this.listen(action))
         };
         let copy_menu = self.render_copy_menu(nav_width, cx);
         let flip_tip = match self.model.read(cx).config.shortcuts.get("flip_board") {
@@ -327,28 +324,24 @@ impl AnalyseScreen {
                                 "first",
                                 "icons/skip-back.svg",
                                 ui::i18n::t("First move"),
-                                this.clone(),
                                 Self::go_first,
                             ))
                             .child(nav(
                                 "prev",
                                 "icons/chevron-left.svg",
                                 ui::i18n::t("Previous move"),
-                                this.clone(),
                                 |s, w, c| s.step(-1, w, c),
                             ))
                             .child(nav(
                                 "next",
                                 "icons/chevron-right.svg",
                                 ui::i18n::t("Next move"),
-                                this.clone(),
                                 |s, w, c| s.step(1, w, c),
                             ))
                             .child(nav(
                                 "last",
                                 "icons/skip-forward.svg",
                                 ui::i18n::t("Last move"),
-                                this.clone(),
                                 Self::go_last,
                             ))
                             .when(!compact, |row| row.child(move_counter.ml(px(6.)))),
@@ -562,7 +555,6 @@ impl AnalyseScreen {
                             .gap(px(8.))
                             .child(section_label("Game graph"))
                             .child({
-                                let this = this.clone();
                                 let running = self.backward.is_some();
                                 let nodes = self.model.read(cx).config.backward_nodes;
                                 btn(
@@ -575,9 +567,7 @@ impl AnalyseScreen {
                                     "Search every position from the last move to the first, {} each (Settings › Analysis)",
                                     engine::format_nodes(nodes)
                                 ))
-                                .on_click(move |window, cx| {
-                                    this.update(cx, |screen, cx| screen.toggle_backward(window, cx));
-                                })
+                                .on_click(this.listen(move |screen, window, cx| screen.toggle_backward(window, cx)))
                             }),
                     )
                     .child(tabs),

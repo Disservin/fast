@@ -9,7 +9,6 @@ impl DatabaseScreen {
         let reached = self.reached;
         let only_left = self.only_left_rep;
         let only_annotated = self.only_annotated;
-        let reached_this = this.clone();
         let (only_this, annotated_this, more_this, save_this) =
             (this.clone(), this.clone(), this.clone(), this.clone());
         // Number pairs as one line: min – max.
@@ -73,11 +72,9 @@ impl DatabaseScreen {
                             .left()
                             .icon("icons/search.svg")
                             .tooltip("Right-click to delete")
-                            .on_click(move |window, cx| {
-                                apply.update(cx, |screen, cx| {
-                                    screen.apply_saved_search(index, window, cx)
-                                });
-                            }),
+                            .on_click(apply.listen(move |screen, window, cx| {
+                                screen.apply_saved_search(index, window, cx)
+                            })),
                     )
                     .context_menu(move |menu, _, _| {
                         let delete = delete.clone();
@@ -128,12 +125,10 @@ impl DatabaseScreen {
                     only_left,
                     "Only games where I left my repertoire",
                 )
-                .on_change(move |value, _, cx| {
-                    only_this.update(cx, |screen, cx| {
-                        screen.only_left_rep = value;
-                        screen.schedule_filter(cx);
-                    });
-                }),
+                .on_change(only_this.listen_with(move |screen, value, _, cx| {
+                    screen.only_left_rep = value;
+                    screen.schedule_filter(cx);
+                })),
             );
         v_flex()
             .id("database-left")
@@ -157,11 +152,9 @@ impl DatabaseScreen {
                         btn("save-search", "Save search")
                             .mini()
                             .tooltip("Save these filters under a name")
-                            .on_click(move |window, cx| {
-                                save_this.update(cx, |screen, cx| {
-                                    screen.start_saving_search(window, cx)
-                                });
-                            }),
+                            .on_click(save_this.listen(move |screen, window, cx| {
+                                screen.start_saving_search(window, cx)
+                            })),
                     ),
             )
             .when_some(self.saving_search.clone(), |column, input| {
@@ -199,9 +192,9 @@ impl DatabaseScreen {
                 div().mb(px(8.)).child(
                     check("reached", reached, "Reached the Analyse board position")
                         .text(13.)
-                        .on_change(move |value, _, cx| {
-                            reached_this.update(cx, |screen, cx| screen.toggle_reached(value, cx));
-                        }),
+                        .on_change(this.listen_with(move |screen, value, _, cx| {
+                            screen.toggle_reached(value, cx)
+                        })),
                 ),
             )
             .child(
@@ -218,12 +211,10 @@ impl DatabaseScreen {
                             } else {
                                 "icons/chevron-right.svg"
                             })
-                            .on_click(move |_, cx| {
-                                more_this.update(cx, |screen, cx| {
-                                    screen.more_filters = !screen.more_filters;
-                                    cx.notify();
-                                });
-                            }),
+                            .on_click(more_this.listen(move |screen, _, cx| {
+                                screen.more_filters = !screen.more_filters;
+                                cx.notify();
+                            })),
                     )
                     .when(hidden > 0, |row| row.child(badge(hidden.to_string()))),
             )
@@ -361,9 +352,9 @@ impl DatabaseScreen {
                 .child(
                     btn("build-structure-index", "Build structure index")
                         .compact()
-                        .on_click(move |_, cx| {
-                            build.update(cx, |screen, cx| screen.build_pattern_index(cx))
-                        }),
+                        .on_click(
+                            build.listen(move |screen, _, cx| screen.build_pattern_index(cx)),
+                        ),
                 );
         }
         body.into_any_element()

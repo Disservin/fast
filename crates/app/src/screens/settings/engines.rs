@@ -461,7 +461,7 @@ impl SettingsScreen {
                     .child(btn(("engine-site", index), "Website").h(30.).on_click(move |_, cx| cx.open_url(&homepage)))
                     .child(btn(("engine-source", index), ui::i18n::t("Source")).h(30.).on_click(move |_, cx| cx.open_url(&source)))
                     .child(btn(("engine-install", index), if installed { ui::i18n::t("Installed") } else if downloaded { ui::i18n::t("Retry engine check") } else { ui::i18n::t("Download & install") }).h(30.).disabled(busy || !supported || installed)
-                        .on_click(move |_, cx| this.update(cx, |screen, cx| screen.download_engine(index, cx)))));
+                        .on_click(this.listen(move |screen, _, cx| screen.download_engine(index, cx)))));
                 }
             }
         }
@@ -472,7 +472,7 @@ impl SettingsScreen {
             let this = cx.entity();
             body = body.child(
                 btn("cancel-engine-install", ui::i18n::t("Cancel download"))
-                    .on_click(move |_, cx| this.update(cx, |screen, cx| screen.cancel_install(cx))),
+                    .on_click(this.listen(move |screen, _, cx| screen.cancel_install(cx))),
             );
         }
         panel().p(px(16.)).child(body)

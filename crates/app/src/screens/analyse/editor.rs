@@ -7,7 +7,7 @@ use chess_core::{
 use gpui::{Context, IntoElement, MouseButton, SharedString, div, img, prelude::*, px, rgb};
 use ui::{
     T,
-    widgets::{TextExt, btn, check, h_flex, icon_btn, v_flex},
+    widgets::{Listen, TextExt, btn, check, h_flex, icon_btn, v_flex},
 };
 
 use super::AnalyseScreen;
@@ -281,38 +281,31 @@ impl AnalyseScreen {
             }
             row
         };
-        let erase_this = this.clone();
         let eraser = icon_btn("brush-erase", "icons/x.svg")
             .w(cell)
             .h(cell)
             .selected(editor.brush.is_none())
             .tooltip(ui::i18n::t("Erase (or right-click a square)"))
-            .on_click(move |_, cx| {
-                erase_this.update(cx, |screen, cx| {
-                    screen.edit_position(cx, |editor| editor.brush = None);
-                });
-            });
+            .on_click(this.listen(move |screen, _, cx| {
+                screen.edit_position(cx, |editor| editor.brush = None);
+            }));
         let side = |color: Color| {
             let label = if color.is_white() {
                 ui::i18n::t("White")
             } else {
                 ui::i18n::t("Black")
             };
-            let turn_this = this.clone();
             btn(("editor-turn", color as u32), label)
                 .h(30.)
                 .pad(10.)
                 .text(13.)
                 .selected(editor.turn == color)
-                .on_click(move |_, cx| {
-                    turn_this.update(cx, |screen, cx| {
-                        screen.edit_position(cx, |editor| editor.turn = color);
-                    });
-                })
+                .on_click(this.listen(move |screen, _, cx| {
+                    screen.edit_position(cx, |editor| editor.turn = color);
+                }))
         };
         // One row per side: its name, then O-O and O-O-O.
         let castle = |index: usize| {
-            let castle_this = this.clone();
             div().w(px(84.)).flex_none().child(
                 check(
                     ("editor-castle", index),
@@ -320,11 +313,9 @@ impl AnalyseScreen {
                     CASTLING[index].1,
                 )
                 .text(13.)
-                .on_change(move |value, _, cx| {
-                    castle_this.update(cx, |screen, cx| {
-                        screen.edit_position(cx, |editor| editor.castling[index] = value);
-                    });
-                }),
+                .on_change(this.listen_with(move |screen, value, _, cx| {
+                    screen.edit_position(cx, |editor| editor.castling[index] = value);
+                })),
             )
         };
         let castle_row = |label: &'static str, first: usize| {
@@ -339,7 +330,6 @@ impl AnalyseScreen {
                 .child(castle(first))
                 .child(castle(first + 1))
         };
-        let chess960_this = this.clone();
         let castling = v_flex()
             .gap(px(4.))
             .child(
@@ -349,11 +339,9 @@ impl AnalyseScreen {
                     .child(
                         check("editor-chess960", editor.is_chess960(), "Chess960")
                             .text(13.)
-                            .on_change(move |value, _, cx| {
-                                chess960_this.update(cx, |screen, cx| {
-                                    screen.edit_position(cx, |editor| editor.set_chess960(value));
-                                });
-                            }),
+                            .on_change(this.listen_with(move |screen, value, _, cx| {
+                                screen.edit_position(cx, |editor| editor.set_chess960(value));
+                            })),
                     ),
             )
             .child(castle_row(ui::i18n::t("White"), 0))
@@ -362,9 +350,6 @@ impl AnalyseScreen {
             Ok(pos) => (GameTree::fen_of(&pos), T.muted),
             Err(reason) => (reason, T.warn),
         };
-        let start_this = this.clone();
-        let clear_this = this.clone();
-        let cancel_this = this.clone();
         let done_this = this.clone();
         let tool = |id: &'static str, label: &'static str| btn(id, label).h(30.).pad(10.).text(13.);
         v_flex()
@@ -410,32 +395,29 @@ impl AnalyseScreen {
             .child(
                 h_flex()
                     .gap(px(6.))
-                    .child(
-                        tool("editor-start", "Start position").on_click(move |_, cx| {
-                            start_this.update(cx, |screen, cx| {
-                                screen.edit_position(cx, |editor| {
-                                    let brush = editor.brush;
-                                    *editor = PositionEditor::from_position(&Chess::default());
-                                    editor.brush = brush;
-                                });
+                    .child(tool("editor-start", "Start position").on_click(this.listen(
+                        move |screen, _, cx| {
+                            screen.edit_position(cx, |editor| {
+                                let brush = editor.brush;
+                                *editor = PositionEditor::from_position(&Chess::default());
+                                editor.brush = brush;
                             });
-                        }),
-                    )
+                        },
+                    )))
                     .child(
-                        tool("editor-clear", ui::i18n::t("Clear")).on_click(move |_, cx| {
-                            clear_this.update(cx, |screen, cx| {
+                        tool("editor-clear", ui::i18n::t("Clear")).on_click(this.listen(
+                            move |screen, _, cx| {
                                 screen.edit_position(cx, |editor| {
                                     editor.board = Board::empty();
                                     editor.castling = [false; 4];
                                 });
-                            });
-                        }),
+                            },
+                        )),
                     )
                     .child(div().flex_1())
                     .child(
-                        tool("editor-cancel", ui::i18n::t("Cancel")).on_click(move |_, cx| {
-                            cancel_this.update(cx, |screen, cx| screen.close_editor(cx));
-                        }),
+                        tool("editor-cancel", ui::i18n::t("Cancel"))
+                            .on_click(this.listen(move |screen, _, cx| screen.close_editor(cx))),
                     )
                     .child(tool("editor-done", ui::i18n::t("Done")).primary().on_click(
                         move |window, cx| {

@@ -277,7 +277,6 @@ impl AnalyseScreen {
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
         let this = cx.entity();
-        let toggle_this = this.clone();
         let item = |id: &'static str, label: &'static str, hint: &'static str| {
             h_flex()
                 .id(id)
@@ -292,7 +291,7 @@ impl AnalyseScreen {
                 .child(div().text_as(12., T.muted).child(hint))
         };
         let fen_this = this.clone();
-        let pgn_this = this;
+        let pgn_this = this.clone();
         let menu = self.copy_menu.then(|| {
             deferred(
                 v_flex()
@@ -330,12 +329,10 @@ impl AnalyseScreen {
                     .w(width)
                     .selected(self.copy_menu)
                     .tooltip(ui::i18n::t("Copy FEN or PGN"))
-                    .on_click(move |_, cx| {
-                        toggle_this.update(cx, |screen, cx| {
-                            screen.copy_menu = !screen.copy_menu;
-                            cx.notify();
-                        });
-                    }),
+                    .on_click(this.listen(move |screen, _, cx| {
+                        screen.copy_menu = !screen.copy_menu;
+                        cx.notify();
+                    })),
             )
             .children(menu)
     }

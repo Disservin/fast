@@ -176,19 +176,17 @@ impl Workspace {
                     crate::controls::text_input(&self.path_input).into_any_element()
                 }))
                 .child(
-                    btn("path-ok", ui::i18n::t("Open"))
-                        .primary()
-                        .on_click(move |window, cx| {
-                            this.update(cx, |this, cx| this.submit_path(window, cx));
-                        }),
+                    btn("path-ok", ui::i18n::t("Open")).primary().on_click(
+                        this.listen(move |this, window, cx| this.submit_path(window, cx)),
+                    ),
                 )
                 .child(
-                    btn("path-cancel", ui::i18n::t("Cancel")).on_click(move |_, cx| {
-                        cancel.update(cx, |model, cx| {
+                    btn("path-cancel", ui::i18n::t("Cancel")).on_click(cancel.listen(
+                        move |model, _, cx| {
                             model.pending_path = None;
                             cx.notify();
-                        });
-                    }),
+                        },
+                    )),
                 ),
         )
     }
@@ -301,14 +299,12 @@ impl Workspace {
                 } else {
                     "Engines stopped. Press Space to start; click for engine settings."
                 })
-                .on_click(move |window, cx| {
-                    this.update(cx, |this, cx| {
-                        this.settings.update(cx, |settings, cx| {
-                            settings.set_page(SettingsPage::Engines, window, cx);
-                        });
-                        this.set_mode(Mode::Settings, cx);
+                .on_click(this.listen(move |this, window, cx| {
+                    this.settings.update(cx, |settings, cx| {
+                        settings.set_page(SettingsPage::Engines, window, cx);
                     });
-                }),
+                    this.set_mode(Mode::Settings, cx);
+                })),
         )
     }
 
@@ -436,9 +432,10 @@ impl Workspace {
                             .mono()
                             .full()
                             .selected(self.search_selected == Some(index))
-                            .on_click(move |_, cx| {
-                                target.update(cx, |this, cx| this.open_search_result(index, cx));
-                            }),
+                            .on_click(
+                                target
+                                    .listen(move |this, _, cx| this.open_search_result(index, cx)),
+                            ),
                         ),
                     );
                 }
@@ -457,16 +454,14 @@ impl Workspace {
                 .w(48.)
                 .selected(settings_active)
                 .tooltip(ui::i18n::t("Settings"))
-                .on_click(move |_, cx| {
-                    this.update(cx, |this, cx| {
-                        let next = if this.mode == Mode::Settings {
-                            Mode::Analyse
-                        } else {
-                            Mode::Settings
-                        };
-                        this.set_mode(next, cx);
-                    });
-                }),
+                .on_click(this.listen(move |this, _, cx| {
+                    let next = if this.mode == Mode::Settings {
+                        Mode::Analyse
+                    } else {
+                        Mode::Settings
+                    };
+                    this.set_mode(next, cx);
+                })),
         )
         .when(controls, |row| row.child(window_controls(window)))
         // Clicks here must not start a window drag.

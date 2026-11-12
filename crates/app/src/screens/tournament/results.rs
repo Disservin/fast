@@ -271,12 +271,10 @@ impl TournamentScreen {
                         .child(
                             btn("tournament-copy-config", "Copy config")
                                 .full()
-                                .on_click(move |_, cx| {
-                                    copy_config.update(cx, |screen, cx| {
-                                        screen.menu_open = false;
-                                        screen.copy_config(cx)
-                                    })
-                                }),
+                                .on_click(copy_config.listen(move |screen, _, cx| {
+                                    screen.menu_open = false;
+                                    screen.copy_config(cx)
+                                })),
                         ),
                 )
                 .with_priority(1)
@@ -286,12 +284,10 @@ impl TournamentScreen {
             .child(
                 btn("tournament-more", "⋯")
                     .tooltip(ui::i18n::t("More actions"))
-                    .on_click(move |_, cx| {
-                        more.update(cx, |screen, cx| {
-                            screen.menu_open = !screen.menu_open;
-                            cx.notify();
-                        })
-                    }),
+                    .on_click(more.listen(move |screen, _, cx| {
+                        screen.menu_open = !screen.menu_open;
+                        cx.notify();
+                    })),
             )
             .children(menu);
 
@@ -317,14 +313,14 @@ impl TournamentScreen {
                 row.child(
                     btn("tournament-watch-all", "Watch all live")
                         .primary()
-                        .on_click(move |_, cx| watch.update(cx, |screen, cx| screen.watch_all(cx))),
+                        .on_click(watch.listen(move |screen, _, cx| screen.watch_all(cx))),
                 )
             })
             .when(!run.active(), |row| {
                 let new = this.clone();
                 row.child(
                     btn("tournament-new", ui::i18n::t("New tournament"))
-                        .on_click(move |_, cx| new.update(cx, |screen, cx| screen.open_setup(cx))),
+                        .on_click(new.listen(move |screen, _, cx| screen.open_setup(cx))),
                 )
             })
             .when(can_resume, |row| {
@@ -571,12 +567,10 @@ impl TournamentScreen {
                 },
             )
             .mini()
-            .on_click(move |_, cx| {
-                this.update(cx, |screen, cx| {
-                    screen.live_all = !screen.live_all;
-                    cx.notify();
-                })
-            })
+            .on_click(this.listen(move |screen, _, cx| {
+                screen.live_all = !screen.live_all;
+                cx.notify();
+            }))
         });
         let shown = if self.live_all {
             usize::MAX
@@ -743,7 +737,7 @@ impl TournamentScreen {
                     btn("tournament-new-empty", ui::i18n::t("New tournament"))
                         .primary()
                         .h(38.)
-                        .on_click(move |_, cx| new.update(cx, |screen, cx| screen.open_setup(cx))),
+                        .on_click(new.listen(move |screen, _, cx| screen.open_setup(cx))),
                 ),
             )
             .children(saved)

@@ -365,12 +365,10 @@ impl TournamentScreen {
                     .full()
                     .h(38.)
                     .disabled(busy)
-                    .on_click(move |_, cx| {
-                        start.update(cx, |screen, cx| match screen.source {
-                            Source::Form => screen.start_form(cx),
-                            Source::Paste => screen.start_paste(cx),
-                        })
-                    }),
+                    .on_click(start.listen(move |screen, _, cx| match screen.source {
+                        Source::Form => screen.start_form(cx),
+                        Source::Paste => screen.start_paste(cx),
+                    })),
             );
         ui::widgets::dialog(
             "tournament-setup",

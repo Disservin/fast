@@ -21,7 +21,8 @@ use gpui_component::{
 use ui::{
     BoardEvent, BoardView, MONO, T,
     widgets::{
-        TextExt, btn, check, h_flex, header_tab, mono, panel, section_label, segmented, v_flex,
+        Listen, TextExt, btn, check, h_flex, header_tab, mono, panel, section_label, segmented,
+        v_flex,
     },
 };
 
@@ -756,20 +757,18 @@ impl Render for PlayScreen {
                                         btn("stop-self-play", "Stop")
                                             .compact()
                                             .disabled(!in_game)
-                                            .on_click(move |_, cx| {
-                                                this.update(cx, |screen, cx| screen.resign(cx));
-                                            })
+                                            .on_click(
+                                                this.listen(move |screen, _, cx| screen.resign(cx)),
+                                            )
                                     })
                                     .child({
                                         let this = cx.entity();
                                         btn("analyse-game", "Analyse this game")
                                             .compact()
                                             .disabled(self.game.is_none())
-                                            .on_click(move |window, cx| {
-                                                this.update(cx, |screen, cx| {
-                                                    screen.analyse_game(window, cx)
-                                                });
-                                            })
+                                            .on_click(this.listen(move |screen, window, cx| {
+                                                screen.analyse_game(window, cx)
+                                            }))
                                     }),
                             )
                             .child(self.render_graph(cx))

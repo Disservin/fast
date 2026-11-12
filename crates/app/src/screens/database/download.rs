@@ -363,14 +363,12 @@ impl DatabaseScreen {
                                 btn("cancel-download", ui::i18n::t("Cancel"))
                                     .compact()
                                     .disabled(running.control.is_cancelled())
-                                    .on_click(move |_, cx| {
-                                        this.update(cx, |screen, cx| {
-                                            if let Some(running) = &screen.downloading {
-                                                running.control.cancel();
-                                            }
-                                            cx.notify();
-                                        });
-                                    }),
+                                    .on_click(this.listen(move |screen, _, cx| {
+                                        if let Some(running) = &screen.downloading {
+                                            running.control.cancel();
+                                        }
+                                        cx.notify();
+                                    })),
                             ),
                     )
                     .child(bar),

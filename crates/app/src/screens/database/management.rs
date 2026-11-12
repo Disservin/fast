@@ -405,20 +405,17 @@ impl DatabaseScreen {
                 "Import PGN, PGN.gz or ZIP, or copy a Fast SQLite database."
             })));
         if !busy {
-            let this = this.clone();
             body = body.child(
                 h_flex().child(
                     btn("create-empty-database", "Create empty database")
                         .compact()
-                        .on_click(move |window, cx| {
-                            this.update(cx, |screen, cx| {
-                                if let Some(add) = screen.add_database.take() {
-                                    let name = add.name.read(cx).value().to_string();
-                                    let description = add.description.read(cx).value().to_string();
-                                    screen.create_db(name, description, window, cx);
-                                }
-                            });
-                        }),
+                        .on_click(this.listen(move |screen, window, cx| {
+                            if let Some(add) = screen.add_database.take() {
+                                let name = add.name.read(cx).value().to_string();
+                                let description = add.description.read(cx).value().to_string();
+                                screen.create_db(name, description, window, cx);
+                            }
+                        })),
                 ),
             );
         }
@@ -444,11 +441,9 @@ impl DatabaseScreen {
                     .child(
                         btn("install-twic", "Install latest issue")
                             .compact()
-                            .on_click(move |window, cx| {
-                                install.update(cx, |screen, cx| {
-                                    screen.install_collection(true, window, cx)
-                                });
-                            }),
+                            .on_click(install.listen(move |screen, window, cx| {
+                                screen.install_collection(true, window, cx)
+                            })),
                     ),
             );
         }
@@ -463,14 +458,12 @@ impl DatabaseScreen {
                 .child(
                     btn("cancel-collection", "Cancel")
                         .compact()
-                        .on_click(move |_, cx| {
-                            act.update(cx, |screen, cx| {
-                                if let Some(control) = &screen.collection_control {
-                                    control.cancel();
-                                }
-                                cx.notify();
-                            });
-                        }),
+                        .on_click(act.listen(move |screen, _, cx| {
+                            if let Some(control) = &screen.collection_control {
+                                control.cancel();
+                            }
+                            cx.notify();
+                        })),
                 )
         } else {
             h_flex()
@@ -515,20 +508,17 @@ impl DatabaseScreen {
             })
             .child(field("Description", text_input(&manager.description)))
             .child({
-                let this = this.clone();
                 check(
                     "reference-database",
                     manager.reference,
                     "Use as reference database",
                 )
-                .on_change(move |value, _, cx| {
-                    this.update(cx, |screen, cx| {
-                        if let Some(manager) = &mut screen.manager {
-                            manager.reference = value;
-                        }
-                        cx.notify();
-                    });
-                })
+                .on_change(this.listen_with(move |screen, value, _, cx| {
+                    if let Some(manager) = &mut screen.manager {
+                        manager.reference = value;
+                    }
+                    cx.notify();
+                }))
             });
         if let Some(stats) = &manager.stats {
             body = body.child(
@@ -551,7 +541,6 @@ impl DatabaseScreen {
                             .child(ui::i18n::t("Position index ready")),
                     )
                     .child({
-                        let this = this.clone();
                         btn(
                             "manage-structure-index",
                             if stats.structure_indexed || self.pattern_indexed {
@@ -562,23 +551,21 @@ impl DatabaseScreen {
                         )
                         .compact()
                         .disabled(busy)
-                        .on_click(move |_, cx| {
-                            this.update(cx, |screen, cx| screen.build_pattern_index(cx));
-                        })
+                        .on_click(this.listen(move |screen, _, cx| screen.build_pattern_index(cx)))
                     }),
             );
         } else {
             body = body.child(mono(ui::i18n::t("Loading…")));
         }
-        body = body.child(h_flex().child({ let this = this.clone(); btn("explore-collection", "Explore games").compact().disabled(busy).on_click(move |window, cx| { this.update(cx, |screen, cx| { screen.manager = None; screen.clear_filters(window, cx); }); }) }))
+        body = body.child(h_flex().child({ let this = this.clone(); btn("explore-collection", "Explore games").compact().disabled(busy).on_click(this.listen(move |screen, window, cx| { screen.manager = None; screen.clear_filters(window, cx); })) }))
             .child(section_label("Merge players"))
             .child(div().text_as(13., T.muted).child(ui::i18n::t("Replace this exact player name on both sides of every game.")))
             .child(h_flex().gap(px(8.)).child(div().flex_1().min_w_0().child(text_input(&manager.from))).child(div().flex_1().min_w_0().child(text_input(&manager.into))))
-            .child(h_flex().child({ let this = this.clone(); btn("merge-players", "Merge players").compact().disabled(busy).on_click(move |_, cx| { this.update(cx, |screen, cx| screen.manage_collection(Action::Merge, cx)); }) }))
+            .child(h_flex().child({ let this = this.clone(); btn("merge-players", "Merge players").compact().disabled(busy).on_click(this.listen(move |screen, _, cx| screen.manage_collection(Action::Merge, cx))) }))
             .child(section_label("Clean up"))
             .child(div().text_as(13., T.muted).child(ui::i18n::t("Review the number of games before confirming removal. Different annotations are kept.")))
             .child(h_flex().gap(px(8.)).children([(Action::Duplicates, "Remove duplicates"), (Action::Empty, "Remove empty games")].into_iter().enumerate().map(|(index, (action, label))| {
-                let this = this.clone(); btn(("clean-collection", index), label).compact().disabled(busy).on_click(move |_, cx| { this.update(cx, |screen, cx| screen.manage_collection(action, cx)); })
+                let this = this.clone(); btn(("clean-collection", index), label).compact().disabled(busy).on_click(this.listen(move |screen, _, cx| screen.manage_collection(action, cx)))
             })));
         if self.pattern_control.is_some() {
             let this = this.clone();
@@ -608,57 +595,45 @@ impl DatabaseScreen {
             body = body.child(div().text_as(13., T.warn).child(error.clone()));
         }
         body = body.child(h_flex().child({
-            let this = this.clone();
             btn("remove-managed-database", "Remove database")
                 .compact()
                 .disabled(busy || manager.path == self.model.read(cx).my_games_path())
                 .tooltip(ui::i18n::t("Move to the removed folder"))
-                .on_click(move |_, cx| {
-                    this.update(cx, |screen, cx| {
-                        if let Some(manager) = screen.manager.take() {
-                            screen
-                                .model
-                                .update(cx, |model, cx| model.remove_database(manager.path, cx));
-                        }
-                        cx.notify();
-                    });
-                })
+                .on_click(this.listen(move |screen, _, cx| {
+                    if let Some(manager) = screen.manager.take() {
+                        screen
+                            .model
+                            .update(cx, |model, cx| model.remove_database(manager.path, cx));
+                    }
+                    cx.notify();
+                }))
         }));
         body = body.child(
             h_flex()
                 .justify_end()
                 .gap(px(8.))
                 .child({
-                    let this = this.clone();
                     btn("manage-add-games", "Add games")
                         .compact()
                         .disabled(busy)
-                        .on_click(move |_, cx| {
-                            this.update(cx, |screen, cx| {
-                                screen.manager = None;
-                                screen.choose_import_file(cx);
-                            });
-                        })
+                        .on_click(this.listen(move |screen, _, cx| {
+                            screen.manager = None;
+                            screen.choose_import_file(cx);
+                        }))
                 })
                 .child({
-                    let this = this.clone();
                     btn("manage-export", "Export PGN")
                         .compact()
                         .disabled(busy)
-                        .on_click(move |_, cx| {
-                            this.update(cx, |screen, cx| screen.export_collection(cx));
-                        })
+                        .on_click(this.listen(move |screen, _, cx| screen.export_collection(cx)))
                 })
                 .child({
-                    let this = this.clone();
                     btn("save-collection", "Save")
                         .primary()
                         .disabled(busy)
-                        .on_click(move |_, cx| {
-                            this.update(cx, |screen, cx| {
-                                screen.manage_collection(Action::Save, cx)
-                            });
-                        })
+                        .on_click(this.listen(move |screen, _, cx| {
+                            screen.manage_collection(Action::Save, cx)
+                        }))
                 }),
         );
         Some(dialog(

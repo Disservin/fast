@@ -325,17 +325,14 @@ impl SettingsScreen {
                     .into_iter()
                     .enumerate()
                     .map(|(index, color)| {
-                        let this = this.clone();
                         btn(
                             ("engine-arrow-color", index),
                             if color.is_none() { "Auto" } else { "●" },
                         )
                         .selected(config.arrow_color == color)
-                        .on_click(move |_, cx| {
-                            this.update(cx, |screen, cx| {
-                                screen.set_engine_use(|engine| engine.arrow_color = color, cx)
-                            });
-                        })
+                        .on_click(this.listen(move |screen, _, cx| {
+                            screen.set_engine_use(|engine| engine.arrow_color = color, cx)
+                        }))
                         .dot(color.unwrap_or(T.arrow))
                     }),
                 ),
@@ -346,21 +343,15 @@ impl SettingsScreen {
                            label: &'static str,
                            this: Entity<Self>,
                            set: fn(&mut EngineConfig, bool)| {
-            div().child(check(id, value, label).on_change(move |value, _, cx| {
-                this.update(cx, |screen, cx| {
+            div().child(check(id, value, label).on_change(this.listen_with(
+                move |screen, value, _, cx| {
                     screen.set_engine_use(|config| set(config, value), cx);
-                });
-            }))
+                },
+            )))
         };
-        let bench_this = this.clone();
         let update_model = self.model.clone();
-        let remove_this = this.clone();
-        let restart_this = this.clone();
-        let duplicate_this = this.clone();
         let icon_this = this.clone();
         let reset_icon_this = this.clone();
-        let debug_this = this.clone();
-        let window_this = this.clone();
         let name = config.name.clone();
         let about = config.info.about().map(str::to_owned);
         let has_icon = config.icon.is_some();
@@ -419,23 +410,15 @@ impl SettingsScreen {
                         h_flex()
                             .gap(px(12.))
                             .when(status == Some(EngineStatus::Error), |row| {
-                                row.child(btn("restart-engine", "Restart").h(32.).on_click(move |_, cx| {
-                                    restart_this.update(cx, |screen, cx| screen.restart_engine(cx));
-                                }))
+                                row.child(btn("restart-engine", "Restart").h(32.).on_click(this.listen(move |screen, _, cx| screen.restart_engine(cx))))
                             })
-                            .child(btn("benchmark", "Run benchmark").h(32.).on_click(move |_, cx| {
-                                bench_this.update(cx, |screen, cx| screen.run_benchmark(cx));
-                            }))
+                            .child(btn("benchmark", "Run benchmark").h(32.).on_click(this.listen(move |screen, _, cx| screen.run_benchmark(cx))))
                             .child(btn("check-update", "Check for update").h(32.).on_click(move |_, cx| {
                                 let name = name.clone();
                                 update_model.toast(format!("Compare {name} with the pinned versions under Download engine. Existing installations are kept until you choose a new version."), cx);
                             }))
-                            .child(btn("duplicate-engine", "Duplicate").h(32.).tooltip(ui::i18n::t("Another entry for this binary with its own options, e.g. Lc0 with another network")).on_click(move |window, cx| {
-                                duplicate_this.update(cx, |screen, cx| screen.duplicate_engine(window, cx));
-                            }))
-                            .child(btn("remove-engine", ui::i18n::t("Remove")).h(32.).on_click(move |window, cx| {
-                                remove_this.update(cx, |screen, cx| screen.remove_engine(window, cx));
-                            })),
+                            .child(btn("duplicate-engine", "Duplicate").h(32.).tooltip(ui::i18n::t("Another entry for this binary with its own options, e.g. Lc0 with another network")).on_click(this.listen(move |screen, window, cx| screen.duplicate_engine(window, cx))))
+                            .child(btn("remove-engine", ui::i18n::t("Remove")).h(32.).on_click(this.listen(move |screen, window, cx| screen.remove_engine(window, cx)))),
                     ),
             )
             .children(about.map(|about| {
@@ -453,9 +436,7 @@ impl SettingsScreen {
                     .child(
                         check("engine-debug", debug, "Debug")
                             .text(13.)
-                            .on_change(move |on, _, cx| {
-                                debug_this.update(cx, |screen, cx| screen.set_debug(on, cx));
-                            }),
+                            .on_change(this.listen_with(move |screen, on, _, cx| screen.set_debug(on, cx))),
                     )
                     .child(
                         div()
@@ -463,9 +444,7 @@ impl SettingsScreen {
                             .child(ui::i18n::t("Sends debug on and shows the raw engine output in its own window")),
                     )
                     .when(debug, |row| {
-                        row.child(btn("debug-window", "Open output window").compact().on_click(move |_, cx| {
-                            window_this.update(cx, |screen, cx| screen.open_debug_window(cx));
-                        }))
+                        row.child(btn("debug-window", "Open output window").compact().on_click(this.listen(move |screen, _, cx| screen.open_debug_window(cx))))
                     }),
             )
             .children(self.benchmark.clone().map(|text| {
@@ -564,7 +543,6 @@ impl SettingsScreen {
                         continue;
                     };
                     cell(label, hint.map(str::to_owned), {
-                        let picker = this.clone();
                         let name = option.name.clone();
                         let directory = matches!(
                             name.as_str(),
@@ -588,20 +566,18 @@ impl SettingsScreen {
                                     .min_w_0()
                                     .child(text_input(input).height(30.)),
                             )
-                            .when(can_browse, move |row| {
+                            .when(can_browse, |row| {
                                 row.child(
                                     btn(SharedString::from(format!("browse-{name}")), "Browse…")
                                         .h(30.)
                                         .pad(6.)
-                                        .on_click(move |_, cx| {
-                                            picker.update(cx, |screen, cx| {
-                                                screen.choose_engine_path(
-                                                    Some(name.clone()),
-                                                    directory,
-                                                    cx,
-                                                )
-                                            })
-                                        }),
+                                        .on_click(this.listen(move |screen, _, cx| {
+                                            screen.choose_engine_path(
+                                                Some(name.clone()),
+                                                directory,
+                                                cx,
+                                            )
+                                        })),
                                 )
                             })
                             .into_any_element()
@@ -683,8 +659,6 @@ impl SettingsScreen {
         for (index, profile) in config.profiles.iter().enumerate() {
             let name = profile.name.clone();
             let active = matching.as_deref() == Some(name.as_str());
-            let apply_this = this.clone();
-            let delete_this = this.clone();
             let delete_name = name.clone();
             chips = chips.child(
                 h_flex()
@@ -696,16 +670,13 @@ impl SettingsScreen {
                             .text(13.)
                             .selected(active)
                             .tooltip(format!("{} options", profile.options.len()))
-                            .on_click(move |window, cx| {
-                                apply_this.update(cx, |screen, cx| {
-                                    screen.apply_profile(&name, window, cx);
-                                });
-                            }),
+                            .on_click(this.listen(move |screen, window, cx| {
+                                screen.apply_profile(&name, window, cx);
+                            })),
                     )
-                    .child(icon_x(("profile-delete", index)).on_click(move |_, cx| {
-                        delete_this
-                            .update(cx, |screen, cx| screen.delete_profile(&delete_name, cx));
-                    })),
+                    .child(icon_x(("profile-delete", index)).on_click(
+                        this.listen(move |screen, _, cx| screen.delete_profile(&delete_name, cx)),
+                    )),
             );
         }
         if config.profiles.is_empty() {
@@ -727,9 +698,11 @@ impl SettingsScreen {
                         btn("profile-save", "Save current")
                             .h(30.)
                             .pad(10.)
-                            .on_click(move |window, cx| {
-                                save_this.update(cx, |screen, cx| screen.save_profile(window, cx));
-                            }),
+                            .on_click(
+                                save_this.listen(move |screen, window, cx| {
+                                    screen.save_profile(window, cx)
+                                }),
+                            ),
                     ),
             ),
         )

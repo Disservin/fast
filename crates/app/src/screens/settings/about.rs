@@ -93,10 +93,10 @@ impl SettingsScreen {
             .child(ui::i18n::t("Check for a new Fast release. Updates keep your settings, databases and engines."))
             .child(h_flex().gap(px(8.))
                 .child(btn("check-fast-update", "Check for updates").compact().disabled(busy)
-                    .on_click(move |_, cx| check_this.update(cx, |screen, cx| screen.check_app_update(cx))))
+                    .on_click(check_this.listen(move |screen, _, cx| screen.check_app_update(cx))))
                 .when(self.app_update.is_some(), |row| row.child(
                     btn("install-fast-update", "Download and install update").compact().primary().disabled(busy)
-                        .on_click(move |_, cx| install_this.update(cx, |screen, cx| screen.install_app_update(cx))))))
+                        .on_click(install_this.listen(move |screen, _, cx| screen.install_app_update(cx))))))
             .children(self.app_update.as_ref().map(|update| h_flex().gap(px(8.))
                 .child(ui::i18n::t("Available version"))
                 .child(mono(update.version.clone()))))
@@ -177,7 +177,7 @@ impl SettingsScreen {
             .child("Update opening names and ECO codes from Lichess. Updates apply immediately and are saved for offline use. Bundled data is the fallback.")
             .child(btn("update-opening-data", if self.opening_task.is_some() { "Updating…" } else { "Update opening data" })
                 .disabled(self.opening_task.is_some())
-                .on_click(move |_, cx| this.update(cx, |screen, cx| screen.update_opening_data(cx))))
+                .on_click(this.listen(move |screen, _, cx| screen.update_opening_data(cx))))
             .children(self.opening_status.clone()))
     }
 

@@ -22,7 +22,8 @@ use ui::{
     MONO, T,
     board::theme_swatch,
     widgets::{
-        TextExt, badge, btn, check, h_flex, key_cap, mono, panel, section_label, segmented, v_flex,
+        Listen, TextExt, badge, btn, check, h_flex, key_cap, mono, panel, section_label, segmented,
+        v_flex,
     },
 };
 

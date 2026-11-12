@@ -52,32 +52,26 @@ impl PlayScreen {
         let this = cx.entity();
         let mut grid = div().grid().grid_cols(3).gap(px(6.));
         for (index, (base, increment)) in TIME_CONTROLS.iter().enumerate() {
-            let select_this = this.clone();
             grid = grid.child(
                 btn(("time", index), format!("{base}+{increment}"))
                     .mono()
                     .full()
                     .h(36.)
                     .selected(self.time_index == Some(index))
-                    .on_click(move |_, cx| {
-                        select_this.update(cx, |screen, cx| {
-                            screen.time_index = Some(index);
-                            cx.notify();
-                        });
-                    }),
+                    .on_click(this.listen(move |screen, _, cx| {
+                        screen.time_index = Some(index);
+                        cx.notify();
+                    })),
             );
         }
-        let custom_this = this.clone();
         grid = grid.child(
             btn("time-custom", "Custom")
                 .full()
                 .selected(self.time_index.is_none())
-                .on_click(move |_, cx| {
-                    custom_this.update(cx, |screen, cx| {
-                        screen.time_index = None;
-                        cx.notify();
-                    });
-                }),
+                .on_click(this.listen(move |screen, _, cx| {
+                    screen.time_index = None;
+                    cx.notify();
+                })),
         );
         let colour_button = |id: &'static str,
                              label: &'static str,
@@ -87,14 +81,11 @@ impl PlayScreen {
             btn(id, label)
                 .flex_1()
                 .selected(choice == current)
-                .on_click(move |_, cx| {
-                    this.update(cx, |screen, cx| {
-                        screen.colour = choice;
-                        cx.notify();
-                    });
-                })
+                .on_click(this.listen(move |screen, _, cx| {
+                    screen.colour = choice;
+                    cx.notify();
+                }))
         };
-        let hide_this = this.clone();
         let takeback_this = this.clone();
         let start_this = this.clone();
         let can_start = !self.opponents.is_empty();
@@ -117,7 +108,6 @@ impl PlayScreen {
             .parse::<u16>()
             .ok()
             .filter(|n| *n < 960);
-        let random_this = this.clone();
         let mode_this = this.clone();
         let mode = segmented(
             "play-mode",
@@ -176,12 +166,10 @@ impl PlayScreen {
                 column.child(
                     btn("back-to-engine-game", "Back to game")
                         .compact()
-                        .on_click(move |_, cx| {
-                            back_this.update(cx, |screen, cx| {
-                                screen.show_setup = false;
-                                cx.notify();
-                            });
-                        }),
+                        .on_click(back_this.listen(move |screen, _, cx| {
+                            screen.show_setup = false;
+                            cx.notify();
+                        })),
                 )
             })
             .child(mode.mb(px(14.)))
@@ -270,15 +258,13 @@ impl PlayScreen {
                             btn("random-chess960", "Random")
                                 .icon("icons/dices.svg")
                                 .compact()
-                                .on_click(move |window, cx| {
-                                    random_this.update(cx, |screen, cx| {
-                                        let number = crate::shell::random_chess960_number();
-                                        screen.chess960_number.update(cx, |input, cx| {
-                                            input.set_value(number.to_string(), window, cx)
-                                        });
-                                        cx.notify();
+                                .on_click(this.listen(move |screen, window, cx| {
+                                    let number = crate::shell::random_chess960_number();
+                                    screen.chess960_number.update(cx, |input, cx| {
+                                        input.set_value(number.to_string(), window, cx)
                                     });
-                                }),
+                                    cx.notify();
+                                })),
                         )
                         .child(mono(number.map_or_else(
                             || ui::i18n::t("Enter a number from 0 to 959").to_owned(),
@@ -295,12 +281,12 @@ impl PlayScreen {
                                 self.hide_eval,
                                 "Hide evaluation during the game",
                             )
-                            .on_change(move |value, _, cx| {
-                                hide_this.update(cx, |screen, cx| {
+                            .on_change(this.listen_with(
+                                move |screen, value, _, cx| {
                                     screen.hide_eval = value;
                                     cx.notify();
-                                });
-                            }),
+                                },
+                            )),
                         ),
                     )
                     .child(div().mb(px(12.)).child({
@@ -331,9 +317,10 @@ impl PlayScreen {
                     .full()
                     .h(40.)
                     .disabled(!can_start || self.book_task.is_some())
-                    .on_click(move |window, cx| {
-                        start_this.update(cx, |screen, cx| screen.start_with_book(window, cx));
-                    }),
+                    .on_click(
+                        start_this
+                            .listen(move |screen, window, cx| screen.start_with_book(window, cx)),
+                    ),
             )
             .when(!can_start, |column| {
                 column.child(
@@ -358,12 +345,10 @@ impl PlayScreen {
                     settings.unlimited,
                     "Unlimited time",
                 )
-                .on_change(move |value, _, cx| {
-                    this.update(cx, |screen, cx| {
-                        screen.engine_times[index].unlimited = value;
-                        cx.notify();
-                    });
-                }),
+                .on_change(this.listen_with(move |screen, value, _, cx| {
+                    screen.engine_times[index].unlimited = value;
+                    cx.notify();
+                })),
             )
             .when(!settings.unlimited, |column| {
                 column.child(settings.time.render())
@@ -467,12 +452,12 @@ impl PlayScreen {
                                 choice.full,
                                 "Full strength",
                             )
-                            .on_change(move |value, _, cx| {
-                                this.update(cx, |screen, cx| {
+                            .on_change(this.listen_with(
+                                move |screen, value, _, cx| {
                                     pick(screen).full = value;
                                     cx.notify();
-                                });
-                            }),
+                                },
+                            )),
                         )
                     }),
             )

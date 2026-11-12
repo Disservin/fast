@@ -227,9 +227,7 @@ impl TestPositionsScreen {
                     .child(
                         btn("epd-choose", ui::i18n::t("Choose file…"))
                             .disabled(locked)
-                            .on_click(move |_, cx| {
-                                choose.update(cx, |screen, cx| screen.choose_file(cx))
-                            }),
+                            .on_click(choose.listen(move |screen, _, cx| screen.choose_file(cx))),
                     ),
             )
             .children(self.load_error.clone().map(|err| {
@@ -258,15 +256,13 @@ impl TestPositionsScreen {
                     engine.name.clone(),
                 )
                 .text(13.)
-                .on_change(move |on, _, cx| {
-                    this.update(cx, |screen, cx| {
-                        screen.settings.engines.retain(|e| *e != id);
-                        if on {
-                            screen.settings.engines.push(id);
-                        }
-                        cx.notify();
-                    })
-                }),
+                .on_change(this.listen_with(move |screen, on, _, cx| {
+                    screen.settings.engines.retain(|e| *e != id);
+                    if on {
+                        screen.settings.engines.push(id);
+                    }
+                    cx.notify();
+                })),
             );
         }
         v_flex()
@@ -411,14 +407,14 @@ impl TestPositionsScreen {
                 btn("test-stop", ui::i18n::t("Stop"))
                     .h(38.)
                     .full()
-                    .on_click(move |_, cx| stop.update(cx, |screen, cx| screen.stop(cx)))
+                    .on_click(stop.listen(move |screen, _, cx| screen.stop(cx)))
             } else {
                 btn("test-start", ui::i18n::t("Run test"))
                     .primary()
                     .h(38.)
                     .full()
                     .disabled(self.lines.is_empty())
-                    .on_click(move |_, cx| start.update(cx, |screen, cx| screen.start(cx)))
+                    .on_click(start.listen(move |screen, _, cx| screen.start(cx)))
             })
     }
 }
