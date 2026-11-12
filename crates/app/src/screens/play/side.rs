@@ -420,16 +420,8 @@ impl PlayScreen {
     /// as they update: depth, nodes, hash use and thinking time.
     pub(super) fn render_search_stats(line: &GameAnalysis, time_ms: Option<u64>) -> gpui::Div {
         let dash = || "—".to_owned();
-        let cell = |caption: &'static str, value: String, width: f32| {
-            v_flex()
-                .col_w(width)
-                .gap(px(1.))
-                .child(
-                    div()
-                        .text_as(10., T.faint)
-                        .child(ui::i18n::t(caption).to_uppercase()),
-                )
-                .child(mono(value).whitespace_nowrap().text_as(12., T.fg_2))
+        let cell = |caption, value: String, width| {
+            ui::widgets::figure(caption, value).col_w(width).gap(px(1.))
         };
         let depth = if line.depth == 0 {
             dash()

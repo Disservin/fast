@@ -63,17 +63,7 @@ pub(super) fn drive_strip(disk: crate::storage::DiskSpace, fast: u64) -> Div {
         .child(figure("FAST", format_bytes(fast), T.accent))
         .child(figure("OTHER FILES", format_bytes(others), T.muted))
         .child(figure("FREE", format_bytes(disk.free), T.divider))
-        .child(
-            v_flex()
-                .flex_none()
-                .gap(px(1.))
-                .child(div().text_as(10., T.faint).child(ui::i18n::t("DRIVE")))
-                .child(
-                    mono(format_bytes(disk.total))
-                        .whitespace_nowrap()
-                        .text_as(12., T.fg_2),
-                ),
-        )
+        .child(ui::widgets::figure("Drive", format_bytes(disk.total)).gap(px(1.)))
 }
 
 impl SettingsScreen {

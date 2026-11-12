@@ -68,6 +68,19 @@ pub fn col_heading(width: impl Into<Length> + Clone, label: impl AsRef<str>) -> 
     div().w(width).flex_none().child(section_label(label))
 }
 
+/// A tiny caption over its value, such as DEPTH over `24`: a 10px `faint` caption over
+/// 12px mono `fg_2`.
+pub fn figure(caption: &str, value: impl Into<SharedString>) -> Div {
+    v_flex()
+        .flex_none()
+        .child(
+            div()
+                .text_as(10., T.faint)
+                .child(crate::i18n::t(caption).to_uppercase()),
+        )
+        .child(mono(value).whitespace_nowrap().text_as(12., T.fg_2))
+}
+
 /// A small bordered tag, such as a license or a count.
 pub fn badge(text: impl Into<SharedString>) -> Div {
     h_flex()

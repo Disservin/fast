@@ -298,20 +298,11 @@ impl DatabaseScreen {
             .child(
                 h_flex()
                     .gap(px(14.))
-                    .child(
-                        v_flex()
-                            .child(div().text_as(10., T.faint).child(ui::i18n::t("GAMES")))
-                            .child(mono(format_count(running.games)).text_as(12., T.fg_2)),
-                    )
-                    .child(
-                        v_flex()
-                            .child(
-                                div()
-                                    .text_as(10., T.faint)
-                                    .child(ui::i18n::t("ALREADY STORED")),
-                            )
-                            .child(mono(format_count(running.duplicates)).text_as(12., T.fg_2)),
-                    ),
+                    .child(ui::widgets::figure("Games", format_count(running.games)))
+                    .child(ui::widgets::figure(
+                        "Already stored",
+                        format_count(running.duplicates),
+                    )),
             )
             .child(bar)
             .child(div().text_as(13., T.fg).child(status))

@@ -72,17 +72,6 @@ impl AnalyseScreen {
                 .trim()
                 .to_owned()
         });
-        // Each figure is a tiny caption over its value, like the Engine panel's columns.
-        let figure = |(label, value): (&'static str, String)| {
-            v_flex()
-                .flex_none()
-                .child(
-                    div()
-                        .text_as(10., T.faint)
-                        .child(ui::i18n::t(label).to_uppercase()),
-                )
-                .child(mono(value).whitespace_nowrap().text_as(12., T.fg_2))
-        };
         h_flex()
             .flex_wrap()
             .gap_x(px(14.))
@@ -99,7 +88,11 @@ impl AnalyseScreen {
                             .map(|name| div().text_color(rgb(T.fg_2)).child(name)),
                     )
             }))
-            .children(figures.into_iter().map(figure))
+            .children(
+                figures
+                    .into_iter()
+                    .map(|(label, value)| ui::widgets::figure(label, value)),
+            )
             .into_any_element()
     }
 

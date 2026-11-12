@@ -514,16 +514,6 @@ impl AnalyseScreen {
                     "—".to_owned()
                 }
             });
-        let figure = |label: &'static str, value: String| {
-            v_flex()
-                .flex_none()
-                .child(
-                    div()
-                        .text_as(10., T.faint)
-                        .child(ui::i18n::t(label).to_uppercase()),
-                )
-                .child(mono(value).whitespace_nowrap().text_as(12., T.fg_2))
-        };
         Some(
             h_flex()
                 .mt(px(10.))
@@ -537,8 +527,8 @@ impl AnalyseScreen {
                             .child(kibitz.name.clone()),
                     ),
                 )
-                .child(figure("Eval", score))
-                .child(figure("Depth", depth))
+                .child(ui::widgets::figure("Eval", score))
+                .child(ui::widgets::figure("Depth", depth))
                 .child(
                     mono(best)
                         .flex_1()
