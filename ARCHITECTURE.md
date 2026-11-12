@@ -78,10 +78,12 @@ Code shared across screens lives outside them:
   widget handlers (`this.listen(|screen, window, cx| ...)`), and `StyleExt::text_as` sets text
   size and colour together.
 - `controls.rs`: styled inputs, time and clock inputs, `toggle` (a checkbox bound to a
-  setting) and `Rename`, the inline rename field used by tabs and databases.
+  setting), `choice` (a segmented control bound to a setting) and `Rename`, the inline
+  rename field used by tabs and databases.
 - `event_reader.rs`: `spawn_batched`, the loop that takes engine or test-suite events off a
-  channel in batches and applies them to a view, and `spawn_with_progress`, which runs a
-  download on a background thread and shows its progress messages.
+  channel in batches and applies them to a view, `spawn_job`, which runs one piece of work
+  on a background thread and hands its result to the view, and `spawn_with_progress`, which
+  runs a download on a background thread and shows its progress messages.
 - `model.rs`: `ToastExt` and `ConfigExt` show a toast or change and save the settings through
   a handle to the model.
 - `format.rs`: counts, byte sizes, durations and the current time.
