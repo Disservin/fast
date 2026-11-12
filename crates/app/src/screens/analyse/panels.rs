@@ -294,9 +294,9 @@ impl AnalyseScreen {
         }
         if engines.is_empty() {
             return body
-                .child(div().p(px(16.)).text_as(13., T.muted).child(ui::i18n::t(
+                .child(ui::widgets::note(
                     "No engines yet. Add one in Settings › Engines.",
-                )))
+                ))
                 .into_any_element();
         }
         if tab == EngineTab::Engines {

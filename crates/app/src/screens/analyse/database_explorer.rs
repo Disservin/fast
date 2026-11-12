@@ -201,15 +201,13 @@ impl AnalyseScreen {
                     .child(ui::i18n::tf("Could not query database: {}", &[error])),
             );
         } else if self.reference.is_empty() {
-            rows = rows.child(div().p(px(16.)).text_as(13., T.muted).child(ui::i18n::t(
-                if loading {
-                    "Loading…"
-                } else if database.is_none() {
-                    "Add a database in Settings › Databases."
-                } else {
-                    "No games reach this position."
-                },
-            )));
+            rows = rows.child(ui::widgets::note(if loading {
+                "Loading…"
+            } else if database.is_none() {
+                "Add a database in Settings › Databases."
+            } else {
+                "No games reach this position."
+            }));
         }
         body = body.child(rows);
         if total.games > 0 {

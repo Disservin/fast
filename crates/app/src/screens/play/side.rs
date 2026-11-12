@@ -556,11 +556,7 @@ impl PlayScreen {
             .max_by_key(|(_, line)| line.text.len())
             .map(|(index, _)| index);
         let body = if count == 0 {
-            div()
-                .p(px(16.))
-                .text_as(13., T.muted)
-                .child(ui::i18n::t("Nothing logged yet."))
-                .into_any_element()
+            ui::widgets::note("Nothing logged yet.").into_any_element()
         } else {
             uniform_list(
                 "match-log",

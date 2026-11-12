@@ -204,7 +204,7 @@ impl AnalyseScreen {
             .panel_engine_config(cx)
             .map_or_else(|| "No engine".to_owned(), |config| config.name);
         let tools = h_flex()
-            .h(px(40.))
+            .h(px(44.))
             .px(px(16.))
             .gap(px(10.))
             .border_b_as(T.border)
@@ -296,12 +296,7 @@ impl AnalyseScreen {
             .max_by_key(|(_, line)| line.text.len())
             .map(|(index, _)| index);
         let body: AnyElement = if count == 0 {
-            div()
-                .p(px(16.))
-                .text_as(13., T.muted)
-                .child(ui::i18n::t(
-                    "Nothing logged yet. Start the engine to see its UCI traffic.",
-                ))
+            ui::widgets::note("Nothing logged yet. Start the engine to see its UCI traffic.")
                 .into_any_element()
         } else {
             uniform_list(

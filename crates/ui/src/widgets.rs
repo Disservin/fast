@@ -81,6 +81,14 @@ pub fn figure(caption: &str, value: impl Into<SharedString>) -> Div {
         .child(mono(value).whitespace_nowrap().text_as(12., T.fg_2))
 }
 
+/// A muted, translated note filling an empty panel or list, such as "Nothing logged yet."
+pub fn note(text: impl AsRef<str>) -> Div {
+    div()
+        .p(px(16.))
+        .text_as(13., T.muted)
+        .child(crate::i18n::t(text.as_ref()).to_owned())
+}
+
 /// A small bordered tag, such as a license or a count.
 pub fn badge(text: impl Into<SharedString>) -> Div {
     h_flex()
