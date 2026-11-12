@@ -317,6 +317,9 @@ pub struct BoardView {
     bounds: Bounds<Pixels>,
     animate_serial: u64,
     animate: Vec<(Square, Square)>,
+    /// The square a piece was just dropped from. It is already where the player put
+    /// it, so the move that follows does not slide it there again.
+    dropped: Option<Square>,
     /// A board being edited, shown instead of the position. It need not be legal.
     edit: Option<Board>,
     /// The player may queue a move while the opponent is to move.
@@ -348,6 +351,7 @@ impl BoardView {
             bounds: Bounds::default(),
             animate_serial: 0,
             animate: Vec::new(),
+            dropped: None,
             edit: None,
             premoves: false,
             premove: None,
@@ -474,6 +478,7 @@ impl BoardView {
         cx: &mut Context<Self>,
     ) {
         let transitions = move_transitions(&self.pos, &pos, last_move);
+        let dropped = self.dropped.take();
         self.pos = pos;
         self.last_move = transitions.first().copied().or(last_move);
         self.move_tag = None;
@@ -483,7 +488,11 @@ impl BoardView {
         self.user_arrows.clear();
         self.circles.clear();
         if animate && self.prefs.animation_ms > 0 {
-            self.animate = transitions;
+            self.animate = transitions
+                .iter()
+                .copied()
+                .filter(|(from, _)| Some(*from) != dropped)
+                .collect();
             self.animate_serial += 1;
         } else {
             self.animate.clear();

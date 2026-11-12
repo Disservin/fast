@@ -210,7 +210,10 @@ impl BoardView {
                             self.queue_premove(Some((drag.from, target)), cx);
                         }
                     } else {
-                        self.attempt_move(drag.from, target, cx);
+                        self.dropped = Some(drag.from);
+                        if !self.attempt_move(drag.from, target, cx) {
+                            self.dropped = None;
+                        }
                     }
                 }
                 cx.notify();

@@ -4,6 +4,7 @@ Settings › Changelog shows this file. Describe the finished changes since each
 
 ## Since 0.1.3
 
+- Board: a piece dropped by drag and drop stays where it lands instead of sliding there again.
 - Settings: board and piece set names fit on one line under their previews.
 - Board: pieces are drawn larger, filling more of their squares.
 - Tournament: missing values show the same dash as the rest of the app.

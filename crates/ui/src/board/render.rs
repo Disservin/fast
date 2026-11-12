@@ -427,6 +427,7 @@ impl BoardView {
                 cx.listener(|board, _, _, cx| {
                     cx.stop_propagation();
                     board.promotion = None;
+                    board.dropped = None;
                     cx.notify();
                 }),
             )
