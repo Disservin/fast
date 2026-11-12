@@ -350,7 +350,6 @@ impl AnalyseScreen {
             Ok(pos) => (GameTree::fen_of(&pos), T.muted),
             Err(reason) => (reason, T.warn),
         };
-        let done_this = this.clone();
         let tool = |id: &'static str, label: &'static str| btn(id, label).h(30.).pad(10.).text(13.);
         v_flex()
             .mt(px(12.))
@@ -419,9 +418,7 @@ impl AnalyseScreen {
                             .on_click(this.listen(move |screen, _, cx| screen.close_editor(cx))),
                     )
                     .child(tool("editor-done", ui::i18n::t("Done")).primary().on_click(
-                        move |window, cx| {
-                            done_this.update(cx, |screen, cx| screen.apply_editor(window, cx));
-                        },
+                        this.listen(move |screen, window, cx| screen.apply_editor(window, cx)),
                     )),
             )
             .into_any_element()

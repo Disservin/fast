@@ -158,7 +158,7 @@ impl TournamentScreen {
                         |row| {
                             row.child(
                                 btn("fastchess-download", ui::i18n::t("Download now")).on_click(
-                                    move |_, cx| this.update(cx, |screen, cx| screen.download(cx)),
+                                    this.listen(move |screen, _, cx| screen.download(cx)),
                                 ),
                             )
                         },
@@ -166,9 +166,7 @@ impl TournamentScreen {
                     .when(self.install_cancel.is_some(), |row| {
                         row.child(
                             btn("fastchess-cancel", ui::i18n::t("Cancel download")).on_click(
-                                move |_, cx| {
-                                    cancel.update(cx, |screen, cx| screen.cancel_download(cx))
-                                },
+                                cancel.listen(move |screen, _, cx| screen.cancel_download(cx)),
                             ),
                         )
                     }),
@@ -191,7 +189,7 @@ impl TournamentScreen {
                         false,
                     ))
                     .child(btn("fastchess-path-save", ui::i18n::t("Use")).on_click(
-                        move |_, cx| save.update(cx, |screen, cx| screen.save_fastchess_path(cx)),
+                        save.listen(move |screen, _, cx| screen.save_fastchess_path(cx)),
                     )),
             ))
     }
@@ -221,12 +219,10 @@ impl TournamentScreen {
                             .on_click(this.listen(move |screen, _, cx| screen.clear_folder(cx))),
                     )
                     .child(btn("tournament-clear-cancel", "Cancel").compact().on_click(
-                        move |_, cx| {
-                            cancel.update(cx, |screen, cx| {
-                                screen.clear_armed = false;
-                                cx.notify();
-                            })
-                        },
+                        cancel.listen(move |screen, _, cx| {
+                            screen.clear_armed = false;
+                            cx.notify();
+                        }),
                     ))
             } else {
                 h_flex().child(

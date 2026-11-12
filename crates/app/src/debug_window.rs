@@ -160,8 +160,7 @@ impl Render for DebugWindow {
             .max_by_key(|(_, line)| line.text.len())
             .map(|(index, _)| index);
         let this = cx.entity();
-        let (follow_this, info_this, clear_this, copy_this) =
-            (this.clone(), this.clone(), this.clone(), this);
+        let copy_this = this.clone();
         v_flex()
             .size_full()
             .bg(rgb(T.bg))
@@ -193,7 +192,7 @@ impl Render for DebugWindow {
                                 btn("debug-info", "Info lines")
                                     .compact()
                                     .selected(self.show_info)
-                                    .on_click(info_this.listen(move |this, _, cx| {
+                                    .on_click(this.listen(move |this, _, cx| {
                                         this.show_info = !this.show_info;
                                         this.revision = None;
                                         cx.notify();
@@ -203,7 +202,7 @@ impl Render for DebugWindow {
                                 btn("debug-follow", "Follow")
                                     .compact()
                                     .selected(self.follow)
-                                    .on_click(follow_this.listen(move |this, _, cx| {
+                                    .on_click(this.listen(move |this, _, cx| {
                                         this.follow = !this.follow;
                                         this.revision = None;
                                         cx.notify();
@@ -221,12 +220,12 @@ impl Render for DebugWindow {
                                     cx.write_to_clipboard(ClipboardItem::new_string(text));
                                 },
                             ))
-                            .child(btn("debug-clear", "Clear").compact().on_click(
-                                clear_this.listen(move |this, _, cx| {
+                            .child(btn("debug-clear", "Clear").compact().on_click(this.listen(
+                                move |this, _, cx| {
                                     this.log.clear();
                                     cx.notify();
-                                }),
-                            )),
+                                },
+                            ))),
                     ),
             )
             .child(

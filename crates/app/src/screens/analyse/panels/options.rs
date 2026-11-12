@@ -62,8 +62,6 @@ impl AnalyseScreen {
         let small = |id: &'static str, label: &'static str| btn(id, label).compact();
         let lines = self.shown_lines(cx);
         lines.map(|value| {
-            let (down_this, up_this) = (this.clone(), this.clone());
-            let (reset_this, max_this) = (this.clone(), this.clone());
             h_flex()
                 .gap(px(2.))
                 .mr(px(4.))
@@ -80,17 +78,19 @@ impl AnalyseScreen {
                             "Search one fewer engine line",
                             "MultiPV: lines each engine searches, saved in its options",
                         )
-                        .on_down(value > 1, move |_, cx| {
-                            down_this.update(cx, |screen, cx| screen.step_lines(false, cx));
-                        })
-                        .on_up(true, move |_, cx| {
-                            up_this.update(cx, |screen, cx| screen.step_lines(true, cx));
-                        }),
+                        .on_down(
+                            value > 1,
+                            this.listen(move |screen, _, cx| screen.step_lines(false, cx)),
+                        )
+                        .on_up(
+                            true,
+                            this.listen(move |screen, _, cx| screen.step_lines(true, cx)),
+                        ),
                 )
                 .child(
                     small("lines-reset", ui::i18n::t("Reset"))
                         .tooltip(ui::i18n::t("Back to each engine's default number of lines"))
-                        .on_click(reset_this.listen(move |screen, _, cx| {
+                        .on_click(this.listen(move |screen, _, cx| {
                             screen.set_lines(LinesTarget::Default, cx)
                         })),
                 )
@@ -101,7 +101,7 @@ impl AnalyseScreen {
                              (up to 256, as far as the engine allows)",
                         ))
                         .on_click(
-                            max_this.listen(move |screen, _, cx| {
+                            this.listen(move |screen, _, cx| {
                                 screen.set_lines(LinesTarget::All, cx)
                             }),
                         ),

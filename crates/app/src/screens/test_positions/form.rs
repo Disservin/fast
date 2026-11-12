@@ -268,7 +268,6 @@ impl TestPositionsScreen {
     }
 
     pub(super) fn render_form(&self, cx: &mut Context<Self>) -> Div {
-        let limit_this = cx.entity();
         let browse = cx.entity();
         let start = cx.entity();
         let stop = cx.entity();
@@ -316,7 +315,7 @@ impl TestPositionsScreen {
                     (TestLimitKind::Time, "Time", running),
                 ],
                 self.settings.limit,
-                limit_this.listen_with(move |screen, limit, window, cx| {
+                cx.entity().listen_with(move |screen, limit, window, cx| {
                     // Keep what was typed for the old kind, show the new kind's value.
                     let _ = screen.read_form(cx);
                     screen.settings.limit = limit;
@@ -379,11 +378,13 @@ impl TestPositionsScreen {
                     h_flex()
                         .gap(px(6.))
                         .child(div().flex_1().child(text_input(&self.syzygy_path)))
-                        .child(btn("test-syzygy-browse", ui::i18n::t("Browse…")).on_click(
-                            move |window, cx| {
-                                browse.update(cx, |screen, cx| screen.choose_syzygy(window, cx))
-                            },
-                        )),
+                        .child(
+                            btn("test-syzygy-browse", ui::i18n::t("Browse…")).on_click(
+                                browse.listen(move |screen, window, cx| {
+                                    screen.choose_syzygy(window, cx)
+                                }),
+                            ),
+                        ),
                 ))
             })
             .children(

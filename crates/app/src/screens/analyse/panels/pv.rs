@@ -247,7 +247,6 @@ impl AnalyseScreen {
                     .child(label.to_owned()),
             );
         }
-        let back_this = cx.entity();
         let peek = self
             .pv_peek_at
             .filter(|_| self.pv_hover.is_some())
@@ -287,9 +286,12 @@ impl AnalyseScreen {
                         .child(div().flex_1().text_as(12., T.muted).child(ui::i18n::t(
                             "Drag across moves to highlight. Ctrl+C copies, Esc returns.",
                         )))
-                        .child(btn("pv-back", "Back to game").compact().on_click(
-                            back_this.listen(move |screen, _, cx| screen.exit_pv_preview(cx)),
-                        )),
+                        .child(
+                            btn("pv-back", "Back to game").compact().on_click(
+                                cx.entity()
+                                    .listen(move |screen, _, cx| screen.exit_pv_preview(cx)),
+                            ),
+                        ),
                 )
             })
     }

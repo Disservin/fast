@@ -523,7 +523,6 @@ impl SettingsScreen {
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
         let this = cx.entity();
-        let add_this = this.clone();
         let model = self.model.read(cx);
         let header = h_flex()
             .justify_between()
@@ -531,11 +530,10 @@ impl SettingsScreen {
             .child(
                 h_flex()
                     .gap(px(12.))
-                    .child(btn("add-engine", ui::i18n::t("Add from file")).on_click(
-                        move |_, cx| {
-                            add_this.update(cx, |screen, cx| screen.add_from_file(cx));
-                        },
-                    ))
+                    .child(
+                        btn("add-engine", ui::i18n::t("Add from file"))
+                            .on_click(this.listen(move |screen, _, cx| screen.add_from_file(cx))),
+                    )
                     .child(
                         btn("download-engine", "Download engine")
                             .primary()
@@ -656,13 +654,11 @@ impl SettingsScreen {
                             (LeaveAnalyse::Stop, "Stop"),
                         ],
                         leave,
-                        move |value, _, cx| {
-                            background_model.update(cx, |model, cx| {
-                                model.config.analyse_in_background = value == LeaveAnalyse::Keep;
-                                model.config.pause_in_background = value == LeaveAnalyse::Pause;
-                                model.save_config(cx);
-                            })
-                        },
+                        background_model.listen_with(move |model, value, _, cx| {
+                            model.config.analyse_in_background = value == LeaveAnalyse::Keep;
+                            model.config.pause_in_background = value == LeaveAnalyse::Pause;
+                            model.save_config(cx);
+                        }),
                     )),
             )
             .child(div().text_as(12., T.muted).child(ui::i18n::t(match leave {

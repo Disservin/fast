@@ -20,16 +20,14 @@ impl TournamentScreen {
             ("games-sort", column as usize),
             label,
             sorted,
-            move |_, cx| {
-                this.update(cx, |screen, cx| {
-                    screen.games_sort = match screen.games_sort {
-                        Some((c, false)) if c == column => Some((column, true)),
-                        Some((c, true)) if c == column => None,
-                        _ => Some((column, false)),
-                    };
-                    cx.notify();
-                })
-            },
+            this.listen(move |screen, _, cx| {
+                screen.games_sort = match screen.games_sort {
+                    Some((c, false)) if c == column => Some((column, true)),
+                    Some((c, true)) if c == column => None,
+                    _ => Some((column, false)),
+                };
+                cx.notify();
+            }),
         )
     }
 

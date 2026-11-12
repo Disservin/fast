@@ -373,7 +373,6 @@ fn board_size(window: &Window) -> gpui::Pixels {
 impl Render for TrainScreen {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let board_size = board_size(window);
-        let mode_this = cx.entity();
         let mode = btn(
             "reply-mode",
             if self.every_reply {
@@ -382,11 +381,10 @@ impl Render for TrainScreen {
                 "Mode: any prepared reply"
             },
         )
-        .on_click(mode_this.listen(move |this, _, cx| {
+        .on_click(cx.entity().listen(move |this, _, cx| {
             this.every_reply = !this.every_reply;
             this.reload_queue(cx);
         }));
-        let reset = cx.entity();
         let history = self.model.read(cx).repertoire.history.len();
         let session = v_flex().gap(px(6.)).mt(px(14.)).child(mode.full()).child(
             h_flex()
@@ -403,7 +401,7 @@ impl Render for TrainScreen {
                         .tooltip(ui::i18n::t(
                             "Discard this session and start the queue again",
                         ))
-                        .on_click(reset.listen(move |this, _, cx| {
+                        .on_click(cx.entity().listen(move |this, _, cx| {
                             this.attempts.clear();
                             this.reload_queue(cx);
                         })),

@@ -493,7 +493,7 @@ impl DatabaseScreen {
                         },
                     )))
                     .child(btn("reimport-confirm", "Re-import").primary().on_click(
-                        move |_, cx| confirm.update(cx, |screen, cx| screen.reimport_confirmed(cx)),
+                        confirm.listen(move |screen, _, cx| screen.reimport_confirmed(cx)),
                     )),
             );
         Some(dialog(
@@ -563,15 +563,15 @@ impl DatabaseScreen {
                     importing.file,
                     format_count(importing.progress.games)
                 )))
-                .child(btn("cancel-import", ui::i18n::t("Cancel")).h(30.).on_click(
-                    move |_, cx| {
-                        this.update(cx, |screen, _| {
+                .child(
+                    btn("cancel-import", ui::i18n::t("Cancel"))
+                        .h(30.)
+                        .on_click(this.listen(move |screen, _, _| {
                             if let Some(importing) = &screen.importing {
                                 importing.control.cancel();
                             }
-                        });
-                    },
-                )),
+                        })),
+                ),
         )
     }
 }

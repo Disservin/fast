@@ -175,14 +175,12 @@ impl DatabaseScreen {
                         let delete = delete.clone();
                         menu.item(
                             PopupMenuItem::new(ui::i18n::t("Delete saved search")).on_click(
-                                move |_, _, cx| {
-                                    delete.update(cx, |model, cx| {
-                                        if index < model.config.saved_filters.len() {
-                                            model.config.saved_filters.remove(index);
-                                            model.save_config(cx);
-                                        }
-                                    })
-                                },
+                                delete.listen_event(move |model, _, _, cx| {
+                                    if index < model.config.saved_filters.len() {
+                                        model.config.saved_filters.remove(index);
+                                        model.save_config(cx);
+                                    }
+                                }),
                             ),
                         )
                     }),
@@ -306,23 +304,19 @@ impl DatabaseScreen {
             .child({
                 let this = this.clone();
                 check("pattern-pawns", self.pattern_pawns, "Same pawn structure").on_change(
-                    move |value, _, cx| {
-                        this.update(cx, |screen, cx| {
-                            screen.pattern_pawns = value;
-                            screen.schedule_filter(cx);
-                        })
-                    },
+                    this.listen_with(move |screen, value, _, cx| {
+                        screen.pattern_pawns = value;
+                        screen.schedule_filter(cx);
+                    }),
                 )
             })
             .child({
                 let this = this.clone();
                 check("pattern-material", self.pattern_material, "Same material").on_change(
-                    move |value, _, cx| {
-                        this.update(cx, |screen, cx| {
-                            screen.pattern_material = value;
-                            screen.schedule_filter(cx);
-                        })
-                    },
+                    this.listen_with(move |screen, value, _, cx| {
+                        screen.pattern_material = value;
+                        screen.schedule_filter(cx);
+                    }),
                 )
             })
             .child(
@@ -338,14 +332,12 @@ impl DatabaseScreen {
                         .gap(px(8.))
                         .child(mono(format!("{done} / {total}")))
                         .child(btn("cancel-structure-index", "Cancel").compact().on_click(
-                            move |_, cx| {
-                                cancel.update(cx, |screen, cx| {
-                                    if let Some(control) = &screen.pattern_control {
-                                        control.cancel();
-                                    }
-                                    cx.notify();
-                                })
-                            },
+                            cancel.listen(move |screen, _, cx| {
+                                if let Some(control) = &screen.pattern_control {
+                                    control.cancel();
+                                }
+                                cx.notify();
+                            }),
                         )),
                 )
                 .child(

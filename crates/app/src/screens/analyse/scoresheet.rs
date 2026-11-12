@@ -164,7 +164,7 @@ impl AnalyseScreen {
             .or_else(|| self.opening().map(|o| format!("{} {}", o.eco, o.name)))
             .unwrap_or_else(|| ui::i18n::t("Starting position").to_owned());
         let notation = self.model.read(cx).config.board.notation;
-        let (select_this, context_this) = (this.clone(), this.clone());
+        let context_this = this.clone();
         // Only a move drawn in this frame counts; the start position has none.
         self.scoresheet_current.set(None);
         let evals = self
@@ -178,9 +178,9 @@ impl AnalyseScreen {
             current_bounds: self.scoresheet_current.clone(),
             evals: Rc::new(evals),
             notation,
-            on_select: Rc::new(move |id, window, cx| {
-                select_this.update(cx, |screen, cx| screen.jump(id, window, cx));
-            }),
+            on_select: Rc::new(
+                this.listen_with(move |screen, id, window, cx| screen.jump(id, window, cx)),
+            ),
             on_context: Rc::new(move |id, event, _, cx| {
                 let position = event.position;
                 context_this.update(cx, |screen, cx| {

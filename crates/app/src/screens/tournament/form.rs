@@ -222,7 +222,6 @@ impl TournamentScreen {
 
     /// What most tournaments need: who plays, how fast, how many games, which book.
     fn render_basic_settings(&self, cx: &mut Context<Self>) -> Div {
-        let browse = cx.entity();
         v_flex()
             .gap(px(14.))
             .child(self.render_engines(cx))
@@ -269,7 +268,7 @@ impl TournamentScreen {
                     .gap(px(6.))
                     .child(div().flex_1().child(text_input(&self.openings)))
                     .child(
-                        btn("tournament-book", ui::i18n::t("Browse…")).on_click(browse.listen(move |screen, window, cx| screen.browse_openings(window, cx))),
+                        btn("tournament-book", ui::i18n::t("Browse…")).on_click(cx.entity().listen(move |screen, window, cx| screen.browse_openings(window, cx))),
                     ),
             ))
             .child(toggle(
@@ -309,7 +308,6 @@ impl TournamentScreen {
     /// The row that opens and closes the advanced settings, listing what they hold.
     fn render_advanced_disclosure(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let open = self.advanced_open;
-        let expand = cx.entity();
         h_flex()
             .id("tournament-advanced")
             .gap(px(8.))
@@ -341,7 +339,7 @@ impl TournamentScreen {
                         "Hash and threads, pairing, adjudication, tablebases, saved games, extra options",
                     )),
             )
-            .on_click(expand.listen_event(move |screen, _, _, cx| {
+            .on_click(cx.entity().listen_event(move |screen, _, _, cx| {
                     screen.advanced_open = !screen.advanced_open;
                     cx.notify();
                 }))

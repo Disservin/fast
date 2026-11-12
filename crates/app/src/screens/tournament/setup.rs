@@ -223,7 +223,7 @@ impl TournamentScreen {
                     .child(Textarea::new(&self.paste).appearance(false).h(px(300.))),
             )
             .child(btn("tournament-load-config", "Load config file…").on_click(
-                move |window, cx| load.update(cx, |screen, cx| screen.load_config_file(window, cx)),
+                load.listen(move |screen, window, cx| screen.load_config_file(window, cx)),
             ))
             .child(field(
                 "Run a command line in folder (for its relative paths)",

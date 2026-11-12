@@ -248,10 +248,12 @@ impl DatabaseScreen {
     ) -> impl IntoElement + use<> {
         let this = cx.entity();
         let sorted = (self.sort.key == key).then_some(self.sort.descending);
-        let heading =
-            ui::widgets::sort_heading(("sort", key as usize), label, sorted, move |_, cx| {
-                this.update(cx, |screen, cx| screen.sort_by(key, cx));
-            });
+        let heading = ui::widgets::sort_heading(
+            ("sort", key as usize),
+            label,
+            sorted,
+            this.listen(move |screen, _, cx| screen.sort_by(key, cx)),
+        );
         let cell = div().flex_none().pr(px(10.));
         match width {
             Some(width) => cell.w(px(width)).child(heading),
@@ -331,40 +333,31 @@ impl DatabaseScreen {
             .text_size(px(13.))
             .when(selected, |row| row.bg(rgb(T.selected)))
             .when(!selected, |row| row.hover(|style| style.bg(rgb(T.hover))))
-            .on_click({
-                let this = this.clone();
-                move |event, window, cx| {
-                    this.update(cx, |screen, cx| {
-                        if event.click_count() == 2 {
-                            screen.open_game_in_analyse(id, window, cx);
-                        } else {
-                            screen.select_game(Some(id), cx);
-                        }
-                    });
-                }
-            })
+            .on_click(
+                this.listen_event(move |screen, event: &gpui::ClickEvent, window, cx| {
+                    if event.click_count() == 2 {
+                        screen.open_game_in_analyse(id, window, cx);
+                    } else {
+                        screen.select_game(Some(id), cx);
+                    }
+                }),
+            )
             .context_menu({
                 let shown = self.ids.len();
                 move |menu, _, _| {
-                    let (open, edit, delete, delete_all) =
-                        (this.clone(), this.clone(), this.clone(), this.clone());
                     menu.item(PopupMenuItem::new(ui::i18n::t("Open in Analyse")).on_click(
-                        move |_, window, cx| {
-                            open.update(cx, |screen, cx| {
-                                screen.open_game_in_analyse(id, window, cx)
-                            })
-                        },
+                        this.listen_event(move |screen, _, window, cx| {
+                            screen.open_game_in_analyse(id, window, cx)
+                        }),
                     ))
                     .item(PopupMenuItem::new(ui::i18n::t("Edit game…")).on_click(
-                        move |_, window, cx| {
-                            edit.update(cx, |screen, cx| screen.open_editor(id, window, cx))
-                        },
+                        this.listen_event(move |screen, _, window, cx| {
+                            screen.open_editor(id, window, cx)
+                        }),
                     ))
                     .separator()
                     .item(PopupMenuItem::new(ui::i18n::t("Delete game…")).on_click(
-                        move |_, _, cx| {
-                            delete.update(cx, |screen, cx| screen.ask_delete(vec![id], cx))
-                        },
+                        this.listen_event(move |screen, _, _, cx| screen.ask_delete(vec![id], cx)),
                     ))
                     .when(shown > 1, |menu| {
                         menu.item(
@@ -372,7 +365,7 @@ impl DatabaseScreen {
                                 "Delete all {} shown games…",
                                 format_count(shown as u64)
                             ))
-                            .on_click(delete_all.listen_event(
+                            .on_click(this.listen_event(
                                 move |screen, _, _, cx| {
                                     let ids = screen.ids.clone();
                                     screen.ask_delete(ids, cx)

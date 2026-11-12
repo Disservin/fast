@@ -72,13 +72,10 @@ impl SettingsScreen {
             .map(|engine| (engine.id, engine.name.clone()))
             .collect();
         let this = cx.entity();
-        let toggle_this = this.clone();
         let toggle = check("kibitz-on", kibitz.enabled, "Analyse with a kibitz engine").on_change(
-            move |value, _, cx| {
-                toggle_this.update(cx, |screen, cx| {
-                    screen.update_kibitz(cx, |kibitz| kibitz.enabled = value)
-                })
-            },
+            this.listen_with(move |screen, value, _, cx| {
+                screen.update_kibitz(cx, |kibitz| kibitz.enabled = value)
+            }),
         );
         let mut choices = vec![(None, SharedString::from("First analysis engine"))];
         choices.extend(

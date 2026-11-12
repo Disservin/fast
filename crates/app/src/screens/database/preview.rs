@@ -242,12 +242,10 @@ impl DatabaseScreen {
                     let ply = finding.ply;
                     list = list.child(FindingRow {
                         finding,
-                        on_click: std::rc::Rc::new(move |window, cx| {
-                            this.update(cx, |screen, cx| {
-                                screen.preview_key = ply;
-                                screen.open_in_analyse(window, cx);
-                            });
-                        }),
+                        on_click: std::rc::Rc::new(this.listen(move |screen, window, cx| {
+                            screen.preview_key = ply;
+                            screen.open_in_analyse(window, cx);
+                        })),
                     });
                 }
                 column = column

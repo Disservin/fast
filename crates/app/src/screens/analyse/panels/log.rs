@@ -268,7 +268,7 @@ impl AnalyseScreen {
                     ))
                     .on_click({
                         let this = cx.entity();
-                        move |_, cx| this.update(cx, |screen, cx| screen.open_engine_output(cx))
+                        this.listen(move |screen, _, cx| screen.open_engine_output(cx))
                     }),
             )
             .child(

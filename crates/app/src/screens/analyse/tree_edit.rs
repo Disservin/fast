@@ -115,10 +115,6 @@ impl AnalyseScreen {
                 .on_click(move |_, window, cx| handler(window, cx))
                 .child(ui::i18n::t(label).to_owned())
         };
-        let delete_this = this.clone();
-        let delete_sidelines_this = this.clone();
-        let promote_this = this.clone();
-        let copy_this = this.clone();
         Some(deferred(
             anchored().position(position).child(
                 v_flex()
@@ -138,43 +134,39 @@ impl AnalyseScreen {
                     .child(item(
                         0,
                         ui::i18n::t("Delete from here"),
-                        Box::new(move |window, cx| {
-                            delete_this.update(cx, |screen, cx| screen.delete_from(id, window, cx));
-                        }),
+                        Box::new(
+                            this.listen(move |screen, window, cx| {
+                                screen.delete_from(id, window, cx)
+                            }),
+                        ),
                     ))
                     .child(item(
                         3,
                         ui::i18n::t("Delete all sidelines"),
-                        Box::new(move |window, cx| {
-                            delete_sidelines_this.update(cx, |screen, cx| {
-                                let selected = screen.tree.delete_all_sidelines(screen.current);
-                                screen.context_menu = None;
-                                if selected != screen.current {
-                                    screen.current = selected;
-                                    screen.position_changed(false, window, cx);
-                                }
-                                cx.notify();
-                            });
-                        }),
+                        Box::new(this.listen(move |screen, window, cx| {
+                            let selected = screen.tree.delete_all_sidelines(screen.current);
+                            screen.context_menu = None;
+                            if selected != screen.current {
+                                screen.current = selected;
+                                screen.position_changed(false, window, cx);
+                            }
+                            cx.notify();
+                        })),
                     ))
                     .child(item(
                         1,
                         ui::i18n::t("Promote variation"),
-                        Box::new(move |_, cx| {
-                            promote_this.update(cx, |screen, cx| screen.promote(id, cx));
-                        }),
+                        Box::new(this.listen(move |screen, _, cx| screen.promote(id, cx))),
                     ))
                     .child(item(
                         2,
                         ui::i18n::t("Copy PGN from here"),
-                        Box::new(move |_, cx| {
-                            copy_this.update(cx, |screen, cx| {
-                                let text = write_pgn_from(&screen.annotated_tree(), id);
-                                cx.write_to_clipboard(ClipboardItem::new_string(text));
-                                screen.context_menu = None;
-                                screen.model.toast("PGN copied.", cx);
-                            });
-                        }),
+                        Box::new(this.listen(move |screen, _, cx| {
+                            let text = write_pgn_from(&screen.annotated_tree(), id);
+                            cx.write_to_clipboard(ClipboardItem::new_string(text));
+                            screen.context_menu = None;
+                            screen.model.toast("PGN copied.", cx);
+                        })),
                     )),
             ),
         ))

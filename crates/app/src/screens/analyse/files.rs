@@ -296,8 +296,6 @@ impl AnalyseScreen {
                 .child(ui::i18n::t(label).to_owned())
                 .child(div().text_as(12., T.muted).child(hint))
         };
-        let fen_this = this.clone();
-        let pgn_this = this.clone();
         let menu = self.copy_menu.then(|| {
             deferred(
                 v_flex()
@@ -315,12 +313,12 @@ impl AnalyseScreen {
                     .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                     .child(
                         item("copy-fen", ui::i18n::t("Copy FEN"), "this position").on_click(
-                            move |_, _, cx| fen_this.update(cx, |screen, cx| screen.copy_fen(cx)),
+                            this.listen_event(move |screen, _, _, cx| screen.copy_fen(cx)),
                         ),
                     )
                     .child(
                         item("copy-pgn", ui::i18n::t("Copy PGN"), "whole game").on_click(
-                            move |_, _, cx| pgn_this.update(cx, |screen, cx| screen.copy_pgn(cx)),
+                            this.listen_event(move |screen, _, _, cx| screen.copy_pgn(cx)),
                         ),
                     ),
             )

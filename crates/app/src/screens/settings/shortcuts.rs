@@ -254,8 +254,7 @@ impl SettingsScreen {
                     .unwrap_or_default();
                 let default = defaults.get(action).cloned().unwrap_or_default();
                 let capture_focus = self.capture_focus.clone();
-                let (change_this, clear_this, reset_this) =
-                    (this.clone(), this.clone(), this.clone());
+                let (change_this, reset_this) = (this.clone(), this.clone());
                 list = list.child(
                     h_flex()
                         .h(px(40.))
@@ -292,7 +291,7 @@ impl SettingsScreen {
                                         .h(28.)
                                         .pad(10.)
                                         .disabled(current.is_empty())
-                                        .on_click(clear_this.listen(move |screen, _, cx| {
+                                        .on_click(this.listen(move |screen, _, cx| {
                                             screen.assign_shortcut(action, String::new(), cx);
                                         })),
                                 )

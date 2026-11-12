@@ -65,7 +65,6 @@ impl Workspace {
         // Two per row, in one column with the header so their edges line up.
         let mut cards = div().grid().grid_cols(2).gap(px(16.)).w_full();
         for (index, (mode, icon_path, title, description)) in choices.into_iter().enumerate() {
-            let pick = cx.entity();
             cards = cards.child(
                 v_flex()
                     .id(("new-tab-card", index))
@@ -96,7 +95,7 @@ impl Workspace {
                             .line_height(px(20.))
                             .child(description),
                     )
-                    .on_click(pick.listen_event(move |this, _, window, cx| {
+                    .on_click(cx.entity().listen_event(move |this, _, window, cx| {
                         this.new_tab_menu_open = false;
                         this.new_tab(mode, window, cx)
                     })),
@@ -143,7 +142,6 @@ impl Workspace {
                     .child(cards)
                     .child({
                         let random = cx.entity();
-                        let create = cx.entity();
                         h_flex()
                             .gap(px(8.))
                             .child(
@@ -177,24 +175,22 @@ impl Workspace {
                                     ),
                             ))
                             .child(btn("new-960", "New Chess960 game…").compact().on_click(
-                                move |window, cx| {
-                                    create.update(cx, |this, cx| {
-                                        let Some(n) = this
-                                            .chess960_number
-                                            .read(cx)
-                                            .value()
-                                            .trim()
-                                            .parse::<u16>()
-                                            .ok()
-                                            .filter(|n| *n < 960)
-                                        else {
-                                            this.model.toast("Enter a number from 0 to 959", cx);
-                                            return;
-                                        };
-                                        this.new_tab_menu_open = false;
-                                        this.new_chess960(n, window, cx);
-                                    });
-                                },
+                                cx.entity().listen(move |this, window, cx| {
+                                    let Some(n) = this
+                                        .chess960_number
+                                        .read(cx)
+                                        .value()
+                                        .trim()
+                                        .parse::<u16>()
+                                        .ok()
+                                        .filter(|n| *n < 960)
+                                    else {
+                                        this.model.toast("Enter a number from 0 to 959", cx);
+                                        return;
+                                    };
+                                    this.new_tab_menu_open = false;
+                                    this.new_chess960(n, window, cx);
+                                }),
                             ))
                     }),
             )
@@ -367,39 +363,38 @@ impl Workspace {
             )
             .context_menu(move |menu, _, _| {
                 let rename = rename.clone();
-                let menu = menu.item(PopupMenuItem::new(ui::i18n::t("Rename tab")).on_click(
-                    move |_, window, cx| {
-                        rename.update(cx, |this, cx| this.start_rename(id, window, cx))
-                    },
-                ));
+                let menu = menu.item(
+                    PopupMenuItem::new(ui::i18n::t("Rename tab")).on_click(rename.listen_event(
+                        move |this, _, window, cx| this.start_rename(id, window, cx),
+                    )),
+                );
                 let close_all = close_all.clone();
-                let menu = menu.item(PopupMenuItem::new(ui::i18n::t("Close all tabs")).on_click(
-                    move |_, window, cx| {
-                        close_all.update(cx, |this, cx| this.close_all_tabs(window, cx));
-                    },
-                ));
+                let menu =
+                    menu.item(PopupMenuItem::new(ui::i18n::t("Close all tabs")).on_click(
+                        close_all.listen_event(move |this, _, window, cx| {
+                            this.close_all_tabs(window, cx)
+                        }),
+                    ));
                 if !analysis {
                     return menu;
                 }
                 let duplicate = duplicate.clone();
                 menu.item(PopupMenuItem::new("Duplicate analysis tab").on_click(
-                    move |_, window, cx| {
-                        duplicate.update(cx, |this, cx| {
-                            let Some(TabContent::Analyse(source)) = this
-                                .tabs
-                                .iter()
-                                .find(|tab| tab.id == id)
-                                .map(|tab| tab.content.clone())
-                            else {
-                                return;
-                            };
-                            let tree = source.read(cx).tree.clone();
-                            let current = source.read(cx).current;
-                            this.open_analysis(tree, window, cx);
-                            this.analyse
-                                .update(cx, |screen, cx| screen.jump(current, window, cx));
-                        });
-                    },
+                    duplicate.listen_event(move |this, _, window, cx| {
+                        let Some(TabContent::Analyse(source)) = this
+                            .tabs
+                            .iter()
+                            .find(|tab| tab.id == id)
+                            .map(|tab| tab.content.clone())
+                        else {
+                            return;
+                        };
+                        let tree = source.read(cx).tree.clone();
+                        let current = source.read(cx).current;
+                        this.open_analysis(tree, window, cx);
+                        this.analyse
+                            .update(cx, |screen, cx| screen.jump(current, window, cx));
+                    }),
                 ))
             })
     }
@@ -460,7 +455,6 @@ impl Workspace {
     /// New tab, drawn as one more tab: closed it looks like the inactive tabs, and while
     /// its picker is open it looks like the open tab.
     fn new_tab_button(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let add = cx.entity();
         let tip = match self.model.read(cx).config.shortcuts.get("new_tab") {
             Some(key) if !key.is_empty() => {
                 format!(
@@ -499,7 +493,7 @@ impl Workspace {
             .tooltip(move |window, cx| {
                 gpui_component::tooltip::Tooltip::new(tip.clone()).build(window, cx)
             })
-            .on_click(add.listen_event(move |this, _, _, cx| {
+            .on_click(cx.entity().listen_event(move |this, _, _, cx| {
                 this.new_tab_menu_open = !this.new_tab_menu_open;
                 cx.notify();
             }))

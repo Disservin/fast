@@ -172,12 +172,10 @@ impl PlayScreen {
                 ("match-graph-tab", index),
                 label,
                 self.graph_metric == index,
-                move |_, cx| {
-                    this.update(cx, |screen, cx| {
-                        screen.graph_metric = index;
-                        cx.notify();
-                    });
-                },
+                this.listen(move |screen, _, cx| {
+                    screen.graph_metric = index;
+                    cx.notify();
+                }),
             ));
         }
         let column = panel().p(px(16.)).gap(px(8.)).child(header);
@@ -516,13 +514,11 @@ impl PlayScreen {
                 ("match-log-side", side),
                 label,
                 self.log_side == side,
-                move |_, cx| {
-                    this.update(cx, |screen, cx| {
-                        screen.log_side = side;
-                        screen.log_follow = true;
-                        cx.notify();
-                    });
-                },
+                this.listen(move |screen, _, cx| {
+                    screen.log_side = side;
+                    screen.log_follow = true;
+                    cx.notify();
+                }),
             ));
         }
         let (follow_this, window_this) = (cx.entity(), cx.entity());

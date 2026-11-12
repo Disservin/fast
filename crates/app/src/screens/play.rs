@@ -745,11 +745,9 @@ impl Render for PlayScreen {
                                 h_flex()
                                     .gap(px(6.))
                                     .child(btn("new-engine-game", "New game").compact().on_click(
-                                        move |_, cx| {
-                                            this.update(cx, |screen, cx| {
-                                                screen.new_engine_game(cx)
-                                            });
-                                        },
+                                        this.listen(move |screen, _, cx| {
+                                            screen.new_engine_game(cx)
+                                        }),
                                     ))
                                     .child({
                                         let this = cx.entity();

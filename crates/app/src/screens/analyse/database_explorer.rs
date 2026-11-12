@@ -568,12 +568,10 @@ impl AnalyseScreen {
                 .border_as(T.border_strong)
                 .on_mouse_down_out({
                     let this = this.clone();
-                    move |_, _, cx| {
-                        this.update(cx, |screen, cx| {
-                            screen.explorer_menu = None;
-                            cx.notify();
-                        })
-                    }
+                    this.listen_event(move |screen, _, _, cx| {
+                        screen.explorer_menu = None;
+                        cx.notify();
+                    })
                 });
             for (index, entry) in self.explorer_choices(cx).into_iter().enumerate() {
                 let this = this.clone();

@@ -228,7 +228,7 @@ impl Workspace {
             })
             .on_click({
                 let this = cx.entity();
-                move |_, cx| this.update(cx, |this, cx| this.set_mode(mode, cx))
+                this.listen(move |this, _, cx| this.set_mode(mode, cx))
             })
     }
 

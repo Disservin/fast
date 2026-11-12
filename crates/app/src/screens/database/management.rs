@@ -346,13 +346,11 @@ impl DatabaseScreen {
                 .child(
                     btn("cancel-background-collection", "Cancel")
                         .compact()
-                        .on_click(move |_, cx| {
-                            this.update(cx, |screen, _| {
-                                if let Some(control) = &screen.collection_control {
-                                    control.cancel();
-                                }
-                            });
-                        }),
+                        .on_click(this.listen(move |screen, _, _| {
+                            if let Some(control) = &screen.collection_control {
+                                control.cancel();
+                            }
+                        })),
                 )
                 .into_any_element(),
         )
@@ -413,13 +411,11 @@ impl DatabaseScreen {
         }
         if !add.web && !busy {
             let this = this.clone();
-            body = body.child(
-                h_flex().child(btn("browse-collection", "Browse…").compact().on_click(
-                    move |window, cx| {
-                        this.update(cx, |screen, cx| screen.browse_collection(window, cx));
-                    },
-                )),
-            );
+            body = body.child(h_flex().child(
+                btn("browse-collection", "Browse…").compact().on_click(
+                    this.listen(move |screen, window, cx| screen.browse_collection(window, cx)),
+                ),
+            ));
         }
         if add.web && !busy {
             let install = this.clone();
@@ -443,31 +439,30 @@ impl DatabaseScreen {
             body = body.child(div().text_as(13., T.warn).child(error.clone()));
         }
         let act = this.clone();
-        body = body.child(if busy {
-            h_flex()
-                .justify_between()
-                .child(mono(self.collection_progress.clone()).text_size(px(12.)))
-                .child(
-                    btn("cancel-collection", "Cancel")
-                        .compact()
-                        .on_click(act.listen(move |screen, _, cx| {
-                            if let Some(control) = &screen.collection_control {
-                                control.cancel();
-                            }
-                            cx.notify();
+        body =
+            body.child(if busy {
+                h_flex()
+                    .justify_between()
+                    .child(mono(self.collection_progress.clone()).text_size(px(12.)))
+                    .child(
+                        btn("cancel-collection", "Cancel")
+                            .compact()
+                            .on_click(act.listen(move |screen, _, cx| {
+                                if let Some(control) = &screen.collection_control {
+                                    control.cancel();
+                                }
+                                cx.notify();
+                            })),
+                    )
+            } else {
+                h_flex().justify_end().child(
+                    btn("add-collection", "Add database")
+                        .primary()
+                        .on_click(act.listen(move |screen, window, cx| {
+                            screen.install_collection(false, window, cx)
                         })),
                 )
-        } else {
-            h_flex()
-                .justify_end()
-                .child(btn("add-collection", "Add database").primary().on_click(
-                    move |window, cx| {
-                        act.update(cx, |screen, cx| {
-                            screen.install_collection(false, window, cx)
-                        });
-                    },
-                ))
-        });
+            });
         Some(dialog(
             "add-database-dialog",
             "Add database",
@@ -596,13 +591,11 @@ impl DatabaseScreen {
             body = body.child(
                 btn("cancel-managed-index", "Cancel indexing")
                     .compact()
-                    .on_click(move |_, cx| {
-                        this.update(cx, |screen, _| {
-                            if let Some(control) = &screen.pattern_control {
-                                control.cancel();
-                            }
-                        });
-                    }),
+                    .on_click(this.listen(move |screen, _, _| {
+                        if let Some(control) = &screen.pattern_control {
+                            control.cancel();
+                        }
+                    })),
             );
             body = body.child(
                 mono(ui::i18n::tf(

@@ -107,14 +107,12 @@ impl SettingsScreen {
                         },
                     ))
                     .child(btn(("account-forget", index), "Forget").compact().on_click(
-                        move |_, cx| {
-                            forget.update(cx, |model, cx| {
-                                if index < model.config.accounts.len() {
-                                    model.config.accounts.remove(index);
-                                    model.save_config(cx);
-                                }
-                            });
-                        },
+                        forget.listen(move |model, _, cx| {
+                            if index < model.config.accounts.len() {
+                                model.config.accounts.remove(index);
+                                model.save_config(cx);
+                            }
+                        }),
                     )),
             );
         }

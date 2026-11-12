@@ -112,11 +112,10 @@ impl PlayScreen {
             .border_r_as(T.border)
             .child(section_label("New game").mb(px(10.)))
             .when(self_play && self.game.is_some(), |column| {
-                let back_this = cx.entity();
                 column.child(
                     btn("back-to-engine-game", "Back to game")
                         .compact()
-                        .on_click(back_this.listen(move |screen, _, cx| {
+                        .on_click(this.listen(move |screen, _, cx| {
                             screen.show_setup = false;
                             cx.notify();
                         })),
