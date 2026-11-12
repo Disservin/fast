@@ -270,6 +270,8 @@ struct Promotion {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MoveTag {
     Brilliant,
+    Good,
+    Interesting,
     Inaccuracy,
     Mistake,
     Blunder,
@@ -278,7 +280,9 @@ pub enum MoveTag {
 impl MoveTag {
     pub fn from_nag(nag: u8) -> Option<Self> {
         match nag {
+            1 => Some(Self::Good),
             3 => Some(Self::Brilliant),
+            5 => Some(Self::Interesting),
             6 => Some(Self::Inaccuracy),
             2 => Some(Self::Mistake),
             4 => Some(Self::Blunder),
@@ -289,6 +293,8 @@ impl MoveTag {
     fn appearance(self) -> (&'static str, &'static str, u32) {
         match self {
             Self::Brilliant => ("!!", "Brilliant", 0x00bfa5),
+            Self::Good => ("!", "Good move", 0x22ac38),
+            Self::Interesting => ("!?", "Interesting", 0xea45d8),
             Self::Inaccuracy => ("?!", "Inaccuracy", 0xf4b400),
             Self::Mistake => ("?", "Mistake", 0xff8c32),
             Self::Blunder => ("??", "Blunder", 0xf04464),
@@ -520,6 +526,17 @@ mod tests {
             Some(Square::E8)
         );
         assert_eq!(checked_king(&Chess::default()), None);
+    }
+
+    #[test]
+    fn every_move_glyph_has_a_badge() {
+        let glyphs: Vec<_> = (1..=6)
+            .map(|nag| MoveTag::from_nag(nag).map(|tag| tag.appearance().0))
+            .collect();
+        assert_eq!(
+            glyphs,
+            [Some("!"), Some("?"), Some("!!"), Some("??"), Some("!?"), Some("?!")]
+        );
     }
 
     #[test]
