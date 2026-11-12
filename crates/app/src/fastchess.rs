@@ -1233,6 +1233,52 @@ pub fn count_games(pgn: &str) -> usize {
         .count()
 }
 
+/// Engines in the order a command gives them, as (name, executable).
+pub(crate) fn engines(args: &[String]) -> Vec<(String, String)> {
+    args.iter()
+        .enumerate()
+        .filter(|(_, arg)| arg.as_str() == "-engine")
+        .map(|(index, _)| {
+            let values: Vec<&str> = args[index + 1..]
+                .iter()
+                .take_while(|arg| !arg.starts_with('-'))
+                .map(String::as_str)
+                .collect();
+            (
+                kv(&values, "name").unwrap_or("engine").to_owned(),
+                kv(&values, "cmd").unwrap_or("").to_owned(),
+            )
+        })
+        .collect()
+}
+
+/// The values after a flag, up to the next flag.
+pub(crate) fn flag_values<'a>(args: &'a [String], flag: &str) -> Vec<&'a str> {
+    let Some(start) = args.iter().position(|arg| arg.as_str() == flag) else {
+        return Vec::new();
+    };
+    args[start + 1..]
+        .iter()
+        .take_while(|arg| !arg.starts_with('-'))
+        .map(String::as_str)
+        .collect()
+}
+
+pub(crate) fn flag_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
+    flag_values(args, flag).first().copied()
+}
+
+/// The value of `key=value` among `values`.
+pub(crate) fn kv<'a>(values: &[&'a str], key: &str) -> Option<&'a str> {
+    values
+        .iter()
+        .find_map(|&value| value.strip_prefix(key)?.strip_prefix('='))
+}
+
+pub(crate) fn has(args: &[String], flag: &str) -> bool {
+    args.iter().any(|arg| arg.as_str() == flag)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
