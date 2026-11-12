@@ -7,6 +7,167 @@ pub(super) fn max_review_engines() -> u32 {
     std::thread::available_parallelism().map_or(4, |n| n.get() as u32)
 }
 
+/// What to search for one position of a reviewed game.
+struct PositionSearch<'a> {
+    chess960: bool,
+    start_fen: &'a str,
+    moves: &'a [String],
+    game: i64,
+    pos: &'a chess_core::Chess,
+    limit: ReviewLimit,
+}
+
+/// What a position search found: White's evaluation in centipawns, the mate distance,
+/// the depth and the principal variation.
+type Found = (Option<i32>, Option<i32>, u32, String);
+
+/// Waits while the review is paused. Returns true when it was cancelled meanwhile.
+fn wait_while_paused(
+    paused: &std::sync::atomic::AtomicBool,
+    cancelled: &std::sync::atomic::AtomicBool,
+) -> bool {
+    use std::sync::atomic::Ordering;
+    while paused.load(Ordering::Relaxed) && !cancelled.load(Ordering::Relaxed) {
+        smol::block_on(smol::Timer::after(std::time::Duration::from_millis(50)));
+    }
+    cancelled.load(Ordering::Relaxed)
+}
+
+/// Searches one position to the review's limit and returns White's evaluation in
+/// centipawns, the mate distance, the depth and the principal variation. A pause stops
+/// the engine and searches again afterwards; `None` means the review was cancelled.
+fn search_position(
+    handle: &engine::EngineHandle,
+    events: &smol::channel::Receiver<engine::EngineEvent>,
+    search_id: &mut u64,
+    search: PositionSearch<'_>,
+    paused: &std::sync::atomic::AtomicBool,
+    cancelled: &std::sync::atomic::AtomicBool,
+) -> anyhow::Result<Option<Found>> {
+    use engine::{EngineEvent, Score, SearchRequest};
+    use std::sync::atomic::Ordering;
+    let pos = search.pos;
+    let mut eval = None;
+    let mut mate_distance = None;
+    let mut depth = 0;
+    let mut pv = String::new();
+    'position_search: loop {
+        if paused.load(Ordering::Relaxed) {
+            handle.stop();
+            if wait_while_paused(paused, cancelled) {
+                return Ok(None);
+            }
+        }
+        *search_id += 1;
+        handle.search(SearchRequest {
+            chess960: search.chess960,
+            search_moves: Vec::new(),
+            fen: search.start_fen.to_owned(),
+            moves: search.moves.to_vec(),
+            limits: Some(search.limit.limits()),
+            search_id: *search_id,
+            game: search.game as u64,
+        });
+        loop {
+            if cancelled.load(Ordering::Relaxed) {
+                handle.stop();
+                return Ok(None);
+            }
+            if paused.load(Ordering::Relaxed) {
+                handle.stop();
+                if wait_while_paused(paused, cancelled) {
+                    return Ok(None);
+                }
+                continue 'position_search;
+            }
+            match smol::block_on(events.recv()) {
+                Ok(EngineEvent::Analysis {
+                    search_id: from,
+                    update,
+                }) if from == *search_id => {
+                    if update.depth >= depth && !update.pv.is_empty() {
+                        depth = update.depth;
+                        pv = update.pv.join(" ");
+                    }
+                    if let Some(score) = update.score {
+                        let white = if pos.turn().is_white() {
+                            score
+                        } else {
+                            score.negate()
+                        };
+                        eval = Some(match white {
+                            Score::Cp(cp) => cp,
+                            Score::Mate(mate) if mate > 0 => 3000,
+                            Score::Mate(_) => -3000,
+                        });
+                        mate_distance = match score {
+                            Score::Mate(mate) if pos.turn().is_white() => Some(mate),
+                            Score::Mate(mate) => Some(-mate),
+                            Score::Cp(_) => None,
+                        };
+                    }
+                }
+                Ok(EngineEvent::BestMove {
+                    search_id: from, ..
+                }) if from == *search_id => break 'position_search,
+                Ok(EngineEvent::Crashed(reason)) => anyhow::bail!(reason),
+                Ok(_) => {}
+                Err(_) => anyhow::bail!("engine channel closed"),
+            }
+        }
+    }
+    Ok(Some((eval, mate_distance, depth, pv)))
+}
+
+/// Stores both sides' accuracy for a fully reviewed game, and the accuracy shown in the
+/// games table: the reviewed side's, or the average when both sides were reviewed.
+#[allow(clippy::too_many_arguments)]
+fn store_summary(
+    database: &Database,
+    id: i64,
+    job_key: &str,
+    engine: &engine::EngineConfig,
+    limit_label: &str,
+    evals: &[Option<i32>],
+    first_white: bool,
+    player_is_white: bool,
+    player: &str,
+    side: usize,
+) -> anyhow::Result<()> {
+    let reviewed_white = match side {
+        1 => true,
+        2 => false,
+        _ => player.is_empty() || player_is_white,
+    };
+    let white_accuracy = review_accuracy(evals, true, first_white);
+    let black_accuracy = review_accuracy(evals, false, first_white);
+    database.set_review_summary(
+        id,
+        job_key,
+        &ReviewSummary {
+            job_key: job_key.to_owned(),
+            engine: format!("{} {}", engine.name, engine.version),
+            search_limit: limit_label.to_owned(),
+            white_accuracy,
+            black_accuracy,
+        },
+        crate::analysis_store::timestamp(),
+    )?;
+    if let Some(accuracy) = match side {
+        0 if reviewed_white => white_accuracy,
+        0 => black_accuracy,
+        1 => white_accuracy,
+        2 => black_accuracy,
+        _ => match (white_accuracy, black_accuracy) {
+            (Some(white), Some(black)) => Some((white + black) / 2.0),
+            _ => None,
+        },
+    } {
+        database.set_accuracy(id, accuracy)?;
+    }
+    Ok(())
+}
+
 /// Runs engine review for each game on a worker thread and stores the accuracy.
 pub(super) fn review_games(
     engine: &engine::EngineConfig,
@@ -17,7 +178,7 @@ pub(super) fn review_games(
     control: ReviewControlRef<'_>,
     mut on_progress: impl FnMut(ReviewProgress),
 ) -> anyhow::Result<()> {
-    use engine::{EngineEvent, EngineHandle, Score, SearchRequest};
+    use engine::EngineHandle;
     use std::sync::atomic::Ordering;
     let ReviewControlRef {
         cancelled,
@@ -106,88 +267,25 @@ pub(super) fn review_games(
                 };
                 (Some(eval), None, 0, String::new())
             } else {
-                let mut eval = None;
-                let mut mate_distance = None;
-                let mut depth = 0;
-                let mut pv = String::new();
-                'position_search: loop {
-                    if paused.load(Ordering::Relaxed) {
-                        handle.stop();
-                        while paused.load(Ordering::Relaxed) && !cancelled.load(Ordering::Relaxed) {
-                            smol::block_on(smol::Timer::after(std::time::Duration::from_millis(
-                                50,
-                            )));
-                        }
-                        if cancelled.load(Ordering::Relaxed) {
-                            break 'games;
-                        }
-                    }
-                    search_id += 1;
-                    handle.search(SearchRequest {
+                let found = search_position(
+                    &handle,
+                    &events,
+                    &mut search_id,
+                    PositionSearch {
                         chess960: start_tree.variant == chess_core::Variant::Chess960,
-                        search_moves: Vec::new(),
-                        fen: start_fen.to_owned(),
-                        moves: moves.clone(),
-                        limits: Some(settings.limit.limits()),
-                        search_id,
-                        game: id as u64,
-                    });
-                    loop {
-                        if cancelled.load(Ordering::Relaxed) {
-                            handle.stop();
-                            break 'games;
-                        }
-                        if paused.load(Ordering::Relaxed) {
-                            handle.stop();
-                            while paused.load(Ordering::Relaxed)
-                                && !cancelled.load(Ordering::Relaxed)
-                            {
-                                smol::block_on(smol::Timer::after(
-                                    std::time::Duration::from_millis(50),
-                                ));
-                            }
-                            if cancelled.load(Ordering::Relaxed) {
-                                break 'games;
-                            }
-                            continue 'position_search;
-                        }
-                        match smol::block_on(events.recv()) {
-                            Ok(EngineEvent::Analysis {
-                                search_id: from,
-                                update,
-                            }) if from == search_id => {
-                                if update.depth >= depth && !update.pv.is_empty() {
-                                    depth = update.depth;
-                                    pv = update.pv.join(" ");
-                                }
-                                if let Some(score) = update.score {
-                                    let white = if pos.turn().is_white() {
-                                        score
-                                    } else {
-                                        score.negate()
-                                    };
-                                    eval = Some(match white {
-                                        Score::Cp(cp) => cp,
-                                        Score::Mate(mate) if mate > 0 => 3000,
-                                        Score::Mate(_) => -3000,
-                                    });
-                                    mate_distance = match score {
-                                        Score::Mate(mate) if pos.turn().is_white() => Some(mate),
-                                        Score::Mate(mate) => Some(-mate),
-                                        Score::Cp(_) => None,
-                                    };
-                                }
-                            }
-                            Ok(EngineEvent::BestMove {
-                                search_id: from, ..
-                            }) if from == search_id => break 'position_search,
-                            Ok(EngineEvent::Crashed(reason)) => anyhow::bail!(reason),
-                            Ok(_) => {}
-                            Err(_) => anyhow::bail!("engine channel closed"),
-                        }
-                    }
-                }
-                (eval, mate_distance, depth, pv)
+                        start_fen,
+                        moves: &moves,
+                        game: id,
+                        pos: &pos,
+                        limit: settings.limit,
+                    },
+                    paused,
+                    cancelled,
+                )?;
+                let Some(found) = found else {
+                    break 'games;
+                };
+                found
             };
             if let Some(eval_cp) = eval {
                 let result = ReviewPosition {
@@ -215,40 +313,20 @@ pub(super) fn review_games(
             pos.play_unchecked(mv);
             history.push(pos.clone());
         }
-        let player_is_white = !player.is_empty() && game.row.white.eq_ignore_ascii_case(player);
-        let reviewed_white = match settings.side {
-            0 => player.is_empty() || player_is_white,
-            1 => true,
-            2 => false,
-            _ => player.is_empty() || player_is_white,
-        };
         if evals.len() == game.sans.len() + 1 && evals.iter().all(Option::is_some) {
-            let white_accuracy = review_accuracy(&evals, true, first_white);
-            let black_accuracy = review_accuracy(&evals, false, first_white);
-            database.set_review_summary(
+            let white = !player.is_empty() && game.row.white.eq_ignore_ascii_case(player);
+            store_summary(
+                &database,
                 id,
                 &job_key,
-                &ReviewSummary {
-                    job_key: job_key.clone(),
-                    engine: format!("{} {}", engine.name, engine.version),
-                    search_limit: limit_label.clone(),
-                    white_accuracy,
-                    black_accuracy,
-                },
-                crate::analysis_store::timestamp(),
+                engine,
+                &limit_label,
+                &evals,
+                first_white,
+                white,
+                player,
+                settings.side,
             )?;
-            if let Some(accuracy) = match settings.side {
-                0 if reviewed_white => white_accuracy,
-                0 => black_accuracy,
-                1 => white_accuracy,
-                2 => black_accuracy,
-                _ => match (white_accuracy, black_accuracy) {
-                    (Some(white), Some(black)) => Some((white + black) / 2.0),
-                    _ => None,
-                },
-            } {
-                database.set_accuracy(id, accuracy)?;
-            }
         }
     }
     Ok(())

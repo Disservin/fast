@@ -1,29 +1,121 @@
 //! The left column: databases, the position pattern filter and the filters.
 
 use super::*;
+use gpui::Div;
 
 impl DatabaseScreen {
     /// Keeps game-search controls together beside the results table.
     pub(super) fn render_left(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let this = cx.entity();
         let reached = self.reached;
-        let only_left = self.only_left_rep;
-        let only_annotated = self.only_annotated;
-        let (only_this, annotated_this, more_this, save_this) =
-            (this.clone(), this.clone(), this.clone(), this.clone());
-        // Number pairs as one line: min – max.
-        let pair = |low: &Entity<InputState>, high: &Entity<InputState>| {
-            h_flex()
-                .gap(px(6.))
-                .child(div().flex_1().min_w_0().child(text_input(low)))
-                .child(div().text_color(rgb(T.muted)).child("–"))
-                .child(div().flex_1().min_w_0().child(text_input(high)))
-        };
+        let hidden = self.hidden_filters_set(cx);
+        let saved_list = self.render_saved_searches(cx);
+        v_flex()
+            .id("database-left")
+            .w(px(281.))
+            .h_full()
+            .flex_none()
+            .overflow_y_scroll()
+            .px(px(16.))
+            .pt(px(16.))
+            .pb(px(16.))
+            .bg(rgb(T.surface))
+            .border_r_1()
+            .border_color(rgb(T.border))
+            .child(
+                h_flex()
+                    .justify_between()
+                    .items_center()
+                    .mb(px(6.))
+                    .child(section_label("Filter"))
+                    .child(
+                        btn("save-search", "Save search")
+                            .mini()
+                            .tooltip("Save these filters under a name")
+                            .on_click(this.listen(move |screen, window, cx| {
+                                screen.start_saving_search(window, cx)
+                            })),
+                    ),
+            )
+            .when_some(self.saving_search.clone(), |column, input| {
+                column.child(div().mb(px(6.)).child(text_input(&input).height(28.)))
+            })
+            .children(saved_list)
+            .child({
+                let (keys_this, suggestions) = (this.clone(), self.render_player_suggestions(cx));
+                let open = suggestions.is_some();
+                div()
+                    .mb(px(7.))
+                    // Arrow keys move through the suggestions instead of the text cursor.
+                    .capture_key_down(move |event: &gpui::KeyDownEvent, _, cx| {
+                        let key = event.keystroke.key.as_str();
+                        if open && (key == "down" || key == "up") {
+                            cx.stop_propagation();
+                            keys_this
+                                .update(cx, |screen, cx| screen.step_suggestion(key == "down", cx));
+                        }
+                    })
+                    .child(field("Player", text_input(&self.player)))
+                    .children(suggestions)
+            })
+            .child(
+                div()
+                    .grid()
+                    .grid_cols(2)
+                    .gap_x(px(10.))
+                    .mb(px(7.))
+                    .child(field("Colour", select_el(&self.colour)))
+                    .child(field("Result", select_el(&self.result))),
+            )
+            .child(
+                div()
+                    .mb(px(10.))
+                    .child(field("Date", self.render_dates(cx))),
+            )
+            .child(
+                div().mb(px(8.)).child(
+                    check("reached", reached, "Reached the Analyse board position")
+                        .text(13.)
+                        .on_change(this.listen_with(move |screen, value, _, cx| {
+                            screen.toggle_reached(value, cx)
+                        })),
+                ),
+            )
+            .child(
+                h_flex()
+                    .gap(px(6.))
+                    .mb(px(6.))
+                    .ml(px(-10.))
+                    .child(
+                        btn("more-filters", "More filters")
+                            .kind(ui::widgets::BtnKind::Ghost)
+                            .compact()
+                            .icon(if self.more_filters {
+                                "icons/chevron-down.svg"
+                            } else {
+                                "icons/chevron-right.svg"
+                            })
+                            .on_click(this.listen(move |screen, _, cx| {
+                                screen.more_filters = !screen.more_filters;
+                                cx.notify();
+                            })),
+                    )
+                    .when(hidden > 0, |row| row.child(badge(hidden.to_string()))),
+            )
+            .when(self.more_filters, |column| {
+                column
+                    .child(self.render_more_filters(cx))
+                    .child(self.render_pattern_filter(cx))
+            })
+    }
+
+    /// The date range, with a hint when either end is not a date.
+    fn render_dates(&self, cx: &mut Context<Self>) -> Div {
         let date_text = |input: &Entity<InputState>| input.read(cx).value().trim().to_owned();
         let (from_text, to_text) = (date_text(&self.date_from), date_text(&self.date_to));
         let from_bad = !from_text.is_empty() && date_bound(&from_text, false).is_none();
         let to_bad = !to_text.is_empty() && date_bound(&to_text, true).is_none();
-        let dates = v_flex()
+        v_flex()
             .gap(px(4.))
             .child(
                 h_flex()
@@ -48,8 +140,12 @@ impl DatabaseScreen {
                         .text_as(12., T.warn)
                         .child(ui::i18n::t("Use 2020, 2020.05 or 2020.05.17")),
                 )
-            });
-        let hidden = self.hidden_filters_set(cx);
+            })
+    }
+
+    /// The saved searches, one button each; right-click deletes one.
+    fn render_saved_searches(&self, cx: &mut Context<Self>) -> Option<Div> {
+        let this = cx.entity();
         let saved: Vec<String> = self
             .model
             .read(cx)
@@ -93,7 +189,23 @@ impl DatabaseScreen {
                     }),
             );
         }
-        let more = v_flex()
+        (!saved.is_empty()).then_some(saved_list)
+    }
+
+    /// The filters under More filters: ECO, time control, ratings, moves, event and the
+    /// annotated and repertoire checks.
+    fn render_more_filters(&self, cx: &mut Context<Self>) -> Div {
+        let this = cx.entity();
+        let (only_annotated, only_left) = (self.only_annotated, self.only_left_rep);
+        // Number pairs as one line: min – max.
+        let pair = |low: &Entity<InputState>, high: &Entity<InputState>| {
+            h_flex()
+                .gap(px(6.))
+                .child(div().flex_1().min_w_0().child(text_input(low)))
+                .child(div().text_color(rgb(T.muted)).child("–"))
+                .child(div().flex_1().min_w_0().child(text_input(high)))
+        };
+        v_flex()
             .gap(px(7.))
             .mb(px(10.))
             .child(
@@ -111,12 +223,10 @@ impl DatabaseScreen {
             .child(field("Event or site", text_input(&self.event)))
             .child(
                 check("only-annotated", only_annotated, "Only annotated games").on_change(
-                    move |value, _, cx| {
-                        annotated_this.update(cx, |screen, cx| {
-                            screen.only_annotated = value;
-                            screen.schedule_filter(cx);
-                        });
-                    },
+                    this.listen_with(move |screen, value, _, cx| {
+                        screen.only_annotated = value;
+                        screen.schedule_filter(cx);
+                    }),
                 ),
             )
             .child(
@@ -125,102 +235,11 @@ impl DatabaseScreen {
                     only_left,
                     "Only games where I left my repertoire",
                 )
-                .on_change(only_this.listen_with(move |screen, value, _, cx| {
+                .on_change(this.listen_with(move |screen, value, _, cx| {
                     screen.only_left_rep = value;
                     screen.schedule_filter(cx);
                 })),
-            );
-        v_flex()
-            .id("database-left")
-            .w(px(281.))
-            .h_full()
-            .flex_none()
-            .overflow_y_scroll()
-            .px(px(16.))
-            .pt(px(16.))
-            .pb(px(16.))
-            .bg(rgb(T.surface))
-            .border_r_1()
-            .border_color(rgb(T.border))
-            .child(
-                h_flex()
-                    .justify_between()
-                    .items_center()
-                    .mb(px(6.))
-                    .child(section_label("Filter"))
-                    .child(
-                        btn("save-search", "Save search")
-                            .mini()
-                            .tooltip("Save these filters under a name")
-                            .on_click(save_this.listen(move |screen, window, cx| {
-                                screen.start_saving_search(window, cx)
-                            })),
-                    ),
             )
-            .when_some(self.saving_search.clone(), |column, input| {
-                column.child(div().mb(px(6.)).child(text_input(&input).height(28.)))
-            })
-            .when(!saved.is_empty(), |column| column.child(saved_list))
-            .child({
-                let (keys_this, suggestions) = (this.clone(), self.render_player_suggestions(cx));
-                let open = suggestions.is_some();
-                div()
-                    .mb(px(7.))
-                    // Arrow keys move through the suggestions instead of the text cursor.
-                    .capture_key_down(move |event: &gpui::KeyDownEvent, _, cx| {
-                        let key = event.keystroke.key.as_str();
-                        if open && (key == "down" || key == "up") {
-                            cx.stop_propagation();
-                            keys_this
-                                .update(cx, |screen, cx| screen.step_suggestion(key == "down", cx));
-                        }
-                    })
-                    .child(field("Player", text_input(&self.player)))
-                    .children(suggestions)
-            })
-            .child(
-                div()
-                    .grid()
-                    .grid_cols(2)
-                    .gap_x(px(10.))
-                    .mb(px(7.))
-                    .child(field("Colour", select_el(&self.colour)))
-                    .child(field("Result", select_el(&self.result))),
-            )
-            .child(div().mb(px(10.)).child(field("Date", dates)))
-            .child(
-                div().mb(px(8.)).child(
-                    check("reached", reached, "Reached the Analyse board position")
-                        .text(13.)
-                        .on_change(this.listen_with(move |screen, value, _, cx| {
-                            screen.toggle_reached(value, cx)
-                        })),
-                ),
-            )
-            .child(
-                h_flex()
-                    .gap(px(6.))
-                    .mb(px(6.))
-                    .ml(px(-10.))
-                    .child(
-                        btn("more-filters", "More filters")
-                            .kind(ui::widgets::BtnKind::Ghost)
-                            .compact()
-                            .icon(if self.more_filters {
-                                "icons/chevron-down.svg"
-                            } else {
-                                "icons/chevron-right.svg"
-                            })
-                            .on_click(more_this.listen(move |screen, _, cx| {
-                                screen.more_filters = !screen.more_filters;
-                                cx.notify();
-                            })),
-                    )
-                    .when(hidden > 0, |row| row.child(badge(hidden.to_string()))),
-            )
-            .when(self.more_filters, |column| {
-                column.child(more).child(self.render_pattern_filter(cx))
-            })
     }
 
     /// Runs a cancellable index build on a worker, leaving queries on the complete old index.

@@ -29,6 +29,15 @@ pub(super) fn import_message(summary: &db::ImportSummary) -> String {
     message
 }
 
+/// A label in the Import dialog's left column.
+fn import_label(text: &str) -> gpui::Div {
+    div()
+        .w(px(72.))
+        .flex_none()
+        .text_as(13., T.muted)
+        .child(ui::i18n::t(text).to_owned())
+}
+
 impl DatabaseScreen {
     /// Opens the Import dialog, unless an import is already running.
     pub fn prompt_import(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
@@ -245,13 +254,6 @@ impl DatabaseScreen {
                 })
             },
         );
-        let label = |text: &str| {
-            div()
-                .w(px(72.))
-                .flex_none()
-                .text_as(13., T.muted)
-                .child(ui::i18n::t(text).to_owned())
-        };
         let model = self.model.clone();
         let keep_check = check(
             "import-keep-annotations",
@@ -262,11 +264,12 @@ impl DatabaseScreen {
             model.config.import_keep_annotations = value;
             model.save_config(cx);
         }));
-        let mut body = v_flex()
-            .px(px(16.))
-            .py(px(14.))
-            .gap(px(10.))
-            .child(h_flex().gap(px(8.)).child(label("Source")).child(source));
+        let mut body = v_flex().px(px(16.)).py(px(14.)).gap(px(10.)).child(
+            h_flex()
+                .gap(px(8.))
+                .child(import_label("Source"))
+                .child(source),
+        );
         let footer = h_flex()
             .justify_end()
             .gap(px(6.))
@@ -281,7 +284,7 @@ impl DatabaseScreen {
                     .unwrap_or_else(|| SharedString::from(ui::i18n::t("My games")));
                 body = body
                     .child(
-                        h_flex().gap(px(8.)).child(label("Into")).child(
+                        h_flex().gap(px(8.)).child(import_label("Into")).child(
                             div()
                                 .text_size(px(14.))
                                 .font_weight(FontWeight::MEDIUM)
@@ -324,92 +327,7 @@ impl DatabaseScreen {
                 if let Some(running) = &self.downloading {
                     body = body.child(self.render_download_progress(running));
                 } else {
-                    let has_account = self
-                        .typed_account(site, cx)
-                        .is_some_and(|account| account.last_game_ms.is_some());
-                    let since_this = this.clone();
-                    let since = segmented(
-                        "download-since",
-                        vec![
-                            (Since::All, ui::i18n::t("All").into(), false),
-                            (Since::LastYear, ui::i18n::t("Last year").into(), false),
-                            (Since::LastMonth, ui::i18n::t("Last month").into(), false),
-                            (
-                                Since::LastUpdate,
-                                ui::i18n::t("Since last update").into(),
-                                !has_account,
-                            ),
-                        ],
-                        if self.download_since == Since::LastUpdate && !has_account {
-                            Since::All
-                        } else {
-                            self.download_since
-                        },
-                        move |value, _, cx| {
-                            since_this.update(cx, |screen, cx| {
-                                screen.download_since = value;
-                                cx.notify();
-                            })
-                        },
-                    );
-                    let into_this = this.clone();
-                    let my_games = SharedString::from(ui::i18n::t("My games"));
-                    let into = match selected_name.clone().filter(|name| *name != my_games) {
-                        Some(name) => segmented(
-                            "download-into",
-                            vec![(false, my_games, false), (true, name, false)],
-                            self.download_into_selected,
-                            move |value, _, cx| {
-                                into_this.update(cx, |screen, cx| {
-                                    screen.download_into_selected = value;
-                                    cx.notify();
-                                })
-                            },
-                        ),
-                        None => h_flex().child(
-                            div()
-                                .text_size(px(14.))
-                                .font_weight(FontWeight::MEDIUM)
-                                .child(my_games),
-                        ),
-                    };
-                    let (clocks_this, me_this) = (this.clone(), this.clone());
-                    body = body
-                        .child(
-                            h_flex().gap(px(8.)).child(label("Username")).child(
-                                div()
-                                    .w(px(220.))
-                                    .child(text_input(&self.download_user).height(32.)),
-                            ),
-                        )
-                        .child(h_flex().gap(px(8.)).child(label("Since")).child(since))
-                        .child(h_flex().gap(px(8.)).child(label("Into")).child(into))
-                        .when(site == Site::Lichess, |body| {
-                            body.child(
-                                check(
-                                    "download-clocks",
-                                    self.download_clocks,
-                                    "Include clocks and evaluations",
-                                )
-                                .on_change(
-                                    clocks_this.listen_with(move |screen, value, _, cx| {
-                                        screen.download_clocks = value;
-                                        cx.notify();
-                                    }),
-                                ),
-                            )
-                        })
-                        .child(
-                            check("download-is-me", self.download_is_me, "This is my account")
-                                .on_change(me_this.listen_with(move |screen, value, _, cx| {
-                                    screen.download_is_me = value;
-                                    cx.notify();
-                                })),
-                        )
-                        .child(div().text_as(13., T.muted).child(ui::i18n::tf(
-                            "Fast connects to {} to fetch the games. Nothing else is sent.",
-                            &[site.host()],
-                        )));
+                    body = body.child(self.render_download_form(site, selected_name.clone(), cx));
                 }
                 if let Some(error) = &self.download_error {
                     body = body.child(div().text_as(13., T.warn).child(error.clone()));
@@ -457,6 +375,109 @@ impl DatabaseScreen {
             v_flex().child(body).child(footer).into_any_element(),
             this,
         ))
+    }
+
+    /// The fields for downloading an account's games: username, since when, into which
+    /// database, and whether to keep clocks.
+    fn render_download_form(
+        &self,
+        site: Site,
+        selected_name: Option<SharedString>,
+        cx: &mut Context<Self>,
+    ) -> gpui::Div {
+        let this = cx.entity();
+        let has_account = self
+            .typed_account(site, cx)
+            .is_some_and(|account| account.last_game_ms.is_some());
+        let since_this = this.clone();
+        let since = segmented(
+            "download-since",
+            vec![
+                (Since::All, ui::i18n::t("All").into(), false),
+                (Since::LastYear, ui::i18n::t("Last year").into(), false),
+                (Since::LastMonth, ui::i18n::t("Last month").into(), false),
+                (
+                    Since::LastUpdate,
+                    ui::i18n::t("Since last update").into(),
+                    !has_account,
+                ),
+            ],
+            if self.download_since == Since::LastUpdate && !has_account {
+                Since::All
+            } else {
+                self.download_since
+            },
+            move |value, _, cx| {
+                since_this.update(cx, |screen, cx| {
+                    screen.download_since = value;
+                    cx.notify();
+                })
+            },
+        );
+        let into_this = this.clone();
+        let my_games = SharedString::from(ui::i18n::t("My games"));
+        let into = match selected_name.clone().filter(|name| *name != my_games) {
+            Some(name) => segmented(
+                "download-into",
+                vec![(false, my_games, false), (true, name, false)],
+                self.download_into_selected,
+                move |value, _, cx| {
+                    into_this.update(cx, |screen, cx| {
+                        screen.download_into_selected = value;
+                        cx.notify();
+                    })
+                },
+            ),
+            None => h_flex().child(
+                div()
+                    .text_size(px(14.))
+                    .font_weight(FontWeight::MEDIUM)
+                    .child(my_games),
+            ),
+        };
+        v_flex()
+            .gap(px(10.))
+            .child(
+                h_flex().gap(px(8.)).child(import_label("Username")).child(
+                    div()
+                        .w(px(220.))
+                        .child(text_input(&self.download_user).height(32.)),
+                ),
+            )
+            .child(
+                h_flex()
+                    .gap(px(8.))
+                    .child(import_label("Since"))
+                    .child(since),
+            )
+            .child(h_flex().gap(px(8.)).child(import_label("Into")).child(into))
+            .when(site == Site::Lichess, |body| {
+                body.child(
+                    check(
+                        "download-clocks",
+                        self.download_clocks,
+                        "Include clocks and evaluations",
+                    )
+                    .on_change(this.listen_with(
+                        move |screen, value, _, cx| {
+                            screen.download_clocks = value;
+                            cx.notify();
+                        },
+                    )),
+                )
+            })
+            .child(
+                check("download-is-me", self.download_is_me, "This is my account").on_change(
+                    this.listen_with(move |screen, value, _, cx| {
+                        screen.download_is_me = value;
+                        cx.notify();
+                    }),
+                ),
+            )
+            .child(div().text_as(13., T.muted).child(ui::i18n::tf(
+                "Fast connects to {} to fetch the games. Nothing else is sent.",
+                &[site.host()],
+            )))
     }
 
     /// Asks before emptying a database to import its source file again.

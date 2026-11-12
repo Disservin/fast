@@ -370,6 +370,24 @@ impl Drop for DatabaseScreen {
     }
 }
 
+/// A dropdown of `items`, translated, with `selected` chosen.
+fn translated_select(
+    items: &[&str],
+    selected: usize,
+    window: &mut Window,
+    cx: &mut gpui::App,
+) -> TextSelect {
+    new_select(
+        items
+            .iter()
+            .map(|text| SharedString::from(ui::i18n::t(text)))
+            .collect(),
+        selected,
+        window,
+        cx,
+    )
+}
+
 impl DatabaseScreen {
     /// Engines are reviewing games.
     /// Closes whichever dialog is open.
@@ -402,15 +420,7 @@ impl DatabaseScreen {
             window,
             cx,
         );
-        let colour = new_select(
-            COLOURS
-                .iter()
-                .map(|text| SharedString::from(ui::i18n::t(text)))
-                .collect(),
-            usize::from(demo),
-            window,
-            cx,
-        );
+        let colour = translated_select(&COLOURS, usize::from(demo), window, cx);
         let eco = new_input(if demo { "B90–B99" } else { "" }, "A00–E99", window, cx);
         let opp_rating = new_input(
             if demo { "1900" } else { "" },
@@ -418,24 +428,8 @@ impl DatabaseScreen {
             window,
             cx,
         );
-        let time_control = new_select(
-            TIME_CONTROLS
-                .iter()
-                .map(|text| SharedString::from(ui::i18n::t(text)))
-                .collect(),
-            usize::from(demo),
-            window,
-            cx,
-        );
-        let result = new_select(
-            BOARD_RESULTS
-                .iter()
-                .map(|text| SharedString::from(ui::i18n::t(text)))
-                .collect(),
-            0,
-            window,
-            cx,
-        );
+        let time_control = translated_select(&TIME_CONTROLS, usize::from(demo), window, cx);
+        let result = translated_select(&BOARD_RESULTS, 0, window, cx);
         let date_from = new_input("", "From", window, cx);
         let date_to = new_input("", "To", window, cx);
         let event = new_input("", "Event or site", window, cx);
@@ -463,81 +457,6 @@ impl DatabaseScreen {
             )
             .searchable(true)
         });
-        let mut subscriptions = Vec::new();
-        subscriptions.push(cx.subscribe(
-            &collection_picker,
-            |screen, _, event: &SelectEvent<_>, cx| {
-                let SelectEvent::Confirm(Some(label)) = event else {
-                    return;
-                };
-                if let Some(index) = screen
-                    .collection_labels
-                    .iter()
-                    .position(|item| item == label)
-                    && let Some(entry) = screen.collection_entries.get(index)
-                {
-                    screen.selected_db = Some(entry.path.clone());
-                    screen.selected = None;
-                    screen.apply_filter(cx);
-                }
-            },
-        ));
-        subscriptions.push(cx.subscribe_in(
-            &player,
-            window,
-            |this, _, event, window, cx| match event {
-                InputEvent::Change => {
-                    this.sync_result_labels(window, cx);
-                    this.schedule_filter(cx);
-                    this.suggest_players(cx);
-                }
-                InputEvent::PressEnter { .. } => match this.player_highlight {
-                    Some(index) => this.pick_player(index, window, cx),
-                    None => this.apply_filter(cx),
-                },
-                InputEvent::Blur => this.close_suggestions(cx),
-                _ => {}
-            },
-        ));
-        for input in [
-            &eco,
-            &opp_rating,
-            &date_from,
-            &date_to,
-            &event,
-            &min_rating,
-            &max_rating,
-            &min_moves,
-            &max_moves,
-        ] {
-            subscriptions.push(cx.subscribe_in(
-                input,
-                window,
-                |this, _, event, _, cx| match event {
-                    InputEvent::Change => this.schedule_filter(cx),
-                    InputEvent::PressEnter { .. } => this.apply_filter(cx),
-                    _ => {}
-                },
-            ));
-        }
-        for select in [&colour, &time_control, &result] {
-            subscriptions.push(cx.subscribe(select, |this, _, _: &SelectEvent<_>, cx| {
-                this.schedule_filter(cx);
-            }));
-        }
-        subscriptions.push(
-            cx.subscribe_in(&model, window, |this, _, event, _, cx| match event {
-                ModelEvent::BoardPrefs => {
-                    let prefs = this.model.read(cx).config.board.prefs();
-                    this.preview_board
-                        .update(cx, |board, cx| board.set_prefs(prefs, cx));
-                }
-                ModelEvent::Databases | ModelEvent::Repertoire => {
-                    this.apply_filter(cx);
-                }
-                ModelEvent::Engines | ModelEvent::Restored => {}
-            }),
-        );
         let pattern_fen = new_input(
             if model.read(cx).demo {
                 "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2"
@@ -548,9 +467,6 @@ impl DatabaseScreen {
             window,
             cx,
         );
-        let pattern_sub = cx.subscribe(&pattern_fen, |this, _, _: &InputEvent, cx| {
-            this.schedule_filter(cx)
-        });
         let selected_db = model
             .read(cx)
             .databases
@@ -564,20 +480,6 @@ impl DatabaseScreen {
             .find(|engine| engine.enabled && engine.use_review)
             .map(|engine| engine.id);
         let download_user = new_input("", ui::i18n::t("Username"), window, cx);
-        subscriptions.push(
-            cx.subscribe_in(
-                &download_user,
-                window,
-                |this, _, event, _, cx| match event {
-                    InputEvent::Change => {
-                        this.download_error = None;
-                        cx.notify();
-                    }
-                    InputEvent::PressEnter { .. } => this.download_from_dialog(cx),
-                    _ => {}
-                },
-            ),
-        );
         let mut this = Self {
             model,
             workspace,
@@ -663,15 +565,113 @@ impl DatabaseScreen {
             suggest_task: None,
             query_task: None,
             preview_task: None,
-            _subscriptions: {
-                let mut subscriptions = subscriptions;
-                subscriptions.push(pattern_sub);
-                subscriptions
-            },
+            _subscriptions: Vec::new(),
         };
+        this.subscribe_inputs(window, cx);
         this.sync_result_labels(window, cx);
         this.apply_filter(cx);
         this
+    }
+
+    /// Re-runs the filter as its fields change, and follows the model's databases,
+    /// repertoire and board settings.
+    fn subscribe_inputs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let mut subscriptions = Vec::new();
+        let model = self.model.clone();
+        subscriptions.push(cx.subscribe(
+            &self.collection_picker,
+            |screen, _, event: &SelectEvent<_>, cx| {
+                let SelectEvent::Confirm(Some(label)) = event else {
+                    return;
+                };
+                if let Some(index) = screen
+                    .collection_labels
+                    .iter()
+                    .position(|item| item == label)
+                    && let Some(entry) = screen.collection_entries.get(index)
+                {
+                    screen.selected_db = Some(entry.path.clone());
+                    screen.selected = None;
+                    screen.apply_filter(cx);
+                }
+            },
+        ));
+        subscriptions.push(
+            cx.subscribe_in(
+                &self.player,
+                window,
+                |this, _, event, window, cx| match event {
+                    InputEvent::Change => {
+                        this.sync_result_labels(window, cx);
+                        this.schedule_filter(cx);
+                        this.suggest_players(cx);
+                    }
+                    InputEvent::PressEnter { .. } => match this.player_highlight {
+                        Some(index) => this.pick_player(index, window, cx),
+                        None => this.apply_filter(cx),
+                    },
+                    InputEvent::Blur => this.close_suggestions(cx),
+                    _ => {}
+                },
+            ),
+        );
+        for input in [
+            &self.eco,
+            &self.opp_rating,
+            &self.date_from,
+            &self.date_to,
+            &self.event,
+            &self.min_rating,
+            &self.max_rating,
+            &self.min_moves,
+            &self.max_moves,
+        ] {
+            subscriptions.push(cx.subscribe_in(
+                input,
+                window,
+                |this, _, event, _, cx| match event {
+                    InputEvent::Change => this.schedule_filter(cx),
+                    InputEvent::PressEnter { .. } => this.apply_filter(cx),
+                    _ => {}
+                },
+            ));
+        }
+        for select in [&self.colour, &self.time_control, &self.result] {
+            subscriptions.push(cx.subscribe(select, |this, _, _: &SelectEvent<_>, cx| {
+                this.schedule_filter(cx);
+            }));
+        }
+        subscriptions.push(
+            cx.subscribe_in(&model, window, |this, _, event, _, cx| match event {
+                ModelEvent::BoardPrefs => {
+                    let prefs = this.model.read(cx).config.board.prefs();
+                    this.preview_board
+                        .update(cx, |board, cx| board.set_prefs(prefs, cx));
+                }
+                ModelEvent::Databases | ModelEvent::Repertoire => {
+                    this.apply_filter(cx);
+                }
+                ModelEvent::Engines | ModelEvent::Restored => {}
+            }),
+        );
+        subscriptions.push(
+            cx.subscribe(&self.pattern_fen, |this, _, _: &InputEvent, cx| {
+                this.schedule_filter(cx)
+            }),
+        );
+        subscriptions.push(cx.subscribe_in(
+            &self.download_user,
+            window,
+            |this, _, event, _, cx| match event {
+                InputEvent::Change => {
+                    this.download_error = None;
+                    cx.notify();
+                }
+                InputEvent::PressEnter { .. } => this.download_from_dialog(cx),
+                _ => {}
+            },
+        ));
+        self._subscriptions = subscriptions;
     }
 
     pub fn breadcrumb(&self) -> SharedString {

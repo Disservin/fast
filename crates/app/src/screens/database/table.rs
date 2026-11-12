@@ -8,32 +8,8 @@ impl DatabaseScreen {
         &mut self,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
-        use gpui_component::{button::Button, menu::DropdownMenu as _};
         let this = cx.entity();
         let filtered = self.active_filter_count(cx);
-        let selected = self.selected_db.clone();
-        let renamable = selected
-            .as_ref()
-            .is_some_and(|path| self.can_rename(path, cx));
-        let reimport = self.db_snapshot.as_ref().and_then(|entry| {
-            entry
-                .source_file
-                .clone()
-                .map(|file| (entry.path.clone(), file))
-        });
-        let review_running = self.reviewing.is_some();
-        let review_disabled = !review_running
-            && (selected.is_none() || self.review_selected_only && self.selected.is_none());
-        let accounts: Vec<_> = self
-            .model
-            .read(cx)
-            .config
-            .accounts
-            .iter()
-            .enumerate()
-            .filter(|(_, account)| Some(&account.database) == selected.as_ref())
-            .map(|(index, account)| (index, account.site, account.name.clone()))
-            .collect();
         h_flex()
             .flex_wrap()
             .justify_between()
@@ -67,162 +43,168 @@ impl DatabaseScreen {
                         }))
                     })
                     .when(filtered > 0, |row| {
-                        row.child({
-                            let this = this.clone();
-                            btn("clear-filters", "Clear filters").compact().on_click(
-                                move |window, cx| {
-                                    this.update(cx, |screen, cx| screen.clear_filters(window, cx));
-                                },
-                            )
-                        })
+                        row.child(btn("clear-filters", "Clear filters").compact().on_click(
+                            this.listen(move |screen, window, cx| screen.clear_filters(window, cx)),
+                        ))
                     }),
             )
             .child(
                 h_flex()
                     .gap(px(6.))
-                    .when_some(self.reviewing.as_ref(), |row, reviewing| {
-                        row.when(reviewing.engines == 1, |row| {
-                            row.child(
-                                mono(ui::i18n::tf(
-                                    "Position {} / {}",
-                                    &[&reviewing.ply.to_string(), &reviewing.plies.to_string()],
-                                ))
-                                .text_size(px(12.)),
-                            )
-                        })
-                        .child(
-                            mono(ui::i18n::tf(
-                                "Review {} / {}",
-                                &[
-                                    &reviewing
-                                        .finished
-                                        .load(std::sync::atomic::Ordering::Relaxed)
-                                        .min(reviewing.total)
-                                        .to_string(),
-                                    &reviewing.total.to_string(),
-                                ],
-                            ))
-                            .text_size(px(12.)),
-                        )
-                        .child(
-                            btn(
-                                "review-pause",
-                                if reviewing.paused.load(std::sync::atomic::Ordering::Relaxed) {
-                                    "Resume"
-                                } else {
-                                    "Pause"
-                                },
-                            )
-                            .compact()
-                            .on_click(
-                                this.listen(move |screen, _, cx| screen.toggle_review_pause(cx)),
-                            ),
-                        )
-                    })
+                    .children(self.render_review_progress(cx))
                     .child({
                         btn("import-games", "Import games").compact().on_click(
                             this.listen(move |screen, window, cx| screen.prompt_import(window, cx)),
                         )
                     })
-                    .child(
-                        Button::new("database-more-actions")
-                            .label(ui::i18n::t("More actions"))
-                            .compact()
-                            .h(px(28.))
-                            .dropdown_menu(move |menu, _, _| {
-                                let settings = this.clone();
-                                let review = this.clone();
-                                let rename = this.clone();
-                                let duplicate = this.clone();
-                                let rename_path = selected.clone();
-                                let duplicate_path = selected.clone();
-                                let mut menu = menu
-                                    .item(
-                                        PopupMenuItem::new(ui::i18n::t("Review settings"))
-                                            .on_click(settings.listen_event(
-                                                move |screen, _, _, cx| {
-                                                    screen.set_review_settings_open(true, cx)
-                                                },
-                                            )),
-                                    )
-                                    .item(
-                                        PopupMenuItem::new(ui::i18n::t(if review_running {
-                                            "Stop review"
-                                        } else {
-                                            "Analyse all"
-                                        }))
-                                        .disabled(review_disabled)
-                                        .on_click(
-                                            move |_, _, cx| {
-                                                review.update(cx, |screen, cx| {
-                                                    screen.analyse_all(cx)
-                                                });
-                                            },
-                                        ),
-                                    )
-                                    .item(
-                                        PopupMenuItem::new(ui::i18n::t("Export matching games"))
-                                            .disabled(selected.is_none())
-                                            .on_click(this.listen_event(
-                                                move |screen, _, _, cx| screen.export_pgn(cx),
-                                            )),
-                                    )
-                                    .item(
-                                        PopupMenuItem::new(ui::i18n::t("Rename database"))
-                                            .disabled(!renamable)
-                                            .on_click(move |_, window, cx| {
-                                                if let Some(path) = &rename_path {
-                                                    rename.update(cx, |screen, cx| {
-                                                        screen.start_rename(
-                                                            path.clone(),
-                                                            window,
-                                                            cx,
-                                                        )
-                                                    });
-                                                }
-                                            }),
-                                    )
-                                    .item(
-                                        PopupMenuItem::new(ui::i18n::t("Duplicate database"))
-                                            .disabled(selected.is_none())
-                                            .on_click(move |_, _, cx| {
-                                                if let Some(path) = &duplicate_path {
-                                                    duplicate.update(cx, |screen, cx| {
-                                                        screen.duplicate_db(path.clone(), cx)
-                                                    });
-                                                }
-                                            }),
-                                    );
-                                if let Some(target) = &reimport {
-                                    let target = target.clone();
-                                    menu = menu.item(
-                                        PopupMenuItem::new(ui::i18n::t("Re-import from file…"))
-                                            .on_click(this.listen_event(
-                                                move |screen, _, _, cx| {
-                                                    screen.confirm_reimport = Some(target.clone());
-                                                    cx.notify();
-                                                },
-                                            )),
-                                    );
-                                }
-                                for (index, site, name) in &accounts {
-                                    let index = *index;
-                                    menu = menu.item(
-                                        PopupMenuItem::new(ui::i18n::tf(
-                                            "Update {} from {}",
-                                            &[name, site.name()],
-                                        ))
-                                        .on_click(
-                                            this.listen_event(move |screen, _, _, cx| {
-                                                screen.update_account(index, cx)
-                                            }),
-                                        ),
-                                    );
-                                }
-                                menu
-                            }),
-                    ),
+                    .child(self.render_more_actions(cx)),
             )
+    }
+
+    /// While a review runs: the position and game it is on, and Pause or Resume.
+    fn render_review_progress(&self, cx: &mut Context<Self>) -> Option<impl IntoElement + use<>> {
+        let this = cx.entity();
+        let reviewing = self.reviewing.as_ref()?;
+        Some(
+            h_flex()
+                .gap(px(6.))
+                .when(reviewing.engines == 1, |row| {
+                    row.child(
+                        mono(ui::i18n::tf(
+                            "Position {} / {}",
+                            &[&reviewing.ply.to_string(), &reviewing.plies.to_string()],
+                        ))
+                        .text_size(px(12.)),
+                    )
+                })
+                .child(
+                    mono(ui::i18n::tf(
+                        "Review {} / {}",
+                        &[
+                            &reviewing
+                                .finished
+                                .load(std::sync::atomic::Ordering::Relaxed)
+                                .min(reviewing.total)
+                                .to_string(),
+                            &reviewing.total.to_string(),
+                        ],
+                    ))
+                    .text_size(px(12.)),
+                )
+                .child(
+                    btn(
+                        "review-pause",
+                        if reviewing.paused.load(std::sync::atomic::Ordering::Relaxed) {
+                            "Resume"
+                        } else {
+                            "Pause"
+                        },
+                    )
+                    .compact()
+                    .on_click(this.listen(move |screen, _, cx| screen.toggle_review_pause(cx))),
+                ),
+        )
+    }
+
+    /// More actions: review settings and Analyse all, export, rename, duplicate,
+    /// re-import and updating linked accounts.
+    fn render_more_actions(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        use gpui_component::{button::Button, menu::DropdownMenu as _};
+        let this = cx.entity();
+        let selected = self.selected_db.clone();
+        let renamable = selected
+            .as_ref()
+            .is_some_and(|path| self.can_rename(path, cx));
+        let reimport = self.db_snapshot.as_ref().and_then(|entry| {
+            entry
+                .source_file
+                .clone()
+                .map(|file| (entry.path.clone(), file))
+        });
+        let review_running = self.reviewing.is_some();
+        let review_disabled = !review_running
+            && (selected.is_none() || self.review_selected_only && self.selected.is_none());
+        let accounts: Vec<_> = self
+            .model
+            .read(cx)
+            .config
+            .accounts
+            .iter()
+            .enumerate()
+            .filter(|(_, account)| Some(&account.database) == selected.as_ref())
+            .map(|(index, account)| (index, account.site, account.name.clone()))
+            .collect();
+        Button::new("database-more-actions")
+            .label(ui::i18n::t("More actions"))
+            .compact()
+            .h(px(28.))
+            .dropdown_menu(move |menu, _, _| {
+                let rename_path = selected.clone();
+                let duplicate_path = selected.clone();
+                let mut menu = menu
+                    .item(PopupMenuItem::new(ui::i18n::t("Review settings")).on_click(
+                        this.listen_event(move |screen, _, _, cx| {
+                            screen.set_review_settings_open(true, cx)
+                        }),
+                    ))
+                    .item(
+                        PopupMenuItem::new(ui::i18n::t(if review_running {
+                            "Stop review"
+                        } else {
+                            "Analyse all"
+                        }))
+                        .disabled(review_disabled)
+                        .on_click(
+                            this.listen_event(move |screen, _, _, cx| screen.analyse_all(cx)),
+                        ),
+                    )
+                    .item(
+                        PopupMenuItem::new(ui::i18n::t("Export matching games"))
+                            .disabled(selected.is_none())
+                            .on_click(
+                                this.listen_event(move |screen, _, _, cx| screen.export_pgn(cx)),
+                            ),
+                    )
+                    .item(
+                        PopupMenuItem::new(ui::i18n::t("Rename database"))
+                            .disabled(!renamable)
+                            .on_click(this.listen_event(move |screen, _, window, cx| {
+                                if let Some(path) = &rename_path {
+                                    screen.start_rename(path.clone(), window, cx);
+                                }
+                            })),
+                    )
+                    .item(
+                        PopupMenuItem::new(ui::i18n::t("Duplicate database"))
+                            .disabled(selected.is_none())
+                            .on_click(this.listen_event(move |screen, _, _, cx| {
+                                if let Some(path) = &duplicate_path {
+                                    screen.duplicate_db(path.clone(), cx);
+                                }
+                            })),
+                    );
+                if let Some(target) = &reimport {
+                    let target = target.clone();
+                    menu = menu.item(
+                        PopupMenuItem::new(ui::i18n::t("Re-import from file…")).on_click(
+                            this.listen_event(move |screen, _, _, cx| {
+                                screen.confirm_reimport = Some(target.clone());
+                                cx.notify();
+                            }),
+                        ),
+                    );
+                }
+                for (index, site, name) in &accounts {
+                    let index = *index;
+                    menu = menu.item(
+                        PopupMenuItem::new(ui::i18n::tf("Update {} from {}", &[name, site.name()]))
+                            .on_click(this.listen_event(move |screen, _, _, cx| {
+                                screen.update_account(index, cx)
+                            })),
+                    );
+                }
+                menu
+            })
     }
 
     /// Keeps the score and most common opening leak on a compact summary line.
