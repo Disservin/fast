@@ -113,7 +113,6 @@ impl AnalyseScreen {
     ) -> Div {
         let this = cx.entity();
         let id = config.id;
-        let select_this = this.clone();
         let live = self.live.read(cx);
         let running = live.engines.iter().find(|engine| engine.config.id == id);
         let stats = running.and_then(|engine| engine.stats());
@@ -206,12 +205,10 @@ impl AnalyseScreen {
                     .cursor_pointer()
                     .font_weight(FontWeight::MEDIUM)
                     .text_size(px(13.))
-                    .on_click(move |_, _, cx| {
-                        select_this.update(cx, |screen, cx| {
-                            screen.panel_engine = Some(id);
-                            cx.notify();
-                        });
-                    })
+                    .on_click(this.listen_event(move |screen, _, _, cx| {
+                        screen.panel_engine = Some(id);
+                        cx.notify();
+                    }))
                     .child(name),
             )
             .children(state.map(|state| {

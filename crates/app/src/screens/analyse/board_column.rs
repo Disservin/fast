@@ -439,7 +439,6 @@ impl AnalyseScreen {
         });
         let mut tabs = h_flex().gap(px(2.));
         for (index, option) in GraphTab::ALL.into_iter().enumerate() {
-            let this = this.clone();
             let active = option == tab;
             tabs = tabs.child(
                 div()
@@ -453,11 +452,9 @@ impl AnalyseScreen {
                     .text_color(rgb(if active { T.fg } else { T.muted }))
                     .when(active, |el| el.bg(rgb(T.selected)))
                     .when(!active, |el| el.hover(|style| style.bg(rgb(T.hover))))
-                    .on_click(move |_, _, cx| {
-                        this.update(cx, |screen, cx| {
-                            screen.set_view(cx, |view| view.graph = option);
-                        });
-                    })
+                    .on_click(this.listen_event(move |screen, _, _, cx| {
+                        screen.set_view(cx, |view| view.graph = option);
+                    }))
                     .child(option.label()),
             );
         }

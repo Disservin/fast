@@ -321,9 +321,9 @@ impl TestPositionsScreen {
                 row = row
                     .cursor_pointer()
                     .hover(|row| row.bg(rgb(T.hover)))
-                    .on_click(move |_, window, cx| {
-                        this.update(cx, |screen, cx| screen.open_line(index, window, cx))
-                    })
+                    .on_click(this.listen_event(move |screen, _, window, cx| {
+                        screen.open_line(index, window, cx)
+                    }))
                     .child(ellipsis(W_ID).child(SharedString::from(
                         record.id.clone().unwrap_or_else(|| "—".into()),
                     )))

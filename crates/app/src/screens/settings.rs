@@ -365,7 +365,6 @@ impl SettingsScreen {
         let mut nav = v_flex().gap(px(2.));
         for (index, page) in SettingsPage::ALL.into_iter().enumerate() {
             let selected = self.page == page;
-            let this = this.clone();
             nav = nav.child(
                 h_flex()
                     .id(("settings-nav", index))
@@ -393,9 +392,9 @@ impl SettingsScreen {
                             )
                     })
                     .when(!selected, |item| item.hover(|style| style.bg(rgb(T.hover))))
-                    .on_click(move |_, window, cx| {
-                        this.update(cx, |screen, cx| screen.set_page(page, window, cx));
-                    })
+                    .on_click(this.listen_event(move |screen, _, window, cx| {
+                        screen.set_page(page, window, cx)
+                    }))
                     .child(page.title()),
             );
         }

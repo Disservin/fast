@@ -350,8 +350,6 @@ impl SettingsScreen {
             )))
         };
         let update_model = self.model.clone();
-        let icon_this = this.clone();
-        let reset_icon_this = this.clone();
         let name = config.name.clone();
         let about = config.info.about().map(str::to_owned);
         let has_icon = config.icon.is_some();
@@ -369,9 +367,7 @@ impl SettingsScreen {
                                 div()
                                     .id("engine-icon")
                                     .cursor_pointer()
-                                    .on_click(move |_, _, cx| {
-                                        icon_this.update(cx, |screen, cx| screen.choose_icon(cx));
-                                    })
+                                    .on_click(this.listen_event(move |screen, _, _, cx| screen.choose_icon(cx)))
                                     .child(engine_icon(config, 40.)),
                             )
                             .child(
@@ -392,15 +388,13 @@ impl SettingsScreen {
                                                     .id("icon-choose")
                                                     .cursor_pointer()
                                                     .text_color(rgb(T.accent))
-                                                    .on_click(move |_, _, cx| {
-                                                        reset_icon_this.update(cx, |screen, cx| {
+                                                    .on_click(this.listen_event(move |screen, _, _, cx| {
                                                             if has_icon {
                                                                 screen.reset_icon(cx);
                                                             } else {
                                                                 screen.choose_icon(cx);
                                                             }
-                                                        });
-                                                    })
+                                                        }))
                                                     .child(if has_icon { "Use the default rook" } else { "Choose an icon" }),
                                             ),
                                     ),

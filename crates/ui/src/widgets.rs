@@ -24,6 +24,12 @@ pub trait Listen<V: 'static> {
         &self,
         f: impl Fn(&mut V, A, &mut Window, &mut gpui::Context<V>) + 'static,
     ) -> impl Fn(A, &mut Window, &mut App) + 'static;
+
+    /// A handler for GPUI's own `on_click` and mouse events that passes the event on to `f`.
+    fn listen_event<E: ?Sized + 'static>(
+        &self,
+        f: impl Fn(&mut V, &E, &mut Window, &mut gpui::Context<V>) + 'static,
+    ) -> impl Fn(&E, &mut Window, &mut App) + 'static;
 }
 
 impl<V: 'static> Listen<V> for gpui::Entity<V> {
@@ -41,6 +47,14 @@ impl<V: 'static> Listen<V> for gpui::Entity<V> {
     ) -> impl Fn(A, &mut Window, &mut App) + 'static {
         let view = self.clone();
         move |value, window, cx| view.update(cx, |view, cx| f(view, value, window, cx))
+    }
+
+    fn listen_event<E: ?Sized + 'static>(
+        &self,
+        f: impl Fn(&mut V, &E, &mut Window, &mut gpui::Context<V>) + 'static,
+    ) -> impl Fn(&E, &mut Window, &mut App) + 'static {
+        let view = self.clone();
+        move |event, window, cx| view.update(cx, |view, cx| f(view, event, window, cx))
     }
 }
 

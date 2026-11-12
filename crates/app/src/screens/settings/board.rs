@@ -101,14 +101,11 @@ impl SettingsScreen {
         ];
         for (index, (saved, theme)) in themes.into_iter().enumerate() {
             let selected = config.theme == saved;
-            let this = this.clone();
             boards = boards.child(
                 tile(("board-theme", index), selected)
-                    .on_click(move |_, _, cx| {
-                        this.update(cx, |screen, cx| {
-                            screen.update_board(cx, |board| board.theme = saved);
-                        });
-                    })
+                    .on_click(this.listen_event(move |screen, _, _, cx| {
+                        screen.update_board(cx, |board| board.theme = saved);
+                    }))
                     .child(theme_swatch(theme, px(56.), cx))
                     .child(tile_label(theme.name())),
             );
@@ -170,14 +167,11 @@ impl SettingsScreen {
         ];
         for (index, (saved, name, preview)) in sets.into_iter().enumerate() {
             let selected = config.pieces == saved;
-            let this = this.clone();
             pieces = pieces.child(
                 tile(("piece-set", index), selected)
-                    .on_click(move |_, _, cx| {
-                        this.update(cx, |screen, cx| {
-                            screen.update_board(cx, |board| board.pieces = saved);
-                        });
-                    })
+                    .on_click(this.listen_event(move |screen, _, _, cx| {
+                        screen.update_board(cx, |board| board.pieces = saved);
+                    }))
                     .child(
                         div()
                             .size(px(56.))

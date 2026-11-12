@@ -99,12 +99,10 @@ impl Workspace {
                             .text_color(rgb(T.muted))
                             .child(description),
                     )
-                    .on_click(move |_, window, cx| {
-                        pick.update(cx, |this, cx| {
-                            this.new_tab_menu_open = false;
-                            this.new_tab(mode, window, cx)
-                        })
-                    }),
+                    .on_click(pick.listen_event(move |this, _, window, cx| {
+                        this.new_tab_menu_open = false;
+                        this.new_tab(mode, window, cx)
+                    })),
             );
         }
         let close = cx.entity();
@@ -351,14 +349,14 @@ impl Workspace {
                                         ))
                                         .build(window, cx)
                                     })
-                                    .on_click(move |event, window, cx| {
-                                        select.update(cx, |this, cx| {
+                                    .on_click(select.listen_event(
+                                        move |this, event: &gpui::ClickEvent, window, cx| {
                                             this.activate_tab(id, cx);
                                             if event.click_count() == 2 {
                                                 this.start_rename(id, window, cx);
                                             }
-                                        })
-                                    })
+                                        },
+                                    ))
                                     .child({
                                         h_flex()
                                             .gap(px(6.))
@@ -502,12 +500,10 @@ impl Workspace {
                     .tooltip(move |window, cx| {
                         gpui_component::tooltip::Tooltip::new(tip.clone()).build(window, cx)
                     })
-                    .on_click(move |_, _, cx| {
-                        add.update(cx, |this, cx| {
-                            this.new_tab_menu_open = !this.new_tab_menu_open;
-                            cx.notify();
-                        })
-                    })
+                    .on_click(add.listen_event(move |this, _, _, cx| {
+                        this.new_tab_menu_open = !this.new_tab_menu_open;
+                        cx.notify();
+                    }))
                     .child(ui::widgets::icon(
                         "icons/plus.svg",
                         px(14.),

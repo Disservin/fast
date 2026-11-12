@@ -350,7 +350,7 @@ impl TournamentScreen {
                         .text_as(13., T.danger_fg)
                         .cursor_pointer()
                         .child(ui::i18n::t("Stop"))
-                        .on_click(move |_, _, cx| stop.update(cx, |screen, cx| screen.stop(cx))),
+                        .on_click(stop.listen_event(move |screen, _, _, cx| screen.stop(cx))),
                 )
             })
             .child(overflow);
@@ -601,9 +601,9 @@ impl TournamentScreen {
                 div()
                     .id(("live-card", slot))
                     .cursor_pointer()
-                    .on_click(move |_, _, cx| {
-                        this.update(cx, |screen, cx| screen.focus_live(slot, cx))
-                    })
+                    .on_click(
+                        this.listen_event(move |screen, _, _, cx| screen.focus_live(slot, cx)),
+                    )
                     .child(game_card(game, board, px(edge), &run.names, focused)),
             );
         }

@@ -121,11 +121,9 @@ impl TournamentScreen {
                         .bg(rgb(if decisive { T.surface_2 } else { T.tour_card }))
                         .hover(|r| r.bg(rgb(T.hover)))
                         .text_size(px(13.))
-                        .on_click(move |_, window, cx| {
-                            this.update(cx, |screen, cx| {
-                                screen.open_game(number, index, window, cx)
-                            })
-                        })
+                        .on_click(this.listen_event(move |screen, _, window, cx| {
+                            screen.open_game(number, index, window, cx)
+                        }))
                         .child(
                             div()
                                 .w(px(72.))

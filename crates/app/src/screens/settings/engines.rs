@@ -534,7 +534,6 @@ impl SettingsScreen {
         for (index, engine) in model.config.engines.iter().enumerate() {
             let selected = self.selected_engine == Some(engine.id);
             let id = engine.id;
-            let select_this = this.clone();
             let status = model
                 .engine_status
                 .get(&id)
@@ -560,11 +559,9 @@ impl SettingsScreen {
                     .border_color(rgb(T.divider))
                     .when(selected, |row| row.bg(rgb(T.selected)))
                     .when(!selected, |row| row.hover(|style| style.bg(rgb(T.hover))))
-                    .on_click(move |_, window, cx| {
-                        select_this.update(cx, |screen, cx| {
-                            screen.select_engine(Some(id), window, cx);
-                        });
-                    })
+                    .on_click(this.listen_event(move |screen, _, window, cx| {
+                        screen.select_engine(Some(id), window, cx);
+                    }))
                     .when(selected, |row| {
                         row.child(
                             div()

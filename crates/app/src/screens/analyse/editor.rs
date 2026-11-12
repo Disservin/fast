@@ -258,7 +258,6 @@ impl AnalyseScreen {
             for role in ROLES {
                 let piece = Piece { color, role };
                 let selected = editor.brush == Some(piece);
-                let pick = this.clone();
                 row = row.child(
                     swatch(
                         (
@@ -271,11 +270,12 @@ impl AnalyseScreen {
                         ),
                         selected,
                     )
-                    .on_mouse_down(MouseButton::Left, move |_, _, cx| {
-                        pick.update(cx, |screen, cx| {
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        this.listen_event(move |screen, _, _, cx| {
                             screen.edit_position(cx, |editor| editor.brush = Some(piece));
-                        });
-                    })
+                        }),
+                    )
                     .child(img(piece_path(set, piece)).size(px(cell * 0.8))),
                 );
             }

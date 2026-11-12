@@ -377,12 +377,10 @@ impl TournamentScreen {
                         "Hash and threads, pairing, adjudication, tablebases, saved games, extra options",
                     )),
             )
-            .on_click(move |_, _, cx| {
-                expand.update(cx, |screen, cx| {
+            .on_click(expand.listen_event(move |screen, _, _, cx| {
                     screen.advanced_open = !screen.advanced_open;
                     cx.notify();
-                })
-            })
+                }))
     }
 
     /// Engine hash, threads and arguments, and how the engines are paired.

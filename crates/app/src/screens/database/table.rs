@@ -132,20 +132,18 @@ impl DatabaseScreen {
                             .dropdown_menu(move |menu, _, _| {
                                 let settings = this.clone();
                                 let review = this.clone();
-                                let export = this.clone();
                                 let rename = this.clone();
                                 let duplicate = this.clone();
-                                let reimport_this = this.clone();
                                 let rename_path = selected.clone();
                                 let duplicate_path = selected.clone();
                                 let mut menu = menu
                                     .item(
                                         PopupMenuItem::new(ui::i18n::t("Review settings"))
-                                            .on_click(move |_, _, cx| {
-                                                settings.update(cx, |screen, cx| {
+                                            .on_click(settings.listen_event(
+                                                move |screen, _, _, cx| {
                                                     screen.set_review_settings_open(true, cx)
-                                                });
-                                            }),
+                                                },
+                                            )),
                                     )
                                     .item(
                                         PopupMenuItem::new(ui::i18n::t(if review_running {
@@ -165,10 +163,9 @@ impl DatabaseScreen {
                                     .item(
                                         PopupMenuItem::new(ui::i18n::t("Export matching games"))
                                             .disabled(selected.is_none())
-                                            .on_click(move |_, _, cx| {
-                                                export
-                                                    .update(cx, |screen, cx| screen.export_pgn(cx));
-                                            }),
+                                            .on_click(this.listen_event(
+                                                move |screen, _, _, cx| screen.export_pgn(cx),
+                                            )),
                                     )
                                     .item(
                                         PopupMenuItem::new(ui::i18n::t("Rename database"))
@@ -200,29 +197,27 @@ impl DatabaseScreen {
                                     let target = target.clone();
                                     menu = menu.item(
                                         PopupMenuItem::new(ui::i18n::t("Re-import from file…"))
-                                            .on_click(move |_, _, cx| {
-                                                reimport_this.update(cx, |screen, cx| {
+                                            .on_click(this.listen_event(
+                                                move |screen, _, _, cx| {
                                                     screen.confirm_reimport = Some(target.clone());
                                                     cx.notify();
-                                                });
-                                            }),
+                                                },
+                                            )),
                                     );
                                 }
                                 for (index, site, name) in &accounts {
-                                    let update = this.clone();
                                     let index = *index;
-                                    menu =
-                                        menu.item(
-                                            PopupMenuItem::new(ui::i18n::tf(
-                                                "Update {} from {}",
-                                                &[name, site.name()],
-                                            ))
-                                            .on_click(move |_, _, cx| {
-                                                update.update(cx, |screen, cx| {
-                                                    screen.update_account(index, cx)
-                                                });
+                                    menu = menu.item(
+                                        PopupMenuItem::new(ui::i18n::tf(
+                                            "Update {} from {}",
+                                            &[name, site.name()],
+                                        ))
+                                        .on_click(
+                                            this.listen_event(move |screen, _, _, cx| {
+                                                screen.update_account(index, cx)
                                             }),
-                                        );
+                                        ),
+                                    );
                                 }
                                 menu
                             }),
@@ -405,12 +400,12 @@ impl DatabaseScreen {
                                 "Delete all {} shown games…",
                                 format_count(shown as u64)
                             ))
-                            .on_click(move |_, _, cx| {
-                                delete_all.update(cx, |screen, cx| {
+                            .on_click(delete_all.listen_event(
+                                move |screen, _, _, cx| {
                                     let ids = screen.ids.clone();
                                     screen.ask_delete(ids, cx)
-                                })
-                            }),
+                                },
+                            )),
                         )
                     })
                 }
