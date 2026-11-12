@@ -73,14 +73,22 @@ impl TournamentScreen {
             None,
             cx,
             move |path, cx| {
-                let _ = window_handle.update(cx, |_, window, cx| {
-                    let _ = this.update(cx, |screen, cx| match std::fs::read_to_string(&path) {
-                        Ok(text) => screen
-                            .paste
-                            .update(cx, |input, cx| input.set_value(text, window, cx)),
-                        Err(err) => screen.fail(format!("{}: {err}", path.display()), cx),
-                    });
+                let read = cx.background_executor().spawn({
+                    let path = path.clone();
+                    async move { std::fs::read_to_string(path) }
                 });
+                cx.spawn(async move |cx| {
+                    let text = read.await;
+                    let _ = window_handle.update(cx, |_, window, cx| {
+                        let _ = this.update(cx, |screen, cx| match text {
+                            Ok(text) => screen
+                                .paste
+                                .update(cx, |input, cx| input.set_value(text, window, cx)),
+                            Err(err) => screen.fail(format!("{}: {err}", path.display()), cx),
+                        });
+                    });
+                })
+                .detach();
             },
         );
     }

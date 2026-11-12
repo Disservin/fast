@@ -257,25 +257,30 @@ impl TournamentScreen {
         cx: &mut Context<Self>,
     ) {
         let Some(run) = &self.run else { return };
-        let game = std::fs::read_to_string(run.pgn_file())
-            .ok()
-            .and_then(|text| {
-                if text.contains("[GameId ") {
-                    fastchess::game_by_id(&text, number)
-                } else {
-                    fastchess::nth_game(&text, index)
-                }
-            });
-        match game {
-            Some(pgn) => {
-                if let Some(workspace) = self.workspace.upgrade() {
-                    workspace.update(cx, |workspace, cx| workspace.open_pgn(&pgn, 0, window, cx));
-                }
+        let file = run.pgn_file();
+        let read = cx.background_spawn(async move {
+            let text = std::fs::read_to_string(file).ok()?;
+            if text.contains("[GameId ") {
+                fastchess::game_by_id(&text, number)
+            } else {
+                fastchess::nth_game(&text, index)
             }
-            None => self
-                .model
-                .toast("That game is not in the PGN file yet.", cx),
-        }
+        });
+        cx.spawn_in(window, async move |this, cx| {
+            let game = read.await;
+            let _ = this.update_in(cx, |screen, window, cx| match game {
+                Some(pgn) => {
+                    if let Some(workspace) = screen.workspace.upgrade() {
+                        workspace
+                            .update(cx, |workspace, cx| workspace.open_pgn(&pgn, 0, window, cx));
+                    }
+                }
+                None => screen
+                    .model
+                    .toast("That game is not in the PGN file yet.", cx),
+            });
+        })
+        .detach();
     }
 
     pub(super) fn copy_command(&self, cx: &mut Context<Self>) {
@@ -288,15 +293,20 @@ impl TournamentScreen {
 
     pub(super) fn copy_config(&self, cx: &mut Context<Self>) {
         let Some(run) = &self.run else { return };
-        match std::fs::read_to_string(&run.config) {
-            Ok(text) => {
-                cx.write_to_clipboard(ClipboardItem::new_string(text));
-                self.model.toast("config.json copied", cx);
-            }
-            Err(_) => self
-                .model
-                .toast("fastchess has not saved a config yet.", cx),
-        }
+        let file = run.config.clone();
+        let read = cx.background_spawn(async move { std::fs::read_to_string(file) });
+        let model = self.model.clone();
+        cx.spawn(async move |_, cx| {
+            let text = read.await;
+            cx.update(|cx| match text {
+                Ok(text) => {
+                    cx.write_to_clipboard(ClipboardItem::new_string(text));
+                    model.toast("config.json copied", cx);
+                }
+                Err(_) => model.toast("fastchess has not saved a config yet.", cx),
+            })
+        })
+        .detach();
     }
 
     /// Opens the watch-all window on the games in progress.
