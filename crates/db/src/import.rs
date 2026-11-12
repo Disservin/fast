@@ -497,6 +497,14 @@ pub(crate) fn game_eco(game: &Game) -> String {
     }
 }
 
+impl Game {
+    /// Whether the game is Chess960, by its Variant tag or by its start position.
+    pub(crate) fn is_chess960(&self) -> bool {
+        chess_core::Variant::from_tag(&self.tags.variant) == chess_core::Variant::Chess960
+            || chess_core::fen_variant(&self.start_fen) == Some(chess_core::Variant::Chess960)
+    }
+}
+
 fn insert_game(tx: &Transaction<'_>, game: &Game, source: &str) -> Result<()> {
     let tags = &game.tags;
     let eco = game_eco(game);
@@ -531,8 +539,7 @@ fn insert_game(tx: &Transaction<'_>, game: &Game, source: &str) -> Result<()> {
         game.sans.join(" "),
         game.annotated,
         tags.url(),
-        chess_core::Variant::from_tag(&tags.variant) == chess_core::Variant::Chess960
-            || chess_core::fen_variant(&game.start_fen) == Some(chess_core::Variant::Chess960),
+        game.is_chess960(),
     ])?;
     let game_id = tx.last_insert_rowid();
     let mut insert_position = tx.prepare_cached(
@@ -631,8 +638,7 @@ pub fn import_games(
                             tx.last_insert_rowid(),
                             &game.start_fen,
                             &game.sans.join(" "),
-                            chess_core::Variant::from_tag(&game.tags.variant)
-                                == chess_core::Variant::Chess960,
+                            game.is_chess960(),
                             &ImportControl::default(),
                         )?;
                     }
