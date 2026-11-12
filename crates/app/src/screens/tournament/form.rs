@@ -249,29 +249,35 @@ impl TournamentScreen {
         )
     }
 
+    /// The New tournament form: the basic settings, then the advanced ones when open.
     pub(super) fn render_form(
         &self,
-        window: &mut Window,
+        _window: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
-        let pair = |a: gpui::Div, b: gpui::Div| {
-            h_flex()
-                .gap(px(8.))
-                .items_start()
-                .child(a.flex_1())
-                .child(b.flex_1())
-        };
-        let triple = |a: gpui::Div, b: gpui::Div, c: gpui::Div| pair(a, b).child(c.flex_1());
-        let limit_this = cx.entity();
-        let games_this = cx.entity();
-        let type_this = cx.entity();
-        let order_this = cx.entity();
-        let browse = cx.entity();
-        let expand = cx.entity();
-        let _ = window;
+        let advanced = self.advanced_open.then(|| {
+            v_flex()
+                .gap(px(14.))
+                .pl(px(12.))
+                .border_l_2()
+                .border_color(rgb(T.border))
+                .child(self.render_pairing_settings(cx))
+                .child(self.render_adjudication_settings(cx))
+                .child(self.render_saved_game_settings(cx))
+                .child(self.render_other_settings(cx))
+        });
+        v_flex()
+            .gap(px(16.))
+            .child(self.render_basic_settings(cx))
+            .child(self.render_advanced_disclosure(cx))
+            .children(advanced)
+    }
 
-        // What most tournaments need: who plays, how fast, how many games, which book.
-        let basic = v_flex()
+    /// What most tournaments need: who plays, how fast, how many games, which book.
+    fn render_basic_settings(&self, cx: &mut Context<Self>) -> Div {
+        let limit_this = cx.entity();
+        let browse = cx.entity();
+        v_flex()
             .gap(px(14.))
             .child(self.render_engines(cx))
             .child(section_label(ui::i18n::t("Time")))
@@ -360,10 +366,14 @@ impl TournamentScreen {
                             |screen, model| screen.sprt_model = model,
                         ),
                     ))
-            });
+            })
+    }
 
+    /// The row that opens and closes the advanced settings, listing what they hold.
+    fn render_advanced_disclosure(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let open = self.advanced_open;
-        let disclosure = h_flex()
+        let expand = cx.entity();
+        h_flex()
             .id("tournament-advanced")
             .gap(px(8.))
             .items_center()
@@ -403,290 +413,315 @@ impl TournamentScreen {
                     screen.advanced_open = !screen.advanced_open;
                     cx.notify();
                 })
-            });
+            })
+    }
 
-        let advanced = open.then(|| {
-            v_flex()
-                .gap(px(14.))
-                .pl(px(12.))
-                .border_l_2()
-                .border_color(rgb(T.border))
-                .child(section_label(ui::i18n::t("Engines")))
-                .child(pair(
-                    field("Hash (MB)", text_input(&self.hash)),
-                    field("Threads", text_input(&self.threads)),
-                ))
-                .child(field("Engine arguments", text_input(&self.engine_args)))
-                .child(section_label("Pairing"))
-                .child(segmented(
-                    "tournament-type",
+    /// Engine hash, threads and arguments, and how the engines are paired.
+    fn render_pairing_settings(&self, cx: &mut Context<Self>) -> Div {
+        let type_this = cx.entity();
+        let games_this = cx.entity();
+        let order_this = cx.entity();
+        v_flex()
+            .gap(px(14.))
+            .child(section_label(ui::i18n::t("Engines")))
+            .child(pair(
+                field("Hash (MB)", text_input(&self.hash)),
+                field("Threads", text_input(&self.threads)),
+            ))
+            .child(field("Engine arguments", text_input(&self.engine_args)))
+            .child(section_label("Pairing"))
+            .child(segmented(
+                "tournament-type",
+                vec![
+                    (false, "Round robin".into(), false),
+                    (true, "Gauntlet".into(), false),
+                ],
+                self.gauntlet,
+                move |gauntlet, _, cx| {
+                    type_this.update(cx, |screen, cx| {
+                        screen.gauntlet = gauntlet;
+                        cx.notify();
+                    })
+                },
+            ))
+            .child(field(
+                "Games per round",
+                segmented(
+                    "tournament-games",
                     vec![
-                        (false, "Round robin".into(), false),
-                        (true, "Gauntlet".into(), false),
+                        (1, "1".into(), false),
+                        (2, "2, colours swapped".into(), false),
                     ],
-                    self.gauntlet,
-                    move |gauntlet, _, cx| {
-                        type_this.update(cx, |screen, cx| {
-                            screen.gauntlet = gauntlet;
+                    self.games_per_round,
+                    move |games, _, cx| {
+                        games_this.update(cx, |screen, cx| {
+                            screen.games_per_round = games;
                             cx.notify();
                         })
                     },
-                ))
-                .child(field(
-                    "Games per round",
+                ),
+            ))
+            .child(
+                h_flex()
+                    .gap(px(16.))
+                    .child(self.toggle(
+                        "tournament-noswap",
+                        self.noswap,
+                        "Never swap colours",
+                        cx,
+                        |screen, on| screen.noswap = on,
+                    ))
+                    .child(self.toggle(
+                        "tournament-reverse",
+                        self.reverse,
+                        "Reverse colours",
+                        cx,
+                        |screen, on| screen.reverse = on,
+                    )),
+            )
+            .child(pair(
+                field(
+                    "Book order",
                     segmented(
-                        "tournament-games",
+                        "tournament-order",
                         vec![
-                            (1, "1".into(), false),
-                            (2, "2, colours swapped".into(), false),
+                            (true, ui::i18n::t("Random").into(), false),
+                            (false, "Sequential".into(), false),
                         ],
-                        self.games_per_round,
-                        move |games, _, cx| {
-                            games_this.update(cx, |screen, cx| {
-                                screen.games_per_round = games;
+                        self.random_order,
+                        move |random, _, cx| {
+                            order_this.update(cx, |screen, cx| {
+                                screen.random_order = random;
                                 cx.notify();
                             })
                         },
                     ),
-                ))
-                .child(
-                    h_flex()
-                        .gap(px(16.))
-                        .child(self.toggle(
-                            "tournament-noswap",
-                            self.noswap,
-                            "Never swap colours",
-                            cx,
-                            |screen, on| screen.noswap = on,
-                        ))
-                        .child(self.toggle(
-                            "tournament-reverse",
-                            self.reverse,
-                            "Reverse colours",
-                            cx,
-                            |screen, on| screen.reverse = on,
-                        )),
-                )
-                .child(pair(
-                    field(
-                        "Book order",
-                        segmented(
-                            "tournament-order",
-                            vec![
-                                (true, ui::i18n::t("Random").into(), false),
-                                (false, "Sequential".into(), false),
-                            ],
-                            self.random_order,
-                            move |random, _, cx| {
-                                order_this.update(cx, |screen, cx| {
-                                    screen.random_order = random;
-                                    cx.notify();
-                                })
-                            },
-                        ),
-                    ),
-                    field("Plies from book", text_input(&self.plies)),
-                ))
-                .child(section_label("Adjudication"))
-                .child(self.toggle(
-                    "tournament-draw",
-                    self.draw_adjudication,
-                    "Draw adjudication",
-                    cx,
-                    |screen, on| screen.draw_adjudication = on,
-                ))
-                .when(self.draw_adjudication, |column| {
-                    column.child(triple(
-                        field("From move", text_input(&self.draw_movenumber)),
-                        field("For moves in a row", text_input(&self.draw_movecount)),
-                        field("Within ± cp", text_input(&self.draw_score)),
-                    ))
-                })
-                .child(self.toggle(
-                    "tournament-resign",
-                    self.resign_adjudication,
-                    "Resign adjudication",
-                    cx,
-                    |screen, on| screen.resign_adjudication = on,
-                ))
-                .when(self.resign_adjudication, |column| {
-                    column
-                        .child(pair(
-                            field("For moves in a row", text_input(&self.resign_movecount)),
-                            field("Beyond cp", text_input(&self.resign_score)),
-                        ))
-                        .child(self.toggle(
-                            "tournament-resign-twosided",
-                            self.resign_twosided,
-                            "Both engines must agree on the score",
-                            cx,
-                            |screen, on| screen.resign_twosided = on,
-                        ))
-                })
-                .child(field("Maximum moves", text_input(&self.maxmoves)))
-                .child(self.toggle(
-                    "tournament-tb",
-                    self.tb_adjudication,
-                    "Tablebase adjudication",
-                    cx,
-                    |screen, on| screen.tb_adjudication = on,
-                ))
-                .when(self.tb_adjudication, |column| {
-                    column
-                        .child(pair(
-                            field(
-                                "Syzygy folders",
-                                h_flex()
-                                    .gap(px(6.))
-                                    .child(
-                                        div().flex_1().min_w_0().child(text_input(&self.tb_paths)),
-                                    )
-                                    .child(crate::controls::browse_path(
-                                        "tournament-syzygy-browse",
-                                        &self.model,
-                                        &self.tb_paths,
-                                        "Syzygy folders",
-                                        true,
-                                    )),
-                            ),
-                            field("Up to pieces", text_input(&self.tb_pieces)),
-                        ))
-                        .child(self.choice(
-                            "tournament-tb-adjudicate",
-                            &[
-                                ("BOTH", "Wins and draws"),
-                                ("WIN_LOSS", "Wins only"),
-                                ("DRAW", "Draws only"),
-                            ],
-                            self.tb_adjudicate,
-                            cx,
-                            |screen, mode| screen.tb_adjudicate = mode,
-                        ))
-                        .child(self.toggle(
-                            "tournament-tb-ignore50",
-                            self.tb_ignore50,
-                            "Ignore the 50-move rule",
-                            cx,
-                            |screen, on| screen.tb_ignore50 = on,
-                        ))
-                })
-                .child(section_label("Saved games"))
-                .child(field(
-                    "Notation",
-                    self.choice(
-                        "tournament-pgn-notation",
-                        &[("san", "SAN"), ("lan", "LAN"), ("uci", "UCI")],
-                        self.pgn.notation,
-                        cx,
-                        |screen, notation| screen.pgn.notation = notation,
-                    ),
-                ))
-                .when(self.pgn.notation != "san", |column| {
-                    column.child(
-                        div()
-                            .text_size(px(12.))
-                            .text_color(rgb(T.warn))
-                            .child(ui::i18n::t("Games in LAN or UCI may not open in Analyse.")),
-                    )
-                })
-                .child(field("Record with each move", {
-                    let mut grid = div().grid().grid_cols(3).gap(px(8.));
-                    let flags: [PgnFlag; 8] = [
-                        (
-                            "tournament-pgn-nodes",
-                            "Nodes",
-                            self.pgn.nodes,
-                            |pgn, on| pgn.nodes = on,
-                        ),
-                        (
-                            "tournament-pgn-seldepth",
-                            "Selective depth",
-                            self.pgn.seldepth,
-                            |pgn, on| pgn.seldepth = on,
-                        ),
-                        ("tournament-pgn-nps", "Speed", self.pgn.nps, |pgn, on| {
-                            pgn.nps = on
-                        }),
-                        (
-                            "tournament-pgn-hashfull",
-                            "Hash usage",
-                            self.pgn.hashfull,
-                            |pgn, on| pgn.hashfull = on,
-                        ),
-                        (
-                            "tournament-pgn-tbhits",
-                            "Tablebase hits",
-                            self.pgn.tbhits,
-                            |pgn, on| pgn.tbhits = on,
-                        ),
-                        ("tournament-pgn-pv", "Full line", self.pgn.pv, |pgn, on| {
-                            pgn.pv = on
-                        }),
-                        (
-                            "tournament-pgn-timeleft",
-                            "Time left",
-                            self.pgn.timeleft,
-                            |pgn, on| pgn.timeleft = on,
-                        ),
-                        (
-                            "tournament-pgn-latency",
-                            "Latency",
-                            self.pgn.latency,
-                            |pgn, on| pgn.latency = on,
-                        ),
-                    ];
-                    for (id, label, on, set) in flags {
-                        grid = grid.child(self.toggle(id, on, label, cx, move |screen, on| {
-                            set(&mut screen.pgn, on)
-                        }));
-                    }
-                    grid
-                }))
-                .child(self.toggle(
-                    "tournament-pgn-min",
-                    self.pgn.min,
-                    "Minimal PGN",
-                    cx,
-                    |screen, on| screen.pgn.min = on,
-                ))
-                .child(field(
-                    "Copy engine output matching",
-                    text_input(&self.pgn_match_line),
-                ))
-                .child(section_label("Other"))
-                .child(self.toggle(
-                    "tournament-recover",
-                    self.recover,
-                    "Recover crashed engines",
-                    cx,
-                    |screen, on| screen.recover = on,
-                ))
-                .child(pair(
-                    field("Random seed", text_input(&self.seed)),
-                    field("Delay between games (ms)", text_input(&self.wait)),
-                ))
-                .child(field("Time margin (ms)", text_input(&self.time_margin)))
-                .child(self.toggle(
-                    "tournament-restart",
-                    self.restart,
-                    "Restart engines between games",
-                    cx,
-                    |screen, on| screen.restart = on,
-                ))
-                .child(self.toggle(
-                    "tournament-affinity",
-                    self.affinity,
-                    "Bind engines to CPU cores",
-                    cx,
-                    |screen, on| screen.affinity = on,
-                ))
-                .child(field("Extra fastchess options", text_input(&self.extra)))
-        });
-
-        v_flex()
-            .gap(px(16.))
-            .child(basic)
-            .child(disclosure)
-            .children(advanced)
+                ),
+                field("Plies from book", text_input(&self.plies)),
+            ))
     }
+
+    /// When games end early: draw, resign, maximum length and tablebase adjudication.
+    fn render_adjudication_settings(&self, cx: &mut Context<Self>) -> Div {
+        v_flex()
+            .gap(px(14.))
+            .child(section_label("Adjudication"))
+            .child(self.toggle(
+                "tournament-draw",
+                self.draw_adjudication,
+                "Draw adjudication",
+                cx,
+                |screen, on| screen.draw_adjudication = on,
+            ))
+            .when(self.draw_adjudication, |column| {
+                column.child(triple(
+                    field("From move", text_input(&self.draw_movenumber)),
+                    field("For moves in a row", text_input(&self.draw_movecount)),
+                    field("Within ± cp", text_input(&self.draw_score)),
+                ))
+            })
+            .child(self.toggle(
+                "tournament-resign",
+                self.resign_adjudication,
+                "Resign adjudication",
+                cx,
+                |screen, on| screen.resign_adjudication = on,
+            ))
+            .when(self.resign_adjudication, |column| {
+                column
+                    .child(pair(
+                        field("For moves in a row", text_input(&self.resign_movecount)),
+                        field("Beyond cp", text_input(&self.resign_score)),
+                    ))
+                    .child(self.toggle(
+                        "tournament-resign-twosided",
+                        self.resign_twosided,
+                        "Both engines must agree on the score",
+                        cx,
+                        |screen, on| screen.resign_twosided = on,
+                    ))
+            })
+            .child(field("Maximum moves", text_input(&self.maxmoves)))
+            .child(self.toggle(
+                "tournament-tb",
+                self.tb_adjudication,
+                "Tablebase adjudication",
+                cx,
+                |screen, on| screen.tb_adjudication = on,
+            ))
+            .when(self.tb_adjudication, |column| {
+                column
+                    .child(pair(
+                        field(
+                            "Syzygy folders",
+                            h_flex()
+                                .gap(px(6.))
+                                .child(div().flex_1().min_w_0().child(text_input(&self.tb_paths)))
+                                .child(crate::controls::browse_path(
+                                    "tournament-syzygy-browse",
+                                    &self.model,
+                                    &self.tb_paths,
+                                    "Syzygy folders",
+                                    true,
+                                )),
+                        ),
+                        field("Up to pieces", text_input(&self.tb_pieces)),
+                    ))
+                    .child(self.choice(
+                        "tournament-tb-adjudicate",
+                        &[
+                            ("BOTH", "Wins and draws"),
+                            ("WIN_LOSS", "Wins only"),
+                            ("DRAW", "Draws only"),
+                        ],
+                        self.tb_adjudicate,
+                        cx,
+                        |screen, mode| screen.tb_adjudicate = mode,
+                    ))
+                    .child(self.toggle(
+                        "tournament-tb-ignore50",
+                        self.tb_ignore50,
+                        "Ignore the 50-move rule",
+                        cx,
+                        |screen, on| screen.tb_ignore50 = on,
+                    ))
+            })
+    }
+
+    /// What the saved PGN records with each move.
+    fn render_saved_game_settings(&self, cx: &mut Context<Self>) -> Div {
+        v_flex()
+            .gap(px(14.))
+            .child(section_label("Saved games"))
+            .child(field(
+                "Notation",
+                self.choice(
+                    "tournament-pgn-notation",
+                    &[("san", "SAN"), ("lan", "LAN"), ("uci", "UCI")],
+                    self.pgn.notation,
+                    cx,
+                    |screen, notation| screen.pgn.notation = notation,
+                ),
+            ))
+            .when(self.pgn.notation != "san", |column| {
+                column.child(
+                    div()
+                        .text_size(px(12.))
+                        .text_color(rgb(T.warn))
+                        .child(ui::i18n::t("Games in LAN or UCI may not open in Analyse.")),
+                )
+            })
+            .child(field("Record with each move", {
+                let mut grid = div().grid().grid_cols(3).gap(px(8.));
+                let flags: [PgnFlag; 8] = [
+                    (
+                        "tournament-pgn-nodes",
+                        "Nodes",
+                        self.pgn.nodes,
+                        |pgn, on| pgn.nodes = on,
+                    ),
+                    (
+                        "tournament-pgn-seldepth",
+                        "Selective depth",
+                        self.pgn.seldepth,
+                        |pgn, on| pgn.seldepth = on,
+                    ),
+                    ("tournament-pgn-nps", "Speed", self.pgn.nps, |pgn, on| {
+                        pgn.nps = on
+                    }),
+                    (
+                        "tournament-pgn-hashfull",
+                        "Hash usage",
+                        self.pgn.hashfull,
+                        |pgn, on| pgn.hashfull = on,
+                    ),
+                    (
+                        "tournament-pgn-tbhits",
+                        "Tablebase hits",
+                        self.pgn.tbhits,
+                        |pgn, on| pgn.tbhits = on,
+                    ),
+                    ("tournament-pgn-pv", "Full line", self.pgn.pv, |pgn, on| {
+                        pgn.pv = on
+                    }),
+                    (
+                        "tournament-pgn-timeleft",
+                        "Time left",
+                        self.pgn.timeleft,
+                        |pgn, on| pgn.timeleft = on,
+                    ),
+                    (
+                        "tournament-pgn-latency",
+                        "Latency",
+                        self.pgn.latency,
+                        |pgn, on| pgn.latency = on,
+                    ),
+                ];
+                for (id, label, on, set) in flags {
+                    grid = grid.child(self.toggle(id, on, label, cx, move |screen, on| {
+                        set(&mut screen.pgn, on)
+                    }));
+                }
+                grid
+            }))
+            .child(self.toggle(
+                "tournament-pgn-min",
+                self.pgn.min,
+                "Minimal PGN",
+                cx,
+                |screen, on| screen.pgn.min = on,
+            ))
+            .child(field(
+                "Copy engine output matching",
+                text_input(&self.pgn_match_line),
+            ))
+    }
+
+    /// Crash recovery, seeds, delays, margins and other fastchess options.
+    fn render_other_settings(&self, cx: &mut Context<Self>) -> Div {
+        v_flex()
+            .gap(px(14.))
+            .child(section_label("Other"))
+            .child(self.toggle(
+                "tournament-recover",
+                self.recover,
+                "Recover crashed engines",
+                cx,
+                |screen, on| screen.recover = on,
+            ))
+            .child(pair(
+                field("Random seed", text_input(&self.seed)),
+                field("Delay between games (ms)", text_input(&self.wait)),
+            ))
+            .child(field("Time margin (ms)", text_input(&self.time_margin)))
+            .child(self.toggle(
+                "tournament-restart",
+                self.restart,
+                "Restart engines between games",
+                cx,
+                |screen, on| screen.restart = on,
+            ))
+            .child(self.toggle(
+                "tournament-affinity",
+                self.affinity,
+                "Bind engines to CPU cores",
+                cx,
+                |screen, on| screen.affinity = on,
+            ))
+            .child(field("Extra fastchess options", text_input(&self.extra)))
+    }
+}
+
+/// Two form fields side by side, sharing the width.
+fn pair(a: Div, b: Div) -> Div {
+    h_flex()
+        .gap(px(8.))
+        .items_start()
+        .child(a.flex_1())
+        .child(b.flex_1())
+}
+
+/// Three form fields side by side, sharing the width.
+fn triple(a: Div, b: Div, c: Div) -> Div {
+    pair(a, b).child(c.flex_1())
 }
