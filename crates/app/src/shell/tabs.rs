@@ -54,14 +54,12 @@ impl Workspace {
         if self.mode == Mode::Analyse
             && let Err(err) = self.analyse.read(cx).checkpoint()
         {
-            self.model.update(cx, |model, cx| {
-                model.toast(
-                    format!(
-                        "Recovery snapshot failed: {err}. This game is still available in its tab."
-                    ),
-                    cx,
-                )
-            });
+            self.model.toast(
+                format!(
+                    "Recovery snapshot failed: {err}. This game is still available in its tab."
+                ),
+                cx,
+            );
         }
         if self.active_tab != id {
             // Analyse tabs share the engines, so another Analyse tab always takes them over.
@@ -218,12 +216,10 @@ impl Workspace {
         };
         if let TabContent::Analyse(screen) = &self.tabs[index].content {
             if let Err(err) = screen.read(cx).checkpoint() {
-                self.model.update(cx, |model, cx| {
-                    model.toast(
-                        format!("Could not preserve this tab: {err}. Save it before closing."),
-                        cx,
-                    )
-                });
+                self.model.toast(
+                    format!("Could not preserve this tab: {err}. Save it before closing."),
+                    cx,
+                );
                 return;
             }
             screen.update(cx, |screen, cx| screen.set_visible(false, cx));

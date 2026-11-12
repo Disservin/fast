@@ -76,9 +76,7 @@ impl Workspace {
             let result = task.await;
             let _ = this.update_in(cx, |this, window, cx| match result {
                 Ok(Some(game)) => this.open_pgn(&game.to_pgn(), 0, window, cx),
-                _ => this
-                    .model
-                    .update(cx, |model, cx| model.toast("Could not open game", cx)),
+                _ => this.model.toast("Could not open game", cx),
             });
         })
         .detach();

@@ -719,12 +719,10 @@ pub fn open_debug_window(model: &Entity<AppModel>, id: EngineId, cx: &mut App) {
     };
     match log {
         Some(log) => crate::debug_window::DebugWindow::open(&name, log, cx),
-        None => model.update(cx, |model, cx| {
-            model.toast(
-                format!("{name} is not running. Turn it on for analysis to see its output."),
-                cx,
-            );
-        }),
+        None => model.toast(
+            format!("{name} is not running. Turn it on for analysis to see its output."),
+            cx,
+        ),
     }
 }
 

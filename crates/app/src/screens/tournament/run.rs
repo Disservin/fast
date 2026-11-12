@@ -272,9 +272,9 @@ impl TournamentScreen {
                     workspace.update(cx, |workspace, cx| workspace.open_pgn(&pgn, 0, window, cx));
                 }
             }
-            None => self.model.update(cx, |model, cx| {
-                model.toast("That game is not in the PGN file yet.", cx)
-            }),
+            None => self
+                .model
+                .toast("That game is not in the PGN file yet.", cx),
         }
     }
 
@@ -293,9 +293,9 @@ impl TournamentScreen {
                 cx.write_to_clipboard(ClipboardItem::new_string(text));
                 self.model.toast("config.json copied", cx);
             }
-            Err(_) => self.model.update(cx, |model, cx| {
-                model.toast("fastchess has not saved a config yet.", cx)
-            }),
+            Err(_) => self
+                .model
+                .toast("fastchess has not saved a config yet.", cx),
         }
     }
 

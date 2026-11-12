@@ -361,9 +361,8 @@ impl SettingsScreen {
         }) {
             Ok(entry) => entry,
             Err(err) => {
-                self.model.update(cx, |model, cx| {
-                    model.toast(format!("Cannot load engine catalog: {err:#}"), cx)
-                });
+                self.model
+                    .toast(format!("Cannot load engine catalog: {err:#}"), cx);
                 return;
             }
         };

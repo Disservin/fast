@@ -15,7 +15,7 @@ use gpui::{App, Context, Entity, EventEmitter, Task};
 
 use crate::{
     config::AnalysisLimit,
-    model::{AppModel, ModelEvent, split_engine_name},
+    model::{AppModel, ModelEvent, ToastExt as _, split_engine_name},
 };
 
 /// UI updates per engine are bounded to one per this interval (≤ 10 Hz).
@@ -685,9 +685,8 @@ impl LiveAnalysis {
             if let Some(store) = self.model.read(cx).analyses.as_ref()
                 && let Err(err) = store.delete(&key)
             {
-                self.model.update(cx, |model, cx| {
-                    model.toast(format!("Could not replace cached analysis: {err:#}"), cx);
-                });
+                self.model
+                    .toast(format!("Could not replace cached analysis: {err:#}"), cx);
                 return;
             }
         }

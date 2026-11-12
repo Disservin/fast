@@ -428,12 +428,7 @@ impl SettingsScreen {
                             }))
                             .child(btn("check-update", "Check for update").h(32.).on_click(move |_, cx| {
                                 let name = name.clone();
-                                update_model.update(cx, |model, cx| {
-                                    model.toast(
-                                        format!("Compare {name} with the pinned versions under Download engine. Existing installations are kept until you choose a new version."),
-                                        cx,
-                                    );
-                                });
+                                update_model.toast(format!("Compare {name} with the pinned versions under Download engine. Existing installations are kept until you choose a new version."), cx);
                             }))
                             .child(btn("duplicate-engine", "Duplicate").h(32.).tooltip(ui::i18n::t("Another entry for this binary with its own options, e.g. Lc0 with another network")).on_click(move |window, cx| {
                                 duplicate_this.update(cx, |screen, cx| screen.duplicate_engine(window, cx));
