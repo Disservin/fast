@@ -219,8 +219,9 @@ the shared registry. It searches the previewed position (`go infinite`) and its 
 shown in a Kibitz row under the line. While the preview lasts (`pv_kibitz`), `preview_moves` is
 empty, so the main search, the table, explorer and online lookups stay on the game position;
 the board shows the preview with the kibitz's best move as its only arrow. The previewed line
-is a copy and the table's selection is held, so the main engine's changing lines replace it
-only once the preview ends. Leaving the preview or the tab stops the kibitz; the process is
+is a copy and the table's selection is held. The preview also retains its source row's
+figures as a fallback when that move leaves the main engine's lines or remains only in
+database results. Leaving the preview or the tab stops the kibitz; the process is
 replaced when its engine, binary, threads or hash change, and quits when the tab closes.
 
 ## Analysis cache

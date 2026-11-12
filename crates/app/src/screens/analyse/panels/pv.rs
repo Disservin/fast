@@ -12,11 +12,20 @@ pub(super) const PEEK_OFFSET: f32 = 14.;
 /// updates cannot move it while it is being read.
 pub struct PvView {
     pub sans: Vec<String>,
+    /// The source line's figures stay available while the main engine searches on.
+    pub source: Option<MoveRow>,
     pub anchor: usize,
     pub head: usize,
 }
 
 impl PvView {
+    /// Keeps the preview's source figures when its move leaves the live table.
+    pub fn source_row<'a>(&'a self, live: Option<&'a MoveRow>) -> Option<&'a MoveRow> {
+        live.filter(|row| row.score.is_some())
+            .or(self.source.as_ref())
+            .or(live)
+    }
+
     /// Inclusive first and last highlighted move.
     pub fn range(&self) -> (usize, usize) {
         (self.anchor.min(self.head), self.anchor.max(self.head))
@@ -67,8 +76,17 @@ impl AnalyseScreen {
             .pv_view
             .as_ref()
             .is_some_and(|view| view.anchor == index && view.head == index);
+        let source = if self.pv_kibitz {
+            self.pv_view
+                .as_ref()
+                .and_then(|view| view.source_row(self.selected_row()))
+                .cloned()
+        } else {
+            self.selected_row().cloned()
+        };
         self.pv_view = Some(PvView {
             sans,
+            source,
             anchor: index,
             head: index,
         });
@@ -551,6 +569,40 @@ impl AnalyseScreen {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use engine::Score;
+
+    /// A running main search cannot remove the figures of a kibitz preview's line.
+    #[test]
+    fn preview_keeps_eval_when_source_leaves_engine_lines() {
+        let source = MoveRow {
+            san: "e4".to_owned(),
+            score: Some(Score::Cp(42)),
+            depth: 20,
+            ..Default::default()
+        };
+        let view = PvView {
+            sans: vec!["e4".to_owned(), "e5".to_owned()],
+            source: Some(source.clone()),
+            anchor: 1,
+            head: 1,
+        };
+        let database_only = MoveRow {
+            score: None,
+            depth: 0,
+            ..source.clone()
+        };
+        for live in [None, Some(&database_only)] {
+            let kept = view.source_row(live).unwrap();
+            assert_eq!(kept.score, Some(Score::Cp(42)));
+            assert_eq!(kept.depth, 20);
+        }
+        let updated = MoveRow {
+            score: Some(Score::Cp(55)),
+            depth: 24,
+            ..source
+        };
+        assert_eq!(view.source_row(Some(&updated)).unwrap().depth, 24);
+    }
 
     #[test]
     fn replay_stops_at_a_move_that_does_not_apply() {
@@ -563,6 +615,7 @@ mod tests {
     fn highlight_ranges_work_in_either_direction() {
         let view = PvView {
             sans: Vec::new(),
+            source: None,
             anchor: 5,
             head: 2,
         };
@@ -573,6 +626,7 @@ mod tests {
         assert_eq!(view.played(), 2);
         let single = PvView {
             sans: Vec::new(),
+            source: None,
             anchor: 3,
             head: 3,
         };

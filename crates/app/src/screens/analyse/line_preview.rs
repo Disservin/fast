@@ -116,7 +116,11 @@ impl AnalyseScreen {
             .unwrap_or_else(|| ui::i18n::t("Reference").to_owned());
         let ply = self.analysed_ply();
         let white_to_move = self.analysed_pos().turn().is_white();
-        let selected = self.selected_row().cloned();
+        let selected = match self.pv_view.as_ref().filter(|_| self.pv_kibitz) {
+            Some(view) => view.source_row(self.selected_row()),
+            None => self.selected_row(),
+        }
+        .cloned();
         let meta = selected
             .as_ref()
             .filter(|row| row.depth > 0)
