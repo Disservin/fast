@@ -1467,6 +1467,16 @@ impl PlayScreen {
         self.finish(text.to_owned(), cx);
     }
 
+    /// Stops a running engine match and opens the setup for the next one. The stopped
+    /// game stays available through Back to game.
+    fn new_engine_game(&mut self, cx: &mut Context<Self>) {
+        if self.game.as_ref().is_some_and(|game| game.result.is_none()) {
+            self.finish("Game stopped".to_owned(), cx);
+        }
+        self.show_setup = true;
+        cx.notify();
+    }
+
     fn offer_draw(&mut self, cx: &mut Context<Self>) {
         // UCI has no draw protocol. Long, material-light games are accepted.
         const LATE_PLY: u32 = 80;
@@ -2683,10 +2693,7 @@ impl Render for PlayScreen {
                             .gap(px(16.))
                             .child(btn("new-engine-game", "New game").compact().on_click(
                                 move |_, cx| {
-                                    this.update(cx, |screen, cx| {
-                                        screen.show_setup = true;
-                                        cx.notify();
-                                    });
+                                    this.update(cx, |screen, cx| screen.new_engine_game(cx));
                                 },
                             ))
                             .child(self.render_graph(cx))

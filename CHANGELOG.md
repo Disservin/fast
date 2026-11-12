@@ -4,6 +4,7 @@ Settings › Changelog shows this file. Describe the finished changes since each
 
 ## Since 0.1.3
 
+- Play: New game stops the running engine match instead of letting it play on.
 - Chess960: Random picks any of the 960 start positions, not only every tenth, and Play's random colour is no longer always White on Windows.
 
 ## 0.1.3
