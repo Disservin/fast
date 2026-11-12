@@ -111,6 +111,44 @@ pub(super) fn wdl_bar(wdl: Option<Wdl>) -> gpui::AnyElement {
         .into_any_element()
 }
 
+const COL_REF: f32 = 84.;
+const COL_BADGE: f32 = 96.;
+const COL_MOVE: f32 = 64.;
+const COL_SF: f32 = 66.;
+const COL_WDL: f32 = 112.;
+const COL_MY: f32 = 80.;
+const COL_TB: f32 = 96.;
+const COL_CLOUD: f32 = 70.;
+
+/// What the moves table shows for the analysed position, read once per draw.
+struct TableView {
+    notation: chess_core::Notation,
+    engine_badges: bool,
+    engine_configs: HashMap<EngineId, engine::EngineConfig>,
+    show_wdl: bool,
+    online: bool,
+    quality_arrows: bool,
+    my_moves: bool,
+    ply: u32,
+    white_to_move: bool,
+    pos: chess_core::Chess,
+    explorer: Option<DbEntry>,
+}
+
+impl TableView {
+    /// The table's narrowest width, so its columns scroll sideways instead of squeezing.
+    fn min_width(&self) -> f32 {
+        let lead = if self.engine_badges { COL_BADGE } else { 0. };
+        lead + COL_MOVE
+            + COL_SF
+            + if self.show_wdl { COL_WDL } else { 0. }
+            + if self.online { COL_TB + COL_CLOUD } else { 0. }
+            + COL_REF
+            + COL_MY
+            + 120.
+    }
+}
+
 impl AnalyseScreen {
     pub(super) fn rebuild_rows(&mut self, cx: &mut Context<Self>) {
         let white_to_move = self.analysed_pos().turn().is_white();
@@ -216,12 +254,12 @@ impl AnalyseScreen {
         cx.notify();
     }
 
+    /// The moves table: its tools, the online status, a header row and one row per move.
     pub(super) fn render_moves_table(
         &mut self,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
         let this = cx.entity();
-        const COL_REF: f32 = 84.;
         let explorer = self.explorer_database(cx);
         let picker = if self.engine_tab == panels::EngineTab::Database {
             div()
@@ -233,302 +271,42 @@ impl AnalyseScreen {
             self.render_explorer_picker(COL_REF, cx)
         };
         let model = self.model.read(cx);
-        let notation = model.config.board.notation;
         let live = self.live.read(cx);
-        // With several engines each row names the engine whose line it is.
-        let engine_badges = live.engines.len() > 1;
-        let engine_configs: HashMap<EngineId, engine::EngineConfig> = live
-            .engines
-            .iter()
-            .map(|engine| (engine.config.id, engine.config.clone()))
-            .collect();
-        let show_wdl = self.show_wdl;
-        let quality_arrows = model.config.view.quality_arrows;
-        let my_moves = model.config.view.my_moves;
-        const COL_BADGE: f32 = 96.;
-        const COL_MOVE: f32 = 64.;
-        const COL_SF: f32 = 66.;
-        let col_lead = if engine_badges { COL_BADGE } else { 0. };
-        const COL_WDL: f32 = 112.;
-        const COL_MY: f32 = 80.;
-        const COL_TB: f32 = 96.;
-        const COL_CLOUD: f32 = 70.;
-        let online = self.online.open;
-        let header = h_flex()
-            .h(px(32.))
-            .px(px(16.))
-            .bg(rgb(T.surface_2))
-            .border_b_1()
-            .border_color(rgb(T.border))
-            .when(engine_badges, |header| {
-                header.child(
-                    div()
-                        .w(px(COL_BADGE))
-                        .flex_none()
-                        .child(section_label(ui::i18n::t("Engine"))),
-                )
-            })
-            .child(
-                div()
-                    .w(px(COL_MOVE))
-                    .flex_none()
-                    .child(section_label(ui::i18n::t("Move"))),
-            )
-            .child(
-                div()
-                    .w(px(COL_SF))
-                    .flex_none()
-                    .child(section_label(ui::i18n::t("Eval"))),
-            )
-            .when(show_wdl, |header| {
-                header.child(
-                    div()
-                        .w(px(COL_WDL))
-                        .flex_none()
-                        .child(section_label("W / D / L")),
-                )
-            })
-            .when(online, |header| {
-                header
-                    .child(
-                        div()
-                            .w(px(COL_TB))
-                            .flex_none()
-                            .child(section_label("Tablebase")),
-                    )
-                    .child(
-                        div()
-                            .w(px(COL_CLOUD))
-                            .flex_none()
-                            .child(section_label("Cloud")),
-                    )
-            })
-            .child(picker)
-            .when(my_moves, |header| {
-                header
-                    .child(
-                        div()
-                            .w(px(COL_MY))
-                            .flex_none()
-                            .child(section_label(ui::i18n::t("My games"))),
-                    )
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .child(section_label(ui::i18n::t("Repertoire"))),
-                    )
-            });
-        let ply = self.analysed_ply();
         let pos = self.analysed_pos();
-        let white_to_move = pos.turn().is_white();
+        let view = TableView {
+            notation: model.config.board.notation,
+            // With several engines each row names the engine whose line it is.
+            engine_badges: live.engines.len() > 1,
+            engine_configs: live
+                .engines
+                .iter()
+                .map(|engine| (engine.config.id, engine.config.clone()))
+                .collect(),
+            show_wdl: self.show_wdl,
+            online: self.online.open,
+            quality_arrows: model.config.view.quality_arrows,
+            my_moves: model.config.view.my_moves,
+            ply: self.analysed_ply(),
+            white_to_move: pos.turn().is_white(),
+            pos,
+            explorer,
+        };
+        let no_engines = model.analysis_engines().is_empty();
+        let searching = live.on && live.end.is_none();
+        let header = Self::render_table_header(&view, picker);
         // Room for every requested line is kept while the engine runs, so lines
         // arriving one by one early in a search do not move what is below.
         // A position never has more lines than legal moves, however many are asked for.
-        let legal = pos.legal_moves().len().max(1) as i64;
+        let legal = view.pos.legal_moves().len().max(1) as i64;
         let reserved = self
             .shown_lines(cx)
-            .filter(|_| self.live.read(cx).on && self.live.read(cx).end.is_none())
+            .filter(|_| searching)
             .map_or(0., |lines| lines.clamp(1, legal) as f32 * MOVE_ROW_H);
         let mut rows = v_flex().w_full().min_h(px(reserved));
         for (index, row) in self.rows.iter().enumerate() {
-            let selected = self.selected.as_ref().is_some_and(|key| key.matches(row));
-            let key = RowKey::of(row);
-            let mv = row
-                .san
-                .parse::<chess_core::shakmaty::san::San>()
-                .ok()
-                .and_then(|parsed| parsed.to_move(&pos).ok());
-            let shown = display_san(&row.san, mv.as_ref(), notation);
-            let label = chess_core::notation::numbered(ply + 1, &shown);
-            let label_color = row
-                .quality
-                .filter(|_| quality_arrows)
-                .map_or(T.fg, quality_color);
-            let select_this = this.clone();
-            let score = row
-                .score
-                .map(Score::display)
-                .unwrap_or_else(|| "—".to_owned());
-            let badge = engine_badges.then(|| {
-                let config = row.engine_id.and_then(|id| engine_configs.get(&id));
-                engine_badge(config, index, COL_BADGE)
-            });
-            let stat_text = |stat: &Option<MoveStat>| {
-                stat.as_ref()
-                    .map(|stat| {
-                        format!("{} ({:.0}%)", stat.games, stat.score_percent(white_to_move))
-                    })
-                    .unwrap_or_else(|| "—".to_owned())
-            };
-            let (rep_text, rep_color) = match row.rep {
-                RepTag::Main => ("Main", T.good),
-                RepTag::Side => ("Side line", T.fg_2),
-                RepTag::Deviate => ("You deviate", T.warn),
-                RepTag::None => ("—", T.muted),
-            };
-            let dash = || ("—".to_owned(), T.muted);
-            let (tb_text, tb_color) = row.tb.as_ref().map_or_else(dash, online::tb_cell);
-            let (cloud_text, cloud_color) =
-                row.cloud.as_ref().map_or_else(dash, online::cloud_cell);
-            // A count opens the Database tab on the games reaching the position after it.
-            let count_target = explorer
-                .as_ref()
-                .filter(|_| row.reference.is_some())
-                .zip(mv)
-                .map(|(entry, mv)| {
-                    let mut after = pos.clone();
-                    after.play_unchecked(mv);
-                    (entry.path.clone(), position_hash(&after), label.clone())
-                });
-            let workspace = self.workspace.clone();
-            rows = rows.child(
-                h_flex()
-                    .id(("move-row", index))
-                    .relative()
-                    .h(px(MOVE_ROW_H))
-                    .flex_none()
-                    .px(px(16.))
-                    .cursor_pointer()
-                    .border_b_1()
-                    .border_color(rgb(T.divider))
-                    .text_size(px(14.))
-                    .font_family(MONO)
-                    .whitespace_nowrap()
-                    .when(selected, |row_el| row_el.bg(rgb(T.selected)))
-                    .when(!selected, |row_el| {
-                        row_el.hover(|style| style.bg(rgb(T.hover)))
-                    })
-                    .on_click(move |_, _, cx| {
-                        let key = key.clone();
-                        select_this.update(cx, |screen, cx| screen.select_row(key, cx));
-                    })
-                    .when(selected, |row_el| {
-                        row_el.child(
-                            div()
-                                .absolute()
-                                .left_0()
-                                .top_0()
-                                .bottom_0()
-                                .w(px(3.))
-                                .bg(rgb(T.accent)),
-                        )
-                    })
-                    .children(badge)
-                    .child(
-                        div()
-                            .w(px(COL_MOVE))
-                            .flex_none()
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(rgb(label_color))
-                            .child(ui::i18n::t(&label).to_owned()),
-                    )
-                    .child(
-                        div()
-                            .w(px(COL_SF))
-                            .flex_none()
-                            .text_size(px(13.))
-                            .text_color(rgb(T.fg_2))
-                            .child(score),
-                    )
-                    .when(show_wdl, |row_el| {
-                        row_el.child(
-                            div().w(px(COL_WDL)).flex_none().pr(px(12.)).child(
-                                match wdl_percentages(row.wdl) {
-                                    Some([w, d, l]) => {
-                                        v_flex().gap(px(2.)).child(wdl_bar(row.wdl)).child(
-                                            mono(format!("{w:.0} / {d:.0} / {l:.0}%"))
-                                                .text_size(px(10.))
-                                                .text_color(rgb(T.fg_2)),
-                                        )
-                                    }
-                                    None => mono("—").text_size(px(13.)).text_color(rgb(T.fg_2)),
-                                },
-                            ),
-                        )
-                    })
-                    .when(online, |row_el| {
-                        row_el
-                            .child(
-                                div()
-                                    .w(px(COL_TB))
-                                    .flex_none()
-                                    .pr(px(8.))
-                                    .overflow_hidden()
-                                    .text_ellipsis()
-                                    .font_family(ui::SANS)
-                                    .text_size(px(12.))
-                                    .font_weight(FontWeight::MEDIUM)
-                                    .text_color(rgb(tb_color))
-                                    .child(tb_text),
-                            )
-                            .child(
-                                div()
-                                    .w(px(COL_CLOUD))
-                                    .flex_none()
-                                    .text_size(px(13.))
-                                    .text_color(rgb(cloud_color))
-                                    .child(cloud_text),
-                            )
-                    })
-                    .child(
-                        div()
-                            .id(("reference-count", index))
-                            .w(px(COL_REF))
-                            .flex_none()
-                            .pl(px(4.))
-                            .text_size(px(13.))
-                            .text_color(rgb(T.fg_2))
-                            .when_some(count_target, |cell, (path, hash, label)| {
-                                cell.hover(|style| style.text_color(rgb(T.accent)).underline())
-                                    .tooltip(|window, cx| {
-                                        gpui_component::tooltip::Tooltip::new(ui::i18n::t(
-                                            "Show these games in the Database tab",
-                                        ))
-                                        .build(window, cx)
-                                    })
-                                    .on_click(move |_, window, cx| {
-                                        cx.stop_propagation();
-                                        let (path, label) = (path.clone(), label.clone());
-                                        if let Some(workspace) = workspace.upgrade() {
-                                            workspace.update(cx, |workspace, cx| {
-                                                workspace.show_position_in_database(
-                                                    path,
-                                                    hash,
-                                                    ui::i18n::tf("After {}", &[&label]),
-                                                    window,
-                                                    cx,
-                                                );
-                                            });
-                                        }
-                                    })
-                            })
-                            .child(stat_text(&row.reference)),
-                    )
-                    .when(my_moves, |row_el| {
-                        row_el
-                            .child(
-                                div()
-                                    .w(px(COL_MY))
-                                    .flex_none()
-                                    .text_size(px(13.))
-                                    .text_color(rgb(T.fg_2))
-                                    .child(stat_text(&row.mine)),
-                            )
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .min_w_0()
-                                    .font_family(ui::SANS)
-                                    .text_size(px(12.))
-                                    .font_weight(FontWeight::MEDIUM)
-                                    .text_color(rgb(rep_color))
-                                    .child(rep_text),
-                            )
-                    }),
-            );
+            rows = rows.child(self.render_move_row(index, row, &view, &this));
         }
-        if !self.rows.is_empty() && self.reference.is_empty() && explorer.is_some() {
+        if !self.rows.is_empty() && self.reference.is_empty() && view.explorer.is_some() {
             rows = rows.child(
                 div()
                     .px(px(16.))
@@ -545,7 +323,7 @@ impl AnalyseScreen {
                     .py(px(20.))
                     .text_size(px(13.))
                     .text_color(rgb(T.muted))
-                    .child(if model.analysis_engines().is_empty() {
+                    .child(if no_engines {
                         "No candidate moves yet. Add an engine in Settings › Engines, or import a database."
                     } else {
                         "Waiting for engine lines…"
@@ -573,18 +351,286 @@ impl AnalyseScreen {
                     .overflow_x_scroll()
                     .child(
                         v_flex()
-                            .min_w(px(col_lead
-                                + COL_MOVE
-                                + COL_SF
-                                + if show_wdl { COL_WDL } else { 0. }
-                                + if online { COL_TB + COL_CLOUD } else { 0. }
-                                + COL_REF
-                                + COL_MY
-                                + 120.))
+                            .min_w(px(view.min_width()))
                             .child(header)
                             .child(rows),
                     ),
             )
+    }
+
+    /// The header row of section labels, one per shown column.
+    fn render_table_header(view: &TableView, picker: gpui::AnyElement) -> gpui::Div {
+        h_flex()
+            .h(px(32.))
+            .px(px(16.))
+            .bg(rgb(T.surface_2))
+            .border_b_1()
+            .border_color(rgb(T.border))
+            .when(view.engine_badges, |header| {
+                header.child(
+                    div()
+                        .w(px(COL_BADGE))
+                        .flex_none()
+                        .child(section_label(ui::i18n::t("Engine"))),
+                )
+            })
+            .child(
+                div()
+                    .w(px(COL_MOVE))
+                    .flex_none()
+                    .child(section_label(ui::i18n::t("Move"))),
+            )
+            .child(
+                div()
+                    .w(px(COL_SF))
+                    .flex_none()
+                    .child(section_label(ui::i18n::t("Eval"))),
+            )
+            .when(view.show_wdl, |header| {
+                header.child(
+                    div()
+                        .w(px(COL_WDL))
+                        .flex_none()
+                        .child(section_label("W / D / L")),
+                )
+            })
+            .when(view.online, |header| {
+                header
+                    .child(
+                        div()
+                            .w(px(COL_TB))
+                            .flex_none()
+                            .child(section_label("Tablebase")),
+                    )
+                    .child(
+                        div()
+                            .w(px(COL_CLOUD))
+                            .flex_none()
+                            .child(section_label("Cloud")),
+                    )
+            })
+            .child(picker)
+            .when(view.my_moves, |header| {
+                header
+                    .child(
+                        div()
+                            .w(px(COL_MY))
+                            .flex_none()
+                            .child(section_label(ui::i18n::t("My games"))),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .child(section_label(ui::i18n::t("Repertoire"))),
+                    )
+            })
+    }
+
+    /// One move's row: its engine, the move, the evaluation, the WDL bar, online,
+    /// database and personal figures, and its repertoire tag. Clicking selects it.
+    fn render_move_row(
+        &self,
+        index: usize,
+        row: &MoveRow,
+        view: &TableView,
+        this: &Entity<Self>,
+    ) -> impl IntoElement + use<> {
+        let selected = self.selected.as_ref().is_some_and(|key| key.matches(row));
+        let key = RowKey::of(row);
+        let mv = row
+            .san
+            .parse::<chess_core::shakmaty::san::San>()
+            .ok()
+            .and_then(|parsed| parsed.to_move(&view.pos).ok());
+        let shown = display_san(&row.san, mv.as_ref(), view.notation);
+        let label = chess_core::notation::numbered(view.ply + 1, &shown);
+        let label_color = row
+            .quality
+            .filter(|_| view.quality_arrows)
+            .map_or(T.fg, quality_color);
+        let select_this = this.clone();
+        let score = row
+            .score
+            .map(Score::display)
+            .unwrap_or_else(|| "—".to_owned());
+        let badge = view.engine_badges.then(|| {
+            let config = row.engine_id.and_then(|id| view.engine_configs.get(&id));
+            engine_badge(config, index, COL_BADGE)
+        });
+        let stat_text = |stat: &Option<MoveStat>| {
+            stat.as_ref()
+                .map(|stat| {
+                    format!(
+                        "{} ({:.0}%)",
+                        stat.games,
+                        stat.score_percent(view.white_to_move)
+                    )
+                })
+                .unwrap_or_else(|| "—".to_owned())
+        };
+        let (rep_text, rep_color) = match row.rep {
+            RepTag::Main => ("Main", T.good),
+            RepTag::Side => ("Side line", T.fg_2),
+            RepTag::Deviate => ("You deviate", T.warn),
+            RepTag::None => ("—", T.muted),
+        };
+        let dash = || ("—".to_owned(), T.muted);
+        let (tb_text, tb_color) = row.tb.as_ref().map_or_else(dash, online::tb_cell);
+        let (cloud_text, cloud_color) = row.cloud.as_ref().map_or_else(dash, online::cloud_cell);
+        // A count opens the Database tab on the games reaching the position after it.
+        let count_target = view
+            .explorer
+            .as_ref()
+            .filter(|_| row.reference.is_some())
+            .zip(mv)
+            .map(|(entry, mv)| {
+                let mut after = view.pos.clone();
+                after.play_unchecked(mv);
+                (entry.path.clone(), position_hash(&after), label.clone())
+            });
+        let workspace = self.workspace.clone();
+        h_flex()
+            .id(("move-row", index))
+            .relative()
+            .h(px(MOVE_ROW_H))
+            .flex_none()
+            .px(px(16.))
+            .cursor_pointer()
+            .border_b_1()
+            .border_color(rgb(T.divider))
+            .text_size(px(14.))
+            .font_family(MONO)
+            .whitespace_nowrap()
+            .when(selected, |row_el| row_el.bg(rgb(T.selected)))
+            .when(!selected, |row_el| {
+                row_el.hover(|style| style.bg(rgb(T.hover)))
+            })
+            .on_click(move |_, _, cx| {
+                let key = key.clone();
+                select_this.update(cx, |screen, cx| screen.select_row(key, cx));
+            })
+            .when(selected, |row_el| {
+                row_el.child(
+                    div()
+                        .absolute()
+                        .left_0()
+                        .top_0()
+                        .bottom_0()
+                        .w(px(3.))
+                        .bg(rgb(T.accent)),
+                )
+            })
+            .children(badge)
+            .child(
+                div()
+                    .w(px(COL_MOVE))
+                    .flex_none()
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(rgb(label_color))
+                    .child(ui::i18n::t(&label).to_owned()),
+            )
+            .child(
+                div()
+                    .w(px(COL_SF))
+                    .flex_none()
+                    .text_size(px(13.))
+                    .text_color(rgb(T.fg_2))
+                    .child(score),
+            )
+            .when(view.show_wdl, |row_el| {
+                row_el.child(
+                    div().w(px(COL_WDL)).flex_none().pr(px(12.)).child(
+                        match wdl_percentages(row.wdl) {
+                            Some([w, d, l]) => v_flex().gap(px(2.)).child(wdl_bar(row.wdl)).child(
+                                mono(format!("{w:.0} / {d:.0} / {l:.0}%"))
+                                    .text_size(px(10.))
+                                    .text_color(rgb(T.fg_2)),
+                            ),
+                            None => mono("—").text_size(px(13.)).text_color(rgb(T.fg_2)),
+                        },
+                    ),
+                )
+            })
+            .when(view.online, |row_el| {
+                row_el
+                    .child(
+                        div()
+                            .w(px(COL_TB))
+                            .flex_none()
+                            .pr(px(8.))
+                            .overflow_hidden()
+                            .text_ellipsis()
+                            .font_family(ui::SANS)
+                            .text_size(px(12.))
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(rgb(tb_color))
+                            .child(tb_text),
+                    )
+                    .child(
+                        div()
+                            .w(px(COL_CLOUD))
+                            .flex_none()
+                            .text_size(px(13.))
+                            .text_color(rgb(cloud_color))
+                            .child(cloud_text),
+                    )
+            })
+            .child(
+                div()
+                    .id(("reference-count", index))
+                    .w(px(COL_REF))
+                    .flex_none()
+                    .pl(px(4.))
+                    .text_size(px(13.))
+                    .text_color(rgb(T.fg_2))
+                    .when_some(count_target, |cell, (path, hash, label)| {
+                        cell.hover(|style| style.text_color(rgb(T.accent)).underline())
+                            .tooltip(|window, cx| {
+                                gpui_component::tooltip::Tooltip::new(ui::i18n::t(
+                                    "Show these games in the Database tab",
+                                ))
+                                .build(window, cx)
+                            })
+                            .on_click(move |_, window, cx| {
+                                cx.stop_propagation();
+                                let (path, label) = (path.clone(), label.clone());
+                                if let Some(workspace) = workspace.upgrade() {
+                                    workspace.update(cx, |workspace, cx| {
+                                        workspace.show_position_in_database(
+                                            path,
+                                            hash,
+                                            ui::i18n::tf("After {}", &[&label]),
+                                            window,
+                                            cx,
+                                        );
+                                    });
+                                }
+                            })
+                    })
+                    .child(stat_text(&row.reference)),
+            )
+            .when(view.my_moves, |row_el| {
+                row_el
+                    .child(
+                        div()
+                            .w(px(COL_MY))
+                            .flex_none()
+                            .text_size(px(13.))
+                            .text_color(rgb(T.fg_2))
+                            .child(stat_text(&row.mine)),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .font_family(ui::SANS)
+                            .text_size(px(12.))
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(rgb(rep_color))
+                            .child(rep_text),
+                    )
+            })
     }
 }
 
