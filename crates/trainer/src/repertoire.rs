@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use chess_core::{Chess, Color, Position, shakmaty::san::San};
+use chess_core::{Chess, Position, shakmaty::san::San};
 use serde::{Deserialize, Serialize};
 
 use crate::{Card, CardState, Grade};
@@ -99,14 +99,6 @@ impl Repertoire {
             history: Vec::new(),
             session: None,
             legacy_cards: Default::default(),
-        }
-    }
-
-    pub fn user_color(&self) -> Color {
-        if self.white {
-            Color::White
-        } else {
-            Color::Black
         }
     }
 
