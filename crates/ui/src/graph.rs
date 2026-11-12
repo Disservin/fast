@@ -165,6 +165,141 @@ fn index_at(x: f32, count: usize, bounds: Bounds<Pixels>) -> usize {
     ((offset / width * (count - 1) as f32).round() as usize).min(count - 1)
 }
 
+/// One series as a line, with a filled area down to zero when it asks for one. Gaps in
+/// the values break the line unless the series connects them; a lone value is a dot.
+fn paint_series(
+    window: &mut gpui::Window,
+    series: &Series,
+    count: usize,
+    bounds: Bounds<Pixels>,
+    y_of: &dyn Fn(f32) -> f32,
+    zero_y: f32,
+) {
+    // Runs of known values; gaps break the line.
+    let mut runs: Vec<Vec<(f32, f32)>> = vec![Vec::new()];
+    for (index, value) in series.values.iter().enumerate() {
+        match value {
+            Some(value) => runs
+                .last_mut()
+                .expect("non-empty")
+                .push((x_of(index, count, bounds), y_of(*value))),
+            None if !series.connect => runs.push(Vec::new()),
+            None => {}
+        }
+    }
+    for run in runs.iter().filter(|run| !run.is_empty()) {
+        if series.fill && run.len() > 1 {
+            let mut area = vec![point(px(run[0].0), px(zero_y))];
+            area.extend(run.iter().map(|(x, y)| point(px(*x), px(*y))));
+            area.push(point(px(run[run.len() - 1].0), px(zero_y)));
+            let mut builder = PathBuilder::fill();
+            builder.add_polygon(&area, true);
+            if let Ok(path) = builder.build() {
+                let mut color: gpui::Hsla = rgb(series.color).into();
+                color.a = 0.16;
+                window.paint_path(path, color);
+            }
+        }
+        if run.len() == 1 {
+            let (x, y) = run[0];
+            window.paint_quad(quad(
+                Bounds::new(point(px(x - 2.), px(y - 2.)), size(px(4.), px(4.))),
+                px(2.),
+                rgb(series.color),
+                px(0.),
+                gpui::transparent_black(),
+                Default::default(),
+            ));
+            continue;
+        }
+        let mut builder = PathBuilder::stroke(px(2.));
+        builder.move_to(point(px(run[0].0), px(run[0].1)));
+        for (x, y) in &run[1..] {
+            builder.line_to(point(px(*x), px(*y)));
+        }
+        if let Ok(path) = builder.build() {
+            window.paint_path(path, rgb(series.color));
+        }
+    }
+}
+
+/// The current move: a vertical accent line with a ringed dot on every series.
+fn paint_current(
+    window: &mut gpui::Window,
+    series: &[Series],
+    index: usize,
+    count: usize,
+    bounds: Bounds<Pixels>,
+    y_of: &dyn Fn(f32) -> f32,
+) {
+    let x = x_of(index, count, bounds);
+    let mut color: gpui::Hsla = rgb(T.accent).into();
+    color.a = 0.85;
+    window.paint_quad(quad(
+        Bounds::new(
+            point(px(x - 1.), bounds.origin.y),
+            size(px(2.), bounds.size.height),
+        ),
+        px(0.),
+        color,
+        px(0.),
+        gpui::transparent_black(),
+        Default::default(),
+    ));
+    for series in series {
+        if let Some(Some(value)) = series.values.get(index) {
+            let y = y_of(*value);
+            window.paint_quad(quad(
+                Bounds::new(point(px(x - 4.), px(y - 4.)), size(px(8.), px(8.))),
+                px(4.),
+                rgb(series.color),
+                px(1.5),
+                rgb(T.surface),
+                Default::default(),
+            ));
+        }
+    }
+}
+
+/// Pressing on the graph and dragging across it picks the move under the pointer.
+fn listen_for_scrub(
+    window: &mut gpui::Window,
+    on_scrub: &ScrubHandler,
+    dragging: &Rc<Cell<bool>>,
+    count: usize,
+    bounds: Bounds<Pixels>,
+) {
+    let scrub = on_scrub.clone();
+    let flag = dragging.clone();
+    window.on_mouse_event(move |event: &MouseDownEvent, phase, window, cx| {
+        if phase.bubble() && bounds.contains(&event.position) {
+            flag.set(true);
+            scrub(
+                index_at(f32::from(event.position.x), count, bounds),
+                window,
+                cx,
+            );
+        }
+    });
+    let scrub = on_scrub.clone();
+    let flag = dragging.clone();
+    window.on_mouse_event(move |event: &MouseMoveEvent, phase, window, cx| {
+        if phase.bubble() && flag.get() && event.dragging() {
+            scrub(
+                index_at(f32::from(event.position.x), count, bounds),
+                window,
+                cx,
+            );
+        }
+    });
+    let flag = dragging.clone();
+    window.on_mouse_event(move |_: &MouseUpEvent, phase, _, _| {
+        if phase.bubble() {
+            flag.set(false);
+        }
+    });
+}
+
 /// Draws a resizable game graph that supports scrubbing through moves.
 pub fn graph(props: GraphProps) -> impl IntoElement {
     let GraphProps {
@@ -243,117 +378,12 @@ pub fn graph(props: GraphProps) -> impl IntoElement {
                         return;
                     }
                     for series in &series {
-                        // Runs of known values; gaps break the line.
-                        let mut runs: Vec<Vec<(f32, f32)>> = vec![Vec::new()];
-                        for (index, value) in series.values.iter().enumerate() {
-                            match value {
-                                Some(value) => runs
-                                    .last_mut()
-                                    .expect("non-empty")
-                                    .push((x_of(index, count, bounds), y_of(*value))),
-                                None if !series.connect => runs.push(Vec::new()),
-                                None => {}
-                            }
-                        }
-                        for run in runs.iter().filter(|run| !run.is_empty()) {
-                            if series.fill && run.len() > 1 {
-                                let mut area = vec![point(px(run[0].0), px(zero_y))];
-                                area.extend(run.iter().map(|(x, y)| point(px(*x), px(*y))));
-                                area.push(point(px(run[run.len() - 1].0), px(zero_y)));
-                                let mut builder = PathBuilder::fill();
-                                builder.add_polygon(&area, true);
-                                if let Ok(path) = builder.build() {
-                                    let mut color: gpui::Hsla = rgb(series.color).into();
-                                    color.a = 0.16;
-                                    window.paint_path(path, color);
-                                }
-                            }
-                            if run.len() == 1 {
-                                let (x, y) = run[0];
-                                window.paint_quad(quad(
-                                    Bounds::new(
-                                        point(px(x - 2.), px(y - 2.)),
-                                        size(px(4.), px(4.)),
-                                    ),
-                                    px(2.),
-                                    rgb(series.color),
-                                    px(0.),
-                                    gpui::transparent_black(),
-                                    Default::default(),
-                                ));
-                                continue;
-                            }
-                            let mut builder = PathBuilder::stroke(px(2.));
-                            builder.move_to(point(px(run[0].0), px(run[0].1)));
-                            for (x, y) in &run[1..] {
-                                builder.line_to(point(px(*x), px(*y)));
-                            }
-                            if let Ok(path) = builder.build() {
-                                window.paint_path(path, rgb(series.color));
-                            }
-                        }
+                        paint_series(window, series, count, bounds, &y_of, zero_y);
                     }
                     if let Some(index) = current.filter(|index| *index < count) {
-                        let x = x_of(index, count, bounds);
-                        let mut color: gpui::Hsla = rgb(T.accent).into();
-                        color.a = 0.85;
-                        window.paint_quad(quad(
-                            Bounds::new(
-                                point(px(x - 1.), bounds.origin.y),
-                                size(px(2.), bounds.size.height),
-                            ),
-                            px(0.),
-                            color,
-                            px(0.),
-                            gpui::transparent_black(),
-                            Default::default(),
-                        ));
-                        for series in &series {
-                            if let Some(Some(value)) = series.values.get(index) {
-                                let y = y_of(*value);
-                                window.paint_quad(quad(
-                                    Bounds::new(
-                                        point(px(x - 4.), px(y - 4.)),
-                                        size(px(8.), px(8.)),
-                                    ),
-                                    px(4.),
-                                    rgb(series.color),
-                                    px(1.5),
-                                    rgb(T.surface),
-                                    Default::default(),
-                                ));
-                            }
-                        }
+                        paint_current(window, &series, index, count, bounds, &y_of);
                     }
-                    let scrub = on_scrub.clone();
-                    let flag = dragging.clone();
-                    window.on_mouse_event(move |event: &MouseDownEvent, phase, window, cx| {
-                        if phase.bubble() && bounds.contains(&event.position) {
-                            flag.set(true);
-                            scrub(
-                                index_at(f32::from(event.position.x), count, bounds),
-                                window,
-                                cx,
-                            );
-                        }
-                    });
-                    let scrub = on_scrub.clone();
-                    let flag = dragging.clone();
-                    window.on_mouse_event(move |event: &MouseMoveEvent, phase, window, cx| {
-                        if phase.bubble() && flag.get() && event.dragging() {
-                            scrub(
-                                index_at(f32::from(event.position.x), count, bounds),
-                                window,
-                                cx,
-                            );
-                        }
-                    });
-                    let flag = dragging.clone();
-                    window.on_mouse_event(move |_: &MouseUpEvent, phase, _, _| {
-                        if phase.bubble() {
-                            flag.set(false);
-                        }
-                    });
+                    listen_for_scrub(window, &on_scrub, &dragging, count, bounds);
                 },
             )
             .absolute()

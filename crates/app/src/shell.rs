@@ -5,9 +5,10 @@ use std::collections::{BTreeMap, HashMap};
 
 use engine::EngineStatus;
 use gpui::{
-    Action, App, Context, CursorStyle, Decorations, Entity, FocusHandle, FontWeight, IntoElement,
-    KeyBinding, MouseButton, Pixels, Render, ResizeEdge, ScrollEvent, ScrollHandle, SharedString,
-    Subscription, Window, WindowControlArea, actions, deferred, div, prelude::*, px, rgb,
+    Action, AnyElement, App, Context, CursorStyle, Decorations, Div, Entity, FocusHandle,
+    FontWeight, IntoElement, KeyBinding, MouseButton, Pixels, Render, ResizeEdge, ScrollEvent,
+    ScrollHandle, SharedString, Stateful, Subscription, Window, WindowControlArea, actions,
+    deferred, div, prelude::*, px, rgb,
 };
 use gpui_component::input::{InputEvent, InputState, TextareaState};
 use gpui_component::menu::{ContextMenuExt, PopupMenuItem};
@@ -330,6 +331,26 @@ pub struct Workspace {
     _subscriptions: Vec<Subscription>,
 }
 
+/// The screen and Settings page named by `--screen`, Analyse when there is none.
+fn start_screen(screen: Option<&str>) -> (Mode, Option<SettingsPage>) {
+    match screen.unwrap_or("analyse") {
+        "database" => (Mode::Database, None),
+        "train" => (Mode::Train, None),
+        "play" => (Mode::Play, None),
+        "settings" | "settings:general" => (Mode::Settings, Some(SettingsPage::General)),
+        "settings:engines" => (Mode::Settings, Some(SettingsPage::Engines)),
+        "settings:analysis" => (Mode::Settings, Some(SettingsPage::Analysis)),
+        "settings:board" => (Mode::Settings, Some(SettingsPage::Board)),
+        "settings:databases" => (Mode::Settings, Some(SettingsPage::Databases)),
+        "settings:shortcuts" => (Mode::Settings, Some(SettingsPage::Shortcuts)),
+        "settings:data" => (Mode::Settings, Some(SettingsPage::Data)),
+        "settings:licenses" => (Mode::Settings, Some(SettingsPage::Licenses)),
+        "settings:thanks" => (Mode::Settings, Some(SettingsPage::Thanks)),
+        "settings:changelog" => (Mode::Settings, Some(SettingsPage::Changelog)),
+        _ => (Mode::Analyse, None),
+    }
+}
+
 impl Workspace {
     pub fn new(
         model: Entity<AppModel>,
@@ -408,22 +429,7 @@ impl Workspace {
         });
         let focus = cx.focus_handle();
         focus.focus(window, cx);
-        let (mode, settings_page) = match screen.unwrap_or("analyse") {
-            "database" => (Mode::Database, None),
-            "train" => (Mode::Train, None),
-            "play" => (Mode::Play, None),
-            "settings" | "settings:general" => (Mode::Settings, Some(SettingsPage::General)),
-            "settings:engines" => (Mode::Settings, Some(SettingsPage::Engines)),
-            "settings:analysis" => (Mode::Settings, Some(SettingsPage::Analysis)),
-            "settings:board" => (Mode::Settings, Some(SettingsPage::Board)),
-            "settings:databases" => (Mode::Settings, Some(SettingsPage::Databases)),
-            "settings:shortcuts" => (Mode::Settings, Some(SettingsPage::Shortcuts)),
-            "settings:data" => (Mode::Settings, Some(SettingsPage::Data)),
-            "settings:licenses" => (Mode::Settings, Some(SettingsPage::Licenses)),
-            "settings:thanks" => (Mode::Settings, Some(SettingsPage::Thanks)),
-            "settings:changelog" => (Mode::Settings, Some(SettingsPage::Changelog)),
-            _ => (Mode::Analyse, None),
-        };
+        let (mode, settings_page) = start_screen(screen);
         train.update(cx, |train, cx| train.set_visible(mode == Mode::Train, cx));
         analyse.update(cx, |analyse, cx| {
             analyse.set_visible(mode == Mode::Analyse, cx)
@@ -496,23 +502,7 @@ impl Workspace {
         workspace
             ._subscriptions
             .push(cx.observe_window_bounds(window, |workspace, window, cx| {
-                let bounds = window.window_bounds();
-                let size = bounds.get_bounds().size;
-                let saved = crate::config::SavedWindow {
-                    width: f32::from(size.width).round().max(1.) as u32,
-                    height: f32::from(size.height).round().max(1.) as u32,
-                    maximized: matches!(bounds, gpui::WindowBounds::Maximized(_)),
-                };
-                // Fullscreen dimensions are transient; keep the last normal geometry.
-                if matches!(bounds, gpui::WindowBounds::Fullscreen(_)) {
-                    return;
-                }
-                workspace.model.update(cx, |model, cx| {
-                    if model.config.window.as_ref() != Some(&saved) {
-                        model.config.window = Some(saved);
-                        model.schedule_config_save(cx);
-                    }
-                });
+                workspace.remember_window_bounds(window, cx)
             }));
         if screen == Some("tournament") {
             workspace.new_tab(Mode::Tournament, window, cx);
@@ -533,6 +523,27 @@ impl Workspace {
             workspace.activate_tab(active, cx);
         }
         workspace
+    }
+
+    /// Saves the window size and whether it is maximized, so the next start opens the same.
+    /// Fullscreen sizes are transient, so the last normal size is kept.
+    fn remember_window_bounds(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let bounds = window.window_bounds();
+        let size = bounds.get_bounds().size;
+        let saved = crate::config::SavedWindow {
+            width: f32::from(size.width).round().max(1.) as u32,
+            height: f32::from(size.height).round().max(1.) as u32,
+            maximized: matches!(bounds, gpui::WindowBounds::Maximized(_)),
+        };
+        if matches!(bounds, gpui::WindowBounds::Fullscreen(_)) {
+            return;
+        }
+        self.model.update(cx, |model, cx| {
+            if model.config.window.as_ref() != Some(&saved) {
+                model.config.window = Some(saved);
+                model.schedule_config_save(cx);
+            }
+        });
     }
 
     pub fn set_mode(&mut self, mode: Mode, cx: &mut Context<Self>) {
@@ -643,22 +654,8 @@ impl Render for Workspace {
         let client_drawn = matches!(window.window_decorations(), Decorations::Client { .. });
         let controls = client_drawn || self.force_window_controls || DRAWS_TITLE_BAR;
         let on_button = stack.iter().any(|context| context.contains("FastButton"));
-        let body = match self.mode {
-            Mode::Analyse => self.analyse.clone().into_any_element(),
-            Mode::Database => self.database.clone().into_any_element(),
-            Mode::Train => self.train.clone().into_any_element(),
-            Mode::Play => self.play.clone().into_any_element(),
-            Mode::Settings => self.settings.clone().into_any_element(),
-            Mode::Tournament => match &self.tournament {
-                Some(screen) => screen.clone().into_any_element(),
-                None => div().into_any_element(),
-            },
-            Mode::TestPositions => match &self.test_positions {
-                Some(screen) => screen.clone().into_any_element(),
-                None => div().into_any_element(),
-            },
-        };
-        v_flex()
+        let body = self.active_screen();
+        let root = v_flex()
             .id("workspace")
             .relative()
             .track_focus(&self.focus)
@@ -737,154 +734,188 @@ impl Render for Workspace {
                     cx.stop_propagation();
                 }
             }))
-            .on_action(cx.listener(|this, _: &PrevMove, window, cx| {
-                if this.mode == Mode::Play {
-                    this.play.update(cx, |screen, cx| screen.step(-1, cx));
-                } else {
-                    this.analyse
-                        .update(cx, |screen, cx| screen.step(-1, window, cx));
-                }
-            }))
-            .on_action(cx.listener(|this, _: &NextMove, window, cx| {
-                if this.mode == Mode::Play {
-                    this.play.update(cx, |screen, cx| screen.step(1, cx));
-                } else {
-                    this.analyse
-                        .update(cx, |screen, cx| screen.step(1, window, cx));
-                }
-            }))
-            .on_action(cx.listener(|this, _: &FirstMove, window, cx| {
-                if this.mode == Mode::Play {
-                    this.play.update(cx, |screen, cx| screen.go_first(cx));
-                } else {
-                    this.analyse
-                        .update(cx, |screen, cx| screen.go_first(window, cx));
-                }
-            }))
-            .on_action(cx.listener(|this, _: &LastMove, window, cx| {
-                if this.mode == Mode::Play {
-                    this.play.update(cx, |screen, cx| screen.go_last(cx));
-                } else {
-                    this.analyse
-                        .update(cx, |screen, cx| screen.go_last(window, cx));
-                }
-            }))
-            .on_action(cx.listener(|this, _: &ToggleEngine, _, cx| {
-                this.analyse
-                    .update(cx, |screen, cx| screen.toggle_engine(cx));
-                cx.notify();
-            }))
-            .on_action(cx.listener(|this, _: &FlipBoard, _, cx| match this.mode {
-                Mode::Play => this.play.update(cx, |screen, cx| screen.flip(cx)),
-                Mode::Train => this.train.update(cx, |screen, cx| screen.flip(cx)),
-                _ => this.analyse.update(cx, |screen, cx| screen.flip(cx)),
-            }))
-            .on_action(cx.listener(|this, _: &FocusSearch, window, cx| {
-                if !matches!(this.mode, Mode::Analyse | Mode::Database) {
-                    this.set_mode(Mode::Analyse, cx);
-                }
-                this.search
-                    .update(cx, |search, cx| search.focus(window, cx));
-                this.update_search(cx);
-            }))
-            .on_action(cx.listener(|this, _: &SaveGame, _, cx| {
-                this.analyse.update(cx, |screen, cx| screen.save_game(cx));
-            }))
-            .on_action(cx.listener(|this, _: &NewGame, window, cx| {
-                this.new_tab(Mode::Analyse, window, cx);
-                this.analyse
-                    .update(cx, |screen, cx| screen.new_game(window, cx));
-            }))
-            .on_action(cx.listener(|this, _: &NewChess960, window, cx| {
-                this.new_chess960(random_chess960_number(), window, cx);
-            }))
-            .on_action(cx.listener(|this, _: &NewTab, window, cx| {
-                let mode = match this.mode {
-                    Mode::Play => Mode::Play,
-                    Mode::Database => Mode::Database,
-                    _ => Mode::Analyse,
-                };
-                this.new_tab(mode, window, cx);
-            }))
-            .on_action(cx.listener(|this, _: &CloseTab, window, cx| {
-                this.close_tab(this.active_tab, window, cx)
-            }))
-            .on_action(cx.listener(|this, _: &ReopenTab, _, cx| this.reopen_tab(cx)))
-            .on_action(cx.listener(|this, _: &NextTab, _, cx| this.cycle_tab(1, cx)))
-            .on_action(cx.listener(|this, _: &PrevTab, _, cx| this.cycle_tab(-1, cx)))
-            .on_action(cx.listener(|this, _: &TabBack, _, cx| this.step_history(true, cx)))
-            .on_action(cx.listener(|this, _: &TabForward, _, cx| this.step_history(false, cx)))
-            .on_action(cx.listener(|this, _: &OpenGame, window, cx| {
-                this.new_tab(Mode::Analyse, window, cx);
-                this.analyse
-                    .update(cx, |screen, cx| screen.open_file(window, cx));
-                this.set_mode(Mode::Analyse, cx);
-            }))
-            .on_action(cx.listener(|this, _: &SavePgnAs, _, cx| {
-                this.analyse.update(cx, |screen, cx| screen.save_pgn_as(cx));
-            }))
-            .on_action(cx.listener(|this, _: &PasteGame, window, cx| {
-                this.analyse
-                    .update(cx, |screen, cx| screen.paste_game(window, cx));
-                this.set_mode(Mode::Analyse, cx);
-            }))
-            .on_action(cx.listener(|this, _: &CopyFen, _, cx| {
-                this.analyse
-                    .update(cx, |screen, cx| screen.copy_fen_action(cx));
-            }))
-            .on_action(cx.listener(|this, _: &CopyPgn, _, cx| {
-                this.analyse
-                    .update(cx, |screen, cx| screen.copy_pgn_action(cx));
-            }))
-            .on_action(cx.listener(|this, _: &PauseEngine, _, cx| {
-                this.analyse
-                    .update(cx, |screen, cx| screen.toggle_pause(cx));
-            }))
-            .on_action(cx.listener(|this, _: &MoreLines, _, cx| {
-                this.in_analyse(cx, |screen, cx| screen.change_lines(true, cx));
-            }))
-            .on_action(cx.listener(|this, _: &FewerLines, _, cx| {
-                this.in_analyse(cx, |screen, cx| screen.change_lines(false, cx));
-            }))
-            .on_action(cx.listener(|this, _: &ToggleAllMoves, _, cx| {
-                this.in_analyse(cx, |screen, cx| screen.toggle_all_moves(cx));
-            }))
-            .on_action(cx.listener(|this, _: &ToggleArrows, _, cx| {
-                this.in_analyse(cx, |screen, cx| screen.toggle_quality_arrows(cx));
-            }))
-            .on_action(cx.listener(|this, _: &ToggleSortLines, _, cx| {
-                this.in_analyse(cx, |screen, cx| screen.toggle_sort(cx));
-            }))
-            .on_action(cx.listener(|this, _: &NextExplorerDb, _, cx| {
-                this.in_analyse(cx, |screen, cx| screen.next_explorer_db(cx));
-            }))
-            .on_action(cx.listener(|this, _: &NextGraph, _, cx| {
-                this.in_analyse(cx, |screen, cx| screen.next_graph(cx));
-            }))
-            .on_action(cx.listener(|this, _: &ToggleScoresheet, _, cx| {
-                this.in_analyse(cx, |screen, cx| screen.toggle_scoresheet_style(cx));
-            }))
-            .on_action(cx.listener(|this, _: &AnalyseBackward, window, cx| {
-                this.set_mode(Mode::Analyse, cx);
-                this.analyse
-                    .update(cx, |screen, cx| screen.toggle_backward(window, cx));
-            }))
-            .on_action(cx.listener(|this, _: &EngineOutput, _, cx| {
-                this.analyse
-                    .update(cx, |screen, cx| screen.open_engine_output(cx));
-            }))
-            .on_action(cx.listener(|this, _: &ShowAnalyse, _, cx| this.set_mode(Mode::Analyse, cx)))
-            .on_action(
-                cx.listener(|this, _: &ShowDatabase, _, cx| this.set_mode(Mode::Database, cx)),
-            )
-            .on_action(cx.listener(|this, _: &ShowTrain, _, cx| this.set_mode(Mode::Train, cx)))
-            .on_action(cx.listener(|this, _: &ShowPlay, _, cx| this.set_mode(Mode::Play, cx)))
-            .on_action(
-                cx.listener(|this, _: &ShowSettings, _, cx| this.set_mode(Mode::Settings, cx)),
-            )
             .child(self.toasts(cx))
             .when(client_drawn && !window.is_maximized(), |root| {
                 root.children(resize_handles())
-            })
+            });
+        let root = Self::bind_move_actions(root, cx);
+        let root = Self::bind_tab_actions(root, cx);
+        Self::bind_analyse_actions(root, cx)
+    }
+}
+
+impl Workspace {
+    /// The screen of the active tab.
+    fn active_screen(&self) -> AnyElement {
+        match self.mode {
+            Mode::Analyse => self.analyse.clone().into_any_element(),
+            Mode::Database => self.database.clone().into_any_element(),
+            Mode::Train => self.train.clone().into_any_element(),
+            Mode::Play => self.play.clone().into_any_element(),
+            Mode::Settings => self.settings.clone().into_any_element(),
+            Mode::Tournament => match &self.tournament {
+                Some(screen) => screen.clone().into_any_element(),
+                None => div().into_any_element(),
+            },
+            Mode::TestPositions => match &self.test_positions {
+                Some(screen) => screen.clone().into_any_element(),
+                None => div().into_any_element(),
+            },
+        }
+    }
+
+    /// Moving through the game, flipping the board and the engine switch, for Analyse, Play and Train.
+    fn bind_move_actions(root: Stateful<Div>, cx: &mut Context<Self>) -> Stateful<Div> {
+        root.on_action(cx.listener(|this, _: &PrevMove, window, cx| {
+            if this.mode == Mode::Play {
+                this.play.update(cx, |screen, cx| screen.step(-1, cx));
+            } else {
+                this.analyse
+                    .update(cx, |screen, cx| screen.step(-1, window, cx));
+            }
+        }))
+        .on_action(cx.listener(|this, _: &NextMove, window, cx| {
+            if this.mode == Mode::Play {
+                this.play.update(cx, |screen, cx| screen.step(1, cx));
+            } else {
+                this.analyse
+                    .update(cx, |screen, cx| screen.step(1, window, cx));
+            }
+        }))
+        .on_action(cx.listener(|this, _: &FirstMove, window, cx| {
+            if this.mode == Mode::Play {
+                this.play.update(cx, |screen, cx| screen.go_first(cx));
+            } else {
+                this.analyse
+                    .update(cx, |screen, cx| screen.go_first(window, cx));
+            }
+        }))
+        .on_action(cx.listener(|this, _: &LastMove, window, cx| {
+            if this.mode == Mode::Play {
+                this.play.update(cx, |screen, cx| screen.go_last(cx));
+            } else {
+                this.analyse
+                    .update(cx, |screen, cx| screen.go_last(window, cx));
+            }
+        }))
+        .on_action(cx.listener(|this, _: &ToggleEngine, _, cx| {
+            this.analyse
+                .update(cx, |screen, cx| screen.toggle_engine(cx));
+            cx.notify();
+        }))
+        .on_action(cx.listener(|this, _: &FlipBoard, _, cx| match this.mode {
+            Mode::Play => this.play.update(cx, |screen, cx| screen.flip(cx)),
+            Mode::Train => this.train.update(cx, |screen, cx| screen.flip(cx)),
+            _ => this.analyse.update(cx, |screen, cx| screen.flip(cx)),
+        }))
+    }
+
+    /// Search, saving, new games and tabs, opening and copying games.
+    fn bind_tab_actions(root: Stateful<Div>, cx: &mut Context<Self>) -> Stateful<Div> {
+        root.on_action(cx.listener(|this, _: &FocusSearch, window, cx| {
+            if !matches!(this.mode, Mode::Analyse | Mode::Database) {
+                this.set_mode(Mode::Analyse, cx);
+            }
+            this.search
+                .update(cx, |search, cx| search.focus(window, cx));
+            this.update_search(cx);
+        }))
+        .on_action(cx.listener(|this, _: &SaveGame, _, cx| {
+            this.analyse.update(cx, |screen, cx| screen.save_game(cx));
+        }))
+        .on_action(cx.listener(|this, _: &NewGame, window, cx| {
+            this.new_tab(Mode::Analyse, window, cx);
+            this.analyse
+                .update(cx, |screen, cx| screen.new_game(window, cx));
+        }))
+        .on_action(cx.listener(|this, _: &NewChess960, window, cx| {
+            this.new_chess960(random_chess960_number(), window, cx);
+        }))
+        .on_action(cx.listener(|this, _: &NewTab, window, cx| {
+            let mode = match this.mode {
+                Mode::Play => Mode::Play,
+                Mode::Database => Mode::Database,
+                _ => Mode::Analyse,
+            };
+            this.new_tab(mode, window, cx);
+        }))
+        .on_action(
+            cx.listener(|this, _: &CloseTab, window, cx| {
+                this.close_tab(this.active_tab, window, cx)
+            }),
+        )
+        .on_action(cx.listener(|this, _: &ReopenTab, _, cx| this.reopen_tab(cx)))
+        .on_action(cx.listener(|this, _: &NextTab, _, cx| this.cycle_tab(1, cx)))
+        .on_action(cx.listener(|this, _: &PrevTab, _, cx| this.cycle_tab(-1, cx)))
+        .on_action(cx.listener(|this, _: &TabBack, _, cx| this.step_history(true, cx)))
+        .on_action(cx.listener(|this, _: &TabForward, _, cx| this.step_history(false, cx)))
+        .on_action(cx.listener(|this, _: &OpenGame, window, cx| {
+            this.new_tab(Mode::Analyse, window, cx);
+            this.analyse
+                .update(cx, |screen, cx| screen.open_file(window, cx));
+            this.set_mode(Mode::Analyse, cx);
+        }))
+        .on_action(cx.listener(|this, _: &SavePgnAs, _, cx| {
+            this.analyse.update(cx, |screen, cx| screen.save_pgn_as(cx));
+        }))
+        .on_action(cx.listener(|this, _: &PasteGame, window, cx| {
+            this.analyse
+                .update(cx, |screen, cx| screen.paste_game(window, cx));
+            this.set_mode(Mode::Analyse, cx);
+        }))
+        .on_action(cx.listener(|this, _: &CopyFen, _, cx| {
+            this.analyse
+                .update(cx, |screen, cx| screen.copy_fen_action(cx));
+        }))
+        .on_action(cx.listener(|this, _: &CopyPgn, _, cx| {
+            this.analyse
+                .update(cx, |screen, cx| screen.copy_pgn_action(cx));
+        }))
+    }
+
+    /// Analyse panel toggles and switching screens.
+    fn bind_analyse_actions(root: Stateful<Div>, cx: &mut Context<Self>) -> Stateful<Div> {
+        root.on_action(cx.listener(|this, _: &PauseEngine, _, cx| {
+            this.analyse
+                .update(cx, |screen, cx| screen.toggle_pause(cx));
+        }))
+        .on_action(cx.listener(|this, _: &MoreLines, _, cx| {
+            this.in_analyse(cx, |screen, cx| screen.change_lines(true, cx));
+        }))
+        .on_action(cx.listener(|this, _: &FewerLines, _, cx| {
+            this.in_analyse(cx, |screen, cx| screen.change_lines(false, cx));
+        }))
+        .on_action(cx.listener(|this, _: &ToggleAllMoves, _, cx| {
+            this.in_analyse(cx, |screen, cx| screen.toggle_all_moves(cx));
+        }))
+        .on_action(cx.listener(|this, _: &ToggleArrows, _, cx| {
+            this.in_analyse(cx, |screen, cx| screen.toggle_quality_arrows(cx));
+        }))
+        .on_action(cx.listener(|this, _: &ToggleSortLines, _, cx| {
+            this.in_analyse(cx, |screen, cx| screen.toggle_sort(cx));
+        }))
+        .on_action(cx.listener(|this, _: &NextExplorerDb, _, cx| {
+            this.in_analyse(cx, |screen, cx| screen.next_explorer_db(cx));
+        }))
+        .on_action(cx.listener(|this, _: &NextGraph, _, cx| {
+            this.in_analyse(cx, |screen, cx| screen.next_graph(cx));
+        }))
+        .on_action(cx.listener(|this, _: &ToggleScoresheet, _, cx| {
+            this.in_analyse(cx, |screen, cx| screen.toggle_scoresheet_style(cx));
+        }))
+        .on_action(cx.listener(|this, _: &AnalyseBackward, window, cx| {
+            this.set_mode(Mode::Analyse, cx);
+            this.analyse
+                .update(cx, |screen, cx| screen.toggle_backward(window, cx));
+        }))
+        .on_action(cx.listener(|this, _: &EngineOutput, _, cx| {
+            this.analyse
+                .update(cx, |screen, cx| screen.open_engine_output(cx));
+        }))
+        .on_action(cx.listener(|this, _: &ShowAnalyse, _, cx| this.set_mode(Mode::Analyse, cx)))
+        .on_action(cx.listener(|this, _: &ShowDatabase, _, cx| this.set_mode(Mode::Database, cx)))
+        .on_action(cx.listener(|this, _: &ShowTrain, _, cx| this.set_mode(Mode::Train, cx)))
+        .on_action(cx.listener(|this, _: &ShowPlay, _, cx| this.set_mode(Mode::Play, cx)))
+        .on_action(cx.listener(|this, _: &ShowSettings, _, cx| this.set_mode(Mode::Settings, cx)))
     }
 }

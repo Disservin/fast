@@ -250,204 +250,8 @@ impl Workspace {
                 window.refresh();
             });
         for tab in &self.tabs {
-            let id = tab.id;
-            let select = cx.entity();
-            let close = select.clone();
-            let duplicate = select.clone();
-            let rename = select.clone();
-            let close_all = select.clone();
-            let analysis = matches!(tab.content, TabContent::Analyse(_));
-            let active = id == self.active_tab;
-            let rename_input = self
-                .renaming
-                .as_ref()
-                .filter(|rename| rename.key == id)
-                .map(|rename| rename.input.clone());
-            let (screen, detail) = tab.content.title(cx);
-            let label: SharedString = tab.name.clone().unwrap_or_else(|| screen.into());
-            let detail = if tab.name.is_some() { None } else { detail };
-            // The shown tab's own screen already says what its engines are doing.
-            let activity = tab
-                .content
-                .activity(cx)
-                .filter(|activity| !active || *activity == TabActivity::Paused);
-            tabs = tabs.child(
-                h_flex()
-                    .id(("tab", id as usize))
-                    .on_mouse_up(
-                        MouseButton::Middle,
-                        cx.listener(move |this, _, window, cx| {
-                            cx.stop_propagation();
-                            this.close_tab(id, window, cx);
-                        }),
-                    )
-                    .on_drag(
-                        DraggedTab {
-                            id,
-                            title: label.clone(),
-                        },
-                        |drag, _, _, cx| cx.new(|_| drag.clone()),
-                    )
-                    .drag_over::<DraggedTab>(|style, _, _, _| style.border_color(rgb(T.accent)))
-                    .on_drop(cx.listener(move |this, drag: &DraggedTab, _, cx| {
-                        let source = this.tabs.iter().position(|tab| tab.id == drag.id);
-                        let target = this.tabs.iter().position(|tab| tab.id == id);
-                        if let (Some(source), Some(target)) = (source, target) {
-                            let tab = this.tabs.remove(source);
-                            this.tabs.insert(target, tab);
-                            this.save_session(cx);
-                            cx.notify();
-                        }
-                    }))
-                    .flex_none()
-                    .gap(px(2.))
-                    .h(px(33.))
-                    .pl(px(11.))
-                    .pr(px(4.))
-                    .rounded_t(px(6.))
-                    .border_t_1()
-                    .border_l_1()
-                    .border_r_1()
-                    // The open tab takes the screen's background and has no bottom edge, so it
-                    // runs straight into the screen below it.
-                    .map(|tab| {
-                        if active {
-                            tab.bg(rgb(T.bg)).border_color(rgb(T.border))
-                        } else {
-                            tab.border_color(gpui::transparent_black())
-                                .hover(|tab| tab.bg(rgb(T.hover)))
-                        }
-                    })
-                    .when_some(rename_input, |tab, input| {
-                        let cancel = cx.entity();
-                        tab.child(
-                            div()
-                                .w(px(180.))
-                                .on_key_down(move |event: &gpui::KeyDownEvent, window, cx| {
-                                    if event.keystroke.key == "escape" {
-                                        cx.stop_propagation();
-                                        cancel.update(cx, |this, cx| {
-                                            this.finish_rename(false, window, cx)
-                                        });
-                                    }
-                                })
-                                .child(crate::controls::text_input(&input).height(26.)),
-                        )
-                    })
-                    .when(
-                        self.renaming.as_ref().is_none_or(|rename| rename.key != id),
-                        |tab| {
-                            tab.child(
-                                div()
-                                    .id(("tab-select", id as usize))
-                                    .cursor_pointer()
-                                    .text_size(px(13.))
-                                    .text_color(rgb(if active { T.fg } else { T.muted }))
-                                    .tooltip(|window, cx| {
-                                        gpui_component::tooltip::Tooltip::new(ui::i18n::t(
-                                            "Double-click to rename",
-                                        ))
-                                        .build(window, cx)
-                                    })
-                                    .on_click(select.listen_event(
-                                        move |this, event: &gpui::ClickEvent, window, cx| {
-                                            this.activate_tab(id, cx);
-                                            if event.click_count() == 2 {
-                                                this.start_rename(id, window, cx);
-                                            }
-                                        },
-                                    ))
-                                    .child({
-                                        h_flex()
-                                            .gap(px(6.))
-                                            .child(
-                                                ui::widgets::mono(id.to_string())
-                                                    .text_color(rgb(T.faint)),
-                                            )
-                                            .child(
-                                                div()
-                                                    .font_weight(if active {
-                                                        FontWeight::SEMIBOLD
-                                                    } else {
-                                                        FontWeight::MEDIUM
-                                                    })
-                                                    .child(label),
-                                            )
-                                            .children(detail.map(|detail| {
-                                                div()
-                                                    .when(active, |d| d.text_color(rgb(T.muted)))
-                                                    .child(detail)
-                                            }))
-                                            .children(activity.map(TabActivity::mark))
-                                    }),
-                            )
-                        },
-                    )
-                    .child(
-                        btn(("close-tab", id as usize), "×")
-                            .kind(ui::widgets::BtnKind::Ghost)
-                            .h(24.)
-                            .w(24.)
-                            .pad(3.)
-                            .tooltip(ui::i18n::t("Close tab; reopen with Ctrl/Cmd+Shift+T"))
-                            .on_click(
-                                close
-                                    .listen(move |this, window, cx| this.close_tab(id, window, cx)),
-                            ),
-                    )
-                    .context_menu(move |menu, _, _| {
-                        let rename = rename.clone();
-                        let menu =
-                            menu.item(PopupMenuItem::new(ui::i18n::t("Rename tab")).on_click(
-                                move |_, window, cx| {
-                                    rename.update(cx, |this, cx| this.start_rename(id, window, cx))
-                                },
-                            ));
-                        let close_all = close_all.clone();
-                        let menu =
-                            menu.item(PopupMenuItem::new(ui::i18n::t("Close all tabs")).on_click(
-                                move |_, window, cx| {
-                                    close_all
-                                        .update(cx, |this, cx| this.close_all_tabs(window, cx));
-                                },
-                            ));
-                        if !analysis {
-                            return menu;
-                        }
-                        let duplicate = duplicate.clone();
-                        menu.item(PopupMenuItem::new("Duplicate analysis tab").on_click(
-                            move |_, window, cx| {
-                                duplicate.update(cx, |this, cx| {
-                                    let Some(TabContent::Analyse(source)) = this
-                                        .tabs
-                                        .iter()
-                                        .find(|tab| tab.id == id)
-                                        .map(|tab| tab.content.clone())
-                                    else {
-                                        return;
-                                    };
-                                    let tree = source.read(cx).tree.clone();
-                                    let current = source.read(cx).current;
-                                    this.open_analysis(tree, window, cx);
-                                    this.analyse
-                                        .update(cx, |screen, cx| screen.jump(current, window, cx));
-                                });
-                            },
-                        ))
-                    }),
-            );
+            tabs = tabs.child(self.render_tab(tab, cx));
         }
-        let add = cx.entity();
-        let tip = match self.model.read(cx).config.shortcuts.get("new_tab") {
-            Some(key) if !key.is_empty() => {
-                format!(
-                    "{} ({})",
-                    ui::i18n::t("Open a new tab"),
-                    crate::screens::settings::key_names(key).join("+")
-                )
-            }
-            _ => ui::i18n::t("Open a new tab").to_owned(),
-        };
         h_flex()
             .relative()
             .flex_none()
@@ -469,47 +273,245 @@ impl Workspace {
             // The strip only takes the width its tabs need, so New tab sits right after the
             // last one; with many tabs the strip scrolls and the button stays in view.
             .child(tabs)
-            // New tab is drawn as one more tab: closed it looks like the inactive tabs, and
-            // while its picker is open it looks like the open tab.
-            .child({
-                let open = self.new_tab_menu_open;
-                h_flex()
-                    .id("new-tab")
-                    .flex_none()
-                    .h(px(33.))
-                    .px(px(11.))
-                    .gap(px(6.))
-                    .rounded_t(px(6.))
-                    .border_t_1()
-                    .border_l_1()
-                    .border_r_1()
-                    .cursor_pointer()
-                    .text_size(px(13.))
-                    .font_weight(FontWeight::MEDIUM)
-                    .map(|tab| {
-                        if open {
-                            tab.bg(rgb(T.bg))
-                                .border_color(rgb(T.border))
-                                .text_color(rgb(T.fg))
-                        } else {
-                            tab.border_color(gpui::transparent_black())
-                                .text_color(rgb(T.muted))
-                                .hover(|tab| tab.bg(rgb(T.hover)).text_color(rgb(T.fg)))
-                        }
-                    })
-                    .tooltip(move |window, cx| {
-                        gpui_component::tooltip::Tooltip::new(tip.clone()).build(window, cx)
-                    })
-                    .on_click(add.listen_event(move |this, _, _, cx| {
-                        this.new_tab_menu_open = !this.new_tab_menu_open;
-                        cx.notify();
-                    }))
-                    .child(ui::widgets::icon(
-                        "icons/plus.svg",
-                        px(14.),
-                        if open { T.fg } else { T.muted },
-                    ))
-                    .child(ui::i18n::t("New tab"))
+            .child(self.new_tab_button(cx))
+    }
+
+    /// One tab: its label or rename field, its close button and context menu. Tabs can be
+    /// dragged to reorder them, and a middle click closes one.
+    fn render_tab(&self, tab: &WorkspaceTab, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let id = tab.id;
+        let select = cx.entity();
+        let close = select.clone();
+        let duplicate = select.clone();
+        let rename = select.clone();
+        let close_all = select.clone();
+        let analysis = matches!(tab.content, TabContent::Analyse(_));
+        let active = id == self.active_tab;
+        let rename_input = self
+            .renaming
+            .as_ref()
+            .filter(|rename| rename.key == id)
+            .map(|rename| rename.input.clone());
+        let label: SharedString = tab
+            .name
+            .clone()
+            .unwrap_or_else(|| tab.content.title(cx).0.into());
+        h_flex()
+            .id(("tab", id as usize))
+            .on_mouse_up(
+                MouseButton::Middle,
+                cx.listener(move |this, _, window, cx| {
+                    cx.stop_propagation();
+                    this.close_tab(id, window, cx);
+                }),
+            )
+            .on_drag(
+                DraggedTab {
+                    id,
+                    title: label.clone(),
+                },
+                |drag, _, _, cx| cx.new(|_| drag.clone()),
+            )
+            .drag_over::<DraggedTab>(|style, _, _, _| style.border_color(rgb(T.accent)))
+            .on_drop(cx.listener(move |this, drag: &DraggedTab, _, cx| {
+                let source = this.tabs.iter().position(|tab| tab.id == drag.id);
+                let target = this.tabs.iter().position(|tab| tab.id == id);
+                if let (Some(source), Some(target)) = (source, target) {
+                    let tab = this.tabs.remove(source);
+                    this.tabs.insert(target, tab);
+                    this.save_session(cx);
+                    cx.notify();
+                }
+            }))
+            .flex_none()
+            .gap(px(2.))
+            .h(px(33.))
+            .pl(px(11.))
+            .pr(px(4.))
+            .rounded_t(px(6.))
+            .border_t_1()
+            .border_l_1()
+            .border_r_1()
+            // The open tab takes the screen's background and has no bottom edge, so it
+            // runs straight into the screen below it.
+            .map(|tab| {
+                if active {
+                    tab.bg(rgb(T.bg)).border_color(rgb(T.border))
+                } else {
+                    tab.border_color(gpui::transparent_black())
+                        .hover(|tab| tab.bg(rgb(T.hover)))
+                }
             })
+            .when_some(rename_input, |tab, input| {
+                let cancel = cx.entity();
+                tab.child(
+                    div()
+                        .w(px(180.))
+                        .on_key_down(move |event: &gpui::KeyDownEvent, window, cx| {
+                            if event.keystroke.key == "escape" {
+                                cx.stop_propagation();
+                                cancel.update(cx, |this, cx| this.finish_rename(false, window, cx));
+                            }
+                        })
+                        .child(crate::controls::text_input(&input).height(26.)),
+                )
+            })
+            .when(
+                self.renaming.as_ref().is_none_or(|rename| rename.key != id),
+                |el| el.child(self.tab_label(tab, cx)),
+            )
+            .child(
+                btn(("close-tab", id as usize), "×")
+                    .kind(ui::widgets::BtnKind::Ghost)
+                    .h(24.)
+                    .w(24.)
+                    .pad(3.)
+                    .tooltip(ui::i18n::t("Close tab; reopen with Ctrl/Cmd+Shift+T"))
+                    .on_click(close.listen(move |this, window, cx| this.close_tab(id, window, cx))),
+            )
+            .context_menu(move |menu, _, _| {
+                let rename = rename.clone();
+                let menu = menu.item(PopupMenuItem::new(ui::i18n::t("Rename tab")).on_click(
+                    move |_, window, cx| {
+                        rename.update(cx, |this, cx| this.start_rename(id, window, cx))
+                    },
+                ));
+                let close_all = close_all.clone();
+                let menu = menu.item(PopupMenuItem::new(ui::i18n::t("Close all tabs")).on_click(
+                    move |_, window, cx| {
+                        close_all.update(cx, |this, cx| this.close_all_tabs(window, cx));
+                    },
+                ));
+                if !analysis {
+                    return menu;
+                }
+                let duplicate = duplicate.clone();
+                menu.item(PopupMenuItem::new("Duplicate analysis tab").on_click(
+                    move |_, window, cx| {
+                        duplicate.update(cx, |this, cx| {
+                            let Some(TabContent::Analyse(source)) = this
+                                .tabs
+                                .iter()
+                                .find(|tab| tab.id == id)
+                                .map(|tab| tab.content.clone())
+                            else {
+                                return;
+                            };
+                            let tree = source.read(cx).tree.clone();
+                            let current = source.read(cx).current;
+                            this.open_analysis(tree, window, cx);
+                            this.analyse
+                                .update(cx, |screen, cx| screen.jump(current, window, cx));
+                        });
+                    },
+                ))
+            })
+    }
+
+    /// A tab's number, name and what it is showing, with its engines' activity. Clicking
+    /// selects the tab and a double click renames it.
+    fn tab_label(&self, tab: &WorkspaceTab, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let id = tab.id;
+        let select = cx.entity();
+        let active = id == self.active_tab;
+        let (screen, detail) = tab.content.title(cx);
+        let label: SharedString = tab.name.clone().unwrap_or_else(|| screen.into());
+        let detail = if tab.name.is_some() { None } else { detail };
+        // The shown tab's own screen already says what its engines are doing.
+        let activity = tab
+            .content
+            .activity(cx)
+            .filter(|activity| !active || *activity == TabActivity::Paused);
+        div()
+            .id(("tab-select", id as usize))
+            .cursor_pointer()
+            .text_size(px(13.))
+            .text_color(rgb(if active { T.fg } else { T.muted }))
+            .tooltip(|window, cx| {
+                gpui_component::tooltip::Tooltip::new(ui::i18n::t("Double-click to rename"))
+                    .build(window, cx)
+            })
+            .on_click(
+                select.listen_event(move |this, event: &gpui::ClickEvent, window, cx| {
+                    this.activate_tab(id, cx);
+                    if event.click_count() == 2 {
+                        this.start_rename(id, window, cx);
+                    }
+                }),
+            )
+            .child({
+                h_flex()
+                    .gap(px(6.))
+                    .child(ui::widgets::mono(id.to_string()).text_color(rgb(T.faint)))
+                    .child(
+                        div()
+                            .font_weight(if active {
+                                FontWeight::SEMIBOLD
+                            } else {
+                                FontWeight::MEDIUM
+                            })
+                            .child(label),
+                    )
+                    .children(detail.map(|detail| {
+                        div()
+                            .when(active, |d| d.text_color(rgb(T.muted)))
+                            .child(detail)
+                    }))
+                    .children(activity.map(TabActivity::mark))
+            })
+    }
+
+    /// New tab, drawn as one more tab: closed it looks like the inactive tabs, and while
+    /// its picker is open it looks like the open tab.
+    fn new_tab_button(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let add = cx.entity();
+        let tip = match self.model.read(cx).config.shortcuts.get("new_tab") {
+            Some(key) if !key.is_empty() => {
+                format!(
+                    "{} ({})",
+                    ui::i18n::t("Open a new tab"),
+                    crate::screens::settings::key_names(key).join("+")
+                )
+            }
+            _ => ui::i18n::t("Open a new tab").to_owned(),
+        };
+        let open = self.new_tab_menu_open;
+        h_flex()
+            .id("new-tab")
+            .flex_none()
+            .h(px(33.))
+            .px(px(11.))
+            .gap(px(6.))
+            .rounded_t(px(6.))
+            .border_t_1()
+            .border_l_1()
+            .border_r_1()
+            .cursor_pointer()
+            .text_size(px(13.))
+            .font_weight(FontWeight::MEDIUM)
+            .map(|tab| {
+                if open {
+                    tab.bg(rgb(T.bg))
+                        .border_color(rgb(T.border))
+                        .text_color(rgb(T.fg))
+                } else {
+                    tab.border_color(gpui::transparent_black())
+                        .text_color(rgb(T.muted))
+                        .hover(|tab| tab.bg(rgb(T.hover)).text_color(rgb(T.fg)))
+                }
+            })
+            .tooltip(move |window, cx| {
+                gpui_component::tooltip::Tooltip::new(tip.clone()).build(window, cx)
+            })
+            .on_click(add.listen_event(move |this, _, _, cx| {
+                this.new_tab_menu_open = !this.new_tab_menu_open;
+                cx.notify();
+            }))
+            .child(ui::widgets::icon(
+                "icons/plus.svg",
+                px(14.),
+                if open { T.fg } else { T.muted },
+            ))
+            .child(ui::i18n::t("New tab"))
     }
 }
