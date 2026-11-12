@@ -90,155 +90,10 @@ impl SettingsScreen {
     pub(super) fn render_board_section(&mut self, cx: &mut Context<Self>) -> Div {
         let this = cx.entity();
         let config = self.model.read(cx).config.board.clone();
-        let mut boards = h_flex().flex_wrap().gap(px(8.));
-        let themes = [
-            (SavedTheme::Blue, ui::BoardTheme::Blue),
-            (SavedTheme::Walnut, ui::BoardTheme::Walnut),
-            (SavedTheme::Moss, ui::BoardTheme::Moss),
-            (SavedTheme::Graphite, ui::BoardTheme::Graphite),
-            (SavedTheme::Paper, ui::BoardTheme::Paper),
-            (SavedTheme::Plum, ui::BoardTheme::Plum),
-        ];
-        for (index, (saved, theme)) in themes.into_iter().enumerate() {
-            let selected = config.theme == saved;
-            boards = boards.child(
-                tile(("board-theme", index), selected)
-                    .on_click(this.listen_event(move |screen, _, _, cx| {
-                        screen.update_board(cx, |board| board.theme = saved);
-                    }))
-                    .child(theme_swatch(theme, px(56.), cx))
-                    .child(tile_label(theme.name())),
-            );
-        }
-        let mut pieces = h_flex().flex_wrap().gap(px(8.));
-        let knight = |set: ui::PieceSet| {
-            img(set.asset(chess_core::shakmaty::Piece {
-                color: chess_core::Color::Black,
-                role: chess_core::Role::Knight,
-            }))
-            .size(px(44.))
-            .into_any_element()
-        };
-        let board_theme = config.prefs().theme;
-        let sets: [(SavedPieces, &str, gpui::AnyElement); 7] = [
-            (
-                SavedPieces::Classic,
-                "Classic",
-                knight(ui::PieceSet::Classic),
-            ),
-            (
-                SavedPieces::Cburnett,
-                "Cburnett",
-                knight(ui::PieceSet::Cburnett),
-            ),
-            (
-                SavedPieces::Chessnut,
-                "Chessnut",
-                knight(ui::PieceSet::Chessnut),
-            ),
-            (
-                SavedPieces::MpChess,
-                "MPChess",
-                knight(ui::PieceSet::MpChess),
-            ),
-            (
-                SavedPieces::Fantasy,
-                "Fantasy",
-                knight(ui::PieceSet::Fantasy),
-            ),
-            (
-                SavedPieces::Letters,
-                "Letters",
-                div()
-                    .text_size(px(32.))
-                    .font_weight(FontWeight::BOLD)
-                    .text_color(rgb(ui::board::piece_colour(
-                        board_theme,
-                        chess_core::Color::Black,
-                    )))
-                    .child("N")
-                    .into_any_element(),
-            ),
-            (
-                SavedPieces::Flat,
-                "Flat",
-                svg()
-                    .path("pieces/merida/bN.svg")
-                    .size(px(34.))
-                    .text_color(rgb(ui::board::piece_colour(
-                        board_theme,
-                        chess_core::Color::Black,
-                    )))
-                    .into_any_element(),
-            ),
-        ];
-        for (index, (saved, name, preview)) in sets.into_iter().enumerate() {
-            let selected = config.pieces == saved;
-            pieces = pieces.child(
-                tile(("piece-set", index), selected)
-                    .on_click(this.listen_event(move |screen, _, _, cx| {
-                        screen.update_board(cx, |board| board.pieces = saved);
-                    }))
-                    .child(
-                        div()
-                            .size(px(56.))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .rounded(px(2.))
-                            .bg(rgb(board_theme.colors().0))
-                            .child(preview),
-                    )
-                    .child(tile_label(name)),
-            );
-        }
+        let boards = self.render_board_tiles(&config, cx);
+        let pieces = self.render_piece_tiles(&config, cx);
         let coords_this = this.clone();
-        let check_row = h_flex()
-            .flex_wrap()
-            .gap_x(px(24.))
-            .gap_y(px(8.))
-            .child(board_check(
-                "legal",
-                config.show_legal,
-                ui::i18n::t("Show legal moves"),
-                this.clone(),
-                |b, v| b.show_legal = v,
-            ))
-            .child(board_check(
-                "last",
-                config.highlight_last,
-                ui::i18n::t("Highlight last move"),
-                this.clone(),
-                |b, v| b.highlight_last = v,
-            ))
-            .child(board_check(
-                "move-badges",
-                config.show_move_badges,
-                "Show move quality badges",
-                this.clone(),
-                |b, v| b.show_move_badges = v,
-            ))
-            .child(board_check(
-                "queen",
-                config.auto_queen,
-                "Auto-promote to queen",
-                this.clone(),
-                |b, v| b.auto_queen = v,
-            ))
-            .child(board_check(
-                "click-arrows",
-                config.click_arrows,
-                "Click an engine arrow to play it",
-                this.clone(),
-                |b, v| b.click_arrows = v,
-            ))
-            .child(board_check(
-                "sounds",
-                config.move_sounds,
-                ui::i18n::t("Move sounds"),
-                this.clone(),
-                |b, v| b.move_sounds = v,
-            ));
+        let check_row = self.render_board_checks(&config, cx);
         let sound_this = this.clone();
         let preview_this = this.clone();
         let sound_choices = segmented(
@@ -363,6 +218,183 @@ impl SettingsScreen {
                 row
             }))
             .child(option_row(ui::i18n::t("Board behaviour"), None, check_row))
+    }
+
+    /// The board colour tiles.
+    fn render_board_tiles(
+        &self,
+        config: &crate::config::BoardConfig,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        let this = cx.entity();
+        let mut boards = h_flex().flex_wrap().gap(px(8.));
+        let themes = [
+            (SavedTheme::Blue, ui::BoardTheme::Blue),
+            (SavedTheme::Walnut, ui::BoardTheme::Walnut),
+            (SavedTheme::Moss, ui::BoardTheme::Moss),
+            (SavedTheme::Graphite, ui::BoardTheme::Graphite),
+            (SavedTheme::Paper, ui::BoardTheme::Paper),
+            (SavedTheme::Plum, ui::BoardTheme::Plum),
+        ];
+        for (index, (saved, theme)) in themes.into_iter().enumerate() {
+            let selected = config.theme == saved;
+            boards = boards.child(
+                tile(("board-theme", index), selected)
+                    .on_click(this.listen_event(move |screen, _, _, cx| {
+                        screen.update_board(cx, |board| board.theme = saved);
+                    }))
+                    .child(theme_swatch(theme, px(56.), cx))
+                    .child(tile_label(theme.name())),
+            );
+        }
+        boards
+    }
+
+    /// The piece set tiles, each a black knight on the chosen board's light square.
+    fn render_piece_tiles(
+        &self,
+        config: &crate::config::BoardConfig,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        let this = cx.entity();
+        let mut pieces = h_flex().flex_wrap().gap(px(8.));
+        let knight = |set: ui::PieceSet| {
+            img(set.asset(chess_core::shakmaty::Piece {
+                color: chess_core::Color::Black,
+                role: chess_core::Role::Knight,
+            }))
+            .size(px(44.))
+            .into_any_element()
+        };
+        let board_theme = config.prefs().theme;
+        let sets: [(SavedPieces, &str, gpui::AnyElement); 7] = [
+            (
+                SavedPieces::Classic,
+                "Classic",
+                knight(ui::PieceSet::Classic),
+            ),
+            (
+                SavedPieces::Cburnett,
+                "Cburnett",
+                knight(ui::PieceSet::Cburnett),
+            ),
+            (
+                SavedPieces::Chessnut,
+                "Chessnut",
+                knight(ui::PieceSet::Chessnut),
+            ),
+            (
+                SavedPieces::MpChess,
+                "MPChess",
+                knight(ui::PieceSet::MpChess),
+            ),
+            (
+                SavedPieces::Fantasy,
+                "Fantasy",
+                knight(ui::PieceSet::Fantasy),
+            ),
+            (
+                SavedPieces::Letters,
+                "Letters",
+                div()
+                    .text_size(px(32.))
+                    .font_weight(FontWeight::BOLD)
+                    .text_color(rgb(ui::board::piece_colour(
+                        board_theme,
+                        chess_core::Color::Black,
+                    )))
+                    .child("N")
+                    .into_any_element(),
+            ),
+            (
+                SavedPieces::Flat,
+                "Flat",
+                svg()
+                    .path("pieces/merida/bN.svg")
+                    .size(px(34.))
+                    .text_color(rgb(ui::board::piece_colour(
+                        board_theme,
+                        chess_core::Color::Black,
+                    )))
+                    .into_any_element(),
+            ),
+        ];
+        for (index, (saved, name, preview)) in sets.into_iter().enumerate() {
+            let selected = config.pieces == saved;
+            pieces = pieces.child(
+                tile(("piece-set", index), selected)
+                    .on_click(this.listen_event(move |screen, _, _, cx| {
+                        screen.update_board(cx, |board| board.pieces = saved);
+                    }))
+                    .child(
+                        div()
+                            .size(px(56.))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded(px(2.))
+                            .bg(rgb(board_theme.colors().0))
+                            .child(preview),
+                    )
+                    .child(tile_label(name)),
+            );
+        }
+        pieces
+    }
+
+    /// The board behaviour checks: legal moves, last move, badges, auto-queen, arrows, sounds.
+    fn render_board_checks(
+        &self,
+        config: &crate::config::BoardConfig,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        let this = cx.entity();
+        h_flex()
+            .flex_wrap()
+            .gap_x(px(24.))
+            .gap_y(px(8.))
+            .child(board_check(
+                "legal",
+                config.show_legal,
+                ui::i18n::t("Show legal moves"),
+                this.clone(),
+                |b, v| b.show_legal = v,
+            ))
+            .child(board_check(
+                "last",
+                config.highlight_last,
+                ui::i18n::t("Highlight last move"),
+                this.clone(),
+                |b, v| b.highlight_last = v,
+            ))
+            .child(board_check(
+                "move-badges",
+                config.show_move_badges,
+                "Show move quality badges",
+                this.clone(),
+                |b, v| b.show_move_badges = v,
+            ))
+            .child(board_check(
+                "queen",
+                config.auto_queen,
+                "Auto-promote to queen",
+                this.clone(),
+                |b, v| b.auto_queen = v,
+            ))
+            .child(board_check(
+                "click-arrows",
+                config.click_arrows,
+                "Click an engine arrow to play it",
+                this.clone(),
+                |b, v| b.click_arrows = v,
+            ))
+            .child(board_check(
+                "sounds",
+                config.move_sounds,
+                ui::i18n::t("Move sounds"),
+                this.clone(),
+                |b, v| b.move_sounds = v,
+            ))
     }
 
     pub(super) fn render_board_page(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {

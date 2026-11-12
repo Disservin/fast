@@ -49,6 +49,80 @@ pub(super) fn render_changelog() -> Div {
     page.children(release)
 }
 
+/// The bundled assets (piece sets, sounds, fonts) with their licences and authors.
+fn bundled_assets_table() -> gpui::Div {
+    use crate::licenses::ASSETS;
+    let asset_name = gpui::relative(0.36);
+    let asset_license = gpui::relative(0.24);
+    let assets = panel().overflow_hidden().child(
+        h_flex()
+            .w_full()
+            .h(px(30.))
+            .px(px(12.))
+            .bg(rgb(T.surface_2))
+            .border_b_1()
+            .border_color(rgb(T.border))
+            .child(
+                div()
+                    .w(asset_name)
+                    .flex_shrink_0()
+                    .child(section_label("Asset")),
+            )
+            .child(
+                div()
+                    .w(asset_license)
+                    .flex_shrink_0()
+                    .child(section_label("Licence")),
+            )
+            .child(section_label("By")),
+    );
+    let mut asset_rows = v_flex().w_full();
+    for (name, author, license) in ASSETS {
+        asset_rows = asset_rows.child(
+            h_flex()
+                .w_full()
+                .h(px(34.))
+                .flex_shrink_0()
+                .px(px(12.))
+                .border_b_1()
+                .border_color(rgb(T.divider))
+                .text_size(px(13.))
+                .child(
+                    div()
+                        .w(asset_name)
+                        .flex_shrink_0()
+                        .overflow_hidden()
+                        .whitespace_nowrap()
+                        .font_weight(FontWeight::MEDIUM)
+                        .child(name),
+                )
+                .child(
+                    mono(license)
+                        .w(asset_license)
+                        .flex_shrink_0()
+                        .text_as(12., T.fg_2),
+                )
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .overflow_hidden()
+                        .whitespace_nowrap()
+                        .text_color(rgb(T.muted))
+                        .child(author),
+                ),
+        );
+    }
+    assets.child(
+        div()
+            .id("bundled-assets-rows")
+            .w_full()
+            .max_h(px(204.))
+            .child(asset_rows)
+            .overflow_y_scrollbar(),
+    )
+}
+
 impl SettingsScreen {
     /// The General page: updates, opening data, theme and language. Board, shortcut and
     /// storage settings live on their own pages only.
@@ -248,7 +322,7 @@ impl SettingsScreen {
 
     /// Fast's licence, the bundled assets and every library, filterable.
     pub(super) fn render_licenses(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        use crate::licenses::{ASSETS, FAST_LICENSE, libraries, license_counts};
+        use crate::licenses::{FAST_LICENSE, libraries, license_counts};
         let all = libraries();
         let query = self.license_filter.read(cx).value().to_string();
         let shown: Vec<usize> = all
@@ -288,75 +362,7 @@ impl SettingsScreen {
                 )
                 .child(section_label(cells[3]))
         };
-        let asset_name = gpui::relative(0.36);
-        let asset_license = gpui::relative(0.24);
-        let mut assets = panel().overflow_hidden().child(
-            h_flex()
-                .w_full()
-                .h(px(30.))
-                .px(px(12.))
-                .bg(rgb(T.surface_2))
-                .border_b_1()
-                .border_color(rgb(T.border))
-                .child(
-                    div()
-                        .w(asset_name)
-                        .flex_shrink_0()
-                        .child(section_label("Asset")),
-                )
-                .child(
-                    div()
-                        .w(asset_license)
-                        .flex_shrink_0()
-                        .child(section_label("Licence")),
-                )
-                .child(section_label("By")),
-        );
-        let mut asset_rows = v_flex().w_full();
-        for (name, author, license) in ASSETS {
-            asset_rows = asset_rows.child(
-                h_flex()
-                    .w_full()
-                    .h(px(34.))
-                    .flex_shrink_0()
-                    .px(px(12.))
-                    .border_b_1()
-                    .border_color(rgb(T.divider))
-                    .text_size(px(13.))
-                    .child(
-                        div()
-                            .w(asset_name)
-                            .flex_shrink_0()
-                            .overflow_hidden()
-                            .whitespace_nowrap()
-                            .font_weight(FontWeight::MEDIUM)
-                            .child(name),
-                    )
-                    .child(
-                        mono(license)
-                            .w(asset_license)
-                            .flex_shrink_0()
-                            .text_as(12., T.fg_2),
-                    )
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .overflow_hidden()
-                            .whitespace_nowrap()
-                            .text_color(rgb(T.muted))
-                            .child(author),
-                    ),
-            );
-        }
-        assets = assets.child(
-            div()
-                .id("bundled-assets-rows")
-                .w_full()
-                .max_h(px(204.))
-                .child(asset_rows)
-                .overflow_y_scrollbar(),
-        );
+        let assets = bundled_assets_table();
         let summary = license_counts(all)
             .into_iter()
             .take(6)
