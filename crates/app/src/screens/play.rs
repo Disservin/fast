@@ -4,14 +4,17 @@
 use std::time::{Duration, Instant};
 
 use chess_core::{Color, GameTree, Move, NodeId, Position, classify, shakmaty::uci::UciMove};
-use engine::{EngineConfig, EngineEvent, EngineHandle, Limits, OptionKind, SearchRequest};
+use engine::{
+    EngineConfig, EngineEvent, EngineHandle, EngineLog, Limits, LogLine, OptionKind, SearchRequest,
+};
 use gpui::{
-    AppContext as _, Context, Entity, FontWeight, IntoElement, Pixels, Point, Render, ScrollHandle,
-    SharedString, Subscription, Task, WeakEntity, Window, anchored, deferred, div, point,
-    prelude::*, px, rgb,
+    AppContext as _, Context, Entity, FontWeight, IntoElement, ListHorizontalSizingBehavior,
+    Pixels, Point, Render, ScrollHandle, ScrollStrategy, SharedString, Subscription, Task,
+    UniformListScrollHandle, WeakEntity, Window, anchored, deferred, div, point, prelude::*, px,
+    rgb, uniform_list,
 };
 use gpui_component::{
-    scroll::{Scrollbar, ScrollbarMode},
+    scroll::{ScrollableElement as _, Scrollbar, ScrollbarMode},
     select::SelectEvent,
     slider::{Slider, SliderEvent, SliderState},
 };
@@ -215,6 +218,8 @@ struct Game {
     search_id: u64,
     analysis: [GameAnalysis; 2],
     engine: Option<EngineHandle>,
+    /// White's and Black's UCI traffic, kept after the engines quit.
+    logs: [Option<EngineLog>; 2],
     _engine_reader: Option<Task<()>>,
     _clock: Option<Task<()>>,
 }
@@ -378,6 +383,17 @@ pub struct PlayScreen {
     preview: Option<String>,
     /// Replies scheduled from the demo opponent.
     demo_task: Option<Task<()>>,
+    /// The engine match's Log panel is open.
+    log_open: bool,
+    /// Whose log the panel shows: 0 for White, 1 for Black.
+    log_side: usize,
+    log_show_info: bool,
+    log_follow: bool,
+    log_lines: Vec<LogLine>,
+    /// What `log_lines` was taken from: side, log revision and the Info filter.
+    log_key: Option<(usize, u64, bool)>,
+    log_scroll: UniformListScrollHandle,
+    _log_poll: Task<()>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -562,6 +578,28 @@ impl PlayScreen {
             game: None,
             preview: None,
             demo_task: None,
+            log_open: false,
+            log_side: 0,
+            log_show_info: true,
+            log_follow: true,
+            log_lines: Vec::new(),
+            log_key: None,
+            log_scroll: UniformListScrollHandle::new(),
+            _log_poll: cx.spawn(async move |this: WeakEntity<Self>, cx| {
+                loop {
+                    cx.background_executor()
+                        .timer(Duration::from_millis(200))
+                        .await;
+                    let alive = this.update(cx, |this, cx| {
+                        if this.log_open && this.log_key != this.current_log_key() {
+                            cx.notify();
+                        }
+                    });
+                    if alive.is_err() {
+                        return;
+                    }
+                }
+            }),
             _subscriptions: subscriptions,
         };
         if demo {
@@ -659,6 +697,7 @@ impl PlayScreen {
             search_id: 0,
             analysis: Default::default(),
             engine: None,
+            logs: [None, None],
             _engine_reader: None,
             _clock: None,
         });
@@ -954,6 +993,7 @@ impl PlayScreen {
             search_id: 0,
             analysis: Default::default(),
             engine: None,
+            logs: [None, None],
             _engine_reader: None,
             _clock: None,
         };
@@ -982,6 +1022,13 @@ impl PlayScreen {
             game._engine_reader = Some(reader);
             game.engine = Some(engine);
         }
+        game.logs = [
+            game.white
+                .as_ref()
+                .and_then(|white| white.engine.as_ref())
+                .map(EngineHandle::log),
+            game.engine.as_ref().map(EngineHandle::log),
+        ];
         self.pv_hover = None;
         self.pv_at = None;
         self.moves_scroll.scroll_to_bottom();
@@ -2476,6 +2523,165 @@ impl PlayScreen {
             ))
     }
 
+    /// The log the Log panel shows, if that side's engine was started.
+    fn shown_log(&self) -> Option<&EngineLog> {
+        self.game.as_ref()?.logs[self.log_side].as_ref()
+    }
+
+    fn current_log_key(&self) -> Option<(usize, u64, bool)> {
+        self.shown_log()
+            .map(|log| (self.log_side, log.revision(), self.log_show_info))
+    }
+
+    /// Takes a new snapshot only when the log, the side or the filter changed.
+    fn refresh_log(&mut self) {
+        let key = self.current_log_key();
+        if key.is_some() && key == self.log_key {
+            return;
+        }
+        let same_view = key.is_some_and(|key| {
+            self.log_key
+                .is_some_and(|old| (old.0, old.2) == (key.0, key.2))
+        });
+        self.log_key = key;
+        let lines = self
+            .shown_log()
+            .map(|log| log.snapshot(self.log_show_info))
+            .unwrap_or_default();
+        // Reading back through the log: new output must not move the text in view.
+        if !self.log_follow && same_view {
+            crate::debug_window::keep_log_anchor(&self.log_scroll, &self.log_lines, &lines);
+        }
+        self.log_lines = lines;
+    }
+
+    /// The UCI traffic of either engine in the match, with info lines optional.
+    fn render_log(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        self.refresh_log();
+        let count = self.log_lines.len();
+        if self.log_follow && count > 0 {
+            self.log_scroll
+                .scroll_to_item(count - 1, ScrollStrategy::Bottom);
+        }
+        let mut header = h_flex()
+            .h(px(44.))
+            .px(px(16.))
+            .gap(px(10.))
+            .border_b_1()
+            .border_color(rgb(T.border))
+            .child(section_label("Log"));
+        for (side, label) in ["White", "Black"].into_iter().enumerate() {
+            let this = cx.entity();
+            header = header.child(header_tab(
+                ("match-log-side", side),
+                label,
+                self.log_side == side,
+                move |_, cx| {
+                    this.update(cx, |screen, cx| {
+                        screen.log_side = side;
+                        screen.log_follow = true;
+                        cx.notify();
+                    });
+                },
+            ));
+        }
+        let (info_this, follow_this, window_this) = (cx.entity(), cx.entity(), cx.entity());
+        header = header
+            .child(div().flex_1())
+            .child(
+                check("match-log-info", self.log_show_info, "Info")
+                    .text(13.)
+                    .on_change(move |value, _, cx| {
+                        info_this.update(cx, |screen, cx| {
+                            screen.log_show_info = value;
+                            cx.notify();
+                        });
+                    }),
+            )
+            .child(
+                check("match-log-follow", self.log_follow, "Follow")
+                    .text(13.)
+                    .on_change(move |value, _, cx| {
+                        follow_this.update(cx, |screen, cx| {
+                            screen.log_follow = value;
+                            cx.notify();
+                        });
+                    }),
+            )
+            .child(
+                btn("match-log-window", "Window")
+                    .compact()
+                    .disabled(self.shown_log().is_none())
+                    .tooltip(ui::i18n::t(
+                        "Follow this engine's raw output in its own window",
+                    ))
+                    .on_click(move |_, cx| {
+                        let screen = window_this.read(cx);
+                        let Some(game) = &screen.game else { return };
+                        let side = screen.log_side;
+                        let name = if side == 0 {
+                            game.white
+                                .as_ref()
+                                .map_or_else(String::new, |white| white.name.clone())
+                        } else {
+                            game.opponent_name.clone()
+                        };
+                        if let Some(log) = game.logs[side].clone() {
+                            crate::debug_window::DebugWindow::open(&name, log, cx);
+                        }
+                    }),
+            );
+        let longest = self
+            .log_lines
+            .iter()
+            .enumerate()
+            .max_by_key(|(_, line)| line.text.len())
+            .map(|(index, _)| index);
+        let body = if count == 0 {
+            div()
+                .p(px(16.))
+                .text_size(px(13.))
+                .text_color(rgb(T.muted))
+                .child(ui::i18n::t("Nothing logged yet."))
+                .into_any_element()
+        } else {
+            uniform_list(
+                "match-log",
+                count,
+                cx.processor(|this, range: std::ops::Range<usize>, _, _| {
+                    range
+                        .map(|index| {
+                            let Some(line) = this.log_lines.get(index) else {
+                                return div().into_any_element();
+                            };
+                            crate::debug_window::log_row(line.kind)
+                                .child(SharedString::from(line.text.clone()))
+                                .into_any_element()
+                        })
+                        .collect::<Vec<_>>()
+                }),
+            )
+            .track_scroll(&self.log_scroll)
+            .with_horizontal_sizing_behavior(ListHorizontalSizingBehavior::Unconstrained)
+            .with_width_from_item(longest)
+            .h(px(crate::debug_window::LOG_ROW_H * 12.))
+            .on_scroll(cx.listener(|this, _, _, cx| {
+                this.log_follow = false;
+                cx.notify();
+            }))
+            .into_any_element()
+        };
+        panel().flex_none().overflow_hidden().child(header).child(
+            div()
+                .relative()
+                .py(px(6.))
+                .bg(rgb(T.surface_2))
+                .child(body)
+                .vertical_scrollbar(&self.log_scroll)
+                .horizontal_scrollbar(&self.log_scroll),
+        )
+    }
+
     fn render_side(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let this = cx.entity();
         let game = self.game.as_ref();
@@ -2783,6 +2989,7 @@ impl Render for PlayScreen {
             );
             let center = self.render_center(board_size, cx);
             let side = self.render_side(cx);
+            let log = (self.log_open && !setup_open).then(|| self.render_log(cx));
             let this = cx.entity();
             let mut layout = h_flex().size_full().items_start();
             if setup_open {
@@ -2800,13 +3007,34 @@ impl Render for PlayScreen {
                             .overflow_y_scroll()
                             .p(px(16.))
                             .gap(px(16.))
-                            .child(btn("new-engine-game", "New game").compact().on_click(
-                                move |_, cx| {
-                                    this.update(cx, |screen, cx| screen.new_engine_game(cx));
-                                },
-                            ))
+                            .child(
+                                h_flex()
+                                    .gap(px(6.))
+                                    .child(btn("new-engine-game", "New game").compact().on_click(
+                                        move |_, cx| {
+                                            this.update(cx, |screen, cx| {
+                                                screen.new_engine_game(cx)
+                                            });
+                                        },
+                                    ))
+                                    .child({
+                                        let this = cx.entity();
+                                        btn("match-log-toggle", "Log")
+                                            .compact()
+                                            .tooltip(ui::i18n::t("Show or hide engine output"))
+                                            .selected(self.log_open)
+                                            .on_click(move |_, cx| {
+                                                this.update(cx, |screen, cx| {
+                                                    screen.log_open = !screen.log_open;
+                                                    screen.log_follow = true;
+                                                    cx.notify();
+                                                });
+                                            })
+                                    }),
+                            )
                             .child(self.render_graph(cx))
                             .child(self.render_analysis(cx))
+                            .children(log)
                             .child(side),
                     )
                 })

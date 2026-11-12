@@ -627,6 +627,7 @@ pub fn translate(language: Language, text: &str) -> &str {
             "Lines" => "Varianten",
             "Load config file…" => "Konfigurationsdatei laden…",
             "Log" => "Protokoll",
+            "Nothing logged yet." => "Noch nichts protokolliert.",
             "Moves from here" => "Züge ab hier",
             "New game vs engine" => "Neue Partie gegen Engine",
             "Vs engine" => "Gegen Engine",
