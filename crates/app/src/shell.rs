@@ -455,8 +455,7 @@ pub struct Workspace {
     forward_tabs: Vec<u64>,
     new_tab_menu_open: bool,
     /// The tab being renamed and the field holding its new name.
-    renaming: Option<(u64, Entity<InputState>)>,
-    _rename_sub: Option<Subscription>,
+    renaming: Option<crate::controls::Rename<u64>>,
     /// The tab strip's horizontal scroll.
     tab_scroll: ScrollHandle,
     /// The tab last scrolled into view, so the strip follows a change of tab but not every
@@ -608,7 +607,6 @@ impl Workspace {
             forward_tabs: Vec::new(),
             new_tab_menu_open: false,
             renaming: None,
-            _rename_sub: None,
             tab_scroll: ScrollHandle::new(),
             tab_in_view: std::cell::Cell::new(u64::MAX),
             model,
@@ -1008,7 +1006,6 @@ impl Workspace {
         self.forward_tabs.clear();
         self.tab_watch.clear();
         self.renaming = None;
-        self._rename_sub = None;
         self.active_tab = u64::MAX;
         self.next_recovery_id = self.next_recovery_id.max(self.next_tab_id);
         self.next_tab_id = 1;
@@ -1241,32 +1238,25 @@ impl Workspace {
             Some(name) => name.to_string(),
             None => tab.content.title(cx).0.to_owned(),
         };
-        let input = cx.new(|cx| InputState::new(window, cx));
-        input.update(cx, |input, cx| {
-            input.set_value(current, window, cx);
-            input.focus(window, cx);
-        });
-        self._rename_sub =
-            Some(
-                cx.subscribe_in(&input, window, move |this, _, event, window, cx| {
-                    if matches!(event, InputEvent::PressEnter { .. } | InputEvent::Blur) {
-                        this.finish_rename(true, window, cx);
-                    }
-                }),
-            );
-        self.renaming = Some((id, input));
+        self.renaming = Some(crate::controls::Rename::start(
+            id,
+            current,
+            window,
+            cx,
+            |this, window, cx| this.finish_rename(true, window, cx),
+        ));
         cx.notify();
     }
 
     /// Closes the rename field, keeping the typed name when `keep` is set. An empty
     /// name gives the tab back its usual title.
     fn finish_rename(&mut self, keep: bool, window: &mut Window, cx: &mut Context<Self>) {
-        let Some((id, input)) = self.renaming.take() else {
+        let Some(rename) = self.renaming.take() else {
             return;
         };
-        self._rename_sub = None;
+        let id = rename.key;
         if keep {
-            let typed = input.read(cx).value().trim().to_owned();
+            let typed = rename.text(cx);
             if let Some(tab) = self.tabs.iter_mut().find(|tab| tab.id == id) {
                 let default = tab.content.title(cx).0;
                 tab.name = (!typed.is_empty() && typed != default).then(|| typed.into());
@@ -1526,8 +1516,8 @@ impl Workspace {
             let rename_input = self
                 .renaming
                 .as_ref()
-                .filter(|(renaming, _)| *renaming == id)
-                .map(|(_, input)| input.clone());
+                .filter(|rename| rename.key == id)
+                .map(|rename| rename.input.clone());
             let (screen, detail) = tab.content.title(cx);
             let label: SharedString = tab.name.clone().unwrap_or_else(|| screen.into());
             let detail = if tab.name.is_some() { None } else { detail };
@@ -1600,9 +1590,7 @@ impl Workspace {
                         )
                     })
                     .when(
-                        self.renaming
-                            .as_ref()
-                            .is_none_or(|(renaming, _)| *renaming != id),
+                        self.renaming.as_ref().is_none_or(|rename| rename.key != id),
                         |tab| {
                             tab.child(
                                 div()

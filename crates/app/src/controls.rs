@@ -388,6 +388,51 @@ fn parse_time_ms(text: &str, default_unit: u64) -> Option<u64> {
     whole.checked_mul(unit)?.checked_add(fractional_ms / scale)
 }
 
+/// A name being typed in place of a label, such as a tab or a database in a list.
+/// `key` says which item is being renamed. The field starts with the current name
+/// selected for typing, and pressing Enter or leaving the field finishes the rename.
+pub struct Rename<K> {
+    pub key: K,
+    pub input: Entity<InputState>,
+    _finish: gpui::Subscription,
+}
+
+impl<K> Rename<K> {
+    /// Opens the field on `current` and focuses it. `finish` runs on Enter or blur.
+    pub fn start<T: 'static>(
+        key: K,
+        current: String,
+        window: &mut Window,
+        cx: &mut gpui::Context<T>,
+        finish: fn(&mut T, &mut Window, &mut gpui::Context<T>),
+    ) -> Self {
+        let input = cx.new(|cx| InputState::new(window, cx));
+        input.update(cx, |input, cx| {
+            input.set_value(current, window, cx);
+            input.focus(window, cx);
+        });
+        let _finish = cx.subscribe_in(&input, window, move |this, _, event, window, cx| {
+            if matches!(
+                event,
+                gpui_component::input::InputEvent::PressEnter { .. }
+                    | gpui_component::input::InputEvent::Blur
+            ) {
+                finish(this, window, cx);
+            }
+        });
+        Self {
+            key,
+            input,
+            _finish,
+        }
+    }
+
+    /// The typed name, without surrounding spaces.
+    pub fn text(&self, cx: &App) -> String {
+        self.input.read(cx).value().trim().to_owned()
+    }
+}
+
 #[cfg(test)]
 mod time_tests {
     use super::{parse_time_ms, time_seconds};

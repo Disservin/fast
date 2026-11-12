@@ -316,8 +316,7 @@ pub struct DatabaseScreen {
     /// Whether the batch review settings dialog is open.
     review_settings_open: bool,
     /// The database being renamed and the field holding its new name.
-    renaming: Option<(PathBuf, Entity<InputState>)>,
-    _rename_sub: Option<Subscription>,
+    renaming: Option<crate::controls::Rename<PathBuf>>,
     editing: Option<GameEditor>,
     /// Games waiting for the user to confirm that they should be deleted.
     confirm_delete: Option<Vec<i64>>,
@@ -648,7 +647,6 @@ impl DatabaseScreen {
             review_selected_only: false,
             review_settings_open: false,
             renaming: None,
-            _rename_sub: None,
             editing: None,
             confirm_delete: None,
             player_suggestions: Vec::new(),
@@ -1960,31 +1958,25 @@ impl DatabaseScreen {
             return;
         };
         let current = entry.name.to_string();
-        let input = cx.new(|cx| InputState::new(window, cx));
-        input.update(cx, |input, cx| {
-            input.set_value(current, window, cx);
-            input.focus(window, cx);
-        });
-        self._rename_sub = Some(
-            cx.subscribe_in(&input, window, |this, _, event, window, cx| {
-                if matches!(event, InputEvent::PressEnter { .. } | InputEvent::Blur) {
-                    this.finish_rename(true, window, cx);
-                }
-            }),
-        );
-        self.renaming = Some((path, input));
+        self.renaming = Some(crate::controls::Rename::start(
+            path,
+            current,
+            window,
+            cx,
+            |this, window, cx| this.finish_rename(true, window, cx),
+        ));
         cx.notify();
     }
 
     /// Closes the rename field, storing the typed name when `keep` is set and it is not
     /// empty.
     fn finish_rename(&mut self, keep: bool, _window: &mut Window, cx: &mut Context<Self>) {
-        let Some((path, input)) = self.renaming.take() else {
+        let Some(rename) = self.renaming.take() else {
             return;
         };
-        self._rename_sub = None;
         cx.notify();
-        let name = input.read(cx).value().trim().to_owned();
+        let name = rename.text(cx);
+        let path = rename.key;
         let unchanged = self
             .model
             .read(cx)
@@ -2481,8 +2473,8 @@ impl DatabaseScreen {
                             });
                         }
                     })
-                    .child(if let Some((_, input)) = &self.renaming {
-                        text_input(input).into_any_element()
+                    .child(if let Some(rename) = &self.renaming {
+                        text_input(&rename.input).into_any_element()
                     } else {
                         div()
                             .bg(rgb(T.bg))
