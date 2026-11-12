@@ -22,11 +22,13 @@ use gpui_component::{
 };
 use ui::{
     BoardView, MONO, T,
-    widgets::{badge, btn, check, divider, h_flex, mono, panel, section_label, segmented, v_flex},
+    widgets::{
+        badge, btn, check, divider, h_flex, meter, mono, panel, section_label, segmented, v_flex,
+    },
 };
 
 use crate::{
-    controls::{TextSelect, field, new_input, new_select, select_el, text_input},
+    controls::{TextSelect, field, new_input, new_select, select_el, text_input, toggle},
     fastchess::{self, Limit, Line, Participant, Pasted, PgnOut, Setup, StopHandle},
     model::{AppModel, ModelEvent, ToastExt as _, pick_path},
     shell::Workspace,

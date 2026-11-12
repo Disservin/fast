@@ -65,21 +65,6 @@ pub(super) fn search_text(search: &Search) -> String {
     parts.join(" ")
 }
 
-pub(super) fn meter(fraction: f32, colour: u32) -> Div {
-    div()
-        .h(px(6.))
-        .w_full()
-        .rounded(px(3.))
-        .bg(rgb(T.tour_tile_border))
-        .child(
-            div()
-                .h_full()
-                .rounded(px(3.))
-                .bg(rgb(colour))
-                .w(relative(fraction.clamp(0., 1.))),
-        )
-}
-
 /// "850 ms", "4.2 s", "3m 05s".
 pub(super) fn format_ms(ms: u64) -> String {
     if ms < 1000 {

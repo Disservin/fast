@@ -122,6 +122,22 @@ pub fn busy_bar(id: impl Into<ElementId>) -> impl IntoElement {
         )
 }
 
+/// A 6px rounded bar filled to `fraction` (0 to 1) in `colour`, for scores and odds.
+pub fn meter(fraction: f32, colour: u32) -> Div {
+    div()
+        .h(px(6.))
+        .w_full()
+        .rounded(px(3.))
+        .bg(rgb(T.tour_tile_border))
+        .child(
+            div()
+                .h_full()
+                .rounded(px(3.))
+                .bg(rgb(colour))
+                .w(relative(fraction.clamp(0., 1.))),
+        )
+}
+
 /// A thin 2px progress bar: a `divider` track with an `accent` fill for `fraction`
 /// of the work, from 0 to 1.
 pub fn progress_bar(fraction: f32) -> impl IntoElement {

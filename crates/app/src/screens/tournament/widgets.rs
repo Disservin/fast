@@ -55,22 +55,6 @@ pub(super) fn big(text: impl Into<SharedString>) -> Div {
         .child(ui::i18n::t(&text.into()).to_owned())
 }
 
-/// A thin bar filled to `fraction`.
-pub(super) fn meter(fraction: f32, colour: u32) -> Div {
-    div()
-        .h(px(6.))
-        .w_full()
-        .rounded(px(3.))
-        .bg(rgb(T.tour_tile_border))
-        .child(
-            div()
-                .h_full()
-                .rounded(px(3.))
-                .bg(rgb(colour))
-                .w(relative(fraction.clamp(0., 1.))),
-        )
-}
-
 pub(super) fn swatch(colour: u32) -> Div {
     div()
         .size(px(8.))

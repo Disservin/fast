@@ -66,26 +66,14 @@ impl TournamentScreen {
         let cancel = Arc::new(AtomicBool::new(false));
         self.install_cancel = Some(cancel.clone());
         self.install_status = Some(format!("Preparing fastchess {}…", fastchess::VERSION).into());
-        let (sender, receiver) = smol::channel::unbounded::<String>();
-        let worker = cx.background_spawn(async move {
-            fastchess::install(&data, cancel, |message| {
-                let _ = sender.try_send(message);
-            })
-        });
-        self.install_task = Some(cx.spawn(async move |this, cx| {
-            while let Ok(message) = receiver.recv().await {
-                if this
-                    .update(cx, |screen, cx| {
-                        screen.install_status = Some(message.into());
-                        cx.notify();
-                    })
-                    .is_err()
-                {
-                    return;
-                }
-            }
-            let result = worker.await;
-            let _ = this.update(cx, |screen, cx| {
+        self.install_task = Some(crate::event_reader::spawn_with_progress(
+            cx,
+            move |report| fastchess::install(&data, cancel, report),
+            |screen, message, cx| {
+                screen.install_status = Some(message.into());
+                cx.notify();
+            },
+            |screen: &mut Self, result, cx| {
                 screen.install_cancel = None;
                 match result {
                     Ok(program) => {
@@ -102,8 +90,8 @@ impl TournamentScreen {
                     }
                 }
                 cx.notify();
-            });
-        }));
+            },
+        ));
         cx.notify();
     }
 

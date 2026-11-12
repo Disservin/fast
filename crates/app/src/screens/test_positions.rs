@@ -15,17 +15,17 @@ use chess_core::{EpdLine, EpdPosition};
 use engine::EngineId;
 use gpui::{
     Context, Div, Entity, ExternalPaths, FontWeight, IntoElement, Render, SharedString, Task,
-    UniformListScrollHandle, WeakEntity, Window, div, prelude::*, px, relative, rgb, uniform_list,
+    UniformListScrollHandle, WeakEntity, Window, div, prelude::*, px, rgb, uniform_list,
 };
 use gpui_component::input::InputState;
 use ui::{
     MONO, T,
-    widgets::{btn, check, h_flex, section_label, segmented, v_flex},
+    widgets::{btn, check, h_flex, meter, section_label, segmented, v_flex},
 };
 
 use crate::{
     config::{TestGoal, TestLimitKind, TestPositionSettings},
-    controls::{field, new_input, text_input},
+    controls::{field, new_input, text_input, toggle},
     model::{AppModel, pick_directory, pick_path},
     shell::Workspace,
     test_suite::{self, Cell, RunEvent, RunSettings, Search},

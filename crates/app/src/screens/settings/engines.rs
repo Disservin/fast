@@ -371,27 +371,15 @@ impl SettingsScreen {
         let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         self.install_cancel = Some(cancel.clone());
         self.install_status = Some(format!("Preparing {}…", entry.name).into());
-        let (sender, receiver) = smol::channel::unbounded::<String>();
         let defaults = entry.defaults.clone();
-        let worker = cx.background_spawn(async move {
-            crate::engine_catalog::install(&entry, &data, cancel, |message| {
-                let _ = sender.try_send(message);
-            })
-        });
-        self.install_task = Some(cx.spawn(async move |this, cx| {
-            while let Ok(message) = receiver.recv().await {
-                if this
-                    .update(cx, |screen, cx| {
-                        screen.install_status = Some(message.into());
-                        cx.notify();
-                    })
-                    .is_err()
-                {
-                    return;
-                }
-            }
-            let result = worker.await;
-            let _ = this.update(cx, |screen, cx| {
+        self.install_task = Some(crate::event_reader::spawn_with_progress(
+            cx,
+            move |report| crate::engine_catalog::install(&entry, &data, cancel, report),
+            |screen, message, cx| {
+                screen.install_status = Some(message.into());
+                cx.notify();
+            },
+            |screen: &mut Self, result, cx| {
                 screen.install_cancel = None;
                 match result {
                     Ok(path) => {
@@ -415,8 +403,8 @@ impl SettingsScreen {
                     }
                 }
                 cx.notify();
-            });
-        }));
+            },
+        ));
         cx.notify();
     }
 

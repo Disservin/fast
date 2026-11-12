@@ -109,12 +109,9 @@ fn eval_text(id: NodeId, props: &ScoresheetProps) -> Option<impl IntoElement + u
     )
 }
 
-fn inline_move(
-    tree: &GameTree,
-    id: NodeId,
-    numbered: bool,
-    props: &ScoresheetProps,
-) -> impl IntoElement + use<> {
+/// A move as written in the variation text: numbered when it starts a line or is
+/// White's, followed by its annotation symbols.
+fn move_text(tree: &GameTree, id: NodeId, numbered: bool, props: &ScoresheetProps) -> String {
     let node = tree.node(id);
     let san = display_san(&node.san, node.mv.as_ref(), props.notation);
     let mut text = if numbered || node.ply % 2 == 1 {
@@ -125,6 +122,16 @@ fn inline_move(
     if let Some(nags) = nag_text(&node.nags) {
         text.push_str(&nags);
     }
+    text
+}
+
+fn inline_move(
+    tree: &GameTree,
+    id: NodeId,
+    numbered: bool,
+    props: &ScoresheetProps,
+) -> impl IntoElement + use<> {
+    let text = move_text(tree, id, numbered, props);
     let current = props.current == id;
     let select = props.on_select.clone();
     let context = props.on_context.clone();
@@ -410,16 +417,7 @@ pub fn scoresheet_inline(tree: &GameTree, props: &ScoresheetProps) -> impl IntoE
                 numbered,
                 depth,
             } => {
-                let node = tree.node(id);
-                let san = display_san(&node.san, node.mv.as_ref(), props.notation);
-                let mut text = if numbered || node.ply % 2 == 1 {
-                    chess_core::notation::numbered(node.ply, &san)
-                } else {
-                    san
-                };
-                if let Some(nags) = nag_text(&node.nags) {
-                    text.push_str(&nags);
-                }
+                let text = move_text(tree, id, numbered, props);
                 let current = props.current == id;
                 let select = props.on_select.clone();
                 let context = props.on_context.clone();

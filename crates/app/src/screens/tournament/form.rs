@@ -199,26 +199,6 @@ impl TournamentScreen {
             )
     }
 
-    pub(super) fn toggle<F>(
-        &self,
-        id: &'static str,
-        on: bool,
-        label: &'static str,
-        cx: &mut Context<Self>,
-        set: F,
-    ) -> impl IntoElement + use<F>
-    where
-        F: Fn(&mut Self, bool) + 'static,
-    {
-        let this = cx.entity();
-        check(id, on, label).text(13.).on_change(move |on, _, cx| {
-            this.update(cx, |screen, cx| {
-                set(screen, on);
-                cx.notify();
-            })
-        })
-    }
-
     /// A segmented control whose choice is stored with `set`.
     pub(super) fn choice<V, F>(
         &self,
@@ -335,7 +315,7 @@ impl TournamentScreen {
                         }),
                     ),
             ))
-            .child(self.toggle(
+            .child(toggle(
                 "tournament-sprt",
                 self.sprt,
                 "Stop by SPRT",
@@ -464,14 +444,14 @@ impl TournamentScreen {
             .child(
                 h_flex()
                     .gap(px(16.))
-                    .child(self.toggle(
+                    .child(toggle(
                         "tournament-noswap",
                         self.noswap,
                         "Never swap colours",
                         cx,
                         |screen, on| screen.noswap = on,
                     ))
-                    .child(self.toggle(
+                    .child(toggle(
                         "tournament-reverse",
                         self.reverse,
                         "Reverse colours",
@@ -506,7 +486,7 @@ impl TournamentScreen {
         v_flex()
             .gap(px(14.))
             .child(section_label("Adjudication"))
-            .child(self.toggle(
+            .child(toggle(
                 "tournament-draw",
                 self.draw_adjudication,
                 "Draw adjudication",
@@ -520,7 +500,7 @@ impl TournamentScreen {
                     field("Within ± cp", text_input(&self.draw_score)),
                 ))
             })
-            .child(self.toggle(
+            .child(toggle(
                 "tournament-resign",
                 self.resign_adjudication,
                 "Resign adjudication",
@@ -533,7 +513,7 @@ impl TournamentScreen {
                         field("For moves in a row", text_input(&self.resign_movecount)),
                         field("Beyond cp", text_input(&self.resign_score)),
                     ))
-                    .child(self.toggle(
+                    .child(toggle(
                         "tournament-resign-twosided",
                         self.resign_twosided,
                         "Both engines must agree on the score",
@@ -542,7 +522,7 @@ impl TournamentScreen {
                     ))
             })
             .child(field("Maximum moves", text_input(&self.maxmoves)))
-            .child(self.toggle(
+            .child(toggle(
                 "tournament-tb",
                 self.tb_adjudication,
                 "Tablebase adjudication",
@@ -578,7 +558,7 @@ impl TournamentScreen {
                         cx,
                         |screen, mode| screen.tb_adjudicate = mode,
                     ))
-                    .child(self.toggle(
+                    .child(toggle(
                         "tournament-tb-ignore50",
                         self.tb_ignore50,
                         "Ignore the 50-move rule",
@@ -658,13 +638,13 @@ impl TournamentScreen {
                     ),
                 ];
                 for (id, label, on, set) in flags {
-                    grid = grid.child(self.toggle(id, on, label, cx, move |screen, on| {
+                    grid = grid.child(toggle(id, on, label, cx, move |screen, on| {
                         set(&mut screen.pgn, on)
                     }));
                 }
                 grid
             }))
-            .child(self.toggle(
+            .child(toggle(
                 "tournament-pgn-min",
                 self.pgn.min,
                 "Minimal PGN",
@@ -682,7 +662,7 @@ impl TournamentScreen {
         v_flex()
             .gap(px(14.))
             .child(section_label("Other"))
-            .child(self.toggle(
+            .child(toggle(
                 "tournament-recover",
                 self.recover,
                 "Recover crashed engines",
@@ -694,14 +674,14 @@ impl TournamentScreen {
                 field("Delay between games (ms)", text_input(&self.wait)),
             ))
             .child(field("Time margin (ms)", text_input(&self.time_margin)))
-            .child(self.toggle(
+            .child(toggle(
                 "tournament-restart",
                 self.restart,
                 "Restart engines between games",
                 cx,
                 |screen, on| screen.restart = on,
             ))
-            .child(self.toggle(
+            .child(toggle(
                 "tournament-affinity",
                 self.affinity,
                 "Bind engines to CPU cores",

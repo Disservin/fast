@@ -214,6 +214,26 @@ fn verify(path: &Path, expected: &str) -> Result<()> {
     );
     Ok(())
 }
+/// Writes one archive member of `size` bytes to `path`, keeping the whole archive under
+/// [`MAX_UNPACKED`] when `total` bytes are already out. Returns the bytes written.
+fn unpack_file(
+    entry: impl Read,
+    size: u64,
+    path: &Path,
+    total: u64,
+    cancel: &AtomicBool,
+) -> Result<u64> {
+    ensure!(size <= MAX_UNPACKED - total, "Archive exceeds size limit");
+    fs::create_dir_all(path.parent().context("archive directory")?)?;
+    copy_limited(
+        entry,
+        File::create(path)?,
+        MAX_UNPACKED - total,
+        cancel,
+        |_| {},
+    )
+}
+
 fn unpack(asset: &Download, archive: &Path, destination: &Path, cancel: &AtomicBool) -> Result<()> {
     let mut total = 0u64;
     match asset.format {
@@ -240,18 +260,8 @@ fn unpack(asset: &Download, archive: &Path, destination: &Path, cancel: &AtomicB
                     fs::create_dir_all(path)?;
                     continue;
                 }
-                ensure!(
-                    entry.size() <= MAX_UNPACKED - total,
-                    "Archive exceeds size limit"
-                );
-                fs::create_dir_all(path.parent().context("archive directory")?)?;
-                total += copy_limited(
-                    &mut entry,
-                    File::create(path)?,
-                    MAX_UNPACKED - total,
-                    cancel,
-                    |_| {},
-                )?;
+                let size = entry.size();
+                total += unpack_file(&mut entry, size, &path, total, cancel)?;
             }
         }
         Format::TarGz | Format::Tar => {
@@ -273,18 +283,8 @@ fn unpack(asset: &Download, archive: &Path, destination: &Path, cancel: &AtomicB
                     continue;
                 }
                 ensure!(kind.is_file(), "Archive contains a link or special file");
-                ensure!(
-                    entry.size() <= MAX_UNPACKED - total,
-                    "Archive exceeds size limit"
-                );
-                fs::create_dir_all(path.parent().context("archive directory")?)?;
-                total += copy_limited(
-                    &mut entry,
-                    File::create(path)?,
-                    MAX_UNPACKED - total,
-                    cancel,
-                    |_| {},
-                )?;
+                let size = entry.size();
+                total += unpack_file(&mut entry, size, &path, total, cancel)?;
             }
         }
     }

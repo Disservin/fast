@@ -153,26 +153,6 @@ impl TestPositionsScreen {
         Ok(())
     }
 
-    pub(super) fn toggle<F>(
-        &self,
-        id: &'static str,
-        on: bool,
-        label: &'static str,
-        cx: &mut Context<Self>,
-        set: F,
-    ) -> impl IntoElement + use<F>
-    where
-        F: Fn(&mut Self, bool) + 'static,
-    {
-        let this = cx.entity();
-        check(id, on, label).text(13.).on_change(move |on, _, cx| {
-            this.update(cx, |screen, cx| {
-                set(screen, on);
-                cx.notify();
-            })
-        })
-    }
-
     pub(super) fn render_file(&self, cx: &mut Context<Self>) -> Div {
         let locked = self.running();
         let choose = cx.entity();
@@ -371,7 +351,7 @@ impl TestPositionsScreen {
                     &self.hash.read(cx).value(),
                 ))),
             ))
-            .child(self.toggle(
+            .child(toggle(
                 "test-clear-hash",
                 self.settings.clear_hash,
                 "Clear hash between positions",
@@ -379,7 +359,7 @@ impl TestPositionsScreen {
                 |screen, on| screen.settings.clear_hash = on,
             ))
             .child(section_label("Running"))
-            .child(self.toggle(
+            .child(toggle(
                 "test-parallel",
                 self.settings.parallel,
                 "Run in parallel",
@@ -403,7 +383,7 @@ impl TestPositionsScreen {
                 ))
             })
             .child(section_label("Tablebases"))
-            .child(self.toggle(
+            .child(toggle(
                 "test-syzygy",
                 self.settings.syzygy,
                 "Use Syzygy tablebases",

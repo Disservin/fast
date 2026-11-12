@@ -1,14 +1,17 @@
 //! Thin wrappers styling the component library's stateful inputs for Fast.
 
 use gpui::{
-    AnyElement, App, Div, Entity, Focusable as _, IntoElement, RenderOnce, SharedString, Window,
-    div, prelude::*, px, rgb,
+    AnyElement, App, Context, Div, Entity, Focusable as _, IntoElement, RenderOnce, SharedString,
+    Window, div, prelude::*, px, rgb,
 };
 use gpui_component::{
     input::{Input, InputState},
     select::{SearchableVec, Select, SelectState},
 };
-use ui::{T, widgets::h_flex};
+use ui::{
+    T,
+    widgets::{check, h_flex},
+};
 
 pub type TextSelect = Entity<SelectState<SearchableVec<SharedString>>>;
 
@@ -113,6 +116,23 @@ impl RenderOnce for TextField {
                     }),
             )
     }
+}
+
+/// A 13px checkbox whose new state is stored with `set`, redrawing the screen.
+pub fn toggle<V: 'static, F: Fn(&mut V, bool) + 'static>(
+    id: &'static str,
+    on: bool,
+    label: &'static str,
+    cx: &mut Context<V>,
+    set: F,
+) -> impl IntoElement + use<V, F> {
+    let this = cx.entity();
+    check(id, on, label).text(13.).on_change(move |on, _, cx| {
+        this.update(cx, |screen, cx| {
+            set(screen, on);
+            cx.notify();
+        })
+    })
 }
 
 /// The unit after a hash size field: MB, with the size in GB beside it once it
