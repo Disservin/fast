@@ -177,9 +177,48 @@ pub(super) fn eta(run: &Run) -> String {
     )
 }
 
+/// The run's status as a coloured pill, and the note to show under the title, if any.
+fn status_pill(status: &Status) -> (Div, Option<(String, u32)>) {
+    let (label, fg, bg, note) = match status {
+        Status::Running => ("Running", T.live_fg, T.live_bg, None),
+        Status::Stopping => (
+            "Stopping",
+            T.warn,
+            T.tour_tile,
+            Some((
+                "Stopping: fastchess is saving its config. Stop again to kill it.".to_owned(),
+                T.warn,
+            )),
+        ),
+        Status::Finished(text) => {
+            let label = if text.starts_with("Stopped") {
+                "Stopped"
+            } else {
+                "Finished"
+            };
+            (label, T.muted, T.tour_tile, Some((text.clone(), T.muted)))
+        }
+        Status::Failed(text) => (
+            "Failed",
+            T.danger_fg,
+            T.danger_bg,
+            Some((text.clone(), T.danger_fg)),
+        ),
+    };
+    let pill = h_flex()
+        .gap(px(6.))
+        .items_center()
+        .px(px(10.))
+        .py(px(3.))
+        .rounded(px(999.))
+        .bg(rgb(bg))
+        .child(div().size(px(7.)).rounded_full().bg(rgb(fg)))
+        .child(div().text_size(px(12.)).text_color(rgb(fg)).child(label));
+    (pill, note)
+}
+
 impl TournamentScreen {
     pub(super) fn render_run(&self, run: &Run, cx: &mut Context<Self>) -> AnyElement {
-        let this = cx.entity();
         let live = self.live_games.len() as u64;
         let total = run.total.max(run.played());
         let fraction = if total == 0 {
@@ -188,41 +227,7 @@ impl TournamentScreen {
             run.played() as f32 / total as f32
         };
         let queued = total.saturating_sub(run.played() + live);
-        let (label, fg, bg, note) = match &run.status {
-            Status::Running => ("Running", T.live_fg, T.live_bg, None),
-            Status::Stopping => (
-                "Stopping",
-                T.warn,
-                T.tour_tile,
-                Some((
-                    "Stopping: fastchess is saving its config. Stop again to kill it.".to_owned(),
-                    T.warn,
-                )),
-            ),
-            Status::Finished(text) => {
-                let label = if text.starts_with("Stopped") {
-                    "Stopped"
-                } else {
-                    "Finished"
-                };
-                (label, T.muted, T.tour_tile, Some((text.clone(), T.muted)))
-            }
-            Status::Failed(text) => (
-                "Failed",
-                T.danger_fg,
-                T.danger_bg,
-                Some((text.clone(), T.danger_fg)),
-            ),
-        };
-        let pill = h_flex()
-            .gap(px(6.))
-            .items_center()
-            .px(px(10.))
-            .py(px(3.))
-            .rounded(px(999.))
-            .bg(rgb(bg))
-            .child(div().size(px(7.)).rounded_full().bg(rgb(fg)))
-            .child(div().text_size(px(12.)).text_color(rgb(fg)).child(label));
+        let (pill, note) = status_pill(&run.status);
         let (a, b) = (
             run.names.first().map(String::as_str).unwrap_or("Engine A"),
             run.names.get(1).map(String::as_str).unwrap_or("Engine B"),
@@ -235,125 +240,7 @@ impl TournamentScreen {
             .child(div().text_as(22., T.muted).child(ui::i18n::t("vs")))
             .child(name_chip(b, engine_colour(&run.names, b), 22.));
 
-        let open_last = run.games.front().map(|game| (game.game, game.pgn_index));
-        let can_resume = !run.active() && run.config.is_file();
-        let folder = run.dir.clone();
-        let (dir, cwd, config) = (run.dir.clone(), run.cwd.clone(), run.config.clone());
-        let more = this.clone();
-        let menu =
-            self.menu_open.then(|| {
-                let (copy, copy_config) = (this.clone(), this.clone());
-                // Deferred so it paints above the cards that follow the header, and occluding
-                // so they neither show through nor take its clicks.
-                deferred(
-                    v_flex()
-                        .id("tournament-more-menu")
-                        .absolute()
-                        .top(px(40.))
-                        .right(px(0.))
-                        .w(px(190.))
-                        .p(px(6.))
-                        .gap(px(4.))
-                        .rounded(px(10.))
-                        .bg(rgb(T.surface))
-                        .border_1()
-                        .border_color(rgb(T.border_strong))
-                        .shadow_lg()
-                        .occlude()
-                        .child(btn("tournament-copy", "Copy command").full().on_click(
-                            move |_, cx| {
-                                copy.update(cx, |screen, cx| {
-                                    screen.menu_open = false;
-                                    screen.copy_command(cx)
-                                })
-                            },
-                        ))
-                        .child(
-                            btn("tournament-copy-config", "Copy config")
-                                .full()
-                                .on_click(copy_config.listen(move |screen, _, cx| {
-                                    screen.menu_open = false;
-                                    screen.copy_config(cx)
-                                })),
-                        ),
-                )
-                .with_priority(1)
-            });
-        let overflow = div()
-            .relative()
-            .child(
-                btn("tournament-more", "⋯")
-                    .tooltip(ui::i18n::t("More actions"))
-                    .on_click(more.listen(move |screen, _, cx| {
-                        screen.menu_open = !screen.menu_open;
-                        cx.notify();
-                    })),
-            )
-            .children(menu);
-
-        let actions = h_flex()
-            .gap(px(8.))
-            .items_center()
-            .flex_wrap()
-            .child(
-                btn("tournament-open-folder", "Open folder")
-                    .tooltip(folder.display().to_string())
-                    .on_click(move |_, _| crate::storage::reveal_folder(&folder)),
-            )
-            .when_some(open_last, |row, (number, index)| {
-                let open = this.clone();
-                row.child(btn("tournament-open-last", "Open last game").on_click(
-                    move |window, cx| {
-                        open.update(cx, |screen, cx| screen.open_game(number, index, window, cx))
-                    },
-                ))
-            })
-            .when(run.live.is_some() && run.active(), |row| {
-                let watch = this.clone();
-                row.child(
-                    btn("tournament-watch-all", "Watch all live")
-                        .primary()
-                        .on_click(watch.listen(move |screen, _, cx| screen.watch_all(cx))),
-                )
-            })
-            .when(!run.active(), |row| {
-                let new = this.clone();
-                row.child(
-                    btn("tournament-new", ui::i18n::t("New tournament"))
-                        .on_click(new.listen(move |screen, _, cx| screen.open_setup(cx))),
-                )
-            })
-            .when(can_resume, |row| {
-                let resume = this.clone();
-                row.child(
-                    btn("tournament-resume", ui::i18n::t("Continue"))
-                        .primary()
-                        .on_click(move |_, cx| {
-                            let (dir, cwd, config) = (dir.clone(), cwd.clone(), config.clone());
-                            resume.update(cx, |screen, cx| screen.resume(dir, cwd, config, cx))
-                        }),
-                )
-            })
-            .when(run.active(), |row| {
-                let stop = this.clone();
-                row.child(
-                    div()
-                        .id("tournament-stop")
-                        .flex()
-                        .items_center()
-                        .h(px(32.))
-                        .px(px(14.))
-                        .rounded(px(8.))
-                        .border_1()
-                        .border_color(rgb(T.danger_border))
-                        .bg(rgb(T.danger_bg))
-                        .text_as(13., T.danger_fg)
-                        .cursor_pointer()
-                        .child(ui::i18n::t("Stop"))
-                        .on_click(stop.listen_event(move |screen, _, _, cx| screen.stop(cx))),
-                )
-            })
-            .child(overflow);
+        let actions = self.render_run_actions(run, cx);
 
         let header = card()
             .child(
@@ -450,6 +337,123 @@ impl TournamentScreen {
             })
             .child(card().child(heading("fastchess output")).child(log))
             .into_any_element()
+    }
+
+    /// The run's actions: open its folder or last game, watch, start a new one, continue,
+    /// stop, and More with the copy commands.
+    fn render_run_actions(&self, run: &Run, cx: &mut Context<Self>) -> Div {
+        let this = cx.entity();
+        let open_last = run.games.front().map(|game| (game.game, game.pgn_index));
+        let can_resume = !run.active() && run.config.is_file();
+        let folder = run.dir.clone();
+        let (dir, cwd, config) = (run.dir.clone(), run.cwd.clone(), run.config.clone());
+        let menu = self.menu_open.then(|| {
+            // Deferred so it paints above the cards that follow the header, and occluding
+            // so they neither show through nor take its clicks.
+            deferred(
+                v_flex()
+                    .id("tournament-more-menu")
+                    .absolute()
+                    .top(px(40.))
+                    .right(px(0.))
+                    .w(px(190.))
+                    .p(px(6.))
+                    .gap(px(4.))
+                    .rounded(px(10.))
+                    .bg(rgb(T.surface))
+                    .border_1()
+                    .border_color(rgb(T.border_strong))
+                    .shadow_lg()
+                    .occlude()
+                    .child(
+                        btn("tournament-copy", "Copy command")
+                            .full()
+                            .on_click(this.listen(move |screen, _, cx| {
+                                screen.menu_open = false;
+                                screen.copy_command(cx)
+                            })),
+                    )
+                    .child(
+                        btn("tournament-copy-config", "Copy config")
+                            .full()
+                            .on_click(this.listen(move |screen, _, cx| {
+                                screen.menu_open = false;
+                                screen.copy_config(cx)
+                            })),
+                    ),
+            )
+            .with_priority(1)
+        });
+        let overflow = div()
+            .relative()
+            .child(
+                btn("tournament-more", "⋯")
+                    .tooltip(ui::i18n::t("More actions"))
+                    .on_click(this.listen(move |screen, _, cx| {
+                        screen.menu_open = !screen.menu_open;
+                        cx.notify();
+                    })),
+            )
+            .children(menu);
+
+        h_flex()
+            .gap(px(8.))
+            .items_center()
+            .flex_wrap()
+            .child(
+                btn("tournament-open-folder", "Open folder")
+                    .tooltip(folder.display().to_string())
+                    .on_click(move |_, _| crate::storage::reveal_folder(&folder)),
+            )
+            .when_some(open_last, |row, (number, index)| {
+                row.child(btn("tournament-open-last", "Open last game").on_click(
+                    this.listen(move |screen, window, cx| {
+                        screen.open_game(number, index, window, cx)
+                    }),
+                ))
+            })
+            .when(run.live.is_some() && run.active(), |row| {
+                row.child(
+                    btn("tournament-watch-all", "Watch all live")
+                        .primary()
+                        .on_click(this.listen(move |screen, _, cx| screen.watch_all(cx))),
+                )
+            })
+            .when(!run.active(), |row| {
+                row.child(
+                    btn("tournament-new", ui::i18n::t("New tournament"))
+                        .on_click(this.listen(move |screen, _, cx| screen.open_setup(cx))),
+                )
+            })
+            .when(can_resume, |row| {
+                row.child(
+                    btn("tournament-resume", ui::i18n::t("Continue"))
+                        .primary()
+                        .on_click(this.listen(move |screen, _, cx| {
+                            let (dir, cwd, config) = (dir.clone(), cwd.clone(), config.clone());
+                            screen.resume(dir, cwd, config, cx)
+                        })),
+                )
+            })
+            .when(run.active(), |row| {
+                row.child(
+                    div()
+                        .id("tournament-stop")
+                        .flex()
+                        .items_center()
+                        .h(px(32.))
+                        .px(px(14.))
+                        .rounded(px(8.))
+                        .border_1()
+                        .border_color(rgb(T.danger_border))
+                        .bg(rgb(T.danger_bg))
+                        .text_as(13., T.danger_fg)
+                        .cursor_pointer()
+                        .child(ui::i18n::t("Stop"))
+                        .on_click(this.listen_event(move |screen, _, _, cx| screen.stop(cx))),
+                )
+            })
+            .child(overflow)
     }
 
     pub(super) fn render_results(&self, run: &Run) -> Div {
