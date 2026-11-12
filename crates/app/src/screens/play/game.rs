@@ -246,10 +246,8 @@ impl PlayScreen {
                 return;
             }
             if let Some(number) = chess_core::chess960_number(&tree.node(GameTree::ROOT).pos) {
-                self.model.update(cx, |model, cx| {
-                    model.config.chess960_number = number;
-                    model.save_config(cx);
-                });
+                self.model
+                    .edit_config(cx, |config| config.chess960_number = number);
             }
         }
         let current = tree
@@ -378,10 +376,8 @@ impl PlayScreen {
         self.show_setup = false;
         if self_play {
             let saved = self.engine_times.each_ref().map(|time| time.saved(cx));
-            self.model.update(cx, |model, cx| {
-                model.config.play_engine_times = saved;
-                model.save_config(cx);
-            });
+            self.model
+                .edit_config(cx, |config| config.play_engine_times = saved);
         }
         self.board
             .update(cx, |board, cx| board.set_flipped(user == Color::Black, cx));

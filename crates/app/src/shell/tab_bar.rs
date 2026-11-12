@@ -212,10 +212,8 @@ impl Workspace {
 
     /// Opens a new Analyse tab on Chess960 start position `n` and remembers the number.
     pub(super) fn new_chess960(&mut self, n: u16, window: &mut Window, cx: &mut Context<Self>) {
-        self.model.update(cx, |model, cx| {
-            model.config.chess960_number = n;
-            model.save_config(cx);
-        });
+        self.model
+            .edit_config(cx, |config| config.chess960_number = n);
         self.new_tab(Mode::Analyse, window, cx);
         self.analyse.update(cx, |screen, cx| {
             screen.load_tree(chess_core::GameTree::chess960(n), window, cx)

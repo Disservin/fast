@@ -116,10 +116,8 @@ impl TournamentScreen {
             return self.fail(format!("No file at {}", path.display()), cx);
         }
         self.form_error = None;
-        self.model.update(cx, |model, cx| {
-            model.config.fastchess_path = path;
-            model.save_config(cx);
-        });
+        self.model
+            .edit_config(cx, |config| config.fastchess_path = path);
         cx.notify();
     }
 

@@ -30,7 +30,7 @@ use ui::{
 use crate::{
     controls::{TextSelect, field, new_input, new_select, select_el, text_input, toggle},
     fastchess::{self, Limit, Line, Participant, Pasted, PgnOut, Setup, StopHandle},
-    model::{AppModel, ModelEvent, ToastExt as _, pick_path},
+    model::{AppModel, ConfigExt as _, ModelEvent, ToastExt as _, pick_path},
     shell::Workspace,
     tournament_live::{self, LiveGame, LiveGames, Score, Search},
     tournament_wall::{self, LiveWall},

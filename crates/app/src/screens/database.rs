@@ -30,7 +30,7 @@ use crate::format::{format_count, now_seconds};
 use crate::{
     controls::{TextSelect, field, new_input, new_select, select_el, text_input},
     game_download::{DownloadEvent, DownloadPhase, DownloadRequest, Endpoints, Site},
-    model::{AppModel, DbEntry, ModelEvent, ToastExt as _, pick_path},
+    model::{AppModel, ConfigExt as _, DbEntry, ModelEvent, ToastExt as _, pick_path},
     shell::Workspace,
 };
 

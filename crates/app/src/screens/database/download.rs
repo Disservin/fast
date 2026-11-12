@@ -46,10 +46,8 @@ impl DatabaseScreen {
             _ => my_games,
         };
         if self.download_is_me {
-            self.model.update(cx, |model, cx| {
-                model.config.add_player_alias(&user);
-                model.save_config(cx);
-            });
+            self.model
+                .edit_config(cx, |config| config.add_player_alias(&user));
         }
         let clocks = self.download_clocks;
         self.start_download(site, user, since_ms, database, clocks, cx);

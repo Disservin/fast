@@ -15,7 +15,7 @@ use gpui::{App, Context, Entity, EventEmitter, Task};
 
 use crate::{
     config::AnalysisLimit,
-    model::{AppModel, ModelEvent, ToastExt as _, split_engine_name},
+    model::{AppModel, ConfigExt as _, ModelEvent, ToastExt as _, split_engine_name},
 };
 
 /// UI updates per engine are bounded to one per this interval (≤ 10 Hz).
@@ -643,12 +643,11 @@ impl LiveAnalysis {
 
     /// Changes when analysis stops, and restarts the search under the new limit.
     pub fn set_limit(&mut self, limit: AnalysisLimit, cx: &mut Context<Self>) {
-        self.model.update(cx, |model, cx| {
-            model.config.analysis_limit = limit;
+        self.model.edit_config(cx, |config| {
+            config.analysis_limit = limit;
             if limit != AnalysisLimit::Infinite {
-                model.config.finite_limit = limit;
+                config.finite_limit = limit;
             }
-            model.save_config(cx);
         });
         self.search(cx);
         cx.emit(LiveEvent::Updated);

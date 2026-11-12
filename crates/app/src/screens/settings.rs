@@ -28,7 +28,7 @@ use crate::format::format_count;
 use crate::{
     config::{SavedCoordinates, SavedPieces, SavedTheme},
     controls::{TextSelect, engine_icon, new_input, new_select, select_el, text_input},
-    model::{AppModel, ModelEvent, ToastExt as _, pick_path, split_engine_name},
+    model::{AppModel, ConfigExt as _, ModelEvent, ToastExt as _, pick_path, split_engine_name},
     shell,
 };
 
@@ -214,10 +214,8 @@ impl SettingsScreen {
                         return;
                     };
                     ui::i18n::set_language(language);
-                    this.model.update(cx, |model, cx| {
-                        model.config.language = language;
-                        model.save_config(cx);
-                    });
+                    this.model
+                        .edit_config(cx, |config| config.language = language);
                     crate::shell::refresh_menus(cx);
                     cx.refresh_windows();
                 },

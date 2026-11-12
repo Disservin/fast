@@ -186,15 +186,14 @@ impl DatabaseScreen {
         };
         if let Some(entry) = &self.db_snapshot {
             let path = entry.path.to_string_lossy().into_owned();
-            self.model.update(cx, |model, cx| {
-                model.config.database_sorts.insert(
+            self.model.edit_config(cx, |config| {
+                config.database_sorts.insert(
                     path,
                     crate::config::SavedSort {
                         key: key.as_str().to_owned(),
                         descending,
                     },
                 );
-                model.save_config(cx);
             });
         }
         self.apply_filter(cx);

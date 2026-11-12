@@ -709,6 +709,20 @@ impl ToastExt for Entity<AppModel> {
     }
 }
 
+/// Changes the settings through a handle to the model and saves them.
+pub trait ConfigExt {
+    fn edit_config(&self, cx: &mut App, edit: impl FnOnce(&mut Config));
+}
+
+impl ConfigExt for Entity<AppModel> {
+    fn edit_config(&self, cx: &mut App, edit: impl FnOnce(&mut Config)) {
+        self.update(cx, |model, cx| {
+            edit(&mut model.config);
+            model.save_config(cx);
+        });
+    }
+}
+
 pub fn open_debug_window(model: &Entity<AppModel>, id: EngineId, cx: &mut App) {
     let (log, name) = {
         let model = model.read(cx);

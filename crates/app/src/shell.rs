@@ -1,6 +1,6 @@
 //! The window shell: top bar, mode routing, global shortcuts, toasts.
 
-use crate::model::ToastExt;
+use crate::model::{ConfigExt as _, ToastExt};
 use std::collections::{BTreeMap, HashMap};
 
 use engine::EngineStatus;

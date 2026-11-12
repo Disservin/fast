@@ -436,10 +436,9 @@ impl DatabaseScreen {
             let this = cx.entity();
             move |_: &mut gpui::Window, cx: &mut gpui::App| {
                 this.update(cx, |screen, cx| {
-                    screen.model.update(cx, |model, cx| {
-                        model.config.review_engines = next;
-                        model.save_config(cx);
-                    });
+                    screen
+                        .model
+                        .edit_config(cx, |config| config.review_engines = next);
                     cx.notify();
                 })
             }

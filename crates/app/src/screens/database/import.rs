@@ -301,10 +301,7 @@ impl DatabaseScreen {
                             "Build structure index",
                         )
                         .on_change(move |value, _, cx| {
-                            model.update(cx, |model, cx| {
-                                model.config.import_structure_index = value;
-                                model.save_config(cx);
-                            })
+                            model.edit_config(cx, |config| config.import_structure_index = value)
                         })
                     })
                     .child(

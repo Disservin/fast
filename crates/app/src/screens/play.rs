@@ -25,7 +25,7 @@ use ui::{
 
 use crate::{
     controls::{TextSelect, field, new_input, new_select, select_el, text_input},
-    model::{AppModel, ModelEvent, ToastExt as _},
+    model::{AppModel, ConfigExt as _, ModelEvent, ToastExt as _},
     shell::Workspace,
 };
 

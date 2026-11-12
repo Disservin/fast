@@ -31,7 +31,7 @@ use ui::{
 use crate::{
     config::{GraphTab, LineSort, ScoresheetStyle},
     live::{LiveAnalysis, LiveEvent},
-    model::{AppModel, DbEntry, ModelEvent, ToastExt as _},
+    model::{AppModel, ConfigExt as _, DbEntry, ModelEvent, ToastExt as _},
     shell::Workspace,
 };
 
@@ -616,10 +616,8 @@ impl AnalyseScreen {
         let flipped = !self.board.read(cx).is_flipped();
         self.board
             .update(cx, |board, cx| board.set_flipped(flipped, cx));
-        self.model.update(cx, |model, cx| {
-            model.config.board.flipped = flipped;
-            model.save_config(cx);
-        });
+        self.model
+            .edit_config(cx, |config| config.board.flipped = flipped);
         cx.notify();
     }
 
@@ -693,10 +691,8 @@ impl AnalyseScreen {
         cx: &mut Context<Self>,
         change: impl FnOnce(&mut crate::config::AnalysisView),
     ) {
-        self.model.update(cx, |model, cx| {
-            change(&mut model.config.view);
-            model.save_config(cx);
-        });
+        self.model
+            .edit_config(cx, |config| change(&mut config.view));
         self.rebuild_rows(cx);
     }
 
