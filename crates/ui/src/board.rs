@@ -23,8 +23,11 @@ mod render;
 
 pub use self::{arrows::*, moves::*, pieces::*};
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum BoardTheme {
+    /// Configs from before the Blue board named its predecessor "stone".
+    #[serde(alias = "stone")]
     Blue,
     Walnut,
     #[default]
@@ -68,13 +71,15 @@ impl BoardTheme {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum PieceSet {
     /// Merida.
     #[default]
     Classic,
     Cburnett,
     Chessnut,
+    #[serde(rename = "mpchess")]
     MpChess,
     Fantasy,
     Letters,
@@ -121,7 +126,8 @@ impl PieceSet {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum CoordinateStyle {
     #[default]
     OnSquares,

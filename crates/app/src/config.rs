@@ -65,46 +65,12 @@ fn migrate_dir(old: &Path, new: &Path) {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SavedTheme {
-    /// Configs from before the Blue board named its predecessor "stone".
-    #[serde(alias = "stone")]
-    Blue,
-    Walnut,
-    Moss,
-    Graphite,
-    Paper,
-    Plum,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SavedPieces {
-    Classic,
-    Cburnett,
-    Chessnut,
-    #[serde(rename = "mpchess")]
-    MpChess,
-    Fantasy,
-    Letters,
-    Flat,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SavedCoordinates {
-    OnSquares,
-    Outside,
-    Off,
-}
-
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct BoardConfig {
-    pub theme: SavedTheme,
-    pub pieces: SavedPieces,
-    pub coordinates: SavedCoordinates,
+    pub theme: BoardTheme,
+    pub pieces: PieceSet,
+    pub coordinates: CoordinateStyle,
     pub animation_ms: u32,
     pub notation: Notation,
     pub show_legal: bool,
@@ -124,9 +90,9 @@ pub struct BoardConfig {
 impl Default for BoardConfig {
     fn default() -> Self {
         Self {
-            theme: SavedTheme::Moss,
-            pieces: SavedPieces::Classic,
-            coordinates: SavedCoordinates::OnSquares,
+            theme: BoardTheme::Moss,
+            pieces: PieceSet::Classic,
+            coordinates: CoordinateStyle::OnSquares,
             animation_ms: 150,
             notation: Notation::San,
             show_legal: true,
@@ -184,28 +150,9 @@ impl BoardConfig {
 impl BoardConfig {
     pub fn prefs(&self) -> BoardPrefs {
         BoardPrefs {
-            theme: match self.theme {
-                SavedTheme::Blue => BoardTheme::Blue,
-                SavedTheme::Walnut => BoardTheme::Walnut,
-                SavedTheme::Moss => BoardTheme::Moss,
-                SavedTheme::Graphite => BoardTheme::Graphite,
-                SavedTheme::Paper => BoardTheme::Paper,
-                SavedTheme::Plum => BoardTheme::Plum,
-            },
-            pieces: match self.pieces {
-                SavedPieces::Classic => PieceSet::Classic,
-                SavedPieces::Cburnett => PieceSet::Cburnett,
-                SavedPieces::Chessnut => PieceSet::Chessnut,
-                SavedPieces::MpChess => PieceSet::MpChess,
-                SavedPieces::Fantasy => PieceSet::Fantasy,
-                SavedPieces::Letters => PieceSet::Letters,
-                SavedPieces::Flat => PieceSet::Flat,
-            },
-            coordinates: match self.coordinates {
-                SavedCoordinates::OnSquares => CoordinateStyle::OnSquares,
-                SavedCoordinates::Outside => CoordinateStyle::Outside,
-                SavedCoordinates::Off => CoordinateStyle::Off,
-            },
+            theme: self.theme,
+            pieces: self.pieces,
+            coordinates: self.coordinates,
             animation_ms: self.animation_ms,
             show_legal: self.show_legal,
             highlight_last: self.highlight_last,
@@ -768,45 +715,43 @@ impl Config {
     pub fn set_ui_theme(&mut self, theme: ui::UiTheme) {
         self.ui_theme = theme;
         self.board.theme = match theme {
-            ui::UiTheme::Slate => SavedTheme::Blue,
-            ui::UiTheme::Obsidian => SavedTheme::Graphite,
-            ui::UiTheme::Paper => SavedTheme::Paper,
-            ui::UiTheme::Plum => SavedTheme::Plum,
-            ui::UiTheme::Sand => SavedTheme::Walnut,
-            ui::UiTheme::Forest => SavedTheme::Moss,
+            ui::UiTheme::Slate => BoardTheme::Blue,
+            ui::UiTheme::Obsidian => BoardTheme::Graphite,
+            ui::UiTheme::Paper => BoardTheme::Paper,
+            ui::UiTheme::Plum => BoardTheme::Plum,
+            ui::UiTheme::Sand => BoardTheme::Walnut,
+            ui::UiTheme::Forest => BoardTheme::Moss,
         };
     }
 
     /// Loads the config, keeping defaults if the file is missing or damaged.
     pub fn load(path: &Path) -> Self {
-        let text = [path.to_path_buf(), path.with_extension("previous")]
+        let Some(mut config) = [path.to_path_buf(), path.with_extension("previous")]
             .into_iter()
-            .filter_map(|candidate| std::fs::read_to_string(candidate).ok())
-            .find(|text| toml::from_str::<Self>(text).is_ok());
-        let Some(text) = text else {
+            .filter_map(|file| Some((std::fs::read_to_string(&file).ok()?, file)))
+            .find_map(|(text, file)| {
+                toml::from_str::<Self>(&text)
+                    .inspect_err(|err| {
+                        log::warn!("ignoring unreadable config {}: {err}", file.display())
+                    })
+                    .ok()
+            })
+        else {
             return Self::default();
         };
-        match toml::from_str::<Self>(&text) {
-            Ok(mut config) => {
-                // New shortcuts added in later versions get their defaults.
-                let defaults = default_shortcuts();
-                for (action, old) in replaced_defaults() {
-                    if config.shortcuts.get(action) == Some(&old) {
-                        config
-                            .shortcuts
-                            .insert(action.to_owned(), defaults[action].clone());
-                    }
-                }
-                for (action, key) in defaults {
-                    config.shortcuts.entry(action).or_insert(key);
-                }
+        // New shortcuts added in later versions get their defaults.
+        let defaults = default_shortcuts();
+        for (action, old) in replaced_defaults() {
+            if config.shortcuts.get(action) == Some(&old) {
                 config
-            }
-            Err(err) => {
-                log::warn!("ignoring unreadable config {}: {err}", path.display());
-                Self::default()
+                    .shortcuts
+                    .insert(action.to_owned(), defaults[action].clone());
             }
         }
+        for (action, key) in defaults {
+            config.shortcuts.entry(action).or_insert(key);
+        }
+        config
     }
 
     pub fn save(&self, path: &Path) -> Result<()> {
@@ -860,6 +805,25 @@ mod tests {
     use engine::EngineConfig;
 
     #[test]
+    fn board_choices_keep_their_saved_names() {
+        let board = BoardConfig {
+            theme: BoardTheme::Graphite,
+            pieces: PieceSet::MpChess,
+            coordinates: CoordinateStyle::OnSquares,
+            ..Default::default()
+        };
+        let text = toml::to_string(&board).unwrap();
+        for line in [
+            "theme = \"graphite\"",
+            "pieces = \"mpchess\"",
+            "coordinates = \"on_squares\"",
+        ] {
+            assert!(text.contains(line), "{line} in {text}");
+        }
+        assert_eq!(toml::from_str::<BoardConfig>(&text).unwrap(), board);
+    }
+
+    #[test]
     fn language_uses_only_locale_codes() {
         for (value, expected) in [("en", Language::English), ("de", Language::German)] {
             let config: Config = toml::from_str(&format!("language = {value:?}")).unwrap();
@@ -906,7 +870,7 @@ mod tests {
         };
         config.language = Language::German;
         config.ui_theme = ui::UiTheme::Sand;
-        config.board.theme = SavedTheme::Moss;
+        config.board.theme = BoardTheme::Moss;
         config.board.sound_profile = crate::sound::SoundProfile::Piano;
         config.board.notation = Notation::Figurine;
         config.analysis_limit = AnalysisLimit::Depth(30);
@@ -1069,7 +1033,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("config.toml");
         std::fs::write(&path, "[board]\ntheme = \"stone\"\n").unwrap();
-        assert_eq!(Config::load(&path).board.theme, SavedTheme::Blue);
+        assert_eq!(Config::load(&path).board.theme, BoardTheme::Blue);
     }
 
     #[test]

@@ -114,9 +114,9 @@ impl SettingsScreen {
                 segmented(
                     "coords",
                     [
-                        (SavedCoordinates::OnSquares, "On squares"),
-                        (SavedCoordinates::Outside, "Outside"),
-                        (SavedCoordinates::Off, "Off"),
+                        (ui::CoordinateStyle::OnSquares, "On squares"),
+                        (ui::CoordinateStyle::Outside, "Outside"),
+                        (ui::CoordinateStyle::Off, "Off"),
                     ],
                     config.coordinates,
                     this.listen_with(|screen, value, _, cx| {
@@ -211,20 +211,12 @@ impl SettingsScreen {
     ) -> Div {
         let this = cx.entity();
         let mut boards = h_flex().flex_wrap().gap(px(8.));
-        let themes = [
-            (SavedTheme::Blue, ui::BoardTheme::Blue),
-            (SavedTheme::Walnut, ui::BoardTheme::Walnut),
-            (SavedTheme::Moss, ui::BoardTheme::Moss),
-            (SavedTheme::Graphite, ui::BoardTheme::Graphite),
-            (SavedTheme::Paper, ui::BoardTheme::Paper),
-            (SavedTheme::Plum, ui::BoardTheme::Plum),
-        ];
-        for (index, (saved, theme)) in themes.into_iter().enumerate() {
-            let selected = config.theme == saved;
+        for (index, theme) in ui::BoardTheme::ALL.into_iter().enumerate() {
+            let selected = config.theme == theme;
             boards = boards.child(
                 tile(("board-theme", index), selected)
                     .on_click(this.listen_event(move |screen, _, _, cx| {
-                        screen.update_board(cx, |board| board.theme = saved);
+                        screen.update_board(cx, |board| board.theme = theme);
                     }))
                     .child(theme_swatch(theme, px(56.), cx))
                     .child(tile_label(theme.name())),
@@ -250,35 +242,11 @@ impl SettingsScreen {
             .into_any_element()
         };
         let board_theme = config.prefs().theme;
-        let sets: [(SavedPieces, &str, gpui::AnyElement); 7] = [
+        let mut sets: Vec<(ui::PieceSet, gpui::AnyElement)> =
+            ui::PieceSet::IMAGES.map(|set| (set, knight(set))).into();
+        sets.extend([
             (
-                SavedPieces::Classic,
-                "Classic",
-                knight(ui::PieceSet::Classic),
-            ),
-            (
-                SavedPieces::Cburnett,
-                "Cburnett",
-                knight(ui::PieceSet::Cburnett),
-            ),
-            (
-                SavedPieces::Chessnut,
-                "Chessnut",
-                knight(ui::PieceSet::Chessnut),
-            ),
-            (
-                SavedPieces::MpChess,
-                "MPChess",
-                knight(ui::PieceSet::MpChess),
-            ),
-            (
-                SavedPieces::Fantasy,
-                "Fantasy",
-                knight(ui::PieceSet::Fantasy),
-            ),
-            (
-                SavedPieces::Letters,
-                "Letters",
+                ui::PieceSet::Letters,
                 div()
                     .text_size(px(32.))
                     .font_weight(FontWeight::BOLD)
@@ -290,8 +258,7 @@ impl SettingsScreen {
                     .into_any_element(),
             ),
             (
-                SavedPieces::Flat,
-                "Flat",
+                ui::PieceSet::Flat,
                 svg()
                     .path("pieces/merida/bN.svg")
                     .size(px(34.))
@@ -301,8 +268,8 @@ impl SettingsScreen {
                     )))
                     .into_any_element(),
             ),
-        ];
-        for (index, (saved, name, preview)) in sets.into_iter().enumerate() {
+        ]);
+        for (index, (saved, preview)) in sets.into_iter().enumerate() {
             let selected = config.pieces == saved;
             pieces = pieces.child(
                 tile(("piece-set", index), selected)
@@ -319,7 +286,7 @@ impl SettingsScreen {
                             .bg(rgb(board_theme.colors().0))
                             .child(preview),
                     )
-                    .child(tile_label(name)),
+                    .child(tile_label(saved.name())),
             );
         }
         pieces
