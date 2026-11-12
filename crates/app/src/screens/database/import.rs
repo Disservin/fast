@@ -32,8 +32,7 @@ pub(super) fn import_message(summary: &db::ImportSummary) -> String {
 /// A label in the Import dialog's left column.
 fn import_label(text: &str) -> gpui::Div {
     div()
-        .w(px(72.))
-        .flex_none()
+        .col_w(72.)
         .text_as(13., T.muted)
         .child(ui::i18n::t(text).to_owned())
 }
@@ -264,8 +263,7 @@ impl DatabaseScreen {
             .gap(px(6.))
             .px(px(16.))
             .py(px(12.))
-            .border_t_1()
-            .border_color(rgb(T.border));
+            .border_t_as(T.border);
         let footer = match self.import_source {
             ImportSource::File => {
                 let target = selected_name
@@ -487,8 +485,7 @@ impl DatabaseScreen {
                     .gap(px(6.))
                     .px(px(16.))
                     .py(px(12.))
-                    .border_t_1()
-                    .border_color(rgb(T.border))
+                    .border_t_as(T.border)
                     .child(btn("reimport-cancel", "Cancel").on_click(cancel.listen(
                         move |screen, _, cx| {
                             screen.confirm_reimport = None;

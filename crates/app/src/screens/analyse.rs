@@ -26,7 +26,7 @@ use ui::{
     scoresheet::{ScoresheetProps, scoresheet_body, scoresheet_inline},
     timeline::{TimelineProps, timeline},
     widgets::{
-        Listen, TextExt, btn, col_heading, h_flex, icon_btn, mono, panel, section_label,
+        Listen, StyleExt, btn, col_heading, h_flex, icon_btn, mono, panel, section_label,
         table_header, v_flex,
     },
 };

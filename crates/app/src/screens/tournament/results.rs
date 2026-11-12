@@ -361,8 +361,7 @@ impl TournamentScreen {
                     .gap(px(4.))
                     .rounded(px(10.))
                     .bg(rgb(T.surface))
-                    .border_1()
-                    .border_color(rgb(T.border_strong))
+                    .border_as(T.border_strong)
                     .shadow_lg()
                     .occlude()
                     .child(
@@ -444,8 +443,7 @@ impl TournamentScreen {
                         .h(px(32.))
                         .px(px(14.))
                         .rounded(px(8.))
-                        .border_1()
-                        .border_color(rgb(T.danger_border))
+                        .border_as(T.danger_border)
                         .bg(rgb(T.danger_bg))
                         .text_as(13., T.danger_fg)
                         .cursor_pointer()
@@ -494,8 +492,7 @@ impl TournamentScreen {
                     .p(px(12.))
                     .rounded(px(10.))
                     .bg(rgb(T.tour_tile))
-                    .border_1()
-                    .border_color(rgb(T.tour_tile_border))
+                    .border_as(T.tour_tile_border)
                     .child(block)
                     .into_any_element()
             }
@@ -731,7 +728,7 @@ impl TournamentScreen {
                 "Pick two or more engines and a time control, then start. fastchess plays the \
                      games in the background; results, the game list and its output appear here.",
             ))
-            .child(div().text_color(rgb(T.muted)).text_size(px(13.)).child(
+            .child(div().text_as(13., T.muted).child(
                 "Each tournament gets its own folder with games.pgn and config.json, so it can \
                  be stopped and continued later, here or with fastchess -config file=config.json.",
             ))

@@ -378,9 +378,7 @@ impl AnalyseScreen {
                     .child(
                         div()
                             .min_w_0()
-                            .overflow_hidden()
-                            .text_ellipsis()
-                            .whitespace_nowrap()
+                            .truncate()
                             .text_size(px(13.))
                             .font_weight(FontWeight::MEDIUM)
                             .child(name),

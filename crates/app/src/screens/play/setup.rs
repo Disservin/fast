@@ -109,8 +109,7 @@ impl PlayScreen {
             .pt(px(20.))
             .pb(px(16.))
             .bg(rgb(T.surface))
-            .border_r_1()
-            .border_color(rgb(T.border))
+            .border_r_as(T.border)
             .child(section_label("New game").mb(px(10.)))
             .when(self_play && self.game.is_some(), |column| {
                 let back_this = cx.entity();

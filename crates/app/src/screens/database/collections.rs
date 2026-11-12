@@ -289,8 +289,7 @@ impl DatabaseScreen {
             .px(px(16.))
             .py(px(10.))
             .bg(rgb(T.surface))
-            .border_b_1()
-            .border_color(rgb(T.border))
+            .border_b_as(T.border)
             .child(section_label("Database"))
             .child(
                 div()
@@ -385,8 +384,7 @@ impl DatabaseScreen {
                     .gap(px(6.))
                     .px(px(16.))
                     .py(px(12.))
-                    .border_t_1()
-                    .border_color(rgb(T.border))
+                    .border_t_as(T.border)
                     .child(btn("delete-cancel", "Cancel").on_click(cancel.listen(
                         move |screen, _, cx| {
                             screen.confirm_delete = None;

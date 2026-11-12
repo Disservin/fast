@@ -165,10 +165,7 @@ impl PlayScreen {
 
     /// Compares both engines' evaluations and search effort throughout the game.
     pub(super) fn render_graph(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let mut header = h_flex()
-            .h(px(44.))
-            .border_b_1()
-            .border_color(rgb(T.divider));
+        let mut header = h_flex().h(px(44.)).border_b_as(T.divider);
         for (index, label) in ["Eval", "Nodes", "Depth", "Time"].into_iter().enumerate() {
             let this = cx.entity();
             header = header.child(header_tab(
@@ -328,8 +325,7 @@ impl PlayScreen {
                     v_flex()
                         .py(px(10.))
                         .gap(px(6.))
-                        .border_b_1()
-                        .border_color(rgb(T.divider))
+                        .border_b_as(T.divider)
                         .child(
                             h_flex()
                                 .gap(px(8.))
@@ -428,8 +424,7 @@ impl PlayScreen {
         let dash = || "—".to_owned();
         let cell = |caption: &'static str, value: String, width: f32| {
             v_flex()
-                .w(px(width))
-                .flex_none()
+                .col_w(width)
                 .gap(px(1.))
                 .child(
                     div()
@@ -450,8 +445,7 @@ impl PlayScreen {
             .gap(px(8.))
             .child(
                 mono(line.score.map_or_else(dash, |score| score.display()))
-                    .w(px(64.))
-                    .flex_none()
+                    .col_w(64.)
                     .whitespace_nowrap()
                     .font_weight(FontWeight::SEMIBOLD),
             )
@@ -514,8 +508,7 @@ impl PlayScreen {
             .h(px(44.))
             .px(px(16.))
             .gap(px(10.))
-            .border_b_1()
-            .border_color(rgb(T.border))
+            .border_b_as(T.border)
             .child(section_label("Log"));
         for (side, label) in ["White", "Black"].into_iter().enumerate() {
             let this = cx.entity();
@@ -656,12 +649,10 @@ impl PlayScreen {
                         .h(px(28.))
                         .flex_none()
                         .gap(px(12.))
-                        .border_b_1()
-                        .border_color(rgb(T.divider))
+                        .border_b_as(T.divider)
                         .child(
                             div()
-                                .w(px(36.))
-                                .flex_none()
+                                .col_w(36.)
                                 .text_color(rgb(T.faint))
                                 .child(format!("{number}.")),
                         )
@@ -792,8 +783,7 @@ impl PlayScreen {
                 let (eval, time) = values.unwrap_or_else(|| ("—".to_owned(), "—".to_owned()));
                 row.child(
                     mono(eval)
-                        .w(px(52.))
-                        .flex_none()
+                        .col_w(52.)
                         .text_size(px(12.))
                         .text_right()
                         .whitespace_nowrap()
@@ -801,8 +791,7 @@ impl PlayScreen {
                 )
                 .child(
                     mono(time)
-                        .w(px(56.))
-                        .flex_none()
+                        .col_w(56.)
                         .text_size(px(12.))
                         .text_right()
                         .whitespace_nowrap()

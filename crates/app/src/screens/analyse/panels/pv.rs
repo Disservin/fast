@@ -195,9 +195,8 @@ impl AnalyseScreen {
             .flex_wrap()
             .min_h(px(26.))
             .font_family(MONO)
-            .text_size(px(14.))
+            .text_as(14., T.fg)
             .line_height(px(26.))
-            .text_color(rgb(T.fg))
             .on_mouse_up_out(
                 MouseButton::Left,
                 cx.listener(|this, _, _, _| this.pv_dragging = false),

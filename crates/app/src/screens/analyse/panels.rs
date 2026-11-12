@@ -17,7 +17,7 @@ use gpui_component::{
 use ui::{
     Arrow, CoordinateStyle, MONO, T,
     widgets::{
-        Listen, TextExt, btn, check, h_flex, header_tab, icon_btn, mono, panel, section_label,
+        Listen, StyleExt, btn, check, h_flex, header_tab, icon_btn, mono, panel, section_label,
         v_flex,
     },
 };
@@ -124,16 +124,14 @@ impl AnalyseScreen {
             .is_some_and(|line| line.stale);
         let cell = |text: String, width: f32, title: &'static str| {
             v_flex()
-                .w(px(width))
-                .flex_none()
+                .col_w(width)
                 .gap(px(1.))
                 .child(div().text_as(11., T.muted).child(title))
                 .child(
                     mono(text)
                         .whitespace_nowrap()
-                        .text_size(px(14.))
-                        .font_weight(FontWeight::MEDIUM)
-                        .text_color(rgb(T.fg)),
+                        .text_as(14., T.fg)
+                        .font_weight(FontWeight::MEDIUM),
                 )
         };
         let dash = || "—".to_owned();
@@ -183,7 +181,7 @@ impl AnalyseScreen {
             .px(px(16.))
             .gap(px(6.))
             .child(
-                div().flex_none().w(px(20.)).child(
+                div().col_w(20.).child(
                     check(
                         SharedString::from(format!("engine-on-{id}")),
                         config.use_analysis,
@@ -249,8 +247,7 @@ impl AnalyseScreen {
                 .h(px(44.))
                 .px(px(16.))
                 .gap(px(6.))
-                .border_b_1()
-                .border_color(rgb(T.border))
+                .border_b_as(T.border)
                 .child({
                     let mut tabs = h_flex().h_full().gap(px(16.));
                     for (index, (value, label)) in [
@@ -331,8 +328,7 @@ impl AnalyseScreen {
                 .gap(px(10.))
                 .px(px(16.))
                 .py(px(10.))
-                .border_t_1()
-                .border_color(rgb(T.divider))
+                .border_t_as(T.divider)
                 .child(
                     div()
                         .flex_1()
@@ -373,8 +369,7 @@ impl AnalyseScreen {
             .px(px(16.))
             .py(px(10.))
             .gap(px(8.))
-            .border_t_1()
-            .border_color(rgb(T.divider))
+            .border_t_as(T.divider)
             .child(
                 h_flex()
                     .gap(px(6.))
@@ -528,8 +523,7 @@ impl AnalyseScreen {
                     .justify_end()
                     .px(px(16.))
                     .py(px(10.))
-                    .border_t_1()
-                    .border_color(rgb(T.divider))
+                    .border_t_as(T.divider)
                     .child(
                         btn("replace-cached-analysis", "Replace cached analysis")
                             .compact()

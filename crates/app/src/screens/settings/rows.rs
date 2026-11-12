@@ -28,12 +28,10 @@ pub(super) fn option_row(
     h_flex()
         .min_h(px(44.))
         .py(px(5.))
-        .border_b_1()
-        .border_color(rgb(T.divider))
+        .border_b_as(T.divider)
         .child(
             v_flex()
-                .w(px(232.))
-                .flex_none()
+                .col_w(232.)
                 .child(
                     div()
                         .font_weight(FontWeight::SEMIBOLD)
@@ -58,12 +56,10 @@ pub(super) fn detail_row(
     h_flex()
         .min_h(px(60.))
         .py(px(5.))
-        .border_b_1()
-        .border_color(rgb(T.divider))
+        .border_b_as(T.divider)
         .child(
             v_flex()
-                .w(px(236.))
-                .flex_none()
+                .col_w(236.)
                 .child(
                     div()
                         .font_weight(FontWeight::MEDIUM)

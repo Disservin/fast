@@ -10,7 +10,7 @@ use gpui_component::{
 };
 use ui::{
     T,
-    widgets::{Listen, Segment, TextExt, check, h_flex, segmented},
+    widgets::{Listen, Segment, StyleExt, check, h_flex, segmented},
 };
 
 pub type TextSelect = Entity<SelectState<SearchableVec<SharedString>>>;
@@ -211,8 +211,7 @@ pub fn field(label: impl Into<SharedString>, control: impl IntoElement) -> Div {
         .min_w_0()
         .child(
             h_flex()
-                .text_size(px(12.5))
-                .text_color(rgb(T.muted))
+                .text_as(12.5, T.muted)
                 .child(ui::i18n::t(&label.into()).to_owned()),
         )
         .child(control)
@@ -234,8 +233,7 @@ pub fn engine_icon(config: &engine::EngineConfig, size: f32) -> gpui::AnyElement
             .into_any_element(),
         None => frame
             .bg(rgb(T.bg))
-            .border_1()
-            .border_color(rgb(T.border_strong))
+            .border_as(T.border_strong)
             .child(
                 gpui::svg()
                     .path("pieces/merida/wR.svg")

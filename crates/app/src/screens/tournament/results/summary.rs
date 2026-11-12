@@ -28,9 +28,7 @@ pub(super) fn locked_summary(run: &Run) -> Div {
                             div()
                                 .font_family(MONO)
                                 .text_as(11., T.muted)
-                                .overflow_hidden()
-                                .whitespace_nowrap()
-                                .text_ellipsis()
+                                .truncate()
                                 .child(SharedString::from(cmd.clone())),
                         ),
                 ),

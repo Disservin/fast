@@ -207,8 +207,7 @@ impl AnalyseScreen {
             .h(px(40.))
             .px(px(16.))
             .gap(px(10.))
-            .border_b_1()
-            .border_color(rgb(T.border))
+            .border_b_as(T.border)
             .child(section_label("Log"))
             .child(div().text_as(12., T.muted).child(name))
             .when(holding, |row| {
@@ -218,7 +217,7 @@ impl AnalyseScreen {
             })
             .child(div().flex_1())
             .child(
-                div().flex_none().w(px(64.)).child(
+                div().col_w(64.).child(
                     check("log-info", self.log_show_info, "Info")
                         .text(13.)
                         .on_change(this.listen_with(move |screen, value, _, cx| {
@@ -229,7 +228,7 @@ impl AnalyseScreen {
                 ),
             )
             .child(
-                div().flex_none().w(px(80.)).child(
+                div().col_w(80.).child(
                     check("log-follow", self.log_follow, "Follow")
                         .text(13.)
                         .on_change(this.listen_with(move |screen, value, _, cx| {

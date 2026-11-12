@@ -14,7 +14,7 @@ use gpui_component::input::{InputEvent, InputState, TextareaState};
 use gpui_component::menu::{ContextMenuExt, PopupMenuItem};
 use ui::{
     SANS, T,
-    widgets::{Btn, BtnKind, Listen, TextExt, btn, h_flex, icon_btn, v_flex},
+    widgets::{Btn, BtnKind, Listen, StyleExt, btn, h_flex, icon_btn, v_flex},
 };
 
 use crate::{
@@ -677,9 +677,8 @@ impl Render for Workspace {
                     .flex_col()
                     .size_full()
                     .bg(rgb(T.bg))
-                    .text_color(rgb(T.fg))
+                    .text_as(14., T.fg)
                     .font_family(SANS)
-                    .text_size(px(14.))
                     .child(self.top_bar(viewport_w, controls, window, cx))
                     .child(self.tab_bar(cx))
                     .children(path_bar)

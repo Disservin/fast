@@ -61,9 +61,8 @@ impl TournamentScreen {
                     .gap(px(12.))
                     .px(px(10.))
                     .py(px(6.))
-                    .text_size(px(12.))
+                    .text_as(12., T.faint)
                     .font_weight(FontWeight::SEMIBOLD)
-                    .text_color(rgb(T.faint))
                     .child(
                         div()
                             .w(px(72.))
@@ -136,9 +135,7 @@ impl TournamentScreen {
                             div()
                                 .flex_1()
                                 .min_w_0()
-                                .overflow_hidden()
-                                .whitespace_nowrap()
-                                .text_ellipsis()
+                                .truncate()
                                 .text_color(rgb(T.muted))
                                 .child(SharedString::from(row.reason.clone())),
                         )

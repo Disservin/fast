@@ -362,9 +362,8 @@ impl SettingsScreen {
             .children(about.map(|about| {
                 div()
                     .mb(px(8.))
-                    .text_size(px(13.))
+                    .text_as(13., T.fg_2)
                     .line_height(px(19.))
-                    .text_color(rgb(T.fg_2))
                     .child(SharedString::from(about))
             }))
             .child(debug_row)
@@ -496,8 +495,7 @@ impl SettingsScreen {
             .mt(px(14.))
             .child(
                 div()
-                    .w(px(236.))
-                    .flex_none()
+                    .col_w(236.)
                     .font_weight(FontWeight::MEDIUM)
                     .child(ui::i18n::t("Use this engine for")),
             )
@@ -555,9 +553,8 @@ impl SettingsScreen {
                         .whitespace_nowrap()
                         .child(
                             div()
-                                .text_size(px(12.))
+                                .text_as(12., T.fg_2)
                                 .font_weight(FontWeight::SEMIBOLD)
-                                .text_color(rgb(T.fg_2))
                                 .child(SharedString::from(label)),
                         )
                         .children(detail.map(|detail| {

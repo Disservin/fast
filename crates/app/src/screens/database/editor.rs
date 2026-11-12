@@ -165,8 +165,7 @@ impl DatabaseScreen {
             .gap(px(6.))
             .px(px(16.))
             .py(px(12.))
-            .border_t_1()
-            .border_color(rgb(T.border))
+            .border_t_as(T.border)
             .child(
                 btn("edit-cancel", "Cancel").on_click(cancel.listen(move |screen, _, cx| {
                     screen.editing = None;

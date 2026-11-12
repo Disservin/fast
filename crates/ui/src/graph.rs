@@ -9,7 +9,7 @@ use gpui::{
     div, point, prelude::*, px, quad, relative, rgb, size,
 };
 
-use crate::widgets::TextExt;
+use crate::widgets::StyleExt;
 use crate::{
     theme::{MONO, T},
     timeline::ScrubHandler,
@@ -339,8 +339,7 @@ pub fn graph(props: GraphProps) -> impl IntoElement {
         .when_some(height, |el, height| el.h(px(height)).flex_none())
         .when(height.is_none(), |el| el.flex_1().min_h(px(80.)))
         .bg(rgb(T.surface))
-        .border_1()
-        .border_color(rgb(T.border))
+        .border_as(T.border)
         .rounded(px(6.))
         .overflow_hidden()
         .child(
@@ -413,9 +412,8 @@ pub fn graph(props: GraphProps) -> impl IntoElement {
                         div()
                             .w_full()
                             .text_center()
-                            .text_size(px(12.))
+                            .text_as(12., T.muted)
                             .line_height(px(16.))
-                            .text_color(rgb(T.muted))
                             .child(empty),
                     ),
             )

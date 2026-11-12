@@ -10,7 +10,7 @@ use gpui::{
 
 use crate::{
     theme::{MONO, SANS, T},
-    widgets::{TextExt, h_flex, v_flex},
+    widgets::{StyleExt, h_flex, v_flex},
 };
 
 const NUMBER_W: f32 = 42.;
@@ -161,9 +161,8 @@ fn variation_block(tree: &GameTree, start: NodeId, props: &ScoresheetProps, dept
         .flex_wrap()
         .gap_x(px(4.))
         .font_family(MONO)
-        .text_size(px(13.))
-        .line_height(px(21.))
-        .text_color(rgb(T.fg_2));
+        .text_as(13., T.fg_2)
+        .line_height(px(21.));
     let mut current = start;
     let mut numbered = true;
     let mut nested: Vec<Div> = Vec::new();
@@ -203,9 +202,8 @@ fn comment(text: &str) -> Div {
         .my(px(4.))
         .font_family(SANS)
         .italic()
-        .text_size(px(13.))
+        .text_as(13., T.fg_2)
         .line_height(px(20.))
-        .text_color(rgb(T.fg_2))
         .child(SharedString::from(text.to_owned()))
 }
 
@@ -222,12 +220,10 @@ pub fn scoresheet_body(tree: &GameTree, props: &ScoresheetProps) -> impl IntoEle
             .h(px(ROW_H))
             .flex_none()
             .pl(px(18.))
-            .border_b_1()
-            .border_color(rgb(T.divider))
+            .border_b_as(T.divider)
             .child(
                 div()
-                    .w(px(NUMBER_W - 4.))
-                    .flex_none()
+                    .col_w(NUMBER_W - 4.)
                     .text_color(rgb(T.faint))
                     .child(format!("{number}.")),
             )
@@ -253,15 +249,13 @@ pub fn scoresheet_body(tree: &GameTree, props: &ScoresheetProps) -> impl IntoEle
         cells = match white_id {
             Some(white) => cells.child(
                 div()
-                    .w(px(MOVE_W))
-                    .flex_none()
+                    .col_w(MOVE_W)
                     .overflow_hidden()
                     .child(move_cell(tree, white, props)),
             ),
             None => cells.child(
                 div()
-                    .w(px(MOVE_W))
-                    .flex_none()
+                    .col_w(MOVE_W)
                     .pl(px(6.))
                     .text_color(rgb(T.faint))
                     .child("…"),
@@ -308,8 +302,7 @@ pub fn scoresheet_body(tree: &GameTree, props: &ScoresheetProps) -> impl IntoEle
         if next_ply.is_multiple_of(2) {
             cells = cells.child(
                 div()
-                    .w(px(MOVE_W))
-                    .flex_none()
+                    .col_w(MOVE_W)
                     .pl(px(6.))
                     .text_color(rgb(T.faint))
                     .child("…"),

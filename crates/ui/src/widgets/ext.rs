@@ -50,12 +50,44 @@ impl<V: 'static> Listen<V> for gpui::Entity<V> {
     }
 }
 
-/// Sets text size and colour together, the pair nearly every label needs.
-pub trait TextExt: Styled + Sized {
-    /// Text at `size` pixels in the palette colour `colour`, such as `T.muted`.
+/// Style pairs that nearly every element needs, set in one call with a palette colour
+/// such as `T.muted`.
+pub trait StyleExt: Styled + Sized {
+    /// Text at `size` pixels in `colour`.
     fn text_as(self, size: f32, colour: u32) -> Self {
         self.text_size(px(size)).text_color(rgb(colour))
     }
+
+    /// A 1px border on every side in `colour`.
+    fn border_as(self, colour: u32) -> Self {
+        self.border_1().border_color(rgb(colour))
+    }
+
+    /// A 1px bottom rule in `colour`, such as `T.divider` between rows.
+    fn border_b_as(self, colour: u32) -> Self {
+        self.border_b_1().border_color(rgb(colour))
+    }
+
+    /// A 1px top rule in `colour`.
+    fn border_t_as(self, colour: u32) -> Self {
+        self.border_t_1().border_color(rgb(colour))
+    }
+
+    /// A 1px left rule in `colour`.
+    fn border_l_as(self, colour: u32) -> Self {
+        self.border_l_1().border_color(rgb(colour))
+    }
+
+    /// A 1px right rule in `colour`.
+    fn border_r_as(self, colour: u32) -> Self {
+        self.border_r_1().border_color(rgb(colour))
+    }
+
+    /// A fixed-width table column of `width` pixels that never grows or shrinks, so
+    /// values stay in place as they update.
+    fn col_w(self, width: f32) -> Self {
+        self.w(px(width)).flex_none()
+    }
 }
 
-impl<E: Styled> TextExt for E {}
+impl<E: Styled> StyleExt for E {}

@@ -419,9 +419,8 @@ impl TrainScreen {
                     div()
                         .flex_1()
                         .min_w_0()
-                        .text_size(px(14.))
+                        .text_as(14., T.fg)
                         .font_weight(FontWeight::MEDIUM)
-                        .text_color(rgb(T.fg))
                         .child(message),
                 ),
         )

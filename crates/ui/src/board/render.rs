@@ -1,6 +1,7 @@
 //! Drawing the board: squares, highlights, pieces, arrows and the promotion picker.
 
 use super::*;
+use crate::widgets::StyleExt as _;
 use gpui::{Div, Entity};
 
 /// Lichess' premove highlight, rgba(20, 30, 85, 0.5).
@@ -445,9 +446,8 @@ pub(super) fn outside_coordinates(flipped: bool, cell: Pixels) -> impl IntoEleme
                     .left(px(-16.))
                     .w(px(14.))
                     .top(cell * index as f32 + cell / 2. - px(8.))
-                    .text_size(px(11.))
+                    .text_as(11., T.muted)
                     .font_family(MONO)
-                    .text_color(rgb(T.muted))
                     .child(rank.to_string()),
             )
             .child(
@@ -455,9 +455,8 @@ pub(super) fn outside_coordinates(flipped: bool, cell: Pixels) -> impl IntoEleme
                     .absolute()
                     .bottom(px(-16.))
                     .left(cell * index as f32 + cell / 2. - px(3.))
-                    .text_size(px(11.))
+                    .text_as(11., T.muted)
                     .font_family(MONO)
-                    .text_color(rgb(T.muted))
                     .child(((b'a' + file as u8) as char).to_string()),
             );
     }

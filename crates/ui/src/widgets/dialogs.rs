@@ -46,8 +46,7 @@ pub fn dialog(
         .overflow_y_scroll()
         .rounded(px(6.))
         .bg(rgb(T.surface))
-        .border_1()
-        .border_color(rgb(T.border_strong))
+        .border_as(T.border_strong)
         .child(
             panel_header(title).child(
                 icon_btn(child("close"), "icons/x.svg")

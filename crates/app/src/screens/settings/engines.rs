@@ -582,8 +582,7 @@ impl SettingsScreen {
                     .h(px(43.))
                     .px(px(16.))
                     .cursor_pointer()
-                    .border_b_1()
-                    .border_color(rgb(T.divider))
+                    .border_b_as(T.divider)
                     .when(selected, |row| row.bg(rgb(T.selected)))
                     .when(!selected, |row| row.hover(|style| style.bg(rgb(T.hover))))
                     .on_click(this.listen_event(move |screen, _, window, cx| {

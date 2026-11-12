@@ -22,15 +22,14 @@ pub(super) fn engine_badge(
     width: f32,
 ) -> gpui::AnyElement {
     let Some(config) = config else {
-        return div().w(px(width)).flex_none().into_any_element();
+        return div().col_w(width).into_any_element();
     };
     let full = format!("{} {}", config.name, config.version)
         .trim()
         .to_owned();
     h_flex()
         .id(("move-engine", index))
-        .w(px(width))
-        .flex_none()
+        .col_w(width)
         .pr(px(8.))
         .gap(px(6.))
         .tooltip(move |window, cx| {
@@ -44,9 +43,8 @@ pub(super) fn engine_badge(
                 .overflow_hidden()
                 .text_ellipsis()
                 .font_family(ui::SANS)
-                .text_size(px(12.))
+                .text_as(12., T.fg_2)
                 .font_weight(FontWeight::MEDIUM)
-                .text_color(rgb(T.fg_2))
                 .child(short_engine(&config.name)),
         )
         .into_any_element()
@@ -444,8 +442,7 @@ impl AnalyseScreen {
             .flex_none()
             .px(px(16.))
             .cursor_pointer()
-            .border_b_1()
-            .border_color(rgb(T.divider))
+            .border_b_as(T.divider)
             .text_size(px(14.))
             .font_family(MONO)
             .whitespace_nowrap()
@@ -471,21 +468,14 @@ impl AnalyseScreen {
             .children(badge)
             .child(
                 div()
-                    .w(px(COL_MOVE))
-                    .flex_none()
+                    .col_w(COL_MOVE)
                     .font_weight(FontWeight::SEMIBOLD)
                     .text_color(rgb(label_color))
                     .child(ui::i18n::t(&label).to_owned()),
             )
-            .child(
-                div()
-                    .w(px(COL_SF))
-                    .flex_none()
-                    .text_as(13., T.fg_2)
-                    .child(score),
-            )
+            .child(div().col_w(COL_SF).text_as(13., T.fg_2).child(score))
             .when(view.show_wdl, |row_el| {
-                row_el.child(div().w(px(COL_WDL)).flex_none().pr(px(12.)).child(
+                row_el.child(div().col_w(COL_WDL).pr(px(12.)).child(
                     match wdl_percentages(row.wdl) {
                         Some([w, d, l]) => {
                             v_flex().gap(px(2.)).child(wdl_bar(row.wdl)).child(
@@ -500,8 +490,7 @@ impl AnalyseScreen {
                 row_el
                     .child(
                         div()
-                            .w(px(COL_TB))
-                            .flex_none()
+                            .col_w(COL_TB)
                             .pr(px(8.))
                             .overflow_hidden()
                             .text_ellipsis()
@@ -513,8 +502,7 @@ impl AnalyseScreen {
                     )
                     .child(
                         div()
-                            .w(px(COL_CLOUD))
-                            .flex_none()
+                            .col_w(COL_CLOUD)
                             .text_size(px(13.))
                             .text_color(rgb(cloud_color))
                             .child(cloud_text),
@@ -523,8 +511,7 @@ impl AnalyseScreen {
             .child(
                 div()
                     .id(("reference-count", index))
-                    .w(px(COL_REF))
-                    .flex_none()
+                    .col_w(COL_REF)
                     .pl(px(4.))
                     .text_as(13., T.fg_2)
                     .when_some(count_target, |cell, (path, hash, label)| {
@@ -557,8 +544,7 @@ impl AnalyseScreen {
                 row_el
                     .child(
                         div()
-                            .w(px(COL_MY))
-                            .flex_none()
+                            .col_w(COL_MY)
                             .text_as(13., T.fg_2)
                             .child(stat_text(&row.mine)),
                     )

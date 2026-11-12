@@ -21,7 +21,7 @@ use gpui_component::input::InputState;
 use ui::{
     MONO, T,
     widgets::{
-        Listen, TextExt, btn, check, col_heading, h_flex, meter, section_label, segmented,
+        Listen, StyleExt, btn, check, col_heading, h_flex, meter, section_label, segmented,
         table_header, v_flex,
     },
 };
@@ -332,14 +332,12 @@ impl Render for TestPositionsScreen {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let side = v_flex()
             .id("test-settings")
-            .w(px(340.))
-            .flex_none()
+            .col_w(340.)
             .h_full()
             .overflow_y_scroll()
             .gap(px(20.))
             .p(px(20.))
-            .border_r_1()
-            .border_color(rgb(T.border))
+            .border_r_as(T.border)
             .bg(rgb(T.tour_card))
             .child(self.render_file(cx))
             .child(self.render_form(cx));

@@ -20,8 +20,7 @@ impl DatabaseScreen {
             .pt(px(16.))
             .pb(px(16.))
             .bg(rgb(T.surface))
-            .border_r_1()
-            .border_color(rgb(T.border))
+            .border_r_as(T.border)
             .child(
                 h_flex()
                     .justify_between()

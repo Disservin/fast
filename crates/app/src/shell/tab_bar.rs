@@ -75,8 +75,7 @@ impl Workspace {
                     .gap(px(10.))
                     .rounded(px(12.))
                     .bg(rgb(T.surface))
-                    .border_1()
-                    .border_color(rgb(T.border))
+                    .border_as(T.border)
                     .cursor_pointer()
                     .hover(|card| card.border_color(rgb(T.border_strong)).bg(rgb(T.selected)))
                     .child(
@@ -86,17 +85,15 @@ impl Workspace {
                             .child(ui::widgets::icon(icon_path, px(20.), T.accent))
                             .child(
                                 div()
-                                    .text_size(px(19.))
+                                    .text_as(19., T.fg)
                                     .font_weight(FontWeight::SEMIBOLD)
-                                    .text_color(rgb(T.fg))
                                     .child(title),
                             ),
                     )
                     .child(
                         div()
-                            .text_size(px(14.))
+                            .text_as(14., T.muted)
                             .line_height(px(20.))
-                            .text_color(rgb(T.muted))
                             .child(description),
                     )
                     .on_click(pick.listen_event(move |this, _, window, cx| {
@@ -127,9 +124,8 @@ impl Workspace {
                             .items_center()
                             .child(
                                 div()
-                                    .text_size(px(22.))
+                                    .text_as(22., T.fg)
                                     .font_weight(FontWeight::BOLD)
-                                    .text_color(rgb(T.fg))
                                     .child(ui::i18n::t("New tab")),
                             )
                             .child(

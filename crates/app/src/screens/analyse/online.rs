@@ -7,7 +7,7 @@ use chess_core::{GameTree, Position};
 use gpui::{Context, Div, FontWeight, Task, div, prelude::*, px, rgb};
 use ui::{
     T,
-    widgets::{TextExt, h_flex, stat},
+    widgets::{StyleExt, h_flex, stat},
 };
 
 use super::{AnalyseScreen, MoveRow};
@@ -240,8 +240,7 @@ impl AnalyseScreen {
                 .gap_y(px(4.))
                 .px(px(16.))
                 .py(px(8.))
-                .border_t_1()
-                .border_color(rgb(T.border))
+                .border_t_as(T.border)
                 .text_size(px(12.))
                 .child(source("Tablebase", TABLEBASE_SOURCE).child(tablebase))
                 .child(source("Cloud", "chessdb.cn").child(cloud)),

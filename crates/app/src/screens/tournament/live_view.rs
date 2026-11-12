@@ -25,9 +25,7 @@ pub(super) fn player_line(game: &LiveGame, white: bool, size: f32) -> impl IntoE
             div()
                 .flex_1()
                 .min_w_0()
-                .overflow_hidden()
-                .whitespace_nowrap()
-                .text_ellipsis()
+                .truncate()
                 .child(SharedString::from(
                     name.clone().unwrap_or_else(|| "…".into()),
                 )),
@@ -107,9 +105,7 @@ pub(super) fn player_row(game: &LiveGame, white: bool, names: &[String], to_move
             div()
                 .flex_1()
                 .min_w_0()
-                .overflow_hidden()
-                .whitespace_nowrap()
-                .text_ellipsis()
+                .truncate()
                 .font_weight(FontWeight::SEMIBOLD)
                 .child(SharedString::from(label)),
         )
@@ -269,19 +265,13 @@ pub(super) fn chip_colours(row: &GameRow, names: &[String]) -> (u32, u32) {
 }
 
 pub(super) fn name_cell(name: &str, names: &[String]) -> Div {
-    div()
-        .flex_1()
-        .min_w_0()
-        .overflow_hidden()
-        .whitespace_nowrap()
-        .text_ellipsis()
-        .child(
-            h_flex()
-                .gap(px(8.))
-                .items_center()
-                .child(swatch(engine_colour(names, name)))
-                .child(SharedString::from(name.to_owned())),
-        )
+    div().flex_1().min_w_0().truncate().child(
+        h_flex()
+            .gap(px(8.))
+            .items_center()
+            .child(swatch(engine_colour(names, name)))
+            .child(SharedString::from(name.to_owned())),
+    )
 }
 
 pub(super) fn search_text(search: &Search) -> String {

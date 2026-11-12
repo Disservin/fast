@@ -23,7 +23,7 @@ use gpui_component::{
 use ui::{
     BoardView, MONO, T,
     widgets::{
-        Listen, TextExt, badge, btn, check, divider, h_flex, meter, mono, panel, section_label,
+        Listen, StyleExt, badge, btn, check, divider, h_flex, meter, mono, panel, section_label,
         v_flex,
     },
 };

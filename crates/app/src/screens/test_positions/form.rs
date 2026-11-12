@@ -165,9 +165,7 @@ impl TestPositionsScreen {
                         div()
                             .text_size(px(14.))
                             .font_weight(FontWeight::SEMIBOLD)
-                            .overflow_hidden()
-                            .text_ellipsis()
-                            .whitespace_nowrap()
+                            .truncate()
                             .child(SharedString::from(
                                 path.file_name()
                                     .map(|name| name.to_string_lossy().into_owned())
@@ -219,8 +217,7 @@ impl TestPositionsScreen {
                     .children(summary)
                     .child(
                         div()
-                            .text_size(px(12.5))
-                            .text_color(rgb(T.muted))
+                            .text_as(12.5, T.muted)
                             .text_center()
                             .child(ui::i18n::t("Drop an .epd file here")),
                     )
@@ -230,12 +227,11 @@ impl TestPositionsScreen {
                             .on_click(choose.listen(move |screen, _, cx| screen.choose_file(cx))),
                     ),
             )
-            .children(self.load_error.clone().map(|err| {
-                div()
-                    .text_size(px(12.5))
-                    .text_color(rgb(T.danger_fg))
-                    .child(err)
-            }))
+            .children(
+                self.load_error
+                    .clone()
+                    .map(|err| div().text_as(12.5, T.danger_fg).child(err)),
+            )
     }
 
     pub(super) fn render_engines(&self, cx: &mut Context<Self>) -> Div {
@@ -390,12 +386,11 @@ impl TestPositionsScreen {
                         )),
                 ))
             })
-            .children(self.form_error.clone().map(|err| {
-                div()
-                    .text_size(px(12.5))
-                    .text_color(rgb(T.danger_fg))
-                    .child(err)
-            }))
+            .children(
+                self.form_error
+                    .clone()
+                    .map(|err| div().text_as(12.5, T.danger_fg).child(err)),
+            )
             .child(if running {
                 btn("test-stop", ui::i18n::t("Stop"))
                     .h(38.)

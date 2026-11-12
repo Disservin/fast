@@ -21,7 +21,7 @@ use gpui_component::{
 use ui::{
     BoardEvent, BoardView, MONO, T,
     widgets::{
-        Listen, TextExt, btn, check, h_flex, header_tab, mono, panel, section_label, v_flex,
+        Listen, StyleExt, btn, check, h_flex, header_tab, mono, panel, section_label, v_flex,
     },
 };
 
@@ -787,8 +787,7 @@ impl Render for PlayScreen {
                                         px(256.),
                                         window.scale_factor(),
                                     ))
-                                    .border_1()
-                                    .border_color(rgb(T.border))
+                                    .border_as(T.border)
                                     .child(self.pv_board.clone()),
                             ),
                     )

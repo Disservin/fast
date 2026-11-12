@@ -22,7 +22,7 @@ use gpui_component::{
 use ui::{
     BoardView, MONO, T,
     widgets::{
-        Listen, TextExt, badge, btn, check, col_heading, h_flex, icon_btn, mono, panel,
+        Listen, StyleExt, badge, btn, check, col_heading, h_flex, icon_btn, mono, panel,
         section_label, stat, table_header, v_flex,
     },
 };
@@ -744,7 +744,7 @@ impl Render for DatabaseScreen {
                                     .gap(px(16.))
                                     .child(div().flex_1().min_w_0().h_full().child(table))
                                     .when(show_preview, |row| {
-                                        row.child(panel().w(px(293.)).flex_none().child(preview))
+                                        row.child(panel().col_w(293.).child(preview))
                                     }),
                             ),
                     ),

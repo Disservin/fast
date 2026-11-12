@@ -527,8 +527,7 @@ impl DatabaseScreen {
             .py(px(4.))
             .rounded(px(6.))
             .bg(rgb(T.surface))
-            .border_1()
-            .border_color(rgb(T.border_strong));
+            .border_as(T.border_strong);
         for (index, (name, games)) in self.player_suggestions.iter().enumerate() {
             let this = cx.entity();
             let highlighted = self.player_highlight == Some(index);

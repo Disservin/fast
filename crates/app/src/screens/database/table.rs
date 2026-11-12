@@ -327,8 +327,7 @@ impl DatabaseScreen {
             .h(px(ROW_H))
             .px(px(12.))
             .cursor_pointer()
-            .border_b_1()
-            .border_color(rgb(T.divider))
+            .border_b_as(T.divider)
             .text_size(px(13.))
             .when(selected, |row| row.bg(rgb(T.selected)))
             .when(!selected, |row| row.hover(|style| style.bg(rgb(T.hover))))
@@ -436,16 +435,14 @@ impl DatabaseScreen {
         let black_won = game.result == "0-1";
         let mono_cell = |text: String, width: f32, color: u32| {
             mono(text)
-                .w(px(width))
-                .flex_none()
+                .col_w(width)
                 .text_size(px(13.))
                 .text_color(rgb(color))
         };
         row_el
             .child(
                 mono(game.id.to_string())
-                    .w(px(W_NUMBER))
-                    .flex_none()
+                    .col_w(W_NUMBER)
                     .pr(px(14.))
                     .flex()
                     .justify_end()
@@ -462,8 +459,7 @@ impl DatabaseScreen {
             .child(mono_cell(game.date.clone(), W_DATE, T.muted))
             .child(
                 div()
-                    .w(px(W_SOURCE))
-                    .flex_none()
+                    .col_w(W_SOURCE)
                     .text_color(rgb(T.fg_2))
                     .child(SharedString::from(game.source.clone())),
             )
@@ -473,8 +469,7 @@ impl DatabaseScreen {
                         .map(|accuracy| format!("{accuracy:.1}"))
                         .unwrap_or_else(|| "—".to_owned()),
                 )
-                .w(px(W_ACC))
-                .flex_none()
+                .col_w(W_ACC)
                 .text_as(13., T.fg),
             )
     }

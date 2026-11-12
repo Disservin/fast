@@ -17,7 +17,7 @@ use gpui_component::Root;
 use ui::{
     BoardPrefs, BoardView, MONO, T,
     board::snap_board_size,
-    widgets::{TextExt, btn, h_flex, section_label, v_flex},
+    widgets::{StyleExt, btn, h_flex, section_label, v_flex},
 };
 
 use crate::{
@@ -317,9 +317,8 @@ impl LiveWall {
                 }))
                 .child(
                     div()
-                        .text_size(px(15.))
+                        .text_as(15., T.fg)
                         .font_weight(FontWeight::SEMIBOLD)
-                        .text_color(rgb(T.fg))
                         .child(SharedString::from(
                             name.clone().unwrap_or_else(|| "…".into()),
                         )),
@@ -330,9 +329,8 @@ impl LiveWall {
             v_flex().gap(px(6.)).child(section_label(label)).child(
                 div()
                     .font_family(MONO)
-                    .text_size(px(13.))
+                    .text_as(13., T.fg)
                     .line_height(px(20.))
-                    .text_color(rgb(T.fg))
                     .child(SharedString::from(text)),
             )
         };
@@ -343,8 +341,7 @@ impl LiveWall {
             .gap(px(18.))
             .rounded(px(12.))
             .bg(rgb(T.tour_card))
-            .border_1()
-            .border_color(rgb(T.tour_card_border))
+            .border_as(T.tour_card_border)
             .child(engine("White", &game.white, &game.white_search))
             .child(engine("Black", &game.black, &game.black_search))
             .child(text_block("Line", line))
@@ -427,9 +424,8 @@ impl Render for LiveWall {
                     .children(back)
                     .child(
                         div()
-                            .text_size(px(22.))
+                            .text_as(22., T.fg)
                             .font_weight(FontWeight::BOLD)
-                            .text_color(rgb(T.fg))
                             .child(SharedString::from(title)),
                     )
                     .child(

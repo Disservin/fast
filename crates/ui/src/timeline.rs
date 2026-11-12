@@ -7,7 +7,7 @@ use gpui::{
     div, point, prelude::*, px, quad, rgb, size,
 };
 
-use crate::theme::T;
+use crate::{theme::T, widgets::StyleExt as _};
 
 /// Steepness of the saturating eval-to-height curve: small advantages stay
 /// readable while a won position simply fills the bar.
@@ -59,8 +59,7 @@ pub fn timeline(props: TimelineProps) -> impl IntoElement {
         .w_full()
         .flex_1()
         .bg(rgb(T.surface))
-        .border_1()
-        .border_color(rgb(T.border))
+        .border_as(T.border)
         .rounded(px(6.))
         .px(px(5.))
         .py(px(5.))

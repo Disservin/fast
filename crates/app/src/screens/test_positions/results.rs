@@ -3,13 +3,7 @@
 use super::*;
 
 pub(super) fn render_cell(cell: Option<&Cell>) -> Div {
-    let base = div()
-        .flex_1()
-        .min_w(px(140.))
-        .overflow_hidden()
-        .text_ellipsis()
-        .whitespace_nowrap()
-        .font_family(MONO);
+    let base = div().flex_1().min_w(px(140.)).truncate().font_family(MONO);
     match cell {
         None | Some(Cell::Waiting) => base.text_color(rgb(T.faint)).child("—"),
         Some(Cell::Running(search)) => base
@@ -109,15 +103,12 @@ impl TestPositionsScreen {
                         .p(px(14.))
                         .rounded(px(10.))
                         .bg(rgb(T.tour_tile))
-                        .border_1()
-                        .border_color(rgb(T.tour_tile_border))
+                        .border_as(T.tour_tile_border)
                         .child(
                             div()
                                 .text_size(px(13.))
                                 .font_weight(FontWeight::SEMIBOLD)
-                                .overflow_hidden()
-                                .text_ellipsis()
-                                .whitespace_nowrap()
+                                .truncate()
                                 .child(SharedString::from(name.clone())),
                         )
                         .child(
@@ -179,8 +170,7 @@ impl TestPositionsScreen {
                     }))
                     .child(
                         div()
-                            .text_size(px(12.5))
-                            .text_color(rgb(T.muted))
+                            .text_as(12.5, T.muted)
                             .child(SharedString::from(status)),
                     ),
             )
@@ -212,12 +202,9 @@ impl TestPositionsScreen {
                 div()
                     .flex_1()
                     .min_w(px(140.))
-                    .overflow_hidden()
-                    .text_ellipsis()
-                    .whitespace_nowrap()
-                    .text_size(px(11.5))
+                    .truncate()
+                    .text_as(11.5, T.muted)
                     .font_weight(FontWeight::SEMIBOLD)
-                    .text_color(rgb(T.muted))
                     .child(SharedString::from(name.clone())),
             );
         }
@@ -239,8 +226,7 @@ impl TestPositionsScreen {
             .min_h(px(240.))
             .rounded(px(10.))
             .bg(rgb(T.surface))
-            .border_1()
-            .border_color(rgb(T.border))
+            .border_as(T.border)
             .overflow_hidden()
             .child(header)
             .child(list)
@@ -261,24 +247,15 @@ impl TestPositionsScreen {
             .px(px(12.))
             .gap(px(8.))
             .text_size(px(12.5))
-            .border_b_1()
-            .border_color(rgb(T.divider))
+            .border_b_as(T.divider)
             .child(
                 div()
-                    .w(px(W_LINE))
-                    .flex_none()
+                    .col_w(W_LINE)
                     .font_family(MONO)
                     .text_color(rgb(T.muted))
                     .child(SharedString::from(line.line.to_string())),
             );
-        let ellipsis = |width: f32| {
-            div()
-                .w(px(width))
-                .flex_none()
-                .overflow_hidden()
-                .text_ellipsis()
-                .whitespace_nowrap()
-        };
+        let ellipsis = |width: f32| div().col_w(width).truncate();
         match (&line.parsed, problem) {
             (_, Some(problem)) => {
                 // Skipped: shown in red with the reason, never sent to an engine.
@@ -296,9 +273,7 @@ impl TestPositionsScreen {
                         div()
                             .flex_1()
                             .min_w_0()
-                            .overflow_hidden()
-                            .text_ellipsis()
-                            .whitespace_nowrap()
+                            .truncate()
                             .child(SharedString::from(format!("Skipped: {problem}")))
                             .id(("test-row-problem", index))
                             .tooltip({

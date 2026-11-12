@@ -38,8 +38,7 @@ pub(super) fn render_changelog() -> Div {
                 current.child(
                     div()
                         .py(px(6.))
-                        .border_b_1()
-                        .border_color(rgb(T.divider))
+                        .border_b_as(T.divider)
                         .text_as(13., T.fg_2)
                         .child(entry.trim()),
                 ),
@@ -71,8 +70,7 @@ fn bundled_assets_table() -> gpui::Div {
                 .h(px(34.))
                 .flex_shrink_0()
                 .px(px(12.))
-                .border_b_1()
-                .border_color(rgb(T.divider))
+                .border_b_as(T.divider)
                 .text_size(px(13.))
                 .child(
                     div()
@@ -350,8 +348,7 @@ impl SettingsScreen {
                                 .w_full()
                                 .h(px(32.))
                                 .px(px(12.))
-                                .border_b_1()
-                                .border_color(rgb(T.divider))
+                                .border_b_as(T.divider)
                                 .text_size(px(13.))
                                 .child(
                                     div()

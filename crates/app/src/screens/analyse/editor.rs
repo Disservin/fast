@@ -7,7 +7,7 @@ use chess_core::{
 use gpui::{Context, IntoElement, MouseButton, SharedString, div, img, prelude::*, px, rgb};
 use ui::{
     T,
-    widgets::{Listen, TextExt, btn, check, h_flex, icon_btn, v_flex},
+    widgets::{Listen, StyleExt, btn, check, h_flex, icon_btn, v_flex},
 };
 
 use super::AnalyseScreen;
@@ -306,7 +306,7 @@ impl AnalyseScreen {
         };
         // One row per side: its name, then O-O and O-O-O.
         let castle = |index: usize| {
-            div().w(px(84.)).flex_none().child(
+            div().col_w(84.).child(
                 check(
                     ("editor-castle", index),
                     editor.castling[index],
@@ -357,8 +357,7 @@ impl AnalyseScreen {
             .p(px(14.))
             .gap(px(12.))
             .bg(rgb(T.surface))
-            .border_1()
-            .border_color(rgb(T.border))
+            .border_as(T.border)
             .child(
                 h_flex()
                     .gap(px(10.))

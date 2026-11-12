@@ -217,8 +217,7 @@ impl TournamentScreen {
                 div()
                     .rounded(px(4.))
                     .bg(rgb(T.bg))
-                    .border_1()
-                    .border_color(rgb(T.border_strong))
+                    .border_as(T.border_strong)
                     .font_family(MONO)
                     .text_size(px(12.5))
                     .child(Textarea::new(&self.paste).appearance(false).h(px(300.))),

@@ -22,7 +22,7 @@ use ui::{
     T,
     board::theme_swatch,
     widgets::{
-        Listen, TextExt, badge, btn, check, col_heading, h_flex, key_cap, mono, panel,
+        Listen, StyleExt, badge, btn, check, col_heading, h_flex, key_cap, mono, panel,
         section_label, segmented, table_header, v_flex,
     },
 };
@@ -378,8 +378,7 @@ impl SettingsScreen {
                     .text_color(rgb(if selected { T.fg } else { T.fg_2 }))
                     .when(selected, |item| {
                         item.bg(rgb(T.selected))
-                            .border_1()
-                            .border_color(rgb(T.border_strong))
+                            .border_as(T.border_strong)
                             .font_weight(FontWeight::SEMIBOLD)
                             .child(
                                 div()
@@ -405,8 +404,7 @@ impl SettingsScreen {
             .px(px(12.))
             .pt(px(20.))
             .bg(rgb(T.surface))
-            .border_r_1()
-            .border_color(rgb(T.border))
+            .border_r_as(T.border)
             .child(
                 div()
                     .px(px(12.))

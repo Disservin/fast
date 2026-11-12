@@ -8,8 +8,7 @@ pub(super) fn card() -> Div {
         .p(px(20.))
         .rounded(px(12.))
         .bg(rgb(T.tour_card))
-        .border_1()
-        .border_color(rgb(T.tour_card_border))
+        .border_as(T.tour_card_border)
 }
 
 /// A tile inside a panel.
@@ -21,13 +20,11 @@ pub(super) fn tile(label: &str) -> Div {
         .p(px(14.))
         .rounded(px(10.))
         .bg(rgb(T.tour_tile))
-        .border_1()
-        .border_color(rgb(T.tour_tile_border))
+        .border_as(T.tour_tile_border)
         .child(
             div()
-                .text_size(px(12.))
+                .text_as(12., T.faint)
                 .font_weight(FontWeight::SEMIBOLD)
-                .text_color(rgb(T.faint))
                 .child(SharedString::from(ui::i18n::t(label).to_uppercase())),
         )
 }
@@ -35,9 +32,8 @@ pub(super) fn tile(label: &str) -> Div {
 pub(super) fn heading(text: impl Into<SharedString>) -> Div {
     let text: SharedString = text.into();
     div()
-        .text_size(px(13.))
+        .text_as(13., T.muted)
         .font_weight(FontWeight::SEMIBOLD)
-        .text_color(rgb(T.muted))
         .child(SharedString::from(ui::i18n::t(&text).to_uppercase()))
 }
 
@@ -102,9 +98,7 @@ pub(super) fn def_row(label: &str, value: String) -> Div {
         .child(
             div()
                 .min_w_0()
-                .overflow_hidden()
-                .whitespace_nowrap()
-                .text_ellipsis()
+                .truncate()
                 .text_right()
                 .child(SharedString::from(value)),
         )

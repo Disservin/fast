@@ -41,9 +41,8 @@ pub fn section_label(text: impl AsRef<str>) -> Div {
     let text = crate::i18n::t(text.as_ref()).to_uppercase();
     let mut row = h_flex()
         .flex_none()
-        .text_size(px(11.))
+        .text_as(11., T.muted)
         .font_weight(FontWeight::SEMIBOLD)
-        .text_color(rgb(T.muted))
         .font_family(SANS);
     for ch in text.chars() {
         row = if ch == ' ' {
@@ -61,8 +60,7 @@ pub fn table_header() -> Div {
     h_flex()
         .flex_none()
         .bg(rgb(T.surface_2))
-        .border_b_1()
-        .border_color(rgb(T.border))
+        .border_b_as(T.border)
 }
 
 /// A fixed-width column heading, so it lines up with the values below it.
@@ -79,10 +77,8 @@ pub fn badge(text: impl Into<SharedString>) -> Div {
         .gap(px(5.))
         .rounded(px(4.))
         .bg(rgb(T.selected))
-        .border_1()
-        .border_color(rgb(T.border_strong))
-        .text_size(px(11.))
-        .text_color(rgb(T.fg_2))
+        .border_as(T.border_strong)
+        .text_as(11., T.fg_2)
         .child(text.into())
 }
 
@@ -95,29 +91,22 @@ pub fn stat(label: impl Into<SharedString>, value: impl Into<SharedString>) -> D
         .gap(px(5.))
         .rounded(px(4.))
         .bg(rgb(T.selected))
-        .border_1()
-        .border_color(rgb(T.border_strong))
+        .border_as(T.border_strong)
         .child(
             div()
-                .text_size(px(11.))
-                .text_color(rgb(T.muted))
+                .text_as(11., T.muted)
                 .child(crate::i18n::t(&label.into()).to_owned()),
         )
         .child(
             mono(value)
-                .text_size(px(12.))
-                .font_weight(FontWeight::SEMIBOLD)
-                .text_color(rgb(T.fg)),
+                .text_as(12., T.fg)
+                .font_weight(FontWeight::SEMIBOLD),
         )
 }
 
 /// Bordered surface panel with the standard 6px radius.
 pub fn panel() -> Div {
-    div()
-        .bg(rgb(T.surface))
-        .border_1()
-        .border_color(rgb(T.border))
-        .rounded(px(6.))
+    div().bg(rgb(T.surface)).border_as(T.border).rounded(px(6.))
 }
 
 /// A thin 2px bar along the bottom of a row for work of unknown length: a `divider`
@@ -200,12 +189,10 @@ pub fn key_cap(text: impl Into<SharedString>) -> Div {
         .px(px(7.))
         .rounded(px(4.))
         .bg(rgb(T.selected))
-        .border_1()
-        .border_color(rgb(T.border_strong))
+        .border_as(T.border_strong)
         .font_family(MONO)
-        .text_size(px(12.))
+        .text_as(12., T.fg)
         .font_weight(FontWeight::SEMIBOLD)
-        .text_color(rgb(T.fg))
         .child(text.into())
 }
 
@@ -227,8 +214,7 @@ pub fn panel_header(title: impl AsRef<str>) -> Div {
         .flex_none()
         .px(px(16.))
         .gap(px(6.))
-        .border_b_1()
-        .border_color(rgb(T.border))
+        .border_b_as(T.border)
         .child(section_label(title))
         .child(div().flex_1())
 }

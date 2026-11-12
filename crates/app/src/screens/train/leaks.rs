@@ -82,8 +82,7 @@ impl TrainScreen {
                 .px(px(16.))
                 .py(px(10.))
                 .gap(px(2.))
-                .border_t_1()
-                .border_color(rgb(T.border))
+                .border_t_as(T.border)
                 .child(
                     h_flex()
                         .justify_between()
@@ -154,8 +153,7 @@ impl TrainScreen {
                 div()
                     .px(px(16.))
                     .py(px(12.))
-                    .border_t_1()
-                    .border_color(rgb(T.border))
+                    .border_t_as(T.border)
                     .text_as(13., T.muted)
                     .child(
                         "No leaks found. Import your games to see where you leave the repertoire.",
@@ -187,8 +185,7 @@ impl TrainScreen {
                 h_flex()
                     .px(px(16.))
                     .py(px(12.))
-                    .border_t_1()
-                    .border_color(rgb(T.border))
+                    .border_t_as(T.border)
                     .child(
                         btn("drill-leaks", "Drill these lines")
                             .primary()

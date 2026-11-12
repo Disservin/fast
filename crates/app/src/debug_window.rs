@@ -12,7 +12,7 @@ use gpui::{
 use gpui_component::{Root, scroll::ScrollableElement};
 use ui::{
     MONO, SANS, T,
-    widgets::{Listen, TextExt, btn, h_flex, v_flex},
+    widgets::{Listen, StyleExt, btn, h_flex, v_flex},
 };
 
 /// How often the window looks for new output.
@@ -175,8 +175,7 @@ impl Render for DebugWindow {
                     .gap(px(6.))
                     .justify_between()
                     .bg(rgb(T.surface))
-                    .border_b_1()
-                    .border_color(rgb(T.border))
+                    .border_b_as(T.border)
                     .child(
                         h_flex()
                             .gap(px(10.))

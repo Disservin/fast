@@ -158,8 +158,7 @@ impl Workspace {
                 .px(px(21.))
                 .py(px(8.))
                 .bg(rgb(T.surface_2))
-                .border_b_1()
-                .border_color(rgb(T.border))
+                .border_b_as(T.border)
                 .child(div().flex_none().text_color(rgb(T.fg_2)).child(format!(
                     "{title}: {}",
                     if multiple {
@@ -238,7 +237,7 @@ impl Workspace {
             div()
                 .size(px(9.5))
                 .when(filled, |sq| sq.bg(rgb(T.fg)))
-                .when(!filled, |sq| sq.border_1().border_color(rgb(T.fg)))
+                .when(!filled, |sq| sq.border_as(T.fg))
         };
         v_flex()
             .gap(px(1.))
@@ -391,8 +390,7 @@ impl Workspace {
                     .w(px(440.))
                     .rounded(px(6.))
                     .bg(rgb(T.surface))
-                    .border_1()
-                    .border_color(rgb(T.border))
+                    .border_as(T.border)
                     .text_as(13., T.fg)
                     .occlude()
                     .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
@@ -419,7 +417,7 @@ impl Workspace {
                 for (index, (_, game)) in self.search_results.iter().enumerate() {
                     let target = this.clone();
                     results = results.child(
-                        div().border_t_1().border_color(rgb(T.divider)).child(
+                        div().border_t_as(T.divider).child(
                             btn(
                                 ("search-result", index),
                                 format!(
@@ -495,8 +493,7 @@ impl Workspace {
             .flex_none()
             .w_full()
             .bg(rgb(T.surface))
-            .border_b_1()
-            .border_color(rgb(T.border))
+            .border_b_as(T.border)
             .when(controls || MAC_TITLE_BAR, |bar| bar.child(drag_region()))
             .child(
                 h_flex()
@@ -581,8 +578,7 @@ impl Workspace {
                     .py(px(10.))
                     .rounded(px(6.))
                     .bg(rgb(T.selected))
-                    .border_1()
-                    .border_color(rgb(T.border_strong))
+                    .border_as(T.border_strong)
                     .text_as(14., T.fg)
                     .child(div().flex_1().min_w_0().child(toast.text.clone()))
                     .children(action),

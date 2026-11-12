@@ -174,8 +174,7 @@ impl TrainScreen {
                     .pl(px(18. + row.depth as f32 * 14.))
                     .pr(px(18.))
                     .justify_between()
-                    .border_b_1()
-                    .border_color(rgb(T.divider))
+                    .border_b_as(T.divider)
                     .when(is_selected, |row_el| row_el.bg(rgb(T.selected)))
                     .when(is_selected, |row_el| {
                         row_el.child(
@@ -213,8 +212,7 @@ impl TrainScreen {
             .h_full()
             .flex_none()
             .bg(rgb(T.surface))
-            .border_r_1()
-            .border_color(rgb(T.border))
+            .border_r_as(T.border)
             .child(
                 v_flex()
                     .flex_none()

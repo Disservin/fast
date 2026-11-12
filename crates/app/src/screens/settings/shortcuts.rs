@@ -260,8 +260,7 @@ impl SettingsScreen {
                     h_flex()
                         .h(px(40.))
                         .justify_between()
-                        .border_b_1()
-                        .border_color(rgb(T.divider))
+                        .border_b_as(T.divider)
                         .child(
                             div()
                                 .font_weight(FontWeight::MEDIUM)

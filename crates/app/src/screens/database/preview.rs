@@ -126,9 +126,8 @@ pub(super) fn move_snippet(
         .mt(px(10.))
         .mb(px(12.))
         .font_family(MONO)
-        .text_size(px(14.))
-        .line_height(px(24.))
-        .text_color(rgb(T.fg_2));
+        .text_as(14., T.fg_2)
+        .line_height(px(24.));
     for (index, san) in preview.sans[start..end].iter().enumerate() {
         let ply = start + index;
         let label = if ply.is_multiple_of(2) {
@@ -156,9 +155,8 @@ pub(super) fn move_snippet(
                 div()
                     .w_full()
                     .font_family(ui::SANS)
-                    .text_size(px(13.))
+                    .text_as(13., T.fg_2)
                     .line_height(px(19.))
-                    .text_color(rgb(T.fg_2))
                     .child(short_comment(&note.comment)),
             );
         }
@@ -166,9 +164,8 @@ pub(super) fn move_snippet(
             row = row.child(
                 div()
                     .w_full()
-                    .text_size(px(13.))
+                    .text_as(13., T.muted)
                     .line_height(px(19.))
-                    .text_color(rgb(T.muted))
                     .child(format!("({})", short_comment(variation))),
             );
         }
@@ -239,11 +236,7 @@ impl DatabaseScreen {
             }
             let findings = review_findings(preview);
             if !findings.is_empty() {
-                let mut list = v_flex()
-                    .mt(px(2.))
-                    .mb(px(10.))
-                    .border_t_1()
-                    .border_color(rgb(T.divider));
+                let mut list = v_flex().mt(px(2.)).mb(px(10.)).border_t_as(T.divider);
                 for finding in findings.into_iter().take(6) {
                     let this = this.clone();
                     let ply = finding.ply;
@@ -345,8 +338,7 @@ impl RenderOnce for FindingRow {
             .px(px(6.))
             .gap(px(8.))
             .justify_between()
-            .border_b_1()
-            .border_color(rgb(T.divider))
+            .border_b_as(T.divider)
             .cursor_pointer()
             .hover(|style| style.bg(rgb(T.hover)))
             .focus_visible(|style| style.border_2().border_color(rgb(T.accent)))

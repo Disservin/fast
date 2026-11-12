@@ -525,8 +525,7 @@ impl DatabaseScreen {
                 .gap(px(10.))
                 .child(
                     div()
-                        .w(px(130.))
-                        .flex_none()
+                        .col_w(130.)
                         .text_as(13., T.muted)
                         .child(ui::i18n::t(label)),
                 )

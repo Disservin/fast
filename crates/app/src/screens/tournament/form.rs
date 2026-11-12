@@ -149,42 +149,39 @@ impl TournamentScreen {
         }
         for (index, engine) in self.extra_engines.iter().enumerate() {
             let this = cx.entity();
-            list = list.child(
-                h_flex()
-                    .gap(px(6.))
-                    .child(
-                        h_flex()
-                            .flex_1()
-                            .min_w_0()
-                            .gap(px(10.))
-                            .text_size(px(13.))
-                            .child(
-                                div()
-                                    .flex_none()
-                                    .child(SharedString::from(engine.name.clone())),
-                            )
-                            .child(
-                                div()
-                                    .min_w_0()
-                                    .overflow_hidden()
-                                    .text_ellipsis()
-                                    .whitespace_nowrap()
-                                    .text_as(12., T.muted)
-                                    .child(SharedString::from(engine.cmd.display().to_string())),
-                            ),
-                    )
-                    .child(
-                        btn(("tournament-extra-remove", index), "×")
-                            .h(24.)
-                            .w(24.)
-                            .pad(3.)
-                            .tooltip(ui::i18n::t("Remove"))
-                            .on_click(this.listen(move |screen, _, cx| {
-                                screen.extra_engines.remove(index);
-                                cx.notify();
-                            })),
-                    ),
-            );
+            list =
+                list.child(
+                    h_flex()
+                        .gap(px(6.))
+                        .child(
+                            h_flex()
+                                .flex_1()
+                                .min_w_0()
+                                .gap(px(10.))
+                                .text_size(px(13.))
+                                .child(
+                                    div()
+                                        .flex_none()
+                                        .child(SharedString::from(engine.name.clone())),
+                                )
+                                .child(
+                                    div().min_w_0().truncate().text_as(12., T.muted).child(
+                                        SharedString::from(engine.cmd.display().to_string()),
+                                    ),
+                                ),
+                        )
+                        .child(
+                            btn(("tournament-extra-remove", index), "×")
+                                .h(24.)
+                                .w(24.)
+                                .pad(3.)
+                                .tooltip(ui::i18n::t("Remove"))
+                                .on_click(this.listen(move |screen, _, cx| {
+                                    screen.extra_engines.remove(index);
+                                    cx.notify();
+                                })),
+                        ),
+                );
         }
         let add = cx.entity();
         v_flex()
@@ -320,8 +317,7 @@ impl TournamentScreen {
             .py(px(10.))
             .px(px(12.))
             .rounded(px(8.))
-            .border_1()
-            .border_color(rgb(T.border))
+            .border_as(T.border)
             .cursor_pointer()
             .hover(|row| row.bg(rgb(T.hover)))
             .child(div().w(px(12.)).text_color(rgb(T.muted)).child(if open {
@@ -339,9 +335,7 @@ impl TournamentScreen {
                 div()
                     .flex_1()
                     .min_w_0()
-                    .overflow_hidden()
-                    .whitespace_nowrap()
-                    .text_ellipsis()
+                    .truncate()
                     .text_as(12., T.muted)
                     .child(ui::i18n::t(
                         "Hash and threads, pairing, adjudication, tablebases, saved games, extra options",

@@ -129,8 +129,7 @@ impl AnalyseScreen {
                     .w(px(190.))
                     .py(px(4.))
                     .bg(rgb(T.surface))
-                    .border_1()
-                    .border_color(rgb(T.border_strong))
+                    .border_as(T.border_strong)
                     .rounded(px(6.))
                     .on_mouse_down_out(cx.listener(|screen, _, _, cx| {
                         screen.context_menu = None;

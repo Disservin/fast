@@ -9,7 +9,7 @@ use gpui_component::input::{InputEvent, InputState};
 use trainer::{Card, Drill, Grade, RepStatus};
 use ui::{
     Arrow, BoardEvent, BoardView, MONO, T,
-    widgets::{BtnKind, Listen, TextExt, badge, btn, h_flex, mono, panel, section_label, v_flex},
+    widgets::{BtnKind, Listen, StyleExt, badge, btn, h_flex, mono, panel, section_label, v_flex},
 };
 
 use crate::{

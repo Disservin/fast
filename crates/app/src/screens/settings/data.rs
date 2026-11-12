@@ -36,8 +36,7 @@ pub(super) fn drive_strip(disk: crate::storage::DiskSpace, fast: u64) -> Div {
         .px(px(16.))
         .py(px(12.))
         .gap(px(20.))
-        .border_b_1()
-        .border_color(rgb(T.divider))
+        .border_b_as(T.divider)
         .child(
             h_flex()
                 .flex_1()
@@ -259,8 +258,7 @@ impl SettingsScreen {
         };
         let size_cell = |text: String| {
             mono(text)
-                .w(px(96.))
-                .flex_none()
+                .col_w(96.)
                 .whitespace_nowrap()
                 .flex()
                 .justify_end()
@@ -270,12 +268,10 @@ impl SettingsScreen {
             h_flex()
                 .h(px(40.))
                 .gap(px(12.))
-                .border_b_1()
-                .border_color(rgb(T.divider))
+                .border_b_as(T.divider)
                 .child(
                     div()
-                        .w(px(160.))
-                        .flex_none()
+                        .col_w(160.)
                         .text_size(px(13.))
                         .font_weight(FontWeight::MEDIUM)
                         .child(ui::i18n::t(name).to_owned()),
@@ -338,12 +334,10 @@ impl SettingsScreen {
             h_flex()
                 .h(px(44.))
                 .gap(px(12.))
-                .border_b_1()
-                .border_color(rgb(T.divider))
+                .border_b_as(T.divider)
                 .child(
                     div()
-                        .w(px(160.))
-                        .flex_none()
+                        .col_w(160.)
                         .text_size(px(13.))
                         .font_weight(FontWeight::MEDIUM)
                         .child(ui::i18n::t(label)),

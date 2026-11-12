@@ -21,8 +21,7 @@ impl SettingsScreen {
                 h_flex()
                     .h(px(43.))
                     .justify_between()
-                    .border_b_1()
-                    .border_color(rgb(T.divider))
+                    .border_b_as(T.divider)
                     .child(
                         div()
                             .font_weight(FontWeight::MEDIUM)
@@ -70,12 +69,10 @@ impl SettingsScreen {
                 h_flex()
                     .h(px(43.))
                     .gap(px(10.))
-                    .border_b_1()
-                    .border_color(rgb(T.divider))
+                    .border_b_as(T.divider)
                     .child(
                         div()
-                            .w(px(84.))
-                            .flex_none()
+                            .col_w(84.)
                             .text_as(13., T.muted)
                             .child(account.site.name()),
                     )
@@ -89,16 +86,14 @@ impl SettingsScreen {
                     )
                     .child(
                         div()
-                            .w(px(140.))
-                            .flex_none()
+                            .col_w(140.)
                             .truncate()
                             .text_as(13., T.fg_2)
                             .child(database),
                     )
                     .child(
                         mono(updated)
-                            .w(px(96.))
-                            .flex_none()
+                            .col_w(96.)
                             .whitespace_nowrap()
                             .text_as(13., T.fg_2),
                     )

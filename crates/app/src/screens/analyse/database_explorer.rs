@@ -5,7 +5,7 @@ use db::MoveStat;
 use gpui::{Context, IntoElement, div, px, rgb};
 use ui::{
     T,
-    widgets::{Listen, TextExt, btn, h_flex, mono, section_label, v_flex},
+    widgets::{Listen, StyleExt, btn, h_flex, mono, section_label, v_flex},
 };
 
 use super::*;
@@ -59,8 +59,7 @@ fn results_bar(stat: &MoveStat) -> gpui::AnyElement {
         .flex_1()
         .min_w_0()
         .h(px(20.))
-        .border_1()
-        .border_color(rgb(T.border_strong))
+        .border_as(T.border_strong)
         .rounded(px(4.))
         .overflow_hidden()
         .tooltip(move |window, cx| {
@@ -156,8 +155,7 @@ impl AnalyseScreen {
                     .h(px(32.))
                     .px(px(16.))
                     .gap(px(8.))
-                    .border_b_1()
-                    .border_color(rgb(T.divider))
+                    .border_b_as(T.divider)
                     .hover(|row| row.bg(rgb(T.hover)))
                     .child(
                         btn(("database-play", index), label)
@@ -183,15 +181,13 @@ impl AnalyseScreen {
                             stat.games as f64 * 100. / total.games.max(1) as f64
                         ))
                         .text_size(px(12.))
-                        .w(px(48.))
-                        .flex_none()
+                        .col_w(48.)
                         .whitespace_nowrap(),
                     )
                     .child(
                         mono(format_count(stat.games))
                             .text_size(px(12.))
-                            .w(px(82.))
-                            .flex_none()
+                            .col_w(82.)
                             .whitespace_nowrap(),
                     )
                     .child(results_bar(stat)),
@@ -222,14 +218,12 @@ impl AnalyseScreen {
                     .h(px(32.))
                     .px(px(16.))
                     .gap(px(8.))
-                    .border_t_1()
-                    .border_color(rgb(T.border))
+                    .border_t_as(T.border)
                     .child(col_heading(px(112.), "Total"))
                     .child(
                         mono(format_count(total.games))
                             .text_size(px(12.))
-                            .w(px(82.))
-                            .flex_none()
+                            .col_w(82.)
                             .whitespace_nowrap(),
                     )
                     .child(results_bar(&total)),
@@ -571,8 +565,7 @@ impl AnalyseScreen {
                 .py(px(4.))
                 .rounded(px(6.))
                 .bg(rgb(T.surface))
-                .border_1()
-                .border_color(rgb(T.border_strong))
+                .border_as(T.border_strong)
                 .on_mouse_down_out({
                     let this = this.clone();
                     move |_, _, cx| {
@@ -630,8 +623,7 @@ impl AnalyseScreen {
                 .with_priority(1)
         });
         div()
-            .w(px(width))
-            .flex_none()
+            .col_w(width)
             .child(button)
             .children(menu)
             .into_any_element()

@@ -308,8 +308,7 @@ impl AnalyseScreen {
                     .w(px(220.))
                     .py(px(4.))
                     .bg(rgb(T.surface))
-                    .border_1()
-                    .border_color(rgb(T.border_strong))
+                    .border_as(T.border_strong)
                     .rounded(px(6.))
                     .shadow_lg()
                     // Keeps the screen's click-away handler from closing it first.

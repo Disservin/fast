@@ -163,9 +163,8 @@ impl AnalyseScreen {
             .map(|text| {
                 div()
                     .mt(px(12.))
-                    .text_size(px(13.))
+                    .text_as(13., T.fg_2)
                     .line_height(px(19.))
-                    .text_color(rgb(T.fg_2))
                     .child(text)
             });
         let facts = selected
@@ -198,8 +197,7 @@ impl AnalyseScreen {
                     .px(px(10.))
                     .py(px(6.))
                     .bg(rgb(T.bg))
-                    .border_1()
-                    .border_color(rgb(T.divider))
+                    .border_as(T.divider)
                     .when(pv.is_none(), |inset| {
                         inset.child(
                             div().py(px(4.)).text_as(13., T.muted).child(ui::i18n::t(
@@ -250,14 +248,7 @@ impl AnalyseScreen {
                 .flex_1()
                 .min_w_0()
                 .gap(px(3.))
-                .child(
-                    div()
-                        .text_as(12., T.muted)
-                        .overflow_hidden()
-                        .text_ellipsis()
-                        .whitespace_nowrap()
-                        .child(title),
-                )
+                .child(div().text_as(12., T.muted).truncate().child(title))
                 .child(
                     div()
                         .text_size(px(13.))
@@ -270,8 +261,7 @@ impl AnalyseScreen {
             .mt(px(16.))
             .pt(px(12.))
             .gap(px(12.))
-            .border_t_1()
-            .border_color(rgb(T.divider))
+            .border_t_as(T.divider)
             .child(fact(
                 reference_title.clone(),
                 stat_text(row.reference.as_ref()),
