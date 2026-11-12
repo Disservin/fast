@@ -95,6 +95,9 @@ type MenuHandler = Box<dyn Fn(&mut Window, &mut gpui::App)>;
 
 /// Width of the folded scoresheet.
 const SCORESHEET_RAIL: f32 = 44.;
+/// The search depth both evals around a move need before live analysis may badge it.
+const MIN_BADGE_DEPTH: u32 = 10;
+
 /// Height of the Line preview's move box: four lines of moves. Longer lines scroll.
 const PV_INSET_H: f32 = 4. * 26. + 14.;
 
@@ -699,6 +702,41 @@ impl AnalyseScreen {
         self.rebuild_rows(cx);
     }
 
+    /// The badge for the move just played: its own glyph, else the game review's finding,
+    /// else a judgement from the engine evals before and after it. Early search results
+    /// swing too much to judge by, so live evals count only from `MIN_BADGE_DEPTH`, and
+    /// only while Settings › Board allows badges from live analysis. Evals written in the
+    /// game itself have no depth and always count.
+    fn move_tag(&self, cx: &gpui::App) -> Option<ui::board::MoveTag> {
+        use ui::board::MoveTag;
+        let tag_of = |quality: Quality| match quality {
+            Quality::Inaccuracy => Some(MoveTag::Inaccuracy),
+            Quality::Mistake => Some(MoveTag::Mistake),
+            Quality::Blunder => Some(MoveTag::Blunder),
+            _ => None,
+        };
+        let node = self.tree.node(self.current);
+        if let Some(tag) = node.nags.iter().find_map(|nag| MoveTag::from_nag(*nag)) {
+            return Some(tag);
+        }
+        if let Some((_, mark)) = self.db_findings.iter().find(|(id, _)| *id == self.current) {
+            return tag_of(mark.quality);
+        }
+        let parent = node.parent?;
+        let live_badges = self.model.read(cx).config.board.live_move_badges;
+        let (evals, depths) = self.line_evals(&[parent, self.current], cx);
+        let trusted =
+            |depth: Option<u32>| depth.is_none_or(|depth| live_badges && depth >= MIN_BADGE_DEPTH);
+        if !depths.iter().copied().all(trusted) {
+            return None;
+        }
+        let sign = if node.pos.turn().is_black() { 1 } else { -1 };
+        tag_of(engine::classify_move(
+            Score::Cp(evals[0]? * sign),
+            Score::Cp(evals[1]? * sign),
+        ))
+    }
+
     /// A side's player name and rating from the game headers, with the colour as the name and
     /// an em dash as the rating when the game does not say.
     fn player(&self, side: chess_core::Color) -> (String, String) {
@@ -728,27 +766,12 @@ impl Render for AnalyseScreen {
             self.load_text(&recovery.pgn, window, cx);
         }
         self.autosave(cx);
-        let node = self.tree.node(self.current);
-        let explicit = node
-            .nags
-            .iter()
-            .find_map(|nag| ui::board::MoveTag::from_nag(*nag));
-        let inferred = node.parent.and_then(|parent| {
-            let (evals, _) = self.line_evals(&[parent, self.current], cx);
-            let sign = if node.pos.turn().is_black() { 1 } else { -1 };
-            match engine::classify_move(Score::Cp(evals[0]? * sign), Score::Cp(evals[1]? * sign)) {
-                Quality::Inaccuracy => Some(ui::board::MoveTag::Inaccuracy),
-                Quality::Mistake => Some(ui::board::MoveTag::Mistake),
-                Quality::Blunder => Some(ui::board::MoveTag::Blunder),
-                _ => None,
-            }
-        });
         let tag = if self.model.read(cx).config.board.show_move_badges
             && self.editor.is_none()
             && self.pv_view.is_none()
             && self.pv_hover.is_none()
         {
-            explicit.or(inferred)
+            self.move_tag(cx)
         } else {
             None
         };

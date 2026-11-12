@@ -329,6 +329,13 @@ impl SettingsScreen {
                 |b, v| b.show_move_badges = v,
             ))
             .child(board_check(
+                "live-move-badges",
+                config.live_move_badges,
+                "Badge moves from live analysis",
+                this.clone(),
+                |b, v| b.live_move_badges = v,
+            ))
+            .child(board_check(
                 "queen",
                 config.auto_queen,
                 "Auto-promote to queen",

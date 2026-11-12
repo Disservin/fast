@@ -420,6 +420,7 @@ pub fn translate(language: Language, text: &str) -> &str {
             "Board theme" => "Brettdesign",
             "Show legal moves" => "Legale Züge anzeigen",
             "Highlight last move" => "Letzten Zug hervorheben",
+            "Badge moves from live analysis" => "Züge aus der Live-Analyse bewerten",
             "Auto queen" => "Automatisch zur Dame umwandeln",
             "Automatic queen promotion" => "Automatische Umwandlung zur Dame",
             "On squares" => "Auf den Feldern",
