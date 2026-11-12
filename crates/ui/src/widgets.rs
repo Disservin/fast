@@ -5,7 +5,8 @@ use std::{rc::Rc, time::Duration};
 
 use gpui::{
     Animation, AnimationExt as _, AnyElement, App, Div, ElementId, FontWeight, Hsla, IntoElement,
-    MouseButton, Pixels, RenderOnce, SharedString, Window, div, prelude::*, px, relative, rgb, svg,
+    Length, MouseButton, Pixels, RenderOnce, SharedString, Window, div, prelude::*, px, relative,
+    rgb, svg,
 };
 
 use crate::theme::{MONO, SANS, T};
@@ -52,6 +53,21 @@ pub fn section_label(text: impl AsRef<str>) -> Div {
         };
     }
     row
+}
+
+/// The header row of a table: `surface_2` with a bottom rule, holding column headings.
+/// The caller sets its height and padding.
+pub fn table_header() -> Div {
+    h_flex()
+        .flex_none()
+        .bg(rgb(T.surface_2))
+        .border_b_1()
+        .border_color(rgb(T.border))
+}
+
+/// A fixed-width column heading, so it lines up with the values below it.
+pub fn col_heading(width: impl Into<Length> + Clone, label: impl AsRef<str>) -> Div {
+    div().w(width).flex_none().child(section_label(label))
 }
 
 /// A small bordered tag, such as a license or a count.

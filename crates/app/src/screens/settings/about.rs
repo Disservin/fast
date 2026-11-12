@@ -55,25 +55,12 @@ fn bundled_assets_table() -> gpui::Div {
     let asset_name = gpui::relative(0.36);
     let asset_license = gpui::relative(0.24);
     let assets = panel().overflow_hidden().child(
-        h_flex()
+        table_header()
             .w_full()
             .h(px(30.))
             .px(px(12.))
-            .bg(rgb(T.surface_2))
-            .border_b_1()
-            .border_color(rgb(T.border))
-            .child(
-                div()
-                    .w(asset_name)
-                    .flex_shrink_0()
-                    .child(section_label("Asset")),
-            )
-            .child(
-                div()
-                    .w(asset_license)
-                    .flex_shrink_0()
-                    .child(section_label("Licence")),
-            )
+            .child(col_heading(asset_name, "Asset"))
+            .child(col_heading(asset_license, "Licence"))
             .child(section_label("By")),
     );
     let mut asset_rows = v_flex().w_full();
@@ -332,31 +319,13 @@ impl SettingsScreen {
         let col_version = gpui::relative(0.14);
         let col_license = gpui::relative(0.38);
         let header = |cells: [&'static str; 4]| {
-            h_flex()
+            table_header()
                 .w_full()
                 .h(px(30.))
                 .px(px(12.))
-                .bg(rgb(T.surface_2))
-                .border_b_1()
-                .border_color(rgb(T.border))
-                .child(
-                    div()
-                        .w(col_name)
-                        .flex_shrink_0()
-                        .child(section_label(cells[0])),
-                )
-                .child(
-                    div()
-                        .w(col_version)
-                        .flex_shrink_0()
-                        .child(section_label(cells[1])),
-                )
-                .child(
-                    div()
-                        .w(col_license)
-                        .flex_shrink_0()
-                        .child(section_label(cells[2])),
-                )
+                .child(col_heading(col_name, cells[0]))
+                .child(col_heading(col_version, cells[1]))
+                .child(col_heading(col_license, cells[2]))
                 .child(section_label(cells[3]))
         };
         let assets = bundled_assets_table();

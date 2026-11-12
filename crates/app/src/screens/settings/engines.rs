@@ -550,20 +550,13 @@ impl SettingsScreen {
         let col_protocol = gpui::relative(0.115);
         let col_used = gpui::relative(0.395);
         let mut table = panel().overflow_hidden().child(
-            h_flex()
+            table_header()
                 .h(px(32.))
                 .px(px(16.))
-                .bg(rgb(T.surface_2))
-                .border_b_1()
-                .border_color(rgb(T.border))
-                .child(
-                    div()
-                        .w(col_engine)
-                        .child(section_label(ui::i18n::t("Engine"))),
-                )
-                .child(div().w(col_protocol).child(section_label("Protocol")))
-                .child(div().w(col_used).child(section_label("Used for")))
-                .child(section_label(ui::i18n::t("Status"))),
+                .child(col_heading(col_engine, "Engine"))
+                .child(col_heading(col_protocol, "Protocol"))
+                .child(col_heading(col_used, "Used for"))
+                .child(section_label("Status")),
         );
         for (index, engine) in model.config.engines.iter().enumerate() {
             let selected = self.selected_engine == Some(engine.id);

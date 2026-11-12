@@ -200,20 +200,13 @@ impl TestPositionsScreen {
                     .collect()
             }
         };
-        let mut header = h_flex()
+        let mut header = table_header()
             .h(px(32.))
             .px(px(12.))
             .gap(px(8.))
-            .border_b_1()
-            .border_color(rgb(T.border))
-            .child(div().w(px(W_LINE)).flex_none().child(section_label("Line")))
-            .child(div().w(px(W_ID)).flex_none().child(section_label("ID")))
-            .child(
-                div()
-                    .w(px(W_EXPECT))
-                    .flex_none()
-                    .child(section_label("Expected")),
-            );
+            .child(col_heading(px(W_LINE), "Line"))
+            .child(col_heading(px(W_ID), "ID"))
+            .child(col_heading(px(W_EXPECT), "Expected"));
         for name in &engines {
             header = header.child(
                 div()

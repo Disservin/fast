@@ -4,6 +4,7 @@ Settings › Changelog shows this file. Describe the finished changes since each
 
 ## Since 0.1.3
 
+- Test positions, Analyse: table headings sit on the same shaded, ruled header row as every other table.
 - Settings: restoring a backup runs in the background, so the window stays responsive while files are copied back.
 - Tournament: opening a game from a long tournament no longer freezes the window while its PGN is read.
 - Train: adding lines from a large PGN file no longer freezes the window.

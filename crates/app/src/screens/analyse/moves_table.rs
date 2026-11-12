@@ -258,11 +258,7 @@ impl AnalyseScreen {
         let this = cx.entity();
         let explorer = self.explorer_database(cx);
         let picker = if self.engine_tab == panels::EngineTab::Database {
-            div()
-                .w(px(COL_REF))
-                .flex_none()
-                .child(section_label("Database"))
-                .into_any_element()
+            col_heading(px(COL_REF), "Database").into_any_element()
         } else {
             self.render_explorer_picker(COL_REF, cx)
         };
@@ -354,70 +350,27 @@ impl AnalyseScreen {
 
     /// The header row of section labels, one per shown column.
     fn render_table_header(view: &TableView, picker: gpui::AnyElement) -> gpui::Div {
-        h_flex()
+        table_header()
             .h(px(32.))
             .px(px(16.))
-            .bg(rgb(T.surface_2))
-            .border_b_1()
-            .border_color(rgb(T.border))
             .when(view.engine_badges, |header| {
-                header.child(
-                    div()
-                        .w(px(COL_BADGE))
-                        .flex_none()
-                        .child(section_label(ui::i18n::t("Engine"))),
-                )
+                header.child(col_heading(px(COL_BADGE), "Engine"))
             })
-            .child(
-                div()
-                    .w(px(COL_MOVE))
-                    .flex_none()
-                    .child(section_label(ui::i18n::t("Move"))),
-            )
-            .child(
-                div()
-                    .w(px(COL_SF))
-                    .flex_none()
-                    .child(section_label(ui::i18n::t("Eval"))),
-            )
+            .child(col_heading(px(COL_MOVE), "Move"))
+            .child(col_heading(px(COL_SF), "Eval"))
             .when(view.show_wdl, |header| {
-                header.child(
-                    div()
-                        .w(px(COL_WDL))
-                        .flex_none()
-                        .child(section_label("W / D / L")),
-                )
+                header.child(col_heading(px(COL_WDL), "W / D / L"))
             })
             .when(view.online, |header| {
                 header
-                    .child(
-                        div()
-                            .w(px(COL_TB))
-                            .flex_none()
-                            .child(section_label("Tablebase")),
-                    )
-                    .child(
-                        div()
-                            .w(px(COL_CLOUD))
-                            .flex_none()
-                            .child(section_label("Cloud")),
-                    )
+                    .child(col_heading(px(COL_TB), "Tablebase"))
+                    .child(col_heading(px(COL_CLOUD), "Cloud"))
             })
             .child(picker)
             .when(view.my_moves, |header| {
                 header
-                    .child(
-                        div()
-                            .w(px(COL_MY))
-                            .flex_none()
-                            .child(section_label(ui::i18n::t("My games"))),
-                    )
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .child(section_label(ui::i18n::t("Repertoire"))),
-                    )
+                    .child(col_heading(px(COL_MY), "My games"))
+                    .child(div().flex_1().min_w_0().child(section_label("Repertoire")))
             })
     }
 

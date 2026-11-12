@@ -128,14 +128,13 @@ impl AnalyseScreen {
                     ),
             )
             .child(
-                h_flex()
+                table_header()
                     .h(px(28.))
                     .px(px(16.))
                     .gap(px(8.))
-                    .bg(rgb(T.surface_2))
-                    .child(div().w(px(56.)).flex_none().child(section_label("Move")))
-                    .child(div().w(px(48.)).flex_none().child(section_label("Played")))
-                    .child(div().w(px(82.)).flex_none().child(section_label("Games")))
+                    .child(col_heading(px(56.), "Move"))
+                    .child(col_heading(px(48.), "Played"))
+                    .child(col_heading(px(82.), "Games"))
                     .child(section_label("White / Draw / Black")),
             );
         let mut rows = v_flex()
@@ -225,7 +224,7 @@ impl AnalyseScreen {
                     .gap(px(8.))
                     .border_t_1()
                     .border_color(rgb(T.border))
-                    .child(div().w(px(112.)).flex_none().child(section_label("Total")))
+                    .child(col_heading(px(112.), "Total"))
                     .child(
                         mono(format_count(total.games))
                             .text_size(px(12.))

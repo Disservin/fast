@@ -22,8 +22,8 @@ use ui::{
     T,
     board::theme_swatch,
     widgets::{
-        Listen, TextExt, badge, btn, check, h_flex, key_cap, mono, panel, section_label, segmented,
-        v_flex,
+        Listen, TextExt, badge, btn, check, col_heading, h_flex, key_cap, mono, panel,
+        section_label, segmented, table_header, v_flex,
     },
 };
 

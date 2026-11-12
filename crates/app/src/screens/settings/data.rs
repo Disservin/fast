@@ -292,22 +292,13 @@ impl SettingsScreen {
                 .child(size_cell(size(bytes)))
         };
         let mut table = v_flex().child(
-            h_flex()
+            table_header()
                 .h(px(32.))
                 .gap(px(12.))
                 .px(px(16.))
-                .bg(rgb(T.surface_2))
-                .border_b_1()
-                .border_color(rgb(T.divider))
-                .child(div().w(px(160.)).flex_none().child(section_label("Data")))
+                .child(col_heading(px(160.), "Data"))
                 .child(div().flex_1().child(section_label("Contents")))
-                .child(
-                    h_flex()
-                        .w(px(96.))
-                        .flex_none()
-                        .justify_end()
-                        .child(section_label("Size")),
-                ),
+                .child(col_heading(px(96.), "Size").flex().justify_end()),
         );
         let mut rows = v_flex().px(px(16.));
         for (index, store) in crate::storage::STORES.iter().enumerate() {
