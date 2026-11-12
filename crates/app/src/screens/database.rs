@@ -270,7 +270,6 @@ pub struct DatabaseScreen {
     /// A query is running; the current rows stay until its results arrive.
     querying: bool,
     /// Keyboard focus for each sortable column heading, by `SortKey`.
-    sort_focus: Vec<gpui::FocusHandle>,
     summary: SharedString,
     ids: Vec<i64>,
     rows: HashMap<i64, GameRow>,
@@ -365,6 +364,18 @@ impl Drop for DatabaseScreen {
 
 impl DatabaseScreen {
     /// Engines are reviewing games.
+    /// Closes whichever dialog is open.
+    fn close_dialogs(&mut self, cx: &mut Context<Self>) {
+        self.manager = None;
+        self.add_database = None;
+        self.editing = None;
+        self.confirm_delete = None;
+        self.import_dialog = false;
+        self.dropped_details = None;
+        self.confirm_reimport = None;
+        cx.notify();
+    }
+
     pub fn is_reviewing(&self) -> bool {
         self.reviewing.is_some()
     }
@@ -600,10 +611,6 @@ impl DatabaseScreen {
             applied: Filter::default(),
             sort: Sort::default(),
             querying: false,
-            sort_focus: SortKey::ALL
-                .iter()
-                .map(|_| cx.focus_handle().tab_stop(true))
-                .collect(),
             summary: "".into(),
             ids: Vec::new(),
             rows: HashMap::new(),
@@ -3156,29 +3163,12 @@ impl DatabaseScreen {
         let engines = self.model.read(cx).config.review_engines.max(1);
         let max_engines = max_review_engines();
         let running = self.reviewing.is_some();
-        let (close, backdrop) = (cx.entity(), cx.entity());
+        let close = cx.entity();
         let (engine_this, limit_this, side_this, scope_this) =
             (cx.entity(), cx.entity(), cx.entity(), cx.entity());
-        let step = |up: bool| {
+        let set_engines = |next: u32| {
             let this = cx.entity();
-            let next = if up {
-                (engines + 1).min(max_engines)
-            } else {
-                engines.saturating_sub(1).max(1)
-            };
-            btn(
-                if up {
-                    "review-engines-up"
-                } else {
-                    "review-engines-down"
-                },
-                if up { "+" } else { "−" },
-            )
-            .compact()
-            .w(28.)
-            .pad(0.)
-            .disabled(running || next == engines)
-            .on_click(move |_, cx| {
+            move |_: &mut gpui::Window, cx: &mut gpui::App| {
                 this.update(cx, |screen, cx| {
                     screen.model.update(cx, |model, cx| {
                         model.config.review_engines = next;
@@ -3186,8 +3176,12 @@ impl DatabaseScreen {
                     });
                     cx.notify();
                 })
-            })
+            }
         };
+        let (fewer, more) = (
+            engines.saturating_sub(1).max(1),
+            (engines + 1).min(max_engines),
+        );
         let row = |label: &'static str, control: AnyElement| {
             h_flex()
                 .gap(px(10.))
@@ -3272,63 +3266,21 @@ impl DatabaseScreen {
                 })
             },
         );
-        let parallel = h_flex()
-            .gap(px(4.))
-            .child(step(false))
-            .child(
-                mono(engines.to_string())
-                    .w(px(28.))
-                    .text_size(px(13.))
-                    .flex()
-                    .justify_center()
-                    .whitespace_nowrap(),
-            )
-            .child(step(true));
-        let dialog = v_flex()
-            .id("review-settings")
-            .w(px(560.))
-            .max_w_full()
-            .max_h_full()
-            .overflow_y_scroll()
-            .rounded(px(6.))
-            .bg(rgb(T.surface))
-            .border_1()
-            .border_color(rgb(T.border_strong))
-            // Clicks inside the dialog stay out of the backdrop.
-            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .child(
-                h_flex()
-                    .h(px(44.))
-                    .flex_none()
-                    .px(px(16.))
-                    .justify_between()
-                    .border_b_1()
-                    .border_color(rgb(T.border))
-                    .child(section_label("Batch review"))
-                    .child(
-                        icon_btn("review-settings-close", "icons/x.svg")
-                            .mini()
-                            .tooltip(ui::i18n::t("Close"))
-                            .on_click(move |_, cx| {
-                                close.update(cx, |screen, cx| {
-                                    screen.set_review_settings_open(false, cx)
-                                })
-                            }),
-                    ),
-            )
-            .child(
-                v_flex()
-                    .px(px(16.))
-                    .py(px(14.))
-                    .gap(px(12.))
-                    .child(row("Engine", engine_control))
-                    .child(row("Limit", limit_control.into_any_element()))
-                    .child(row("Side", side_control.into_any_element()))
-                    .child(row("Games", scope_control.into_any_element()))
-                    .child(row("Engines at once", parallel.into_any_element())),
-            );
-        ui::widgets::modal("review-settings-backdrop", dialog, move |cx| {
-            backdrop.update(cx, |screen, cx| screen.set_review_settings_open(false, cx))
+        let parallel = ui::widgets::stepper("review-engines", engines.to_string())
+            .value_width(28.)
+            .on_down(!running && fewer != engines, set_engines(fewer))
+            .on_up(!running && more != engines, set_engines(more));
+        let body = v_flex()
+            .px(px(16.))
+            .py(px(14.))
+            .gap(px(12.))
+            .child(row("Engine", engine_control))
+            .child(row("Limit", limit_control.into_any_element()))
+            .child(row("Side", side_control.into_any_element()))
+            .child(row("Games", scope_control.into_any_element()))
+            .child(row("Engines at once", parallel.into_any_element()));
+        ui::widgets::dialog("review-settings", "Batch review", 560., body, move |cx| {
+            close.update(cx, |screen, cx| screen.set_review_settings_open(false, cx))
         })
         .into_any_element()
     }
@@ -3373,56 +3325,16 @@ impl DatabaseScreen {
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
         let this = cx.entity();
-        let sorted = self.sort.key == key;
-        let arrow = if self.sort.descending {
-            "icons/arrow-down.svg"
-        } else {
-            "icons/arrow-up.svg"
-        };
-        let (click, keys) = (this.clone(), this);
-        let label = ui::i18n::t(label).to_uppercase();
-        h_flex()
-            .id(("sort", key as usize))
-            .key_context("FastButton")
-            .track_focus(&self.sort_focus[key as usize])
-            .h(px(24.))
-            .gap(px(3.))
-            .px(px(3.))
-            .ml(px(-4.))
-            .rounded(px(4.))
-            .border_1()
-            .border_color(gpui::transparent_black())
-            .cursor_pointer()
-            .hover(|style| style.bg(rgb(T.hover)))
-            .focus_visible(|style| style.border_2().border_color(rgb(T.accent)))
-            .on_click(move |_, _, cx| {
-                click.update(cx, |screen, cx| screen.sort_by(key, cx));
-            })
-            .on_key_down(move |event: &gpui::KeyDownEvent, _, cx| {
-                let key_name = event.keystroke.key.as_str();
-                if key_name == "enter" || key_name == "space" {
-                    cx.stop_propagation();
-                    keys.update(cx, |screen, cx| screen.sort_by(key, cx));
-                }
-            })
-            .child(
-                div()
-                    .whitespace_nowrap()
-                    .text_size(px(11.))
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .text_color(rgb(if sorted { T.fg } else { T.muted }))
-                    .child(label),
-            )
-            .child(div().size(px(12.)).flex_none().when(sorted, |slot| {
-                slot.child(ui::widgets::icon(arrow, px(12.), T.accent))
-            }))
-            .map(|heading| {
-                let cell = div().flex_none().pr(px(10.));
-                match width {
-                    Some(width) => cell.w(px(width)).child(heading),
-                    None => cell.flex_1().min_w_0().child(heading),
-                }
-            })
+        let sorted = (self.sort.key == key).then_some(self.sort.descending);
+        let heading =
+            ui::widgets::sort_heading(("sort", key as usize), label, sorted, move |_, cx| {
+                this.update(cx, |screen, cx| screen.sort_by(key, cx));
+            });
+        let cell = div().flex_none().pr(px(10.));
+        match width {
+            Some(width) => cell.w(px(width)).child(heading),
+            None => cell.flex_1().min_w_0().child(heading),
+        }
     }
 
     fn render_table(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
@@ -5261,6 +5173,7 @@ impl Render for DatabaseScreen {
 
 /// A dialog over the Database tab with a titled header and `body`. The × and a click
 /// on the dimmed backdrop close the game editor and the delete question.
+/// A Database dialog that closes whichever dialog is open.
 fn dialog(
     id: &'static str,
     title: &'static str,
@@ -5268,48 +5181,10 @@ fn dialog(
     body: AnyElement,
     screen: Entity<DatabaseScreen>,
 ) -> AnyElement {
-    let close = move |cx: &mut gpui::App| {
-        screen.update(cx, |screen, cx| {
-            screen.manager = None;
-            screen.add_database = None;
-            screen.editing = None;
-            screen.confirm_delete = None;
-            screen.import_dialog = false;
-            screen.dropped_details = None;
-            screen.confirm_reimport = None;
-            cx.notify();
-        })
-    };
-    let close_button = close.clone();
-    let panel = v_flex()
-        .id(id)
-        .w(px(width))
-        .max_w_full()
-        .max_h_full()
-        .overflow_y_scroll()
-        .rounded(px(6.))
-        .bg(rgb(T.surface))
-        .border_1()
-        .border_color(rgb(T.border_strong))
-        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-        .child(
-            h_flex()
-                .h(px(44.))
-                .flex_none()
-                .px(px(16.))
-                .justify_between()
-                .border_b_1()
-                .border_color(rgb(T.border))
-                .child(section_label(title))
-                .child(
-                    icon_btn((id, 0usize), "icons/x.svg")
-                        .mini()
-                        .tooltip(ui::i18n::t("Close"))
-                        .on_click(move |_, cx| close_button(cx)),
-                ),
-        )
-        .child(body);
-    ui::widgets::modal((id, 1usize), panel, close).into_any_element()
+    ui::widgets::dialog(id, title, width, body, move |cx| {
+        screen.update(cx, |screen, cx| screen.close_dialogs(cx))
+    })
+    .into_any_element()
 }
 
 #[cfg(test)]

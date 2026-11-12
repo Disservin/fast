@@ -2043,7 +2043,7 @@ impl TournamentScreen {
     fn render_setup(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let source_this = cx.entity();
         let start = cx.entity();
-        let (close, backdrop) = (cx.entity(), cx.entity());
+        let close = cx.entity();
         let busy = self.run.as_ref().is_some_and(Run::active) || self.pending.is_some();
         let source = self.source;
         let body = match source {
@@ -2051,87 +2051,55 @@ impl TournamentScreen {
             Source::Paste => self.render_paste(cx).into_any_element(),
         };
         let dialog_width = (f32::from(window.viewport_size().width) * 0.7).clamp(760., 1200.);
-        let dialog = v_flex()
-            .id("tournament-setup")
-            .w(px(dialog_width))
-            .max_w_full()
-            .max_h_full()
-            .overflow_y_scroll()
-            .rounded(px(12.))
-            .bg(rgb(T.surface))
-            .border_1()
-            .border_color(rgb(T.border_strong))
-            .shadow_lg()
-            // Clicks inside the dialog stay out of the backdrop.
-            .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
+        let body = v_flex()
+            .flex_none()
+            .gap(px(16.))
+            .px(px(16.))
+            .pt(px(14.))
+            .pb(px(16.))
+            .child(self.render_fastchess(cx))
+            .child(segmented(
+                "tournament-source",
+                vec![
+                    (Source::Form, "Set up".into(), false),
+                    (Source::Paste, "Paste config".into(), false),
+                ],
+                source,
+                move |source, _, cx| {
+                    source_this.update(cx, |screen, cx| {
+                        screen.source = source;
+                        screen.form_error = None;
+                        cx.notify();
+                    })
+                },
+            ))
+            .child(body)
+            .children(self.form_error.clone().map(|error| {
+                div()
+                    .text_size(px(13.))
+                    .text_color(rgb(T.warn))
+                    .child(error)
+            }))
             .child(
-                v_flex()
-                    .flex_none()
-                    .gap(px(16.))
-                    .px(px(22.))
-                    .pt(px(18.))
-                    .pb(px(24.))
-                    .child(
-                        h_flex()
-                            .justify_between()
-                            .items_center()
-                            .child(
-                                div()
-                                    .text_size(px(18.))
-                                    .font_weight(FontWeight::SEMIBOLD)
-                                    .child(ui::i18n::t("New tournament")),
-                            )
-                            .child(
-                                btn("tournament-setup-close", "×")
-                                    .h(28.)
-                                    .w(28.)
-                                    .pad(4.)
-                                    .tooltip(ui::i18n::t("Close"))
-                                    .on_click(move |_, cx| {
-                                        close.update(cx, |screen, cx| screen.close_setup(cx))
-                                    }),
-                            ),
-                    )
-                    .child(self.render_fastchess(cx))
-                    .child(segmented(
-                        "tournament-source",
-                        vec![
-                            (Source::Form, "Set up".into(), false),
-                            (Source::Paste, "Paste config".into(), false),
-                        ],
-                        source,
-                        move |source, _, cx| {
-                            source_this.update(cx, |screen, cx| {
-                                screen.source = source;
-                                screen.form_error = None;
-                                cx.notify();
-                            })
-                        },
-                    ))
-                    .child(body)
-                    .children(self.form_error.clone().map(|error| {
-                        div()
-                            .text_size(px(13.))
-                            .text_color(rgb(T.warn))
-                            .child(error)
-                    }))
-                    .child(
-                        btn("tournament-start", "Start tournament")
-                            .primary()
-                            .full()
-                            .h(38.)
-                            .disabled(busy)
-                            .on_click(move |_, cx| {
-                                start.update(cx, |screen, cx| match screen.source {
-                                    Source::Form => screen.start_form(cx),
-                                    Source::Paste => screen.start_paste(cx),
-                                })
-                            }),
-                    ),
+                btn("tournament-start", "Start tournament")
+                    .primary()
+                    .full()
+                    .h(38.)
+                    .disabled(busy)
+                    .on_click(move |_, cx| {
+                        start.update(cx, |screen, cx| match screen.source {
+                            Source::Form => screen.start_form(cx),
+                            Source::Paste => screen.start_paste(cx),
+                        })
+                    }),
             );
-        ui::widgets::modal("tournament-setup-backdrop", dialog, move |cx| {
-            backdrop.update(cx, |screen, cx| screen.close_setup(cx))
-        })
+        ui::widgets::dialog(
+            "tournament-setup",
+            "New tournament",
+            dialog_width,
+            body,
+            move |cx| close.update(cx, |screen, cx| screen.close_setup(cx)),
+        )
         .into_any_element()
     }
 
@@ -2622,20 +2590,17 @@ impl TournamentScreen {
         column: GameSort,
         label: &'static str,
         cx: &mut Context<Self>,
-    ) -> gpui::Stateful<Div> {
-        let arrow = match self.games_sort {
-            Some((c, false)) if c == column => " ▲",
-            Some((c, true)) if c == column => " ▼",
-            _ => "",
+    ) -> ui::widgets::SortHeading {
+        let sorted = match self.games_sort {
+            Some((c, descending)) if c == column => Some(descending),
+            _ => None,
         };
         let this = cx.entity();
-        div()
-            .id(("games-sort", column as usize))
-            .cursor_pointer()
-            .whitespace_nowrap()
-            .hover(|h| h.text_color(rgb(T.fg_2)))
-            .when(!arrow.is_empty(), |h| h.text_color(rgb(T.fg_2)))
-            .on_click(move |_, _, cx| {
+        ui::widgets::sort_heading(
+            ("games-sort", column as usize),
+            label,
+            sorted,
+            move |_, cx| {
                 this.update(cx, |screen, cx| {
                     screen.games_sort = match screen.games_sort {
                         Some((c, false)) if c == column => Some((column, true)),
@@ -2644,8 +2609,8 @@ impl TournamentScreen {
                     };
                     cx.notify();
                 })
-            })
-            .child(SharedString::from(format!("{label}{arrow}")))
+            },
+        )
     }
 
     /// The finished games, filterable, with a row per game that opens it in Analyse.
@@ -2692,26 +2657,31 @@ impl TournamentScreen {
                     .text_size(px(12.))
                     .font_weight(FontWeight::SEMIBOLD)
                     .text_color(rgb(T.faint))
-                    .child(self.sort_header(GameSort::Number, "#", cx).w(px(72.)))
                     .child(
-                        self.sort_header(GameSort::White, ui::i18n::t("WHITE"), cx)
-                            .flex_1()
-                            .min_w_0(),
+                        div()
+                            .w(px(72.))
+                            .child(self.sort_header(GameSort::Number, "#", cx)),
                     )
+                    .child(div().flex_1().min_w_0().child(self.sort_header(
+                        GameSort::White,
+                        "White",
+                        cx,
+                    )))
+                    .child(div().flex_1().min_w_0().child(self.sort_header(
+                        GameSort::Black,
+                        "Black",
+                        cx,
+                    )))
                     .child(
-                        self.sort_header(GameSort::Black, ui::i18n::t("BLACK"), cx)
-                            .flex_1()
-                            .min_w_0(),
+                        div()
+                            .w(px(96.))
+                            .child(self.sort_header(GameSort::Result, "Result", cx)),
                     )
-                    .child(
-                        self.sort_header(GameSort::Result, ui::i18n::t("RESULT"), cx)
-                            .w(px(96.)),
-                    )
-                    .child(
-                        self.sort_header(GameSort::Termination, ui::i18n::t("TERMINATION"), cx)
-                            .flex_1()
-                            .min_w_0(),
-                    )
+                    .child(div().flex_1().min_w_0().child(self.sort_header(
+                        GameSort::Termination,
+                        "Termination",
+                        cx,
+                    )))
                     .child(div().w(px(96.)).child("")),
             );
             for row in rows {

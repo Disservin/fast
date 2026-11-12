@@ -1062,20 +1062,13 @@ impl TrainScreen {
             panel()
                 .flex_none()
                 .child(
-                    h_flex()
-                        .h(px(44.))
-                        .px(px(16.))
-                        .justify_between()
-                        .border_b_1()
-                        .border_color(rgb(T.border))
-                        .child(section_label(ui::i18n::t("Drill")))
-                        .when(has_drill && !answered, |header| {
-                            header.child(
-                                tool("skip", "Skip", Self::skip, this.clone())
-                                    .compact()
-                                    .tooltip(ui::i18n::t("Ask this position again later")),
-                            )
-                        }),
+                    ui::widgets::panel_header("Drill").when(has_drill && !answered, |header| {
+                        header.child(
+                            tool("skip", "Skip", Self::skip, this.clone())
+                                .compact()
+                                .tooltip(ui::i18n::t("Ask this position again later")),
+                        )
+                    }),
                 )
                 .child(
                     v_flex()

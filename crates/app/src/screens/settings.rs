@@ -3416,27 +3416,20 @@ impl SettingsScreen {
                 panel()
                     .overflow_hidden()
                     .child(
-                        h_flex()
-                            .h(px(44.))
-                            .px(px(16.))
-                            .border_b_1()
-                            .border_color(rgb(T.border))
-                            .child(section_label("Disk use"))
-                            .child(div().flex_1())
-                            .child(
-                                btn(
-                                    "measure-usage",
-                                    if measuring { "Measuring…" } else { "Refresh" },
-                                )
-                                .compact()
-                                .disabled(measuring)
-                                .on_click(move |_, cx| {
-                                    this.update(cx, |screen, cx| {
-                                        screen.measure_usage(cx);
-                                        cx.notify();
-                                    })
-                                }),
-                            ),
+                        ui::widgets::panel_header("Disk use").child(
+                            btn(
+                                "measure-usage",
+                                if measuring { "Measuring…" } else { "Refresh" },
+                            )
+                            .compact()
+                            .disabled(measuring)
+                            .on_click(move |_, cx| {
+                                this.update(cx, |screen, cx| {
+                                    screen.measure_usage(cx);
+                                    cx.notify();
+                                })
+                            }),
+                        ),
                     )
                     .children(drive)
                     .child(table),
@@ -3635,45 +3628,18 @@ impl SettingsScreen {
                        up: Option<u32>,
                        set: fn(&mut crate::config::KibitzConfig, u32)| {
             let (down_this, up_this) = (this.clone(), this.clone());
-            h_flex()
-                .flex_none()
-                .gap(px(4.))
-                .child(
-                    btn((id, 0usize), "−")
-                        .mini()
-                        .w(24.)
-                        .pad(0.)
-                        .disabled(down.is_none())
-                        .on_click(move |_, cx| {
-                            if let Some(value) = down {
-                                down_this.update(cx, |screen, cx| {
-                                    screen.update_kibitz(cx, |kibitz| set(kibitz, value))
-                                });
-                            }
-                        }),
-                )
-                .child(
-                    mono(value)
-                        .w(px(64.))
-                        .flex_none()
-                        .text_center()
-                        .whitespace_nowrap()
-                        .text_size(px(13.)),
-                )
-                .child(
-                    btn((id, 1usize), "+")
-                        .mini()
-                        .w(24.)
-                        .pad(0.)
-                        .disabled(up.is_none())
-                        .on_click(move |_, cx| {
-                            if let Some(value) = up {
-                                up_this.update(cx, |screen, cx| {
-                                    screen.update_kibitz(cx, |kibitz| set(kibitz, value))
-                                });
-                            }
-                        }),
-                )
+            let apply = move |this: &Entity<Self>, value: Option<u32>, cx: &mut gpui::App| {
+                if let Some(value) = value {
+                    this.update(cx, |screen, cx| {
+                        screen.update_kibitz(cx, |kibitz| set(kibitz, value))
+                    });
+                }
+            };
+            ui::widgets::stepper(id, value)
+                .mini()
+                .value_width(64.)
+                .on_down(down.is_some(), move |_, cx| apply(&down_this, down, cx))
+                .on_up(up.is_some(), move |_, cx| apply(&up_this, up, cx))
         };
         let threads = kibitz.threads.max(1);
         let hash = kibitz.hash_mb.max(1);

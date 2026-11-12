@@ -4,6 +4,7 @@ Settings › Changelog shows this file. Describe the finished changes since each
 
 ## Since 0.1.3
 
+- Tournament: the games table headings sort by keyboard and match the database's, and New tournament opens as a flat dialog like the others.
 - Play: open Log from the Engines panel in an engine match to read either engine's UCI traffic.
 - Play: Stop and Analyse this game sit next to New game in engine matches, so they show without scrolling.
 - Play: engine matches show each engine's depth, nodes, hash use and thinking time on the current move.

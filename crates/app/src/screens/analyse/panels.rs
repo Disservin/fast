@@ -313,28 +313,16 @@ impl AnalyseScreen {
                         .child(ui::i18n::t("Lines")),
                 )
                 .child(
-                    small("lines-down", "−")
-                        .w(28.)
-                        .pad(0.)
-                        .disabled(value <= 1)
-                        .tooltip(ui::i18n::t("Search one fewer engine line"))
-                        .on_click(move |_, cx| {
+                    ui::widgets::stepper("lines", value.to_string())
+                        .value_width(24.)
+                        .tooltips(
+                            "Search one fewer engine line",
+                            "MultiPV: lines each engine searches, saved in its options",
+                        )
+                        .on_down(value > 1, move |_, cx| {
                             down_this.update(cx, |screen, cx| screen.step_lines(false, cx));
-                        }),
-                )
-                .child(
-                    mono(value.to_string())
-                        .min_w(px(22.))
-                        .flex()
-                        .justify_center()
-                        .text_size(px(13.)),
-                )
-                .child(
-                    small("lines-up", "+")
-                        .w(28.)
-                        .pad(0.)
-                        .tooltip(ui::i18n::t("MultiPV: lines each engine searches, saved in its options"))
-                        .on_click(move |_, cx| {
+                        })
+                        .on_up(true, move |_, cx| {
                             up_this.update(cx, |screen, cx| screen.step_lines(true, cx));
                         }),
                 )
@@ -554,24 +542,20 @@ impl AnalyseScreen {
         let id = config.id;
         let spin = spin_option(config, name);
         let this = cx.entity();
-        let button =
-            |up: bool, this: gpui::Entity<Self>| {
-                let (id_text, text) = if up { ("up", "+") } else { ("down", "−") };
-                btn(SharedString::from(format!("{name}-{id_text}")), text)
-                    .w(24.)
-                    .h(24.)
-                    .pad(0.)
-                    .disabled(spin.is_none_or(|(value, min, max)| {
-                        step_value(name, value, up, min, max) == value
-                    }))
-                    .on_click(move |_, cx| {
-                        let Some((value, min, max)) = spin else {
-                            return;
-                        };
-                        let next = step_value(name, value, up, min, max);
-                        this.update(cx, |screen, cx| screen.set_spin(id, name, next, cx));
-                    })
+        let step = |up: bool| {
+            let this = this.clone();
+            let enabled = spin
+                .is_some_and(|(value, min, max)| step_value(name, value, up, min, max) != value);
+            let handler = move |_: &mut gpui::Window, cx: &mut gpui::App| {
+                let Some((value, min, max)) = spin else {
+                    return;
+                };
+                let next = step_value(name, value, up, min, max);
+                this.update(cx, |screen, cx| screen.set_spin(id, name, next, cx));
             };
+            (enabled, handler)
+        };
+        let ((down_on, down), (up_on, up)) = (step(false), step(true));
         let edit_this = this.clone();
         let value_element = if let Some((edit_id, edit_name, input, _)) = &self.spin_edit
             && *edit_id == id
@@ -634,9 +618,14 @@ impl AnalyseScreen {
                     .text_color(rgb(T.muted))
                     .child(ui::i18n::t(label).to_owned()),
             )
-            .child(button(false, this.clone()))
-            .child(div().w(px(72.)).flex_none().child(value_element))
-            .child(button(true, this))
+            .child(
+                ui::widgets::stepper(SharedString::from(format!("{name}-{id:?}")), "")
+                    .mini()
+                    .value_width(72.)
+                    .value_element(value_element)
+                    .on_down(down_on, down)
+                    .on_up(up_on, up),
+            )
     }
 
     /// One engine: an on/off check, what its search is doing right now, and a thin bar

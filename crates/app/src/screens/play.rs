@@ -1997,47 +1997,39 @@ impl PlayScreen {
                     ("Threads", choice.threads, 1),
                     ("Hash (MB)", choice.hash, 64),
                 ] {
-                    let name_key = name;
+                    let entity = cx.entity();
+                    let step = move |up: bool| {
+                        let this = entity.clone();
+                        move |_: &mut gpui::Window, cx: &mut gpui::App| {
+                            this.update(cx, |screen, cx| {
+                                let choice = pick(screen);
+                                let value = if name == "Threads" {
+                                    &mut choice.threads
+                                } else {
+                                    &mut choice.hash
+                                };
+                                *value = if up {
+                                    value.saturating_add(step)
+                                } else {
+                                    value.saturating_sub(step).max(1)
+                                };
+                                cx.notify();
+                            });
+                        }
+                    };
                     column = column.child(
                         h_flex()
                             .gap(px(6.))
                             .mb(px(8.))
                             .child(div().flex_1().text_size(px(13.)).child(ui::i18n::t(name)))
-                            .child({
-                                let this = cx.entity();
-                                btn(SharedString::from(format!("{label}-{name}-minus")), "−")
-                                    .compact()
-                                    .on_click(move |_, cx| {
-                                        this.update(cx, |screen, cx| {
-                                            let choice = pick(screen);
-                                            let value = if name_key == "Threads" {
-                                                &mut choice.threads
-                                            } else {
-                                                &mut choice.hash
-                                            };
-                                            *value = value.saturating_sub(step).max(1);
-                                            cx.notify();
-                                        });
-                                    })
-                            })
-                            .child(mono(value.to_string()).w(px(44.)))
-                            .child({
-                                let this = cx.entity();
-                                btn(SharedString::from(format!("{label}-{name}-plus")), "+")
-                                    .compact()
-                                    .on_click(move |_, cx| {
-                                        this.update(cx, |screen, cx| {
-                                            let choice = pick(screen);
-                                            let value = if name_key == "Threads" {
-                                                &mut choice.threads
-                                            } else {
-                                                &mut choice.hash
-                                            };
-                                            *value = value.saturating_add(step);
-                                            cx.notify();
-                                        });
-                                    })
-                            }),
+                            .child(
+                                ui::widgets::stepper(
+                                    SharedString::from(format!("{label}-{name}")),
+                                    value.to_string(),
+                                )
+                                .on_down(true, step(false))
+                                .on_up(true, step(true)),
+                            ),
                     );
                 }
                 column
