@@ -2,36 +2,20 @@
 
 Settings › Changelog shows this file. Describe the finished changes since each release, combining related work into one short line.
 
-## Since 0.1.3
+## 0.1.4
 
-- Board: pressing anywhere in a piece's square immediately picks it up under the pointer.
-- Board: clicking the selected piece deselects it.
-- Analyse: search limits now have a Time, Depth, Nodes or Infinite selector and an editable value instead of fixed presets.
-- Analyse: Cloud scores in the moves table are from White's side, like the engine evals, instead of the side to move.
-- Analyse: ?!, ? and ?? badges from live analysis wait for depth 10, and Settings › Board can turn them off so only game reviews badge moves.
-- Analyse: hovering a later move in Line preview no longer draws an impossible arrow on the board; only the next move to play gets one.
-- Board: arrows and circles you draw are green, or red with Shift or Ctrl, blue with Alt, and yellow with both, as on Lichess.
-- Analyse: moves marked ! or !? show their badge on the board, like ?! and ??.
-- Board: a piece dropped by drag and drop stays where it lands instead of sliding there again.
-- Settings: board and piece set names fit on one line under their previews.
-- Board: pieces are drawn larger, filling more of their squares.
-- Tournament: missing values show the same dash as the rest of the app.
-- Analyse: the Log panel header is the same height as the other panel headers.
-- Test positions, Analyse: table headings sit on the same shaded, ruled header row as every other table.
-- Settings: restoring a backup runs in the background, so the window stays responsive while files are copied back.
-- Tournament: opening a game from a long tournament no longer freezes the window while its PGN is read.
-- Train: adding lines from a large PGN file no longer freezes the window.
-- Analyse: opening large PGN files no longer freezes the window while they are read.
-- Database: the window no longer pauses while large databases are re-counted after an import, download or edit.
-- Analyse: the WDL bar matches the eval bar and the Log selection follows the palette, so both read clearly in Paper and Sand.
-- Settings: the Soft, Click, Bell, Deep wood and Thud sound sets are gone, and settings that used one now play Classic.
-- Tournament: the games table headings sort by keyboard and match the database's, and New tournament opens as a flat dialog like the others.
-- Play: open Log from the Engines panel in an engine match to read either engine's UCI traffic.
-- Play: Stop and Analyse this game sit next to New game in engine matches, so they show without scrolling.
-- Play: engine matches show each engine's depth, nodes, hash use and thinking time on the current move.
-- Play: the board shows the chosen start position, such as a Chess960 setup, while a new game is set up.
-- Play: New game stops the running engine match instead of letting it play on.
-- Chess960: Random picks any of the 960 start positions, not only every tenth, and Play's random colour is no longer always White on Windows.
+- Board: larger pieces pick up immediately on press, stay where dropped and deselect when clicked again.
+- Board: draw arrows and circles in green, red, blue or yellow with Lichess-style modifier keys.
+- Analyse: choose Time, Depth, Nodes or Infinite search limits with an editable value.
+- Analyse: Cloud scores use White's perspective, matching engine evaluations.
+- Analyse: show ! and !? badges on the board; live analysis waits for depth 10 before showing mistake badges, which can be limited to game reviews in Settings › Board.
+- Analyse: Line preview draws hover arrows only for the next playable move.
+- Play: follow engine matches with per-move depth, nodes, hash use and thinking time, and open either engine's UCI log.
+- Play: engine match actions stay visible, New game stops the running match and game setup shows the chosen start position.
+- Chess960: Random chooses from all 960 positions, and random colour works correctly on Windows.
+- Performance: large PGN imports, database recounts, tournament game loading and backup restores keep the window responsive.
+- Interface: clearer table headings, consistent panel headers and missing values, keyboard sorting in tournaments and readable analysis colours in light themes.
+- Settings: board and piece set names fit under their previews; sound sets are simplified, with removed sets falling back to Classic.
 
 ## 0.1.3
 
