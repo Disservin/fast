@@ -82,25 +82,52 @@ impl SettingsScreen {
 
     /// Show the installed version and user-requested application update controls.
     pub(super) fn render_app_update(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let check_this = cx.entity();
-        let install_this = cx.entity();
+        let this = cx.entity();
         let busy = self.app_update_task.is_some();
-        panel().p(px(16.)).child(v_flex().gap(px(8.))
-            .child(section_label("Fast updates"))
-            .child(h_flex().gap(px(8.))
-                .child(ui::i18n::t("Installed version"))
-                .child(mono(crate::app_update::VERSION)))
-            .child(ui::i18n::t("Check for a new Fast release. Updates keep your settings, databases and engines."))
-            .child(h_flex().gap(px(8.))
-                .child(btn("check-fast-update", "Check for updates").compact().disabled(busy)
-                    .on_click(check_this.listen(move |screen, _, cx| screen.check_app_update(cx))))
-                .when(self.app_update.is_some(), |row| row.child(
-                    btn("install-fast-update", "Download and install update").compact().primary().disabled(busy)
-                        .on_click(install_this.listen(move |screen, _, cx| screen.install_app_update(cx))))))
-            .children(self.app_update.as_ref().map(|update| h_flex().gap(px(8.))
+        let buttons = h_flex()
+            .gap(px(8.))
+            .child(
+                btn("check-fast-update", "Check for updates")
+                    .compact()
+                    .disabled(busy)
+                    .on_click(this.listen(move |screen, _, cx| screen.check_app_update(cx))),
+            )
+            .when(self.app_update.is_some(), |row| {
+                row.child(
+                    btn("install-fast-update", "Download and install update")
+                        .compact()
+                        .primary()
+                        .disabled(busy)
+                        .on_click(this.listen(move |screen, _, cx| screen.install_app_update(cx))),
+                )
+            });
+        let available = self.app_update.as_ref().map(|update| {
+            h_flex()
+                .gap(px(8.))
                 .child(ui::i18n::t("Available version"))
-                .child(mono(update.version.clone()))))
-            .children(self.app_update_status.clone().map(|status| div().text_color(rgb(T.fg_2)).child(status))))
+                .child(mono(update.version.clone()))
+        });
+        panel().p(px(16.)).child(
+            v_flex()
+                .gap(px(8.))
+                .child(section_label("Fast updates"))
+                .child(
+                    h_flex()
+                        .gap(px(8.))
+                        .child(ui::i18n::t("Installed version"))
+                        .child(mono(crate::app_update::VERSION)),
+                )
+                .child(ui::i18n::t(
+                    "Check for a new Fast release. Updates keep your settings, databases and engines.",
+                ))
+                .child(buttons)
+                .children(available)
+                .children(
+                    self.app_update_status
+                        .clone()
+                        .map(|status| div().text_color(rgb(T.fg_2)).child(status)),
+                ),
+        )
     }
 
     /// Check public releases in the background without disturbing the current session.
@@ -172,13 +199,29 @@ impl SettingsScreen {
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
         let this = cx.entity();
-        panel().p(px(16.)).child(v_flex().gap(px(8.))
-            .child(section_label("Opening data"))
-            .child("Update opening names and ECO codes from Lichess. Updates apply immediately and are saved for offline use. Bundled data is the fallback.")
-            .child(btn("update-opening-data", if self.opening_task.is_some() { "Updating…" } else { "Update opening data" })
-                .disabled(self.opening_task.is_some())
-                .on_click(this.listen(move |screen, _, cx| screen.update_opening_data(cx))))
-            .children(self.opening_status.clone()))
+        let updating = self.opening_task.is_some();
+        panel().p(px(16.)).child(
+            v_flex()
+                .gap(px(8.))
+                .child(section_label("Opening data"))
+                .child(ui::i18n::t(
+                    "Update opening names and ECO codes from Lichess. Updates apply immediately \
+                     and are saved for offline use. Bundled data is the fallback.",
+                ))
+                .child(
+                    btn(
+                        "update-opening-data",
+                        if updating {
+                            "Updating…"
+                        } else {
+                            "Update opening data"
+                        },
+                    )
+                    .disabled(updating)
+                    .on_click(this.listen(move |screen, _, cx| screen.update_opening_data(cx))),
+                )
+                .children(self.opening_status.clone()),
+        )
     }
 
     pub(super) fn update_opening_data(&mut self, cx: &mut Context<Self>) {

@@ -239,7 +239,8 @@ impl Database {
                 "UPDATE games SET annotated = ?2 WHERE id = ?1",
                 params![id, movetext(pgn)],
             )?;
-            let chess960 = chess_core::Variant::from_tag(&tags.variant) == chess_core::Variant::Chess960
+            let chess960 = chess_core::Variant::from_tag(&tags.variant)
+                == chess_core::Variant::Chess960
                 || chess_core::fen_variant(&game.start_fen) == Some(chess_core::Variant::Chess960);
             if old_fen == game.start_fen && old_moves == moves && old_chess960 == chess960 {
                 return Ok(true);
@@ -247,7 +248,15 @@ impl Database {
             db.unindex_game(id)?;
             db.conn.execute("DELETE FROM structure_positions WHERE game_id = ?1", params![id])?;
             if db.has_structure_index()? {
-                crate::structure::index_game(&db.conn, id, &game.start_fen, &moves, chess960, &crate::ImportControl::default())?;
+                let control = crate::ImportControl::default();
+                crate::structure::index_game(
+                    &db.conn,
+                    id,
+                    &game.start_fen,
+                    &moves,
+                    chess960,
+                    &control,
+                )?;
             }
             db.clear_review(id)?;
             db.conn.execute(

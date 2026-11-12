@@ -554,17 +554,21 @@ impl AnalyseScreen {
                             .child({
                                 let running = self.backward.is_some();
                                 let nodes = self.model.read(cx).config.backward_nodes;
-                                btn(
-                                    "analyse-backward",
-                                    if running { ui::i18n::t("Stop") } else { ui::i18n::t("Analyse backwards") },
-                                )
+                                let label = if running {
+                                    ui::i18n::t("Stop")
+                                } else {
+                                    ui::i18n::t("Analyse backwards")
+                                };
+                                btn("analyse-backward", label)
                                 .mini()
                                 .selected(running)
                                 .tooltip(format!(
                                     "Search every position from the last move to the first, {} each (Settings › Analysis)",
                                     engine::format_nodes(nodes)
                                 ))
-                                .on_click(this.listen(move |screen, window, cx| screen.toggle_backward(window, cx)))
+                                .on_click(this.listen(move |screen, window, cx| {
+                                    screen.toggle_backward(window, cx)
+                                }))
                             }),
                     )
                     .child(tabs),

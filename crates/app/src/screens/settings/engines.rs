@@ -453,15 +453,54 @@ impl SettingsScreen {
                     });
                     let homepage = entry.homepage.clone();
                     let source = entry.source_url.clone();
-                    body = body.child(h_flex().gap(px(16.)).items_start()
-                    .child(v_flex().flex_1().min_w_0().gap(px(4.))
-                        .child(h_flex().gap(px(8.)).child(format!("{} {}", entry.name, entry.version)).child(badge(entry.license)))
+                    let install_label = if installed {
+                        ui::i18n::t("Installed")
+                    } else if downloaded {
+                        ui::i18n::t("Retry engine check")
+                    } else {
+                        ui::i18n::t("Download & install")
+                    };
+                    let unsupported = format!(
+                        "No catalog build for {} / {}. You can still add a local executable.",
+                        std::env::consts::OS,
+                        std::env::consts::ARCH
+                    );
+                    let details = v_flex()
+                        .flex_1()
+                        .min_w_0()
+                        .gap(px(4.))
+                        .child(
+                            h_flex()
+                                .gap(px(8.))
+                                .child(format!("{} {}", entry.name, entry.version))
+                                .child(badge(entry.license)),
+                        )
                         .child(div().text_as(12., T.muted).child(entry.description))
-                        .when(!supported, |column| column.child(format!("No catalog build for {} / {}. You can still add a local executable.", std::env::consts::OS, std::env::consts::ARCH))))
-                    .child(btn(("engine-site", index), "Website").h(30.).on_click(move |_, cx| cx.open_url(&homepage)))
-                    .child(btn(("engine-source", index), ui::i18n::t("Source")).h(30.).on_click(move |_, cx| cx.open_url(&source)))
-                    .child(btn(("engine-install", index), if installed { ui::i18n::t("Installed") } else if downloaded { ui::i18n::t("Retry engine check") } else { ui::i18n::t("Download & install") }).h(30.).disabled(busy || !supported || installed)
-                        .on_click(this.listen(move |screen, _, cx| screen.download_engine(index, cx)))));
+                        .when(!supported, |column| column.child(unsupported));
+                    body = body.child(
+                        h_flex()
+                            .gap(px(16.))
+                            .items_start()
+                            .child(details)
+                            .child(
+                                btn(("engine-site", index), "Website")
+                                    .h(30.)
+                                    .on_click(move |_, cx| cx.open_url(&homepage)),
+                            )
+                            .child(
+                                btn(("engine-source", index), ui::i18n::t("Source"))
+                                    .h(30.)
+                                    .on_click(move |_, cx| cx.open_url(&source)),
+                            )
+                            .child(
+                                btn(("engine-install", index), install_label)
+                                    .h(30.)
+                                    .disabled(busy || !supported || installed)
+                                    .on_click(this.listen(move |screen, _, cx| {
+                                        screen.download_engine(index, cx)
+                                    })),
+                            ),
+                    );
                 }
             }
         }

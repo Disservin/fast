@@ -770,12 +770,21 @@ impl Database {
         updated_at: i64,
     ) -> Result<()> {
         self.conn.execute(
-            "INSERT INTO review_summaries(game_id,job_key,engine,search_limit,white_accuracy,black_accuracy,updated_at)
+            "INSERT INTO review_summaries(game_id,job_key,engine,search_limit,
+             white_accuracy,black_accuracy,updated_at)
              VALUES(?1,?2,?3,?4,?5,?6,?7)
              ON CONFLICT(game_id,job_key) DO UPDATE SET
-             engine=excluded.engine,search_limit=excluded.search_limit,white_accuracy=excluded.white_accuracy,
-             black_accuracy=excluded.black_accuracy,updated_at=excluded.updated_at",
-            params![game_id, job_key, summary.engine, summary.search_limit, summary.white_accuracy, summary.black_accuracy, updated_at],
+             engine=excluded.engine,search_limit=excluded.search_limit,
+             white_accuracy=excluded.white_accuracy,black_accuracy=excluded.black_accuracy,updated_at=excluded.updated_at",
+            params![
+                game_id,
+                job_key,
+                summary.engine,
+                summary.search_limit,
+                summary.white_accuracy,
+                summary.black_accuracy,
+                updated_at
+            ],
         )?;
         Ok(())
     }

@@ -76,8 +76,17 @@ impl AnalysisStore {
         self.0.execute(
             "INSERT INTO analyses(cache_key,engine_id,position,engine,search_limit,record,saved_at)
              VALUES(?1,?2,?3,?4,?5,?6,?7)
-             ON CONFLICT(cache_key) DO UPDATE SET record=excluded.record,saved_at=excluded.saved_at",
-            params![key, engine_id as i64, record.position, record.engine, record.limit, json, record.saved_at],
+             ON CONFLICT(cache_key) DO UPDATE SET
+             record=excluded.record,saved_at=excluded.saved_at",
+            params![
+                key,
+                engine_id as i64,
+                record.position,
+                record.engine,
+                record.limit,
+                json,
+                record.saved_at
+            ],
         )?;
         Ok(())
     }

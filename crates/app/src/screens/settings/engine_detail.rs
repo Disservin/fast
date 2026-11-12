@@ -300,12 +300,11 @@ impl SettingsScreen {
                     .w_full()
                     .gap(px(8.))
                     .child(div().flex_1().min_w_0().child(text_input(&self.path_input)))
-                    .child(btn("browse-executable", ui::i18n::t("Browse…")).on_click({
-                        let this = this.clone();
-                        move |_, cx| {
-                            this.update(cx, |screen, cx| screen.choose_engine_path(None, false, cx))
-                        }
-                    })),
+                    .child(btn("browse-executable", ui::i18n::t("Browse…")).on_click(
+                        this.listen(move |screen, _, cx| {
+                            screen.choose_engine_path(None, false, cx)
+                        }),
+                    )),
             ))
             .child(self.render_profiles(config, cx))
             .child(detail_row(
@@ -331,82 +330,34 @@ impl SettingsScreen {
                 ),
             ))
             .child(self.render_option_grid(config, cx));
-        let usage_check = |id: &'static str,
-                           value: bool,
-                           label: &'static str,
-                           this: Entity<Self>,
-                           set: fn(&mut EngineConfig, bool)| {
-            div().child(check(id, value, label).on_change(this.listen_with(
-                move |screen, value, _, cx| {
-                    screen.set_engine_use(|config| set(config, value), cx);
-                },
-            )))
-        };
-        let update_model = self.model.clone();
-        let name = config.name.clone();
         let about = config.info.about().map(str::to_owned);
-        let has_icon = config.icon.is_some();
         let debug = config.debug;
+        let debug_row = h_flex()
+            .gap(px(12.))
+            .mb(px(4.))
+            .child(
+                check("engine-debug", debug, "Debug")
+                    .text(13.)
+                    .on_change(this.listen_with(move |screen, on, _, cx| screen.set_debug(on, cx))),
+            )
+            .child(div().text_as(12., T.muted).child(ui::i18n::t(
+                "Sends debug on and shows the raw engine output in its own window",
+            )))
+            .when(debug, |row| {
+                row.child(
+                    btn("debug-window", "Open output window")
+                        .compact()
+                        .on_click(this.listen(move |screen, _, cx| screen.open_debug_window(cx))),
+                )
+            });
         panel()
             .p(px(21.))
             .child(
                 h_flex()
                     .justify_between()
                     .mb(px(6.))
-                    .child(
-                        h_flex()
-                            .gap(px(12.))
-                            .child(
-                                div()
-                                    .id("engine-icon")
-                                    .cursor_pointer()
-                                    .on_click(this.listen_event(move |screen, _, _, cx| screen.choose_icon(cx)))
-                                    .child(engine_icon(config, 40.)),
-                            )
-                            .child(
-                                v_flex()
-                                    .child(
-                                        h_flex()
-                                            .gap(px(10.))
-                                            .items_baseline()
-                                            .child(div().text_size(px(20.)).font_weight(FontWeight::SEMIBOLD).child(name.clone()))
-                                            .child(mono(config.version.clone()).text_as(16., T.muted)),
-                                    )
-                                    .child(
-                                        h_flex()
-                                            .gap(px(10.))
-                                            .text_size(px(12.))
-                                            .child(
-                                                div()
-                                                    .id("icon-choose")
-                                                    .cursor_pointer()
-                                                    .text_color(rgb(T.accent))
-                                                    .on_click(this.listen_event(move |screen, _, _, cx| {
-                                                            if has_icon {
-                                                                screen.reset_icon(cx);
-                                                            } else {
-                                                                screen.choose_icon(cx);
-                                                            }
-                                                        }))
-                                                    .child(if has_icon { "Use the default rook" } else { "Choose an icon" }),
-                                            ),
-                                    ),
-                            ),
-                    )
-                    .child(
-                        h_flex()
-                            .gap(px(12.))
-                            .when(status == Some(EngineStatus::Error), |row| {
-                                row.child(btn("restart-engine", "Restart").h(32.).on_click(this.listen(move |screen, _, cx| screen.restart_engine(cx))))
-                            })
-                            .child(btn("benchmark", "Run benchmark").h(32.).on_click(this.listen(move |screen, _, cx| screen.run_benchmark(cx))))
-                            .child(btn("check-update", "Check for update").h(32.).on_click(move |_, cx| {
-                                let name = name.clone();
-                                update_model.toast(format!("Compare {name} with the pinned versions under Download engine. Existing installations are kept until you choose a new version."), cx);
-                            }))
-                            .child(btn("duplicate-engine", "Duplicate").h(32.).tooltip(ui::i18n::t("Another entry for this binary with its own options, e.g. Lc0 with another network")).on_click(this.listen(move |screen, window, cx| screen.duplicate_engine(window, cx))))
-                            .child(btn("remove-engine", ui::i18n::t("Remove")).h(32.).on_click(this.listen(move |screen, window, cx| screen.remove_engine(window, cx)))),
-                    ),
+                    .child(self.render_engine_title(config, cx))
+                    .child(self.render_engine_actions(config, status, cx)),
             )
             .children(about.map(|about| {
                 div()
@@ -416,45 +367,158 @@ impl SettingsScreen {
                     .text_color(rgb(T.fg_2))
                     .child(SharedString::from(about))
             }))
+            .child(debug_row)
+            .children(
+                self.benchmark
+                    .clone()
+                    .map(|text| mono(text).mb(px(4.)).text_as(13., T.fg_2)),
+            )
+            .child(body)
+            .child(self.render_engine_usage(config, cx))
+    }
+
+    /// The engine's icon, name and version; clicking the icon or the link under the name
+    /// chooses or resets the icon.
+    fn render_engine_title(&self, config: &EngineConfig, cx: &mut Context<Self>) -> Div {
+        let this = cx.entity();
+        let has_icon = config.icon.is_some();
+        let name = h_flex()
+            .gap(px(10.))
+            .items_baseline()
             .child(
-                h_flex()
-                    .gap(px(12.))
-                    .mb(px(4.))
-                    .child(
-                        check("engine-debug", debug, "Debug")
-                            .text(13.)
-                            .on_change(this.listen_with(move |screen, on, _, cx| screen.set_debug(on, cx))),
-                    )
-                    .child(
-                        div()
-                            .text_as(12., T.muted)
-                            .child(ui::i18n::t("Sends debug on and shows the raw engine output in its own window")),
-                    )
-                    .when(debug, |row| {
-                        row.child(btn("debug-window", "Open output window").compact().on_click(this.listen(move |screen, _, cx| screen.open_debug_window(cx))))
+                div()
+                    .text_size(px(20.))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .child(config.name.clone()),
+            )
+            .child(mono(config.version.clone()).text_as(16., T.muted));
+        let icon_link = div()
+            .id("icon-choose")
+            .cursor_pointer()
+            .text_color(rgb(T.accent))
+            .on_click(this.listen_event(move |screen, _, _, cx| {
+                if has_icon {
+                    screen.reset_icon(cx);
+                } else {
+                    screen.choose_icon(cx);
+                }
+            }))
+            .child(if has_icon {
+                "Use the default rook"
+            } else {
+                "Choose an icon"
+            });
+        h_flex()
+            .gap(px(12.))
+            .child(
+                div()
+                    .id("engine-icon")
+                    .cursor_pointer()
+                    .on_click(this.listen_event(move |screen, _, _, cx| screen.choose_icon(cx)))
+                    .child(engine_icon(config, 40.)),
+            )
+            .child(
+                v_flex()
+                    .child(name)
+                    .child(h_flex().gap(px(10.)).text_size(px(12.)).child(icon_link)),
+            )
+    }
+
+    /// Restart (after an error), benchmark, update check, duplicate and remove.
+    fn render_engine_actions(
+        &self,
+        config: &EngineConfig,
+        status: Option<EngineStatus>,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        let this = cx.entity();
+        let model = self.model.clone();
+        let name = config.name.clone();
+        let duplicate_tip = ui::i18n::t(
+            "Another entry for this binary with its own options, e.g. Lc0 with another network",
+        );
+        h_flex()
+            .gap(px(12.))
+            .when(status == Some(EngineStatus::Error), |row| {
+                row.child(
+                    btn("restart-engine", "Restart")
+                        .h(32.)
+                        .on_click(this.listen(move |screen, _, cx| screen.restart_engine(cx))),
+                )
+            })
+            .child(
+                btn("benchmark", "Run benchmark")
+                    .h(32.)
+                    .on_click(this.listen(move |screen, _, cx| screen.run_benchmark(cx))),
+            )
+            .child(
+                btn("check-update", "Check for update")
+                    .h(32.)
+                    .on_click(move |_, cx| {
+                        model.toast(
+                            format!(
+                                "Compare {name} with the pinned versions under Download engine. \
+                                 Existing installations are kept until you choose a new version."
+                            ),
+                            cx,
+                        );
                     }),
             )
-            .children(self.benchmark.clone().map(|text| {
-                div().mb(px(4.)).text_size(px(13.)).font_family(MONO).text_color(rgb(T.fg_2)).child(text)
-            }))
-            .child(body)
+            .child(
+                btn("duplicate-engine", "Duplicate")
+                    .h(32.)
+                    .tooltip(duplicate_tip)
+                    .on_click(
+                        this.listen(move |screen, window, cx| screen.duplicate_engine(window, cx)),
+                    ),
+            )
+            .child(
+                btn("remove-engine", ui::i18n::t("Remove")).h(32.).on_click(
+                    this.listen(move |screen, window, cx| screen.remove_engine(window, cx)),
+                ),
+            )
+    }
+
+    /// Which jobs this engine takes: live analysis, batch review and play.
+    fn render_engine_usage(&self, config: &EngineConfig, cx: &mut Context<Self>) -> Div {
+        let this = cx.entity();
+        let usage_check = |id: &'static str,
+                           value: bool,
+                           label: &'static str,
+                           set: fn(&mut EngineConfig, bool)| {
+            div().child(check(id, value, label).on_change(this.listen_with(
+                move |screen, value, _, cx| {
+                    screen.set_engine_use(|config| set(config, value), cx);
+                },
+            )))
+        };
+        h_flex()
+            .mt(px(14.))
+            .child(
+                div()
+                    .w(px(236.))
+                    .flex_none()
+                    .font_weight(FontWeight::MEDIUM)
+                    .child(ui::i18n::t("Use this engine for")),
+            )
             .child(
                 h_flex()
-                    .mt(px(14.))
-                    .child(
-                        div()
-                            .w(px(236.))
-                            .flex_none()
-                            .font_weight(FontWeight::MEDIUM)
-                            .child(ui::i18n::t("Use this engine for")),
-                    )
-                    .child(
-                        h_flex()
-                            .gap(px(28.))
-                            .child(usage_check("use-analysis", config.use_analysis, "Live analysis", this.clone(), |c, v| c.use_analysis = v))
-                            .child(usage_check("use-review", config.use_review, "Batch game review", this.clone(), |c, v| c.use_review = v))
-                            .child(usage_check("use-play", config.use_play, "Play", this.clone(), |c, v| c.use_play = v)),
-                    ),
+                    .gap(px(28.))
+                    .child(usage_check(
+                        "use-analysis",
+                        config.use_analysis,
+                        "Live analysis",
+                        |c, v| c.use_analysis = v,
+                    ))
+                    .child(usage_check(
+                        "use-review",
+                        config.use_review,
+                        "Batch game review",
+                        |c, v| c.use_review = v,
+                    ))
+                    .child(usage_check("use-play", config.use_play, "Play", |c, v| {
+                        c.use_play = v
+                    })),
             )
     }
 

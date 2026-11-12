@@ -557,16 +557,48 @@ impl DatabaseScreen {
         } else {
             body = body.child(mono(ui::i18n::t("Loading…")));
         }
-        body = body.child(h_flex().child({ let this = this.clone(); btn("explore-collection", "Explore games").compact().disabled(busy).on_click(this.listen(move |screen, window, cx| { screen.manager = None; screen.clear_filters(window, cx); })) }))
+        let explore = btn("explore-collection", "Explore games")
+            .compact()
+            .disabled(busy)
+            .on_click(this.listen(move |screen, window, cx| {
+                screen.manager = None;
+                screen.clear_filters(window, cx);
+            }));
+        let merge_hint = ui::i18n::t("Replace this exact player name on both sides of every game.");
+        let merge_names = h_flex()
+            .gap(px(8.))
+            .child(div().flex_1().min_w_0().child(text_input(&manager.from)))
+            .child(div().flex_1().min_w_0().child(text_input(&manager.into)));
+        let merge = btn("merge-players", "Merge players")
+            .compact()
+            .disabled(busy)
+            .on_click(
+                this.listen(move |screen, _, cx| screen.manage_collection(Action::Merge, cx)),
+            );
+        let clean_hint = ui::i18n::t(
+            "Review the number of games before confirming removal. Different annotations are kept.",
+        );
+        let clean = [
+            (Action::Duplicates, "Remove duplicates"),
+            (Action::Empty, "Remove empty games"),
+        ]
+        .into_iter()
+        .enumerate()
+        .map(|(index, (action, label))| {
+            btn(("clean-collection", index), label)
+                .compact()
+                .disabled(busy)
+                .on_click(this.listen(move |screen, _, cx| screen.manage_collection(action, cx)))
+        });
+        body = body
+            .child(h_flex().child(explore))
             .child(section_label("Merge players"))
-            .child(div().text_as(13., T.muted).child(ui::i18n::t("Replace this exact player name on both sides of every game.")))
-            .child(h_flex().gap(px(8.)).child(div().flex_1().min_w_0().child(text_input(&manager.from))).child(div().flex_1().min_w_0().child(text_input(&manager.into))))
-            .child(h_flex().child({ let this = this.clone(); btn("merge-players", "Merge players").compact().disabled(busy).on_click(this.listen(move |screen, _, cx| screen.manage_collection(Action::Merge, cx))) }))
+            .child(div().text_as(13., T.muted).child(merge_hint))
+            .child(merge_names)
+            .child(h_flex().child(merge))
             .child(section_label("Clean up"))
-            .child(div().text_as(13., T.muted).child(ui::i18n::t("Review the number of games before confirming removal. Different annotations are kept.")))
-            .child(h_flex().gap(px(8.)).children([(Action::Duplicates, "Remove duplicates"), (Action::Empty, "Remove empty games")].into_iter().enumerate().map(|(index, (action, label))| {
-                let this = this.clone(); btn(("clean-collection", index), label).compact().disabled(busy).on_click(this.listen(move |screen, _, cx| screen.manage_collection(action, cx)))
-            })));
+            .child(div().text_as(13., T.muted).child(clean_hint))
+            .child(h_flex().gap(px(8.)).children(clean));
         if self.pattern_control.is_some() {
             let this = this.clone();
             body = body.child(

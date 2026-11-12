@@ -91,13 +91,20 @@ impl AnalyseScreen {
                     small("lines-reset", ui::i18n::t("Reset"))
                         .tooltip(ui::i18n::t("Back to each engine's default number of lines"))
                         .on_click(reset_this.listen(move |screen, _, cx| {
-                                screen.set_lines(LinesTarget::Default, cx)
-                            })),
+                            screen.set_lines(LinesTarget::Default, cx)
+                        })),
                 )
                 .child(
                     small("lines-max", "Max")
-                        .tooltip(ui::i18n::t("A line for every legal move in every position (up to 256, as far as the engine allows)"))
-                        .on_click(max_this.listen(move |screen, _, cx| screen.set_lines(LinesTarget::All, cx))),
+                        .tooltip(ui::i18n::t(
+                            "A line for every legal move in every position \
+                             (up to 256, as far as the engine allows)",
+                        ))
+                        .on_click(
+                            max_this.listen(move |screen, _, cx| {
+                                screen.set_lines(LinesTarget::All, cx)
+                            }),
+                        ),
                 )
         })
     }

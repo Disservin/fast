@@ -19,7 +19,7 @@ use gpui_component::{
     slider::{Slider, SliderEvent, SliderState},
 };
 use ui::{
-    MONO, T,
+    T,
     board::theme_swatch,
     widgets::{
         Listen, TextExt, badge, btn, check, h_flex, key_cap, mono, panel, section_label, segmented,

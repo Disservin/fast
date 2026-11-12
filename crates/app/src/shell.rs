@@ -520,7 +520,11 @@ impl Workspace {
         if screen == Some("test-positions") {
             workspace.new_tab(Mode::TestPositions, window, cx);
         }
-        if workspace.model.read(cx).demo && !workspace.tabs.iter().any(|tab| matches!(&tab.content, TabContent::Analyse(screen) if screen.read(cx).tree.variant == chess_core::Variant::Chess960)) {
+        let has_chess960 = workspace.tabs.iter().any(|tab| {
+            matches!(&tab.content, TabContent::Analyse(screen)
+                if screen.read(cx).tree.variant == chess_core::Variant::Chess960)
+        });
+        if workspace.model.read(cx).demo && !has_chess960 {
             let active = workspace.active_tab;
             workspace.new_tab(Mode::Analyse, window, cx);
             workspace.analyse.update(cx, |screen, cx| {
