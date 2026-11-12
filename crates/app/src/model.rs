@@ -1,5 +1,6 @@
 //! Shared application state: configuration, databases, repertoire, notes, toasts.
 
+use crate::event_reader::spawn_job;
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
@@ -383,16 +384,15 @@ impl AppModel {
     /// with [`ModelEvent::Databases`]. A newer scan replaces one still running.
     pub fn refresh_databases(&mut self, cx: &mut Context<Self>) {
         let dir = self.paths.databases_dir();
-        let scan = cx.background_spawn(async move { scan_databases(&dir) });
-        self.database_scan = Some(cx.spawn(async move |this, cx| {
-            let entries = scan.await;
-            let _ = this.update(cx, |model, cx| {
+        self.database_scan = Some(spawn_job(
+            cx,
+            move || scan_databases(&dir),
+            move |model, entries, cx| {
                 model.databases = entries;
                 model.database_scan = None;
                 cx.emit(ModelEvent::Databases);
-                cx.notify();
-            });
-        }));
+            },
+        ));
     }
 
     /// Whether a re-scan is running, so a database just created may be missing from the list.
@@ -521,10 +521,10 @@ impl AppModel {
         let revision = writer.changed();
         let config = self.config.clone();
         let path = self.paths.config_file.clone();
-        let worker = cx.background_spawn(async move { writer.save(revision, &config, &path) });
-        self.config_save_task = Some(cx.spawn(async move |this, cx| {
-            let result = worker.await;
-            let _ = this.update(cx, |model, cx| {
+        self.config_save_task = Some(spawn_job(
+            cx,
+            move || writer.save(revision, &config, &path),
+            move |model, result, cx| {
                 if !model.config_writer.is_current(revision) {
                     return;
                 }
@@ -539,9 +539,8 @@ impl AppModel {
                         cx,
                     ),
                 }
-                cx.notify();
-            });
-        }));
+            },
+        ));
         cx.notify();
     }
 
@@ -670,10 +669,10 @@ impl AppModel {
         }
         let players = self.config.my_names();
         let repertoire = self.repertoire.clone();
-        let task = cx.background_spawn(async move { compute_leaks(&path, &players, &repertoire) });
-        self.leak_task = Some(cx.spawn(async move |this, cx| {
-            let result = task.await;
-            let _ = this.update(cx, |model, cx| {
+        self.leak_task = Some(spawn_job(
+            cx,
+            move || compute_leaks(&path, &players, &repertoire),
+            move |model, result, cx| {
                 match result {
                     Ok((leaks, gaps)) => {
                         model.leaks = leaks;
@@ -682,9 +681,8 @@ impl AppModel {
                     Err(err) => log::error!("leak detection failed: {err:#}"),
                 }
                 cx.emit(ModelEvent::Databases);
-                cx.notify();
-            });
-        }));
+            },
+        ));
     }
 
     pub fn engine(&self, id: EngineId) -> Option<&EngineConfig> {

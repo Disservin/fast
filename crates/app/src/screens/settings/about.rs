@@ -1,6 +1,7 @@
 //! Settings › General: updates, opening data, licences, thanks and the changelog.
 
 use super::*;
+use crate::event_reader::spawn_job;
 
 /// A day as YYYY-MM-DD from seconds since 1970 (UTC).
 pub fn date_of(seconds: i64) -> String {
@@ -225,10 +226,10 @@ impl SettingsScreen {
             return;
         };
         self.app_update_status = Some(ui::i18n::t("Downloading and verifying update…").into());
-        let worker = cx.background_spawn(async move { crate::app_update::install(&update) });
-        self.app_update_task = Some(cx.spawn(async move |this, cx| {
-            let result = worker.await;
-            let _ = this.update(cx, |screen, cx| {
+        self.app_update_task = Some(spawn_job(
+            cx,
+            move || crate::app_update::install(&update),
+            move |screen, result, _| {
                 screen.app_update_task = None;
                 screen.app_update_status = Some(match result {
                     Ok(replaced) => {
@@ -244,9 +245,8 @@ impl SettingsScreen {
                         format!("{} {error:#}", ui::i18n::t("Update failed. You can retry.")).into()
                     }
                 });
-                cx.notify();
-            });
-        }));
+            },
+        ));
         cx.notify();
     }
 
@@ -286,19 +286,18 @@ impl SettingsScreen {
         }
         self.opening_status = Some("Downloading Lichess opening data…".into());
         let data = self.model.read(cx).paths.data_dir.clone();
-        let worker = cx.background_spawn(async move { crate::opening_data::update(&data) });
-        self.opening_task = Some(cx.spawn(async move |this, cx| {
-            let result = worker.await;
-            let _ = this.update(cx, |screen, cx| {
+        self.opening_task = Some(spawn_job(
+            cx,
+            move || crate::opening_data::update(&data),
+            move |screen, result, cx| {
                 screen.opening_task = None;
                 screen.opening_status = Some(match result {
                     Ok(message) => message,
                     Err(err) => format!("Opening update failed: {err:#}. Existing opening data is still active. You can retry."),
                 }.into());
                 screen.model.update(cx, |_, cx| cx.notify());
-                cx.notify();
-            });
-        }));
+            },
+        ));
         cx.notify();
     }
 

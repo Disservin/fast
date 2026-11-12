@@ -1,6 +1,7 @@
 //! Measuring an engine's speed with its bench command or a fixed-time suite.
 
 use super::*;
+use crate::event_reader::spawn_job;
 
 /// `bench` if the engine supports it, otherwise a fixed-time search on a small suite.
 pub(super) fn benchmark(config: &EngineConfig) -> String {
@@ -92,14 +93,13 @@ impl SettingsScreen {
         }
         self.benchmark = Some(ui::i18n::t("Running benchmark…").into());
         cx.notify();
-        let task = cx.background_spawn(async move { benchmark(&config) });
-        cx.spawn(async move |this, cx| {
-            let result = task.await;
-            let _ = this.update(cx, |this, cx| {
+        spawn_job(
+            cx,
+            move || benchmark(&config),
+            move |this, result, _| {
                 this.benchmark = Some(result.into());
-                cx.notify();
-            });
-        })
+            },
+        )
         .detach();
     }
 }

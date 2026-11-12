@@ -34,6 +34,23 @@ pub fn spawn_batched<T: 'static, E: 'static>(
     })
 }
 
+/// Runs `job` on a background thread, then hands its result to `done` on the UI thread
+/// and redraws the view. Dropping the task stops listening; the job runs to its end.
+pub fn spawn_job<T: 'static, R: Send + 'static>(
+    cx: &mut Context<T>,
+    job: impl FnOnce() -> R + Send + 'static,
+    done: impl FnOnce(&mut T, R, &mut Context<T>) + 'static,
+) -> Task<()> {
+    let worker = cx.background_spawn(async move { job() });
+    cx.spawn(async move |this: WeakEntity<T>, cx: &mut AsyncApp| {
+        let result = worker.await;
+        let _ = this.update(cx, |view, cx| {
+            done(view, result, cx);
+            cx.notify();
+        });
+    })
+}
+
 /// Runs `job` on a background thread and shows each progress message it reports through
 /// `progress`, then hands its result to `done` on the UI thread. Dropping the task stops
 /// listening at once; the job itself runs until it notices its own cancel flag.

@@ -1,6 +1,7 @@
 //! Loading pages of games, selecting one, and opening it in Analyse.
 
 use super::*;
+use crate::event_reader::spawn_job;
 
 impl DatabaseScreen {
     /// Runs the filter on the selected database. The rows on screen stay until the
@@ -34,20 +35,20 @@ impl DatabaseScreen {
             return;
         };
         self.querying = true;
-        let task = cx.background_spawn(async move {
-            let db = Database::open(path)?;
-            let indexed = db.has_structure_index()?;
-            let ids = db.filtered_ids(&filter)?;
-            let stats = db.stats(&filter)?;
-            let leak = stats.top_leak.as_ref().and_then(|(left, _)| {
-                let sans = db.sample_with_left_rep(left).ok()??;
-                Some(leak_context(left, &sans))
-            });
-            Ok::<_, db::DbError>((ids, stats, leak, indexed))
-        });
-        self.query_task = Some(cx.spawn(async move |this, cx| {
-            let result = task.await;
-            let _ = this.update(cx, |this, cx| {
+        self.query_task = Some(spawn_job(
+            cx,
+            move || {
+                let db = Database::open(path)?;
+                let indexed = db.has_structure_index()?;
+                let ids = db.filtered_ids(&filter)?;
+                let stats = db.stats(&filter)?;
+                let leak = stats.top_leak.as_ref().and_then(|(left, _)| {
+                    let sans = db.sample_with_left_rep(left).ok()??;
+                    Some(leak_context(left, &sans))
+                });
+                Ok::<_, db::DbError>((ids, stats, leak, indexed))
+            },
+            move |this, result, cx| {
                 this.querying = false;
                 match result {
                     Ok((ids, stats, leak, indexed)) => {
@@ -76,9 +77,8 @@ impl DatabaseScreen {
                     }
                     Err(err) => this.model.toast(format!("Query failed: {err}"), cx),
                 }
-                cx.notify();
-            });
-        }));
+            },
+        ));
     }
 
     /// Fetches any pages in `range` not loaded yet, off the UI thread.

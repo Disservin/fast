@@ -1,6 +1,7 @@
 //! The repertoire tree: adding lines by typing or from a file, and finding its gaps.
 
 use super::*;
+use crate::event_reader::spawn_job;
 
 /// Parses a typed line such as "1.e4 c5 2.Nf3" into plain SAN tokens.
 pub fn parse_line_text(text: &str) -> Vec<String> {
@@ -92,15 +93,16 @@ impl TrainScreen {
     /// Adds every line of the games in a PGN file to the repertoire. The file is read and
     /// split into lines in the background.
     pub(super) fn add_lines_from(&mut self, path: std::path::PathBuf, cx: &mut Context<Self>) {
-        let read = cx.background_spawn(async move {
-            let text = std::fs::read_to_string(&path)
-                .map_err(|err| format!("Could not read the file: {err}"))?;
-            let games = parse_pgn(&text).map_err(|err| format!("Could not read the PGN: {err}"))?;
-            Ok::<_, String>(games.iter().flat_map(tree_lines).collect::<Vec<_>>())
-        });
-        cx.spawn(async move |this, cx| {
-            let lines = read.await;
-            let _ = this.update(cx, |this, cx| {
+        spawn_job(
+            cx,
+            move || {
+                let text = std::fs::read_to_string(&path)
+                    .map_err(|err| format!("Could not read the file: {err}"))?;
+                let games =
+                    parse_pgn(&text).map_err(|err| format!("Could not read the PGN: {err}"))?;
+                Ok::<_, String>(games.iter().flat_map(tree_lines).collect::<Vec<_>>())
+            },
+            move |this, lines, cx| {
                 let message = match lines {
                     Ok(lines) => {
                         let mut added = 0;
@@ -120,8 +122,8 @@ impl TrainScreen {
                     Err(message) => message,
                 };
                 this.model.toast(message, cx);
-            });
-        })
+            },
+        )
         .detach();
     }
 

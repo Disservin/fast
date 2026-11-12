@@ -1,6 +1,7 @@
 //! Settings › Data: backups, online accounts and disk use.
 
 use super::*;
+use crate::event_reader::spawn_job;
 
 /// The drive holding Fast's data: a bar of space used by other files, by Fast and free,
 /// with the figures beside it.
@@ -73,15 +74,14 @@ impl SettingsScreen {
             return;
         }
         let paths = self.model.read(cx).paths.clone();
-        let worker = cx.background_spawn(async move { crate::storage::measure(&paths) });
-        self.usage_task = Some(cx.spawn(async move |this, cx| {
-            let usage = worker.await;
-            let _ = this.update(cx, |screen, cx| {
+        self.usage_task = Some(spawn_job(
+            cx,
+            move || crate::storage::measure(&paths),
+            move |screen, usage, _| {
                 screen.usage = Some(usage);
                 screen.usage_task = None;
-                cx.notify();
-            });
-        }));
+            },
+        ));
     }
 
     /// Export everything to one backup file, or preview and restore one.
