@@ -387,11 +387,10 @@ pub struct PlayScreen {
     log_open: bool,
     /// Whose log the panel shows: 0 for White, 1 for Black.
     log_side: usize,
-    log_show_info: bool,
     log_follow: bool,
     log_lines: Vec<LogLine>,
-    /// What `log_lines` was taken from: side, log revision and the Info filter.
-    log_key: Option<(usize, u64, bool)>,
+    /// What `log_lines` was taken from: side and log revision.
+    log_key: Option<(usize, u64)>,
     log_scroll: UniformListScrollHandle,
     _log_poll: Task<()>,
     _subscriptions: Vec<Subscription>,
@@ -580,7 +579,6 @@ impl PlayScreen {
             demo_task: None,
             log_open: false,
             log_side: 0,
-            log_show_info: true,
             log_follow: true,
             log_lines: Vec::new(),
             log_key: None,
@@ -2356,7 +2354,25 @@ impl PlayScreen {
 
     /// Shows both engines' latest evaluations and principal variations beside the board.
     fn render_analysis(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let mut column = panel().p(px(16.)).child(section_label("Engines"));
+        let this = cx.entity();
+        let mut column = panel().p(px(16.)).child(
+            h_flex()
+                .justify_between()
+                .child(section_label("Engines"))
+                .child(
+                    btn("match-log-toggle", "Log")
+                        .mini()
+                        .tooltip(ui::i18n::t("Show or hide engine output"))
+                        .selected(self.log_open)
+                        .on_click(move |_, cx| {
+                            this.update(cx, |screen, cx| {
+                                screen.log_open = !screen.log_open;
+                                screen.log_follow = true;
+                                cx.notify();
+                            });
+                        }),
+                ),
+        );
         if let Some(game) = &self.game {
             let moving = usize::from(game.tree.node(game.current).pos.turn() == Color::Black);
             for (index, name) in [
@@ -2528,25 +2544,21 @@ impl PlayScreen {
         self.game.as_ref()?.logs[self.log_side].as_ref()
     }
 
-    fn current_log_key(&self) -> Option<(usize, u64, bool)> {
-        self.shown_log()
-            .map(|log| (self.log_side, log.revision(), self.log_show_info))
+    fn current_log_key(&self) -> Option<(usize, u64)> {
+        self.shown_log().map(|log| (self.log_side, log.revision()))
     }
 
-    /// Takes a new snapshot only when the log, the side or the filter changed.
+    /// Takes a new snapshot only when the log or the side changed.
     fn refresh_log(&mut self) {
         let key = self.current_log_key();
         if key.is_some() && key == self.log_key {
             return;
         }
-        let same_view = key.is_some_and(|key| {
-            self.log_key
-                .is_some_and(|old| (old.0, old.2) == (key.0, key.2))
-        });
+        let same_view = key.is_some_and(|key| self.log_key.is_some_and(|old| old.0 == key.0));
         self.log_key = key;
         let lines = self
             .shown_log()
-            .map(|log| log.snapshot(self.log_show_info))
+            .map(|log| log.snapshot(true))
             .unwrap_or_default();
         // Reading back through the log: new output must not move the text in view.
         if !self.log_follow && same_view {
@@ -2555,7 +2567,7 @@ impl PlayScreen {
         self.log_lines = lines;
     }
 
-    /// The UCI traffic of either engine in the match, with info lines optional.
+    /// The UCI traffic of either engine in the match.
     fn render_log(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         self.refresh_log();
         let count = self.log_lines.len();
@@ -2585,28 +2597,20 @@ impl PlayScreen {
                 },
             ));
         }
-        let (info_this, follow_this, window_this) = (cx.entity(), cx.entity(), cx.entity());
+        let (follow_this, window_this) = (cx.entity(), cx.entity());
         header = header
             .child(div().flex_1())
             .child(
-                check("match-log-info", self.log_show_info, "Info")
-                    .text(13.)
-                    .on_change(move |value, _, cx| {
-                        info_this.update(cx, |screen, cx| {
-                            screen.log_show_info = value;
-                            cx.notify();
-                        });
-                    }),
-            )
-            .child(
-                check("match-log-follow", self.log_follow, "Follow")
-                    .text(13.)
-                    .on_change(move |value, _, cx| {
-                        follow_this.update(cx, |screen, cx| {
-                            screen.log_follow = value;
-                            cx.notify();
-                        });
-                    }),
+                div().flex_none().child(
+                    check("match-log-follow", self.log_follow, "Follow")
+                        .text(13.)
+                        .on_change(move |value, _, cx| {
+                            follow_this.update(cx, |screen, cx| {
+                                screen.log_follow = value;
+                                cx.notify();
+                            });
+                        }),
+                ),
             )
             .child(
                 btn("match-log-window", "Window")
@@ -2682,7 +2686,8 @@ impl PlayScreen {
         )
     }
 
-    fn render_side(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+    /// The moves of the game, and with `actions` the buttons to stop, resign or analyse it.
+    fn render_side(&mut self, actions: bool, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let this = cx.entity();
         let game = self.game.as_ref();
         let mut list = v_flex()
@@ -2846,52 +2851,55 @@ impl PlayScreen {
                             .child(text)
                     })),
             )
-            .child(if self_play {
-                h_flex().child(
-                    btn("stop-self-play", "Stop")
-                        .flex_1()
-                        .disabled(!in_game)
-                        .on_click(move |_, cx| {
-                            resign_this.update(cx, |screen, cx| screen.resign(cx));
-                        }),
-                )
-            } else {
-                h_flex()
-                    .gap(px(6.))
+            .when(actions, |column| {
+                column
+                    .child(if self_play {
+                        h_flex().child(
+                            btn("stop-self-play", "Stop")
+                                .flex_1()
+                                .disabled(!in_game)
+                                .on_click(move |_, cx| {
+                                    resign_this.update(cx, |screen, cx| screen.resign(cx));
+                                }),
+                        )
+                    } else {
+                        h_flex()
+                            .gap(px(6.))
+                            .child(
+                                btn("offer-draw", ui::i18n::t("Offer draw"))
+                                    .flex_1()
+                                    .disabled(!in_game)
+                                    .on_click(move |_, cx| {
+                                        draw_this.update(cx, |screen, cx| screen.offer_draw(cx));
+                                    }),
+                            )
+                            .child(
+                                btn("takeback", "Takeback")
+                                    .flex_1()
+                                    .disabled(!in_game)
+                                    .on_click(move |_, cx| {
+                                        takeback_this.update(cx, |screen, cx| screen.takeback(cx));
+                                    }),
+                            )
+                            .child(
+                                btn("resign", ui::i18n::t("Resign"))
+                                    .flex_1()
+                                    .disabled(!in_game)
+                                    .on_click(move |_, cx| {
+                                        resign_this.update(cx, |screen, cx| screen.resign(cx));
+                                    }),
+                            )
+                    })
                     .child(
-                        btn("offer-draw", ui::i18n::t("Offer draw"))
-                            .flex_1()
-                            .disabled(!in_game)
-                            .on_click(move |_, cx| {
-                                draw_this.update(cx, |screen, cx| screen.offer_draw(cx));
-                            }),
-                    )
-                    .child(
-                        btn("takeback", "Takeback")
-                            .flex_1()
-                            .disabled(!in_game)
-                            .on_click(move |_, cx| {
-                                takeback_this.update(cx, |screen, cx| screen.takeback(cx));
-                            }),
-                    )
-                    .child(
-                        btn("resign", ui::i18n::t("Resign"))
-                            .flex_1()
-                            .disabled(!in_game)
-                            .on_click(move |_, cx| {
-                                resign_this.update(cx, |screen, cx| screen.resign(cx));
+                        btn("analyse-game", "Analyse this game")
+                            .full()
+                            .h(40.)
+                            .disabled(game.is_none())
+                            .on_click(move |window, cx| {
+                                this.update(cx, |screen, cx| screen.analyse_game(window, cx));
                             }),
                     )
             })
-            .child(
-                btn("analyse-game", "Analyse this game")
-                    .full()
-                    .h(40.)
-                    .disabled(game.is_none())
-                    .on_click(move |window, cx| {
-                        this.update(cx, |screen, cx| screen.analyse_game(window, cx));
-                    }),
-            )
     }
 }
 
@@ -2988,7 +2996,8 @@ impl Render for PlayScreen {
                 window.scale_factor(),
             );
             let center = self.render_center(board_size, cx);
-            let side = self.render_side(cx);
+            let side = self.render_side(false, cx);
+            let in_game = self.game.as_ref().is_some_and(|game| game.result.is_none());
             let log = (self.log_open && !setup_open).then(|| self.render_log(cx));
             let this = cx.entity();
             let mut layout = h_flex().size_full().items_start();
@@ -3019,15 +3028,21 @@ impl Render for PlayScreen {
                                     ))
                                     .child({
                                         let this = cx.entity();
-                                        btn("match-log-toggle", "Log")
+                                        btn("stop-self-play", "Stop")
                                             .compact()
-                                            .tooltip(ui::i18n::t("Show or hide engine output"))
-                                            .selected(self.log_open)
+                                            .disabled(!in_game)
                                             .on_click(move |_, cx| {
+                                                this.update(cx, |screen, cx| screen.resign(cx));
+                                            })
+                                    })
+                                    .child({
+                                        let this = cx.entity();
+                                        btn("analyse-game", "Analyse this game")
+                                            .compact()
+                                            .disabled(self.game.is_none())
+                                            .on_click(move |window, cx| {
                                                 this.update(cx, |screen, cx| {
-                                                    screen.log_open = !screen.log_open;
-                                                    screen.log_follow = true;
-                                                    cx.notify();
+                                                    screen.analyse_game(window, cx)
                                                 });
                                             })
                                     }),
@@ -3061,7 +3076,7 @@ impl Render for PlayScreen {
         let board_size = super::side_columns_board_size(window);
         let setup = self.render_setup(cx);
         let center = self.render_center(board_size, cx);
-        let side = self.render_side(cx);
+        let side = self.render_side(true, cx);
         super::three_columns(setup, "play-center", center, "play-side", side)
     }
 }

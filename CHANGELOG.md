@@ -4,7 +4,8 @@ Settings › Changelog shows this file. Describe the finished changes since each
 
 ## Since 0.1.3
 
-- Play: open Log in an engine match to read either engine's UCI traffic.
+- Play: open Log from the Engines panel in an engine match to read either engine's UCI traffic.
+- Play: Stop and Analyse this game sit next to New game in engine matches, so they show without scrolling.
 - Play: engine matches show each engine's depth, nodes, hash use and thinking time on the current move.
 - Play: the board shows the chosen start position, such as a Chess960 setup, while a new game is set up.
 - Play: New game stops the running engine match instead of letting it play on.
