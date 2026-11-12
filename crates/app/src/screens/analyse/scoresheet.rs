@@ -166,8 +166,7 @@ impl AnalyseScreen {
             .or_else(|| self.opening().map(|o| format!("{} {}", o.eco, o.name)))
             .unwrap_or_else(|| ui::i18n::t("Starting position").to_owned());
         let notation = self.model.read(cx).config.board.notation;
-        let select_this = this.clone();
-        let context_this = this.clone();
+        let (select_this, context_this) = (this.clone(), this.clone());
         // Only a move drawn in this frame counts; the start position has none.
         self.scoresheet_current.set(None);
         let evals = self
@@ -219,13 +218,6 @@ impl AnalyseScreen {
                         };
                     });
                 }))
-        };
-        let nag_button = |id: &'static str, label: &'static str, nag: u8, this: Entity<Self>| {
-            btn(id, label)
-                .w(36.)
-                .h(30.)
-                .pad(0.)
-                .on_click(this.listen(move |screen, _, cx| screen.annotate(nag, cx)))
         };
         v_flex()
             .w_full()
@@ -309,56 +301,60 @@ impl AnalyseScreen {
                         ),
                 )
             })
+            .child(self.render_annotation_bar(cx))
+    }
+
+    /// The annotation buttons under the scoresheet: move symbols, Comment and Promote.
+    fn render_annotation_bar(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let this = cx.entity();
+        let nag_button = |id: &'static str, label: &'static str, nag: u8| {
+            btn(id, label)
+                .w(36.)
+                .h(30.)
+                .pad(0.)
+                .on_click(this.listen(move |screen, _, cx| screen.annotate(nag, cx)))
+        };
+        div()
+            .flex()
+            .flex_row()
+            .flex_wrap()
+            .flex_none()
+            .gap(px(6.))
+            .px(px(18.))
+            .py(px(12.))
+            .border_t_1()
+            .border_color(rgb(T.border))
+            .child(nag_button("nag-good", "!", 1))
+            .child(nag_button("nag-bad", "?", 2))
+            .child(nag_button("nag-brilliant", "!!", 3))
+            .child(nag_button("nag-blunder", "??", 4))
+            .child(nag_button("nag-inaccuracy", "?!", 6))
+            .child(nag_button("nag-interesting", "!?", 5))
             .child(
-                div()
-                    .flex()
-                    .flex_row()
-                    .flex_wrap()
-                    .flex_none()
-                    .gap(px(6.))
-                    .px(px(18.))
-                    .py(px(12.))
-                    .border_t_1()
-                    .border_color(rgb(T.border))
-                    .child(nag_button("nag-good", "!", 1, this.clone()))
-                    .child(nag_button("nag-bad", "?", 2, this.clone()))
-                    .child(nag_button("nag-brilliant", "!!", 3, this.clone()))
-                    .child(nag_button("nag-blunder", "??", 4, this.clone()))
-                    .child(nag_button("nag-inaccuracy", "?!", 6, this.clone()))
-                    .child(nag_button("nag-interesting", "!?", 5, this.clone()))
-                    .child(
-                        btn("comment", ui::i18n::t("Comment"))
-                            .h(30.)
-                            .pad(13.)
-                            .on_click({
-                                let this = this.clone();
-                                move |window, cx| {
-                                    this.update(cx, |screen, cx| {
-                                        screen.editing_comment = if screen.editing_comment.is_some()
-                                        {
-                                            None
-                                        } else {
-                                            Some(screen.current)
-                                        };
-                                        let text = chess_core::strip_commands(
-                                            &screen.tree.node(screen.current).comment,
-                                        );
-                                        screen.comment.update(cx, |state, cx| {
-                                            state.set_value(text, window, cx);
-                                        });
-                                        cx.notify();
-                                    });
-                                }
-                            }),
-                    )
-                    .child(btn("promote", "Promote").h(30.).pad(13.).on_click({
-                        let this = this.clone();
-                        move |_, cx| {
-                            this.update(cx, |screen, cx| {
-                                let current = screen.current;
-                                screen.promote(current, cx);
-                            });
-                        }
+                btn("comment", ui::i18n::t("Comment"))
+                    .h(30.)
+                    .pad(13.)
+                    .on_click(this.listen(move |screen, window, cx| {
+                        screen.editing_comment = if screen.editing_comment.is_some() {
+                            None
+                        } else {
+                            Some(screen.current)
+                        };
+                        let text =
+                            chess_core::strip_commands(&screen.tree.node(screen.current).comment);
+                        screen.comment.update(cx, |state, cx| {
+                            state.set_value(text, window, cx);
+                        });
+                        cx.notify();
+                    })),
+            )
+            .child(
+                btn("promote", "Promote")
+                    .h(30.)
+                    .pad(13.)
+                    .on_click(this.listen(move |screen, _, cx| {
+                        let current = screen.current;
+                        screen.promote(current, cx);
                     })),
             )
     }

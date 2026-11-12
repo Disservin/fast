@@ -349,16 +349,11 @@ impl TrainScreen {
                 ))
             ))
             .when(!has_drill, |column| column.child(
-                btn("train-add-line", "Add line").on_click({
-                    let this = this.clone();
-                    move |window, cx| {
-                        this.update(cx, |screen, cx| {
+                btn("train-add-line", "Add line").on_click(this.listen(move |screen, window, cx| {
                             screen.adding = true;
                             screen.add_line.update(cx, |input, cx| input.focus(window, cx));
                             cx.notify();
-                        });
-                    }
-                })
+                        }))
             ))
     }
 }

@@ -235,10 +235,10 @@ impl SettingsScreen {
             h_flex()
                 .justify_between()
                 .child(page_title(ui::i18n::t("Keyboard shortcuts")))
-                .child(btn("reset-shortcuts", ui::i18n::t("Reset all")).on_click({
-                    let this = this.clone();
-                    move |_, cx| this.update(cx, |screen, cx| screen.reset_all_shortcuts(cx))
-                })),
+                .child(
+                    btn("reset-shortcuts", ui::i18n::t("Reset all"))
+                        .on_click(this.listen(move |screen, _, cx| screen.reset_all_shortcuts(cx))),
+                ),
         );
         let mut index = 0usize;
         for (group, rows) in SHORTCUT_GROUPS {

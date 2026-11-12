@@ -261,18 +261,15 @@ impl AnalyseScreen {
                     .into_iter()
                     .enumerate()
                     {
-                        let this = this.clone();
                         tabs = tabs.child(header_tab(
                             ("engine-tab", index),
                             label,
                             tab == value,
-                            move |_, cx| {
-                                this.update(cx, |screen, cx| {
-                                    screen.engine_tab = value;
-                                    screen.explorer_menu = None;
-                                    cx.notify();
-                                })
-                            },
+                            this.listen(move |screen, _, cx| {
+                                screen.engine_tab = value;
+                                screen.explorer_menu = None;
+                                cx.notify();
+                            }),
                         ));
                     }
                     tabs
@@ -324,57 +321,9 @@ impl AnalyseScreen {
                     })),
             );
         }
-        let workspace = self.workspace.clone();
         // Options apply to the engine chosen on the Engines tab, so its name leads the row.
         if let Some(config) = &chosen {
-            let id = config.id;
-            let name = format!("{} {}", config.name, config.version)
-                .trim()
-                .to_owned();
-            body = body.child(
-                h_flex()
-                    .flex_wrap()
-                    .gap_x(px(20.))
-                    .gap_y(px(8.))
-                    .px(px(16.))
-                    .py(px(10.))
-                    .child(
-                        h_flex()
-                            .flex_none()
-                            .gap(px(6.))
-                            .text_size(px(13.))
-                            .font_weight(FontWeight::MEDIUM)
-                            .child(crate::controls::engine_icon(config, 14.))
-                            .child(name),
-                    )
-                    .children(self.render_lines_control(cx))
-                    .child(self.stepper(config, "Threads", "Threads", "", cx))
-                    .child(self.stepper(config, "Hash", "Hash", " MB", cx))
-                    .child(div().flex_1())
-                    .child({
-                        let this = this.clone();
-                        btn("restart-engine", "Restart engine")
-                            .compact()
-                            .tooltip(ui::i18n::t("Quit this engine and start it again"))
-                            .on_click(this.listen(move |screen, _, cx| {
-                                screen.live.update(cx, |live, cx| live.relaunch(id, cx));
-                            }))
-                    })
-                    .child(
-                        btn("all-options", "All options")
-                            .compact()
-                            .tooltip(ui::i18n::t(
-                                "Every option this engine offers, in Settings › Engines",
-                            ))
-                            .on_click(move |window, cx| {
-                                if let Some(workspace) = workspace.upgrade() {
-                                    workspace.update(cx, |workspace, cx| {
-                                        workspace.open_engine_settings(id, window, cx);
-                                    });
-                                }
-                            }),
-                    ),
-            );
+            body = body.child(self.render_engine_options_row(config, cx));
         }
         body = body.child(
             h_flex()
@@ -393,12 +342,18 @@ impl AnalyseScreen {
                 )
                 .child(limits),
         );
+        body.child(self.render_search_moves(cx)).into_any_element()
+    }
+
+    /// Search moves: how many of the legal moves the engine searches, and when opened,
+    /// a button per move to restrict the root search to.
+    fn render_search_moves(&self, cx: &mut Context<Self>) -> gpui::Div {
+        let this = cx.entity();
         // Restricting the root search is rare, so the move list stays folded until asked for.
         let pos = self.analysed_pos();
         let legal = pos.legal_moves();
         let restricted = self.live.read(cx).search_moves.clone();
         let open = self.search_moves_open || !restricted.is_empty();
-        let toggle = this.clone();
         // "Search moves" and, beside it in muted text, how many of the legal moves.
         let count = if restricted.is_empty() {
             format!("{} {}", ui::i18n::t("all"), legal.len())
@@ -447,7 +402,7 @@ impl AnalyseScreen {
                             .tooltip(ui::i18n::t(
                                 "Choose the moves the engine searches from this position",
                             ))
-                            .on_click(toggle.listen(
+                            .on_click(this.listen(
                                 move |screen, _, cx| {
                                     screen.search_moves_open = !screen.search_moves_open;
                                     cx.notify();
@@ -471,7 +426,6 @@ impl AnalyseScreen {
                                 pos.castles().mode(),
                             )
                             .to_string();
-                            let this = this.clone();
                             btn(("search-move", index), san)
                                 .h(26.)
                                 .pad(7.)
@@ -489,7 +443,63 @@ impl AnalyseScreen {
                     )),
             );
         }
-        body.child(search).into_any_element()
+        search
+    }
+
+    /// The chosen engine's name with its lines, threads and hash, Restart engine and
+    /// All options.
+    fn render_engine_options_row(
+        &self,
+        config: &EngineConfig,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement + use<> {
+        let this = cx.entity();
+        let workspace = self.workspace.clone();
+        let id = config.id;
+        let name = format!("{} {}", config.name, config.version)
+            .trim()
+            .to_owned();
+        h_flex()
+            .flex_wrap()
+            .gap_x(px(20.))
+            .gap_y(px(8.))
+            .px(px(16.))
+            .py(px(10.))
+            .child(
+                h_flex()
+                    .flex_none()
+                    .gap(px(6.))
+                    .text_size(px(13.))
+                    .font_weight(FontWeight::MEDIUM)
+                    .child(crate::controls::engine_icon(config, 14.))
+                    .child(name),
+            )
+            .children(self.render_lines_control(cx))
+            .child(self.stepper(config, "Threads", "Threads", "", cx))
+            .child(self.stepper(config, "Hash", "Hash", " MB", cx))
+            .child(div().flex_1())
+            .child({
+                btn("restart-engine", "Restart engine")
+                    .compact()
+                    .tooltip(ui::i18n::t("Quit this engine and start it again"))
+                    .on_click(this.listen(move |screen, _, cx| {
+                        screen.live.update(cx, |live, cx| live.relaunch(id, cx));
+                    }))
+            })
+            .child(
+                btn("all-options", "All options")
+                    .compact()
+                    .tooltip(ui::i18n::t(
+                        "Every option this engine offers, in Settings › Engines",
+                    ))
+                    .on_click(move |window, cx| {
+                        if let Some(workspace) = workspace.upgrade() {
+                            workspace.update(cx, |workspace, cx| {
+                                workspace.open_engine_settings(id, window, cx);
+                            });
+                        }
+                    }),
+            )
     }
 
     /// The Engine panel's first tab under its engine rows: replacing a cached result

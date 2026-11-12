@@ -153,87 +153,16 @@ impl AnalyseScreen {
         let after = self
             .pv_preview_label(self.tree.node(self.current).ply)
             .or(after);
-        let live = self.live.read(cx);
-        let eval_text = live
-            .primary()
-            .and_then(|engine| engine.lines.get(&1))
-            .and_then(|line| line.score)
-            .map(Score::display)
-            .or_else(|| {
-                self.evals
-                    .get(&self.current)
-                    .filter(|_| self.pv_view.is_none())
-                    .map(|cp| Score::Cp(*cp).display())
-            })
-            .filter(|_| self.editor.is_none())
-            .unwrap_or_else(|| "—".to_owned());
-        // A finished game shows its result, not an evaluation.
-        let eval_text = match end.filter(|_| self.editor.is_none()) {
-            Some(end) => end.result().replace("1/2", "½"),
-            None => eval_text,
-        };
+        let eval_text = self.eval_text(end, cx);
         let graph = self.render_graph(cx);
-        // What each side is up on: Black's pieces taken by White, then White's by Black.
-        let material = {
-            let balance = chess_core::material_balance(shown.board());
-            let set = self.model.read(cx).config.board.prefs().pieces;
-            let strip = move |side: chess_core::Color| {
-                (!balance.up(side).is_empty()).then(|| {
-                    ui::board::material_strip(
-                        balance.up(side),
-                        side.other(),
-                        balance.lead(side),
-                        set,
-                        17.,
-                    )
-                })
-            };
-            let editing = self.editor.is_some();
-            move |side| strip(side).filter(|_| !editing)
-        };
         let flipped = self.board.read(cx).is_flipped();
-        let to_move = shown.turn();
-        let player_strip = |side: chess_core::Color| {
-            let (name, rating) = self.player(side);
-            h_flex()
-                .h(px(26.))
-                .gap(px(8.))
-                .justify_between()
-                .child(
-                    h_flex()
-                        .gap(px(8.))
-                        .min_w_0()
-                        .child(
-                            // The side to move is marked beside its name.
-                            div()
-                                .flex_none()
-                                .size(px(6.))
-                                .rounded_full()
-                                .when(to_move == side && end.is_none(), |dot| {
-                                    dot.bg(rgb(T.accent))
-                                }),
-                        )
-                        .child(
-                            div()
-                                .min_w_0()
-                                .overflow_hidden()
-                                .text_ellipsis()
-                                .whitespace_nowrap()
-                                .text_size(px(13.))
-                                .font_weight(FontWeight::MEDIUM)
-                                .child(name),
-                        )
-                        .child(mono(rating).flex_none().text_as(12., T.muted)),
-                )
-                .children(material(side))
-        };
         let (top_side, bottom_side) = if flipped {
             (chess_core::Color::White, chess_core::Color::Black)
         } else {
             (chess_core::Color::Black, chess_core::Color::White)
         };
-        let top_strip = player_strip(top_side);
-        let bottom_strip = player_strip(bottom_side);
+        let top_strip = self.render_player_strip(top_side, end, cx);
+        let bottom_strip = self.render_player_strip(bottom_side, end, cx);
         // Where the shown position sits in the line, in full moves.
         let move_counter = {
             let ply = self.tree.node(self.current).ply;
@@ -354,40 +283,111 @@ impl AnalyseScreen {
                                     .w(nav_width)
                                     .selected(flipped)
                                     .tooltip(flip_tip)
-                                    .on_click({
-                                        let this = this.clone();
-                                        move |_, cx| {
-                                            this.update(cx, |screen, cx| screen.flip(cx));
-                                        }
-                                    }),
+                                    .on_click(this.listen(move |screen, _, cx| screen.flip(cx))),
                             )
                             .child(
                                 icon_btn("edit-position", "icons/pencil.svg")
                                     .w(nav_width)
                                     .selected(self.editor.is_some())
                                     .tooltip(ui::i18n::t("Edit position"))
-                                    .on_click({
-                                        let this = this.clone();
-                                        move |_, cx| {
-                                            this.update(cx, |screen, cx| screen.toggle_editor(cx));
-                                        }
-                                    }),
+                                    .on_click(
+                                        this.listen(move |screen, _, cx| screen.toggle_editor(cx)),
+                                    ),
                             )
                             .child(copy_menu)
                             .child(
                                 icon_btn("snapshot", "icons/camera.svg")
                                     .w(nav_width)
                                     .tooltip(ui::i18n::t("Copy the board as an image and save it"))
-                                    .on_click({
-                                        let this = this.clone();
-                                        move |_, cx| {
-                                            this.update(cx, |screen, cx| screen.snapshot_board(cx));
-                                        }
-                                    }),
+                                    .on_click(
+                                        this.listen(move |screen, _, cx| screen.snapshot_board(cx)),
+                                    ),
                             ),
                     ),
             )
             .child(graph)
+    }
+
+    /// The evaluation beside the status line: the main engine's score, else the stored
+    /// evaluation, or the result once the game is over.
+    fn eval_text(&self, end: Option<chess_core::GameEnd>, cx: &mut Context<Self>) -> String {
+        let live = self.live.read(cx);
+        let eval_text = live
+            .primary()
+            .and_then(|engine| engine.lines.get(&1))
+            .and_then(|line| line.score)
+            .map(Score::display)
+            .or_else(|| {
+                self.evals
+                    .get(&self.current)
+                    .filter(|_| self.pv_view.is_none())
+                    .map(|cp| Score::Cp(*cp).display())
+            })
+            .filter(|_| self.editor.is_none())
+            .unwrap_or_else(|| "—".to_owned());
+        // A finished game shows its result, not an evaluation.
+        match end.filter(|_| self.editor.is_none()) {
+            Some(end) => end.result().replace("1/2", "½"),
+            None => eval_text,
+        }
+    }
+
+    /// One player's name and rating above or below the board, with a dot when they are
+    /// to move and the pieces they are up on.
+    fn render_player_strip(
+        &self,
+        side: chess_core::Color,
+        end: Option<chess_core::GameEnd>,
+        cx: &mut Context<Self>,
+    ) -> gpui::Div {
+        let shown = self.shown_pos();
+        let to_move = shown.turn();
+        let balance = chess_core::material_balance(shown.board());
+        let set = self.model.read(cx).config.board.prefs().pieces;
+        let strip = move |side: chess_core::Color| {
+            (!balance.up(side).is_empty()).then(|| {
+                ui::board::material_strip(
+                    balance.up(side),
+                    side.other(),
+                    balance.lead(side),
+                    set,
+                    17.,
+                )
+            })
+        };
+        let material = strip(side).filter(|_| self.editor.is_none());
+        let (name, rating) = self.player(side);
+        h_flex()
+            .h(px(26.))
+            .gap(px(8.))
+            .justify_between()
+            .child(
+                h_flex()
+                    .gap(px(8.))
+                    .min_w_0()
+                    .child(
+                        // The side to move is marked beside its name.
+                        div()
+                            .flex_none()
+                            .size(px(6.))
+                            .rounded_full()
+                            .when(to_move == side && end.is_none(), |dot| {
+                                dot.bg(rgb(T.accent))
+                            }),
+                    )
+                    .child(
+                        div()
+                            .min_w_0()
+                            .overflow_hidden()
+                            .text_ellipsis()
+                            .whitespace_nowrap()
+                            .text_size(px(13.))
+                            .font_weight(FontWeight::MEDIUM)
+                            .child(name),
+                    )
+                    .child(mono(rating).flex_none().text_as(12., T.muted)),
+            )
+            .children(material)
     }
 
     /// Evals along the shown line: the game's own, else what any engine found for that

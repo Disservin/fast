@@ -140,15 +140,12 @@ impl SettingsScreen {
                 },
                 |page| {
                     page.child(
-                        btn("retry-saves", "Retry saving settings and repertoire").on_click({
-                            let model = self.model.clone();
-                            move |_, cx| {
-                                model.update(cx, |model, cx| {
-                                    model.save_config(cx);
-                                    model.save_repertoire(cx);
-                                })
-                            }
-                        }),
+                        btn("retry-saves", "Retry saving settings and repertoire").on_click(
+                            self.model.listen(move |model, _, cx| {
+                                model.save_config(cx);
+                                model.save_repertoire(cx);
+                            }),
+                        ),
                     )
                 },
             )

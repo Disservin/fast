@@ -2,6 +2,55 @@
 
 use super::*;
 
+/// The previewed move, large, with its score and how it compares with the best line.
+fn preview_headline(row: &MoveRow, ply: u32) -> gpui::Div {
+    let score = row.score.map(|score| {
+        h_flex()
+            .flex_none()
+            .h(px(26.))
+            .px(px(8.))
+            .rounded(px(4.))
+            .bg(rgb(T.fg))
+            .text_color(rgb(T.bg))
+            .child(
+                mono(score.display())
+                    .text_size(px(13.))
+                    .font_weight(FontWeight::SEMIBOLD),
+            )
+    });
+    let verdict = row.quality.map(|quality| {
+        let text = match quality {
+            Quality::Best => "Best move",
+            Quality::Good => "Good",
+            Quality::Inaccuracy => "Inaccuracy",
+            Quality::Mistake => "Mistake",
+            Quality::Blunder => "Blunder",
+        };
+        div()
+            .flex_none()
+            .text_size(px(12.))
+            .font_weight(FontWeight::MEDIUM)
+            .text_color(rgb(if quality == Quality::Best {
+                T.muted
+            } else {
+                quality_color(quality)
+            }))
+            .child(ui::i18n::t(text).to_owned())
+    });
+    h_flex()
+        .mt(px(14.))
+        .gap(px(10.))
+        .children(score)
+        .child(
+            mono(chess_core::notation::numbered(ply + 1, &row.san))
+                .flex_1()
+                .min_w_0()
+                .text_size(px(18.))
+                .font_weight(FontWeight::SEMIBOLD),
+        )
+        .children(verdict)
+}
+
 impl AnalyseScreen {
     /// Who found the selected line and how deep: the engine's icon and name, then the
     /// line's depth.
@@ -58,7 +107,6 @@ impl AnalyseScreen {
         &mut self,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
-        let this = cx.entity();
         let explorer = self.explorer_database(cx);
         let model = self.model.read(cx);
         let demo = model.demo;
@@ -80,54 +128,7 @@ impl AnalyseScreen {
             .as_ref()
             .filter(|row| row.depth > 0)
             .map(|row| self.render_line_source(row, cx));
-        // The move itself, large, with its score and how it compares with the best line.
-        let headline = selected.as_ref().map(|row| {
-            let score = row.score.map(|score| {
-                h_flex()
-                    .flex_none()
-                    .h(px(26.))
-                    .px(px(8.))
-                    .rounded(px(4.))
-                    .bg(rgb(T.fg))
-                    .text_color(rgb(T.bg))
-                    .child(
-                        mono(score.display())
-                            .text_size(px(13.))
-                            .font_weight(FontWeight::SEMIBOLD),
-                    )
-            });
-            let verdict = row.quality.map(|quality| {
-                let text = match quality {
-                    Quality::Best => "Best move",
-                    Quality::Good => "Good",
-                    Quality::Inaccuracy => "Inaccuracy",
-                    Quality::Mistake => "Mistake",
-                    Quality::Blunder => "Blunder",
-                };
-                div()
-                    .flex_none()
-                    .text_size(px(12.))
-                    .font_weight(FontWeight::MEDIUM)
-                    .text_color(rgb(if quality == Quality::Best {
-                        T.muted
-                    } else {
-                        quality_color(quality)
-                    }))
-                    .child(ui::i18n::t(text).to_owned())
-            });
-            h_flex()
-                .mt(px(14.))
-                .gap(px(10.))
-                .children(score)
-                .child(
-                    mono(chess_core::notation::numbered(ply + 1, &row.san))
-                        .flex_1()
-                        .min_w_0()
-                        .text_size(px(18.))
-                        .font_weight(FontWeight::SEMIBOLD),
-                )
-                .children(verdict)
-        });
+        let headline = selected.as_ref().map(|row| preview_headline(row, ply));
         let wdl = self.live.read(cx).wdl_engine().map(|_| {
             let wdl = selected.as_ref().and_then(|row| row.wdl);
             let labels = match wdl_percentages(wdl) {
@@ -167,76 +168,9 @@ impl AnalyseScreen {
                     .text_color(rgb(T.fg_2))
                     .child(text)
             });
-        // What the databases and the repertoire say about the selected move.
-        // A game count and the score, as two figures side by side.
-        let stat_text = |stat: Option<&MoveStat>| -> gpui::AnyElement {
-            match stat {
-                None => div()
-                    .child(ui::i18n::t("No games").to_owned())
-                    .into_any_element(),
-                Some(stat) => h_flex()
-                    .gap(px(12.))
-                    .child(format!("{} {}", stat.games, ui::i18n::t("games")))
-                    .child(mono(format!("{:.0}%", stat.score_percent(white_to_move))))
-                    .into_any_element(),
-            }
-        };
-        let (rep_text, rep_color) = match selected.as_ref().map_or(RepTag::None, |row| row.rep) {
-            RepTag::Main => ("Main", T.good),
-            RepTag::Side => ("Side line", T.fg_2),
-            RepTag::Deviate => ("You deviate", T.warn),
-            RepTag::None => ("Not in repertoire", T.fg_2),
-        };
-        let fact = |title: String, value: gpui::AnyElement, color: u32| {
-            v_flex()
-                .flex_1()
-                .min_w_0()
-                .gap(px(3.))
-                .child(
-                    div()
-                        .text_as(12., T.muted)
-                        .overflow_hidden()
-                        .text_ellipsis()
-                        .whitespace_nowrap()
-                        .child(title),
-                )
-                .child(
-                    div()
-                        .text_size(px(13.))
-                        .text_color(rgb(color))
-                        .whitespace_nowrap()
-                        .child(value),
-                )
-        };
-        let my_moves = self.model.read(cx).config.view.my_moves;
-        let facts = selected.as_ref().map(|row| {
-            h_flex()
-                .mt(px(16.))
-                .pt(px(12.))
-                .gap(px(12.))
-                .border_t_1()
-                .border_color(rgb(T.divider))
-                .child(fact(
-                    reference_title.clone(),
-                    stat_text(row.reference.as_ref()),
-                    T.fg_2,
-                ))
-                .when(my_moves, |facts| {
-                    facts
-                        .child(fact(
-                            ui::i18n::t("My games").to_owned(),
-                            stat_text(row.mine.as_ref()),
-                            T.fg_2,
-                        ))
-                        .child(fact(
-                            ui::i18n::t("Repertoire").to_owned(),
-                            div()
-                                .child(ui::i18n::t(rep_text).to_owned())
-                                .into_any_element(),
-                            rep_color,
-                        ))
-                })
-        });
+        let facts = selected
+            .as_ref()
+            .map(|row| self.render_preview_facts(row, reference_title.clone(), white_to_move, cx));
         // A previewed line counts even where the table is empty, such as after the
         // mating move, so the whole line can still be played.
         let has_row = self.action_line().is_some();
@@ -277,59 +211,126 @@ impl AnalyseScreen {
             )
             .children(self.render_kibitz_row(cx))
             .children(explanation)
-            .child(
-                h_flex()
-                    .mt(px(12.))
-                    .gap(px(6.))
-                    .child(
-                        btn("play-line", "Play on board")
-                            .flex_1()
-                            .pad(9.)
-                            .disabled(!has_row)
-                            .tooltip(ui::i18n::t("Play line on board"))
-                            .on_click({
-                                let this = this.clone();
-                                move |window, cx| {
-                                    this.update(cx, |screen, cx| screen.play_line(window, cx))
-                                }
-                            }),
-                    )
-                    .child(
-                        btn("add-variation", "Add variation")
-                            .flex_1()
-                            .pad(9.)
-                            .disabled(!has_row)
-                            .tooltip(ui::i18n::t("Add as variation"))
-                            .on_click({
-                                let this = this.clone();
-                                move |_, cx| this.update(cx, |screen, cx| screen.add_variation(cx))
-                            }),
-                    )
-                    .child(
-                        btn("add-rep", "To repertoire")
-                            .flex_1()
-                            .pad(9.)
-                            .disabled(!has_row)
-                            .tooltip(ui::i18n::t("Add to repertoire"))
-                            .on_click({
-                                let this = this.clone();
-                                move |_, cx| {
-                                    this.update(cx, |screen, cx| screen.add_to_repertoire(cx))
-                                }
-                            }),
-                    )
-                    .child(
-                        icon_btn("copy-line", "icons/copy.svg")
-                            .w(36.)
-                            .pad(0.)
-                            .disabled(!has_row)
-                            .tooltip(ui::i18n::t("Copy line"))
-                            .on_click({
-                                let this = this.clone();
-                                move |_, cx| this.update(cx, |screen, cx| screen.copy_pv(cx))
-                            }),
-                    ),
-            )
+            .child(self.render_preview_actions(has_row, cx))
             .children(facts)
+    }
+
+    /// What the reference database, the user's games and the repertoire say about the
+    /// previewed move.
+    fn render_preview_facts(
+        &self,
+        row: &MoveRow,
+        reference_title: String,
+        white_to_move: bool,
+        cx: &mut Context<Self>,
+    ) -> gpui::Div {
+        let my_moves = self.model.read(cx).config.view.my_moves;
+        // What the databases and the repertoire say about the selected move.
+        // A game count and the score, as two figures side by side.
+        let stat_text = |stat: Option<&MoveStat>| -> gpui::AnyElement {
+            match stat {
+                None => div()
+                    .child(ui::i18n::t("No games").to_owned())
+                    .into_any_element(),
+                Some(stat) => h_flex()
+                    .gap(px(12.))
+                    .child(format!("{} {}", stat.games, ui::i18n::t("games")))
+                    .child(mono(format!("{:.0}%", stat.score_percent(white_to_move))))
+                    .into_any_element(),
+            }
+        };
+        let (rep_text, rep_color) = match row.rep {
+            RepTag::Main => ("Main", T.good),
+            RepTag::Side => ("Side line", T.fg_2),
+            RepTag::Deviate => ("You deviate", T.warn),
+            RepTag::None => ("Not in repertoire", T.fg_2),
+        };
+        let fact = |title: String, value: gpui::AnyElement, color: u32| {
+            v_flex()
+                .flex_1()
+                .min_w_0()
+                .gap(px(3.))
+                .child(
+                    div()
+                        .text_as(12., T.muted)
+                        .overflow_hidden()
+                        .text_ellipsis()
+                        .whitespace_nowrap()
+                        .child(title),
+                )
+                .child(
+                    div()
+                        .text_size(px(13.))
+                        .text_color(rgb(color))
+                        .whitespace_nowrap()
+                        .child(value),
+                )
+        };
+        h_flex()
+            .mt(px(16.))
+            .pt(px(12.))
+            .gap(px(12.))
+            .border_t_1()
+            .border_color(rgb(T.divider))
+            .child(fact(
+                reference_title.clone(),
+                stat_text(row.reference.as_ref()),
+                T.fg_2,
+            ))
+            .when(my_moves, |facts| {
+                facts
+                    .child(fact(
+                        ui::i18n::t("My games").to_owned(),
+                        stat_text(row.mine.as_ref()),
+                        T.fg_2,
+                    ))
+                    .child(fact(
+                        ui::i18n::t("Repertoire").to_owned(),
+                        div()
+                            .child(ui::i18n::t(rep_text).to_owned())
+                            .into_any_element(),
+                        rep_color,
+                    ))
+            })
+    }
+
+    /// Play on board, Add variation, To repertoire and Copy line for the previewed line.
+    fn render_preview_actions(&self, has_row: bool, cx: &mut Context<Self>) -> gpui::Div {
+        let this = cx.entity();
+        h_flex()
+            .mt(px(12.))
+            .gap(px(6.))
+            .child(
+                btn("play-line", "Play on board")
+                    .flex_1()
+                    .pad(9.)
+                    .disabled(!has_row)
+                    .tooltip(ui::i18n::t("Play line on board"))
+                    .on_click(this.listen(move |screen, window, cx| screen.play_line(window, cx))),
+            )
+            .child(
+                btn("add-variation", "Add variation")
+                    .flex_1()
+                    .pad(9.)
+                    .disabled(!has_row)
+                    .tooltip(ui::i18n::t("Add as variation"))
+                    .on_click(this.listen(move |screen, _, cx| screen.add_variation(cx))),
+            )
+            .child(
+                btn("add-rep", "To repertoire")
+                    .flex_1()
+                    .pad(9.)
+                    .disabled(!has_row)
+                    .tooltip(ui::i18n::t("Add to repertoire"))
+                    .on_click(this.listen(move |screen, _, cx| screen.add_to_repertoire(cx))),
+            )
+            .child(
+                icon_btn("copy-line", "icons/copy.svg")
+                    .w(36.)
+                    .pad(0.)
+                    .disabled(!has_row)
+                    .tooltip(ui::i18n::t("Copy line"))
+                    .on_click(this.listen(move |screen, _, cx| screen.copy_pv(cx))),
+            )
     }
 }

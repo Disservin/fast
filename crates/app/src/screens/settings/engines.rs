@@ -539,15 +539,10 @@ impl SettingsScreen {
                     .child(
                         btn("download-engine", "Download engine")
                             .primary()
-                            .on_click({
-                                let this = this.clone();
-                                move |_, cx| {
-                                    this.update(cx, |screen, cx| {
-                                        screen.catalog_open = !screen.catalog_open;
-                                        cx.notify();
-                                    })
-                                }
-                            }),
+                            .on_click(this.listen(move |screen, _, cx| {
+                                screen.catalog_open = !screen.catalog_open;
+                                cx.notify();
+                            })),
                     ),
             );
         // Fractions of the table so it fits any window width.
