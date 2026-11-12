@@ -50,43 +50,7 @@ impl PlayScreen {
 
     pub(super) fn render_setup(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let this = cx.entity();
-        let mut grid = div().grid().grid_cols(3).gap(px(6.));
-        for (index, (base, increment)) in TIME_CONTROLS.iter().enumerate() {
-            grid = grid.child(
-                btn(("time", index), format!("{base}+{increment}"))
-                    .mono()
-                    .full()
-                    .h(36.)
-                    .selected(self.time_index == Some(index))
-                    .on_click(this.listen(move |screen, _, cx| {
-                        screen.time_index = Some(index);
-                        cx.notify();
-                    })),
-            );
-        }
-        grid = grid.child(
-            btn("time-custom", "Custom")
-                .full()
-                .selected(self.time_index.is_none())
-                .on_click(this.listen(move |screen, _, cx| {
-                    screen.time_index = None;
-                    cx.notify();
-                })),
-        );
-        let colour_button = |id: &'static str,
-                             label: &'static str,
-                             choice: ColourChoice,
-                             current: ColourChoice,
-                             this: Entity<Self>| {
-            btn(id, label)
-                .flex_1()
-                .selected(choice == current)
-                .on_click(this.listen(move |screen, _, cx| {
-                    screen.colour = choice;
-                    cx.notify();
-                }))
-        };
-        let takeback_this = this.clone();
+        let grid = self.render_time_grid(cx);
         let start_this = this.clone();
         let can_start = !self.opponents.is_empty();
         let self_play = self.mode == Mode::Engines;
@@ -100,14 +64,6 @@ impl PlayScreen {
             .read(cx)
             .selected_index(cx)
             .is_some_and(|index| index.row == 4);
-        let number = self
-            .chess960_number
-            .read(cx)
-            .value()
-            .trim()
-            .parse::<u16>()
-            .ok()
-            .filter(|n| *n < 960);
         let mode_this = this.clone();
         let mode = segmented(
             "play-mode",
@@ -203,35 +159,7 @@ impl PlayScreen {
                 column.child(div().mb(px(14.)).child(self.custom_time.render()))
             })
             .when(!self_play, |column| {
-                column.child(
-                    field(
-                        "Colour",
-                        h_flex()
-                            .gap(px(6.))
-                            .child(colour_button(
-                                "white",
-                                ui::i18n::t("White"),
-                                ColourChoice::White,
-                                self.colour,
-                                this.clone(),
-                            ))
-                            .child(colour_button(
-                                "random",
-                                "Random",
-                                ColourChoice::Random,
-                                self.colour,
-                                this.clone(),
-                            ))
-                            .child(colour_button(
-                                "black",
-                                ui::i18n::t("Black"),
-                                ColourChoice::Black,
-                                self.colour,
-                                this.clone(),
-                            )),
-                    )
-                    .mb(px(14.)),
-                )
+                column.child(self.render_colour_choice(cx))
             })
             .child(
                 field("Start from", select_el(&self.start_from)).mb(px(if from_fen {
@@ -244,72 +172,10 @@ impl PlayScreen {
                 column.child(div().mb(px(20.)).child(text_input(&self.start_fen)))
             })
             .when(from_960, |column| {
-                column.child(
-                    h_flex()
-                        .flex_wrap()
-                        .gap(px(8.))
-                        .mb(px(16.))
-                        .child(
-                            div()
-                                .w(px(80.))
-                                .child(text_input(&self.chess960_number).mono()),
-                        )
-                        .child(
-                            btn("random-chess960", "Random")
-                                .icon("icons/dices.svg")
-                                .compact()
-                                .on_click(this.listen(move |screen, window, cx| {
-                                    let number = crate::shell::random_chess960_number();
-                                    screen.chess960_number.update(cx, |input, cx| {
-                                        input.set_value(number.to_string(), window, cx)
-                                    });
-                                    cx.notify();
-                                })),
-                        )
-                        .child(mono(number.map_or_else(
-                            || ui::i18n::t("Enter a number from 0 to 959").to_owned(),
-                            |n| format!("#{n} {}", chess_core::chess960::back_rank(n)),
-                        ))),
-                )
+                column.child(self.render_chess960_picker(cx))
             })
             .when(!self_play, |column| {
-                column
-                    .child(
-                        div().mb(px(12.)).child(
-                            check(
-                                "hide-eval",
-                                self.hide_eval,
-                                "Hide evaluation during the game",
-                            )
-                            .on_change(this.listen_with(
-                                move |screen, value, _, cx| {
-                                    screen.hide_eval = value;
-                                    cx.notify();
-                                },
-                            )),
-                        ),
-                    )
-                    .child(div().mb(px(12.)).child({
-                        let premove_this = cx.entity();
-                        check("premoves", self.allow_premoves, "Allow premoves").on_change(
-                            move |value, _, cx| {
-                                premove_this.update(cx, |screen, cx| {
-                                    screen.allow_premoves = value;
-                                    cx.notify();
-                                });
-                            },
-                        )
-                    }))
-                    .child(div().mb(px(20.)).child(
-                        check("takebacks", self.allow_takebacks, "Allow takebacks").on_change(
-                            move |value, _, cx| {
-                                takeback_this.update(cx, |screen, cx| {
-                                    screen.allow_takebacks = value;
-                                    cx.notify();
-                                });
-                            },
-                        ),
-                    ))
+                column.child(self.render_game_options(cx))
             })
             .child(
                 btn("start-game", "Start game")
@@ -330,6 +196,149 @@ impl PlayScreen {
                         .child(ui::i18n::t("Add an engine in Settings › Engines to play.")),
                 )
             })
+    }
+
+    /// The time control presets and Custom.
+    fn render_time_grid(&self, cx: &mut Context<Self>) -> gpui::Div {
+        let this = cx.entity();
+        let mut grid = div().grid().grid_cols(3).gap(px(6.));
+        for (index, (base, increment)) in TIME_CONTROLS.iter().enumerate() {
+            grid = grid.child(
+                btn(("time", index), format!("{base}+{increment}"))
+                    .mono()
+                    .full()
+                    .h(36.)
+                    .selected(self.time_index == Some(index))
+                    .on_click(this.listen(move |screen, _, cx| {
+                        screen.time_index = Some(index);
+                        cx.notify();
+                    })),
+            );
+        }
+        grid = grid.child(
+            btn("time-custom", "Custom")
+                .full()
+                .selected(self.time_index.is_none())
+                .on_click(this.listen(move |screen, _, cx| {
+                    screen.time_index = None;
+                    cx.notify();
+                })),
+        );
+        grid
+    }
+
+    /// White, Random or Black for the player.
+    fn render_colour_choice(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let this = cx.entity();
+        let colour_button =
+            |id: &'static str, label: &'static str, choice: ColourChoice, current: ColourChoice| {
+                btn(id, label)
+                    .flex_1()
+                    .selected(choice == current)
+                    .on_click(this.listen(move |screen, _, cx| {
+                        screen.colour = choice;
+                        cx.notify();
+                    }))
+            };
+        field(
+            "Colour",
+            h_flex()
+                .gap(px(6.))
+                .child(colour_button(
+                    "white",
+                    ui::i18n::t("White"),
+                    ColourChoice::White,
+                    self.colour,
+                ))
+                .child(colour_button(
+                    "random",
+                    "Random",
+                    ColourChoice::Random,
+                    self.colour,
+                ))
+                .child(colour_button(
+                    "black",
+                    ui::i18n::t("Black"),
+                    ColourChoice::Black,
+                    self.colour,
+                )),
+        )
+        .mb(px(14.))
+    }
+
+    /// The Chess960 start position: its number, Random, and the back rank it gives.
+    fn render_chess960_picker(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let this = cx.entity();
+        let number = self
+            .chess960_number
+            .read(cx)
+            .value()
+            .trim()
+            .parse::<u16>()
+            .ok()
+            .filter(|n| *n < 960);
+        h_flex()
+            .flex_wrap()
+            .gap(px(8.))
+            .mb(px(16.))
+            .child(
+                div()
+                    .w(px(80.))
+                    .child(text_input(&self.chess960_number).mono()),
+            )
+            .child(
+                btn("random-chess960", "Random")
+                    .icon("icons/dices.svg")
+                    .compact()
+                    .on_click(this.listen(move |screen, window, cx| {
+                        let number = crate::shell::random_chess960_number();
+                        screen.chess960_number.update(cx, |input, cx| {
+                            input.set_value(number.to_string(), window, cx)
+                        });
+                        cx.notify();
+                    })),
+            )
+            .child(mono(number.map_or_else(
+                || ui::i18n::t("Enter a number from 0 to 959").to_owned(),
+                |n| format!("#{n} {}", chess_core::chess960::back_rank(n)),
+            )))
+    }
+
+    /// Hide evaluation, premoves and takebacks for a game against an engine.
+    fn render_game_options(&self, cx: &mut Context<Self>) -> gpui::Div {
+        let this = cx.entity();
+        v_flex()
+            .child(
+                div().mb(px(12.)).child(
+                    check(
+                        "hide-eval",
+                        self.hide_eval,
+                        "Hide evaluation during the game",
+                    )
+                    .on_change(this.listen_with(
+                        move |screen, value, _, cx| {
+                            screen.hide_eval = value;
+                            cx.notify();
+                        },
+                    )),
+                ),
+            )
+            .child(div().mb(px(12.)).child({
+                check("premoves", self.allow_premoves, "Allow premoves").on_change(
+                    this.listen_with(move |screen, value, _, cx| {
+                        screen.allow_premoves = value;
+                        cx.notify();
+                    }),
+                )
+            }))
+            .child(div().mb(px(20.)).child(
+                check("takebacks", self.allow_takebacks, "Allow takebacks").on_change(
+                    this.listen_with(move |screen, value, _, cx| {
+                        screen.allow_takebacks = value;
+                        cx.notify();
+                    }),
+                ),
+            ))
     }
 
     /// One engine of the new game: which engine, and how strongly it plays.

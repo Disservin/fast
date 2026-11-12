@@ -13,6 +13,27 @@ pub fn format_clock(ms: u64) -> String {
     }
 }
 
+/// The Move, Eval and Time headings over both columns of an engine match's move list.
+fn move_columns_header() -> gpui::Div {
+    h_flex()
+        .h(px(28.))
+        .flex_none()
+        .bg(rgb(T.surface_2))
+        .mt(px(8.))
+        .mr(px(16.))
+        .pl(px(48.))
+        .gap(px(12.))
+        .children((0..2).map(|_| {
+            h_flex()
+                .flex_1()
+                .min_w_0()
+                .gap(px(6.))
+                .child(section_label("Move").flex_1().min_w_0())
+                .child(section_label("Eval").w(px(52.)).text_right())
+                .child(section_label("Time").w(px(56.)).text_right())
+        }))
+}
+
 impl PlayScreen {
     pub(super) fn clock_bar(&self, opponent: bool, cx: &gpui::App) -> impl IntoElement + use<> {
         let game = self.game.as_ref();
@@ -625,75 +646,10 @@ impl PlayScreen {
             }
             cells.extend(ids.iter().map(|&id| Some(id)));
             if game.self_play() {
-                columns = Some(
-                    h_flex()
-                        .h(px(28.))
-                        .flex_none()
-                        .bg(rgb(T.surface_2))
-                        .mt(px(8.))
-                        .mr(px(16.))
-                        .pl(px(48.))
-                        .gap(px(12.))
-                        .children((0..2).map(|_| {
-                            h_flex()
-                                .flex_1()
-                                .min_w_0()
-                                .gap(px(6.))
-                                .child(section_label("Move").flex_1().min_w_0())
-                                .child(section_label("Eval").w(px(52.)).text_right())
-                                .child(section_label("Time").w(px(56.)).text_right())
-                        })),
-                );
+                columns = Some(move_columns_header());
             }
             for (index, pair) in cells.chunks(2).enumerate() {
                 let number = first_ply.div_ceil(2) as usize + index;
-                let cell = |id: Option<NodeId>| {
-                    let current = id == Some(self.viewed.unwrap_or(game.current));
-                    let san = id
-                        .map(|id| game.tree.node(id).san.clone())
-                        .unwrap_or_default();
-                    let values = id.map(|id| match_move_values(&game.tree.node(id).comment));
-                    h_flex()
-                        .flex_1()
-                        .min_w_0()
-                        .gap(px(6.))
-                        .child(
-                            h_flex().flex_1().min_w_0().child(
-                                div()
-                                    .flex_none()
-                                    .px(px(4.))
-                                    .whitespace_nowrap()
-                                    .when(current, |pill| {
-                                        pill.rounded(px(4.))
-                                            .bg(rgb(T.accent))
-                                            .text_color(rgb(T.accent_fg))
-                                    })
-                                    .child(san),
-                            ),
-                        )
-                        .when(game.self_play() && id.is_some(), |row| {
-                            let (eval, time) =
-                                values.unwrap_or_else(|| ("—".to_owned(), "—".to_owned()));
-                            row.child(
-                                mono(eval)
-                                    .w(px(52.))
-                                    .flex_none()
-                                    .text_size(px(12.))
-                                    .text_right()
-                                    .whitespace_nowrap()
-                                    .text_color(rgb(T.fg_2)),
-                            )
-                            .child(
-                                mono(time)
-                                    .w(px(56.))
-                                    .flex_none()
-                                    .text_size(px(12.))
-                                    .text_right()
-                                    .whitespace_nowrap()
-                                    .text_color(rgb(T.muted)),
-                            )
-                        })
-                };
                 list = list.child(
                     h_flex()
                         .w_full()
@@ -709,16 +665,14 @@ impl PlayScreen {
                                 .text_color(rgb(T.faint))
                                 .child(format!("{number}.")),
                         )
-                        .child(cell(pair[0]))
-                        .child(cell(pair.get(1).copied().flatten())),
+                        .child(self.move_cell(game, pair[0]))
+                        .child(self.move_cell(game, pair.get(1).copied().flatten())),
                 );
             }
         }
         let result = game.and_then(|game| game.result.clone());
         let in_game = game.is_some_and(|game| game.result.is_none());
         let self_play = game.is_some_and(|game| game.self_play());
-        let draw_this = this.clone();
-        let takeback_this = this.clone();
         v_flex()
             .gap(px(16.))
             .child(
@@ -776,8 +730,7 @@ impl PlayScreen {
                                     .flex_1()
                                     .disabled(!in_game)
                                     .on_click(
-                                        draw_this
-                                            .listen(move |screen, _, cx| screen.offer_draw(cx)),
+                                        this.listen(move |screen, _, cx| screen.offer_draw(cx)),
                                     ),
                             )
                             .child(
@@ -785,8 +738,7 @@ impl PlayScreen {
                                     .flex_1()
                                     .disabled(!in_game)
                                     .on_click(
-                                        takeback_this
-                                            .listen(move |screen, _, cx| screen.takeback(cx)),
+                                        this.listen(move |screen, _, cx| screen.takeback(cx)),
                                     ),
                             )
                             .child(
@@ -807,6 +759,55 @@ impl PlayScreen {
                                 }),
                             ),
                     )
+            })
+    }
+
+    /// One move in the move list: the SAN, highlighted when it is the move on the board,
+    /// and in engine matches the evaluation and time recorded with it.
+    fn move_cell(&self, game: &Game, id: Option<NodeId>) -> gpui::Div {
+        let current = id == Some(self.viewed.unwrap_or(game.current));
+        let san = id
+            .map(|id| game.tree.node(id).san.clone())
+            .unwrap_or_default();
+        let values = id.map(|id| match_move_values(&game.tree.node(id).comment));
+        h_flex()
+            .flex_1()
+            .min_w_0()
+            .gap(px(6.))
+            .child(
+                h_flex().flex_1().min_w_0().child(
+                    div()
+                        .flex_none()
+                        .px(px(4.))
+                        .whitespace_nowrap()
+                        .when(current, |pill| {
+                            pill.rounded(px(4.))
+                                .bg(rgb(T.accent))
+                                .text_color(rgb(T.accent_fg))
+                        })
+                        .child(san),
+                ),
+            )
+            .when(game.self_play() && id.is_some(), |row| {
+                let (eval, time) = values.unwrap_or_else(|| ("—".to_owned(), "—".to_owned()));
+                row.child(
+                    mono(eval)
+                        .w(px(52.))
+                        .flex_none()
+                        .text_size(px(12.))
+                        .text_right()
+                        .whitespace_nowrap()
+                        .text_color(rgb(T.fg_2)),
+                )
+                .child(
+                    mono(time)
+                        .w(px(56.))
+                        .flex_none()
+                        .text_size(px(12.))
+                        .text_right()
+                        .whitespace_nowrap()
+                        .text_color(rgb(T.muted)),
+                )
             })
     }
 }

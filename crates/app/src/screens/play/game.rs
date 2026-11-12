@@ -22,6 +22,19 @@ pub(super) fn opening_from_book(path: &str, text: &str) -> Result<GameTree, Stri
     }
 }
 
+/// A side's clock as shown in the game list, such as "180s+2s", or "∞" for a fixed
+/// search limit.
+fn clock_label(base_ms: u64, increment_ms: u64, fixed_limit: bool) -> String {
+    if fixed_limit {
+        return "∞".to_owned();
+    }
+    format!(
+        "{}s+{}s",
+        crate::controls::time_seconds(base_ms),
+        crate::controls::time_seconds(increment_ms)
+    )
+}
+
 impl PlayScreen {
     pub(super) fn start_demo_game(&mut self, cx: &mut Context<Self>) {
         let mut tree = GameTree::new();
@@ -182,6 +195,16 @@ impl PlayScreen {
         cx.notify();
     }
 
+    /// The player's colour for a new game against an engine, drawing it for Random.
+    fn user_colour(&self) -> Color {
+        match self.colour {
+            ColourChoice::White => Color::White,
+            ColourChoice::Black => Color::Black,
+            ColourChoice::Random if crate::shell::random_u64().is_multiple_of(2) => Color::White,
+            ColourChoice::Random => Color::Black,
+        }
+    }
+
     pub(super) fn start_game(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let settings = if self.mode == Mode::Engines {
             self.engine_times[0]
@@ -255,17 +278,10 @@ impl PlayScreen {
             .last()
             .copied()
             .unwrap_or(GameTree::ROOT);
-        let user = match self.colour {
-            _ if self_play => Color::White,
-            ColourChoice::White => Color::White,
-            ColourChoice::Black => Color::Black,
-            ColourChoice::Random => {
-                if crate::shell::random_u64().is_multiple_of(2) {
-                    Color::White
-                } else {
-                    Color::Black
-                }
-            }
+        let user = if self_play {
+            Color::White
+        } else {
+            self.user_colour()
         };
         let ms = base_ms;
         let white = white.flatten().map(|(config, elo)| {
@@ -297,31 +313,11 @@ impl PlayScreen {
             label: if self_play {
                 format!(
                     "{} / {}",
-                    if white_limit.is_some() {
-                        "∞".to_owned()
-                    } else {
-                        format!(
-                            "{}s+{}s",
-                            crate::controls::time_seconds(base_ms),
-                            crate::controls::time_seconds(increment_ms)
-                        )
-                    },
-                    if black_limit.is_some() {
-                        "∞".to_owned()
-                    } else {
-                        format!(
-                            "{}s+{}s",
-                            crate::controls::time_seconds(black_base_ms),
-                            crate::controls::time_seconds(black_increment_ms)
-                        )
-                    }
+                    clock_label(base_ms, increment_ms, white_limit.is_some()),
+                    clock_label(black_base_ms, black_increment_ms, black_limit.is_some())
                 )
             } else {
-                format!(
-                    "{}s+{}s",
-                    crate::controls::time_seconds(base_ms),
-                    crate::controls::time_seconds(increment_ms)
-                )
+                clock_label(base_ms, increment_ms, false)
             },
             takebacks: self.allow_takebacks && !self_play,
             premoves: self.allow_premoves && !self_play,
