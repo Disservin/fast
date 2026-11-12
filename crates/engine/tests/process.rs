@@ -6,10 +6,13 @@ use std::{path::PathBuf, time::Duration};
 use engine::{EngineEvent, EngineHandle, Limits, Score, SearchRequest};
 use smol::{channel::Receiver, future};
 
-const START: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
-
 fn fixture() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/fake_uci.sh")
+}
+
+/// The scripted fake engine, started with no options.
+fn fake() -> EngineHandle {
+    EngineHandle::spawn(fixture(), Vec::new(), Vec::new())
 }
 
 fn next(events: &Receiver<EngineEvent>) -> EngineEvent {
@@ -25,13 +28,24 @@ fn next(events: &Receiver<EngineEvent>) -> EngineEvent {
 fn request(search_id: u64, limits: Option<Limits>) -> SearchRequest {
     SearchRequest {
         search_moves: Vec::new(),
-        fen: START.to_owned(),
+        fen: engine::START_FEN.to_owned(),
         moves: Vec::new(),
         limits,
         search_id,
         game: 1,
         chess960: false,
     }
+}
+
+/// A search of the start position to `depth`.
+fn depth_request(search_id: u64, depth: u32) -> SearchRequest {
+    request(
+        search_id,
+        Some(Limits {
+            depth: Some(depth),
+            ..Default::default()
+        }),
+    )
 }
 
 /// What the app wrote to the engine so far.
@@ -45,32 +59,28 @@ fn sent(engine: &EngineHandle) -> Vec<String> {
         .collect()
 }
 
+/// Polls `done` until it holds, failing with the message from `why` after five seconds.
+fn wait_until(mut done: impl FnMut() -> bool, why: impl Fn() -> String) {
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    while !done() {
+        assert!(std::time::Instant::now() < deadline, "{}", why());
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
 /// Waits until the app has written `text`, returning everything written by then.
 fn wait_for_sent(engine: &EngineHandle, text: &str) -> Vec<String> {
-    let deadline = std::time::Instant::now() + Duration::from_secs(5);
-    loop {
-        let lines = sent(engine);
-        if lines.iter().any(|line| line == text) {
-            return lines;
-        }
-        assert!(
-            std::time::Instant::now() < deadline,
-            "never sent {text}: {lines:?}"
-        );
-        std::thread::sleep(Duration::from_millis(20));
-    }
+    wait_until(
+        || sent(engine).iter().any(|line| line == text),
+        || format!("never sent {text}: {:?}", sent(engine)),
+    );
+    sent(engine)
 }
 
 #[test]
 fn chess960_is_switched_on_before_its_search_and_off_for_a_standard_game() {
-    let engine = EngineHandle::spawn(fixture(), Vec::new(), Vec::new());
-    let mut fischer = request(
-        1,
-        Some(Limits {
-            depth: Some(4),
-            ..Default::default()
-        }),
-    );
+    let engine = fake();
+    let mut fischer = depth_request(1, 4);
     fischer.chess960 = true;
     fischer.fen = "bqnbrkrn/pppppppp/8/8/8/8/PPPPPPPP/BQNBRKRN w GEge - 0 1".to_owned();
     fischer.moves = vec!["f1g1".to_owned()];
@@ -87,40 +97,22 @@ fn chess960_is_switched_on_before_its_search_and_off_for_a_standard_game() {
         .expect("position sent");
     assert!(option < position, "{lines:?}");
     assert!(lines[position].ends_with("moves f1g1"));
-    let mut standard = request(
-        2,
-        Some(Limits {
-            depth: Some(5),
-            ..Default::default()
-        }),
-    );
+    let mut standard = depth_request(2, 5);
     standard.game = 8;
     engine.search(standard);
     let lines = wait_for_sent(&engine, "go depth 5");
     assert!(lines.contains(&"setoption name UCI_Chess960 value false".to_owned()));
     // A standard game never sends the option to an engine that was not switched.
-    let plain = EngineHandle::spawn(fixture(), Vec::new(), Vec::new());
-    plain.search(request(
-        3,
-        Some(Limits {
-            depth: Some(6),
-            ..Default::default()
-        }),
-    ));
+    let plain = fake();
+    plain.search(depth_request(3, 6));
     let lines = wait_for_sent(&plain, "go depth 6");
     assert!(!lines.iter().any(|line| line.contains("UCI_Chess960")));
 }
 
 #[test]
 fn root_move_restrictions_reach_the_engine_for_finite_and_infinite_searches() {
-    let engine = EngineHandle::spawn(fixture(), Vec::new(), Vec::new());
-    let mut restricted = request(
-        1,
-        Some(Limits {
-            depth: Some(8),
-            ..Default::default()
-        }),
-    );
+    let engine = fake();
+    let mut restricted = depth_request(1, 8);
     restricted.search_moves = vec!["d2d4".into(), "e2e4".into()];
     engine.search(restricted);
     wait_for_sent(&engine, "go depth 8 searchmoves d2d4 e2e4");
@@ -128,13 +120,7 @@ fn root_move_restrictions_reach_the_engine_for_finite_and_infinite_searches() {
     infinite.search_moves = vec!["d2d4".into()];
     engine.search(infinite);
     wait_for_sent(&engine, "go infinite searchmoves d2d4");
-    engine.search(request(
-        3,
-        Some(Limits {
-            depth: Some(4),
-            ..Default::default()
-        }),
-    ));
+    engine.search(depth_request(3, 4));
     wait_for_sent(&engine, "go depth 4");
     engine.quit();
 }
@@ -168,7 +154,7 @@ fn first_search_waits_for_readyok_and_uses_startpos() {
 
 #[test]
 fn a_new_game_sends_ucinewgame_and_synchronises_again() {
-    let engine = EngineHandle::spawn(fixture(), Vec::new(), Vec::new());
+    let engine = fake();
     let events = engine.events();
     assert!(matches!(next(&events), EngineEvent::Ready(_)));
     let depth = Some(Limits {
@@ -202,13 +188,7 @@ fn a_new_game_sends_ucinewgame_and_synchronises_again() {
 fn chess960_is_rejected_when_the_engine_has_no_option() {
     let engine = EngineHandle::spawn(fixture(), vec!["no960".to_owned()], Vec::new());
     let events = engine.events();
-    let mut search = request(
-        1,
-        Some(Limits {
-            depth: Some(1),
-            ..Default::default()
-        }),
-    );
+    let mut search = depth_request(1, 1);
     search.chess960 = true;
     engine.search(search);
     loop {
@@ -227,7 +207,7 @@ fn chess960_is_rejected_when_the_engine_has_no_option() {
 
 #[test]
 fn handshake_reports_identity_and_option_schema() {
-    let engine = EngineHandle::spawn(fixture(), Vec::new(), Vec::new());
+    let engine = fake();
     let EngineEvent::Ready(info) = next(&engine.events()) else {
         panic!("expected Ready");
     };
@@ -238,7 +218,7 @@ fn handshake_reports_identity_and_option_schema() {
 
 #[test]
 fn analysis_then_cancellation_on_new_position() {
-    let engine = EngineHandle::spawn(fixture(), Vec::new(), Vec::new());
+    let engine = fake();
     let events = engine.events();
     // Requested before the handshake completes: must be replayed once ready.
     engine.search(request(1, None));
@@ -258,13 +238,7 @@ fn analysis_then_cancellation_on_new_position() {
 
     // The new position cancels the running search; its stale "cp 99" output and
     // bestmove are dropped, and the next event belongs to search 2.
-    engine.search(request(
-        2,
-        Some(Limits {
-            depth: Some(1),
-            ..Default::default()
-        }),
-    ));
+    engine.search(depth_request(2, 1));
     let EngineEvent::Analysis { search_id, .. } = next(&events) else {
         panic!("expected analysis from the second search");
     };
@@ -282,13 +256,7 @@ fn options_are_applied_after_handshake() {
     let engine = EngineHandle::spawn(fixture(), Vec::new(), options);
     let events = engine.events();
     assert!(matches!(next(&events), EngineEvent::Ready(_)));
-    engine.search(request(
-        1,
-        Some(Limits {
-            depth: Some(1),
-            ..Default::default()
-        }),
-    ));
+    engine.search(depth_request(1, 1));
     let EngineEvent::Analysis { update, .. } = next(&events) else {
         panic!("expected analysis");
     };
@@ -298,7 +266,7 @@ fn options_are_applied_after_handshake() {
 
 #[test]
 fn option_change_during_a_search_applies_and_resumes_it() {
-    let engine = EngineHandle::spawn(fixture(), Vec::new(), Vec::new());
+    let engine = fake();
     let events = engine.events();
     assert!(matches!(next(&events), EngineEvent::Ready(_)));
     engine.search(request(4, None));
@@ -333,58 +301,41 @@ fn option_change_during_a_search_applies_and_resumes_it() {
 
 #[test]
 fn log_records_traffic_and_stderr() {
-    let engine = EngineHandle::spawn(fixture(), Vec::new(), Vec::new());
+    let engine = fake();
     let events = engine.events();
     assert!(matches!(next(&events), EngineEvent::Ready(_)));
     engine.search(request(1, None));
     assert!(matches!(next(&events), EngineEvent::Analysis { .. }));
-    let deadline = std::time::Instant::now() + Duration::from_secs(5);
-    loop {
-        let lines = engine.log().snapshot(true);
-        let has = |kind, text: &str| {
-            lines
-                .iter()
-                .any(|line| line.kind == kind && line.text.contains(text))
-        };
-        if has(engine::LogKind::Sent, "uci")
-            && has(engine::LogKind::Received, "uciok")
-            && has(engine::LogKind::Stderr, "fake engine warning")
-        {
-            break;
-        }
-        assert!(std::time::Instant::now() < deadline, "{lines:?}");
-        std::thread::sleep(Duration::from_millis(20));
-    }
+    let logged = |kind, text: &str| {
+        engine
+            .log()
+            .snapshot(true)
+            .iter()
+            .any(|line| line.kind == kind && line.text.contains(text))
+    };
+    wait_until(
+        || {
+            logged(engine::LogKind::Sent, "uci")
+                && logged(engine::LogKind::Received, "uciok")
+                && logged(engine::LogKind::Stderr, "fake engine warning")
+        },
+        || format!("{:?}", engine.log().snapshot(true)),
+    );
     engine.quit();
 }
 
 #[test]
 fn debug_mode_is_sent_after_the_handshake() {
-    let engine = EngineHandle::spawn(fixture(), Vec::new(), Vec::new());
+    let engine = fake();
     // Requested before `uciok`, so it must wait for the handshake.
     engine.set_debug(true);
     let events = engine.events();
     assert!(matches!(next(&events), EngineEvent::Ready(_)));
     engine.set_debug(false);
-    let deadline = std::time::Instant::now() + Duration::from_secs(5);
-    loop {
-        let sent: Vec<String> = engine
-            .log()
-            .snapshot(true)
-            .into_iter()
-            .filter(|line| line.kind == engine::LogKind::Sent)
-            .map(|line| line.text)
-            .collect();
-        let on = sent.iter().position(|text| text == "debug on");
-        let off = sent.iter().position(|text| text == "debug off");
-        if let (Some(on), Some(off)) = (on, off) {
-            assert!(on < off);
-            assert!(sent.iter().position(|text| text == "uci") < Some(on));
-            break;
-        }
-        assert!(std::time::Instant::now() < deadline, "{sent:?}");
-        std::thread::sleep(Duration::from_millis(20));
-    }
+    let sent = wait_for_sent(&engine, "debug off");
+    let position = |text: &str| sent.iter().position(|line| line == text);
+    assert!(position("uci") < position("debug on"), "{sent:?}");
+    assert!(position("debug on") < position("debug off"), "{sent:?}");
     engine.quit();
 }
 
@@ -460,13 +411,7 @@ fn stockfish_chess960_castles_and_returns_to_standard_chess() {
             }
         }
     }
-    let mut standard = request(
-        10,
-        Some(Limits {
-            depth: Some(2),
-            ..Default::default()
-        }),
-    );
+    let mut standard = depth_request(10, 2);
     standard.game = 10;
     standard.search_moves = vec!["e2e4".into()];
     engine.search(standard);
@@ -508,16 +453,16 @@ fn probe_waits_for_startup_and_reports_timeout_output() {
         Vec::new(),
     );
     // Synchronise with the stderr reader rather than relying on process scheduling.
-    let deadline = std::time::Instant::now() + Duration::from_secs(5);
-    while !engine
-        .log()
-        .snapshot(true)
-        .iter()
-        .any(|line| line.text == "Cannot load network")
-    {
-        assert!(std::time::Instant::now() < deadline);
-        std::thread::sleep(Duration::from_millis(10));
-    }
+    wait_until(
+        || {
+            engine
+                .log()
+                .snapshot(true)
+                .iter()
+                .any(|line| line.text == "Cannot load network")
+        },
+        || "stderr never read".to_owned(),
+    );
     let error = future::block_on(engine.probe(Duration::from_millis(20))).unwrap_err();
     assert!(error.contains("no reply to the uci handshake"), "{error}");
     assert!(error.contains("Cannot load network"), "{error}");
@@ -539,9 +484,8 @@ fn probe_reports_spawn_failure() {
 
 /// Confirms that a probe releases its supervisor and child process.
 fn wait_for_probe_exit(engine: &EngineHandle) {
-    let deadline = std::time::Instant::now() + Duration::from_secs(5);
-    while !engine.events().is_closed() {
-        assert!(std::time::Instant::now() < deadline, "probe did not stop");
-        std::thread::sleep(Duration::from_millis(10));
-    }
+    wait_until(
+        || engine.events().is_closed(),
+        || "probe did not stop".to_owned(),
+    );
 }
