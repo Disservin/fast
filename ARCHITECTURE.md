@@ -211,7 +211,19 @@ cap, and count a mate no longer than N.
 
 ## Kibitz engine
 
-With Settings › Analysis › Kibitz engine on, clicking a move in Line preview no longer moves
+The moves table groups candidates under engine headings, primary engine first, preserving
+score order within each group and placing database-only moves last. Each candidate row puts
+evaluation and database figures before a truncated inline PV, with the first move
+emphasised. Collapsed PV moves share the expanded line’s hover board; the hovered line is
+held separately from the selected candidate so other engines can be previewed without
+changing selection. Expand selects the row and opens its full interactive PV and actions;
+Collapse hides them again. Selecting a row emphasises its board arrow. Evaluation, WDL and
+database figures stay in the rows; depth stays in the Engine panel. Line actions sit below
+the PV. Search options reads and changes MultiPV only for the engine selected in the Engine
+panel, including Lines shortcuts, Reset and Max.
+
+With Settings › Analysis › Kibitz engine on, clicking a move in the selected candidate’s
+inline PV no longer moves
 the main analysis. Each Analyse tab owns a `Kibitz` (`kibitz.rs`): its own process of the
 chosen engine (or the first analysis engine), started on first use with the engine's analysis
 options plus `MultiPV 1` and the kibitz's Threads and Hash (1 and 16 MB by default), outside
@@ -355,7 +367,6 @@ needless frames: the board positions pieces proportionally so a resize needs onl
 
 - **Tablebases:** `SyzygyPath` is passed to engines, but there is no built-in WDL/DTZ badge, so
   local tablebase probing is not exposed in Analyse.
-- The Line preview explanation is a hook with no content outside demo mode.
 
 ## Recoverable work and study
 

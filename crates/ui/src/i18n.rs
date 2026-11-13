@@ -39,6 +39,11 @@ pub fn set_language(language: Language) {
 pub fn translate(language: Language, text: &str) -> &str {
     if language == Language::German {
         match text {
+            "Expand" => "Ausklappen",
+            "Collapse" => "Einklappen",
+            "Select a row to see its engine line" => {
+                "Zeile auswählen, um die Engine-Variante zu sehen"
+            }
             "{} new games, {} already stored" => "{} neue Partien, {} bereits gespeichert",
             "Connecting to {}…" => "Verbindung zu {} wird hergestellt…",
             "Fetching archive list from {}…" => "Archivliste von {} wird abgerufen…",
@@ -802,8 +807,8 @@ pub fn translate(language: Language, text: &str) -> &str {
             "Another entry for this binary with its own options, e.g. Lc0 with another network" => {
                 "Ein weiterer Eintrag für dieses Programm mit eigenen Optionen, z. B. Lc0 mit einem anderen Netz"
             }
-            "Back to each engine's default number of lines" => {
-                "Zur Standardanzahl der Varianten jeder Engine zurückkehren"
+            "Back to the selected engine's default number of lines" => {
+                "Zur Standardanzahl der Varianten der ausgewählten Engine zurückkehren"
             }
             "Close tab; reopen with Ctrl/Cmd+Shift+T" => {
                 "Tab schließen; mit Strg/Cmd+Umschalt+T wieder öffnen"
@@ -828,8 +833,8 @@ pub fn translate(language: Language, text: &str) -> &str {
                 "Alle legalen Züge anzeigen, auch ohne Analyse"
             }
             "More actions" => "Weitere Aktionen",
-            "MultiPV: lines each engine searches, saved in its options" => {
-                "MultiPV: Varianten, die jede Engine durchsucht; in ihren Optionen gespeichert"
+            "MultiPV: lines the selected engine searches, saved in its options" => {
+                "MultiPV: Varianten der ausgewählten Engine; in ihren Optionen gespeichert"
             }
             "Open the containing folder" => "Übergeordneten Ordner öffnen",
             "Click to open it in Analyse." => "Klicken, um ihn in Analyse zu öffnen.",

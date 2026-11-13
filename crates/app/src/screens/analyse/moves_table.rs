@@ -14,50 +14,6 @@ pub(crate) fn search_time(ms: u64) -> String {
     }
 }
 
-/// The engine a table row's line comes from: its icon and short name, cut to fit
-/// `width`, with the full name on hover. Rows without an engine line keep the space.
-pub(super) fn engine_badge(
-    config: Option<&engine::EngineConfig>,
-    index: usize,
-    width: f32,
-) -> gpui::AnyElement {
-    let Some(config) = config else {
-        return div().col_w(width).into_any_element();
-    };
-    let full = format!("{} {}", config.name, config.version)
-        .trim()
-        .to_owned();
-    h_flex()
-        .id(("move-engine", index))
-        .col_w(width)
-        .pr(px(8.))
-        .gap(px(6.))
-        .tooltip(move |window, cx| {
-            gpui_component::tooltip::Tooltip::new(full.clone()).build(window, cx)
-        })
-        .child(crate::controls::engine_icon(config, 14.))
-        .child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .overflow_hidden()
-                .text_ellipsis()
-                .font_family(ui::SANS)
-                .text_as(12., T.fg_2)
-                .font_weight(FontWeight::MEDIUM)
-                .child(short_engine(&config.name)),
-        )
-        .into_any_element()
-}
-
-pub(super) fn short_engine(name: &str) -> String {
-    if name.eq_ignore_ascii_case("stockfish") {
-        "SF".to_owned()
-    } else {
-        name.to_owned()
-    }
-}
-
 pub(super) fn reference_column_title(name: &str) -> String {
     name.rsplit(' ')
         .next()
@@ -106,8 +62,6 @@ pub(super) fn wdl_bar(wdl: Option<Wdl>) -> gpui::AnyElement {
 }
 
 const COL_REF: f32 = 84.;
-const COL_BADGE: f32 = 96.;
-const COL_MOVE: f32 = 64.;
 const COL_SF: f32 = 66.;
 const COL_WDL: f32 = 112.;
 const COL_MY: f32 = 80.;
@@ -117,7 +71,6 @@ const COL_CLOUD: f32 = 70.;
 /// What the moves table shows for the analysed position, read once per draw.
 struct TableView {
     notation: chess_core::Notation,
-    engine_badges: bool,
     engine_configs: HashMap<EngineId, engine::EngineConfig>,
     show_wdl: bool,
     online: bool,
@@ -132,14 +85,12 @@ struct TableView {
 impl TableView {
     /// The table's narrowest width, so its columns scroll sideways instead of squeezing.
     fn min_width(&self) -> f32 {
-        let lead = if self.engine_badges { COL_BADGE } else { 0. };
-        lead + COL_MOVE
-            + COL_SF
+        COL_SF
             + if self.show_wdl { COL_WDL } else { 0. }
             + if self.online { COL_TB + COL_CLOUD } else { 0. }
             + COL_REF
             + COL_MY
-            + 120.
+            + 420.
     }
 }
 
@@ -242,6 +193,7 @@ impl AnalyseScreen {
         if self.continue_pv_with(&key, cx) {
             return;
         }
+        self.expanded_pv = None;
         self.row_chosen = true;
         self.selected = Some(key);
         self.update_arrows(cx);
@@ -265,8 +217,6 @@ impl AnalyseScreen {
         let pos = self.analysed_pos();
         let view = TableView {
             notation: model.config.board.notation,
-            // With several engines each row names the engine whose line it is.
-            engine_badges: live.engines.len() > 1,
             engine_configs: live
                 .engines
                 .iter()
@@ -283,6 +233,9 @@ impl AnalyseScreen {
         };
         let no_engines = model.analysis_engines().is_empty();
         let searching = live.on && live.end.is_none();
+        let primary_id = live.primary().map(|engine| engine.config.id);
+        let mut engine_order: Vec<_> = live.engines.iter().map(|engine| engine.config.id).collect();
+        engine_order.sort_by_key(|id| Some(*id) != primary_id);
         let header = Self::render_table_header(&view, picker);
         // Room for every requested line is kept while the engine runs, so lines
         // arriving one by one early in a search do not move what is below.
@@ -293,8 +246,52 @@ impl AnalyseScreen {
             .filter(|_| searching)
             .map_or(0., |lines| lines.clamp(1, legal) as f32 * MOVE_ROW_H);
         let mut rows = v_flex().w_full().min_h(px(reserved));
-        for (index, row) in self.rows.iter().enumerate() {
-            rows = rows.child(self.render_move_row(index, row, &view, &this));
+        let mut grouped_rows = self.rows.clone();
+        // Preserve score order within each engine, with database-only moves last.
+        grouped_rows.sort_by_key(|row| {
+            row.engine_id
+                .and_then(|id| engine_order.iter().position(|engine| *engine == id))
+                .unwrap_or(usize::MAX)
+        });
+        let mut previous_engine = None;
+        for (index, row) in grouped_rows.iter().enumerate() {
+            if index == 0 || previous_engine != row.engine_id {
+                let heading = h_flex()
+                    .h(px(32.))
+                    .px(px(16.))
+                    .gap(px(8.))
+                    .bg(rgb(T.surface_2))
+                    .border_b_as(T.divider);
+                rows = rows.child(
+                    match row.engine_id.and_then(|id| view.engine_configs.get(&id)) {
+                        Some(config) => heading
+                            .child(crate::controls::engine_icon(config, 14.))
+                            .child(
+                                div()
+                                    .text_as(13., T.fg_2)
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .child(
+                                        format!("{} {}", config.name, config.version)
+                                            .trim()
+                                            .to_owned(),
+                                    ),
+                            ),
+                        None => heading.child(section_label("Database")),
+                    },
+                );
+                previous_engine = row.engine_id;
+            }
+            rows = rows.child(self.render_move_row(index, row, &view, &this, cx));
+            if row.pv.is_empty() {
+                continue;
+            }
+            let expanded = self
+                .expanded_pv
+                .as_ref()
+                .is_some_and(|key| key.matches(row));
+            if expanded {
+                rows = rows.child(self.render_line_preview(cx));
+            }
         }
         if !self.rows.is_empty() && self.reference.is_empty() && view.explorer.is_some() {
             rows = rows.child(
@@ -351,10 +348,6 @@ impl AnalyseScreen {
         table_header()
             .h(px(32.))
             .px(px(16.))
-            .when(view.engine_badges, |header| {
-                header.child(col_heading(px(COL_BADGE), "Engine"))
-            })
-            .child(col_heading(px(COL_MOVE), "Move"))
             .child(col_heading(px(COL_SF), "Eval"))
             .when(view.show_wdl, |header| {
                 header.child(col_heading(px(COL_WDL), "W / D / L"))
@@ -368,8 +361,9 @@ impl AnalyseScreen {
             .when(view.my_moves, |header| {
                 header
                     .child(col_heading(px(COL_MY), "My games"))
-                    .child(div().flex_1().min_w_0().child(section_label("Repertoire")))
+                    .child(div().col_w(120.).child(section_label("Repertoire")))
             })
+            .child(div().flex_1().child(section_label("Line")))
     }
 
     /// One move's row: its engine, the move, the evaluation, the WDL bar, online,
@@ -380,6 +374,7 @@ impl AnalyseScreen {
         row: &MoveRow,
         view: &TableView,
         this: &Entity<Self>,
+        cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
         let selected = self.selected.as_ref().is_some_and(|key| key.matches(row));
         let key = RowKey::of(row);
@@ -394,15 +389,16 @@ impl AnalyseScreen {
             .quality
             .filter(|_| view.quality_arrows)
             .map_or(T.fg, quality_color);
+        let expanded = self
+            .expanded_pv
+            .as_ref()
+            .is_some_and(|key| key.matches(row));
+        let expand_key = key.clone();
         let select_this = this.clone();
         let score = row
             .score
             .map(Score::display)
             .unwrap_or_else(|| "—".to_owned());
-        let badge = view.engine_badges.then(|| {
-            let config = row.engine_id.and_then(|id| view.engine_configs.get(&id));
-            engine_badge(config, index, COL_BADGE)
-        });
         let stat_text = |stat: &Option<MoveStat>| {
             stat.as_ref()
                 .map(|stat| {
@@ -468,14 +464,6 @@ impl AnalyseScreen {
                         .bg(rgb(T.accent)),
                 )
             })
-            .children(badge)
-            .child(
-                div()
-                    .col_w(COL_MOVE)
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .text_color(rgb(label_color))
-                    .child(ui::i18n::t(&label).to_owned()),
-            )
             .child(div().col_w(COL_SF).text_as(13., T.fg_2).child(score))
             .when(view.show_wdl, |row_el| {
                 row_el.child(div().col_w(COL_WDL).pr(px(12.)).child(
@@ -553,8 +541,7 @@ impl AnalyseScreen {
                     )
                     .child(
                         div()
-                            .flex_1()
-                            .min_w_0()
+                            .col_w(120.)
                             .font_family(ui::SANS)
                             .text_size(px(12.))
                             .font_weight(FontWeight::MEDIUM)
@@ -562,6 +549,41 @@ impl AnalyseScreen {
                             .child(rep_text),
                     )
             })
+            .child(
+                h_flex()
+                    .flex_1()
+                    .min_w_0()
+                    .gap(px(6.))
+                    .child(self.render_compact_pv(row, index, (&label, label_color), expanded, cx))
+                    .when(!row.pv.is_empty(), |line| {
+                        line.child(
+                            icon_btn(
+                                ("expand-pv", index),
+                                if expanded {
+                                    "icons/chevron-down.svg"
+                                } else {
+                                    "icons/chevron-right.svg"
+                                },
+                            )
+                            .mini()
+                            .w(24.)
+                            .pad(0.)
+                            .tooltip(ui::i18n::t(if expanded { "Collapse" } else { "Expand" }))
+                            .on_click(this.listen(
+                                move |screen, _, cx| {
+                                    cx.stop_propagation();
+                                    if expanded {
+                                        screen.expanded_pv = None;
+                                    } else {
+                                        screen.select_row(expand_key.clone(), cx);
+                                        screen.expanded_pv = Some(expand_key.clone());
+                                    }
+                                    cx.notify();
+                                },
+                            )),
+                        )
+                    }),
+            )
     }
 }
 

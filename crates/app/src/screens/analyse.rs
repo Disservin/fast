@@ -70,8 +70,8 @@ struct BackwardRun {
     _poll: Task<()>,
 }
 
+use self::moves_table::reference_column_title;
 pub(crate) use self::moves_table::search_time;
-use self::moves_table::{reference_column_title, wdl_bar, wdl_percentages};
 pub(crate) use self::rows::rows_for;
 pub use self::rows::{MoveRow, RepTag, RowKey, RowOptions, merge_rows, quality_color};
 
@@ -97,9 +97,6 @@ type MenuHandler = Box<dyn Fn(&mut Window, &mut gpui::App)>;
 const SCORESHEET_RAIL: f32 = 44.;
 /// The search depth both evals around a move need before live analysis may badge it.
 const MIN_BADGE_DEPTH: u32 = 10;
-
-/// Height of the Line preview's move box: four lines of moves. Longer lines scroll.
-const PV_INSET_H: f32 = 4. * 26. + 14.;
 
 /// The stored game this board was opened from, so saving writes the changes back to it.
 #[derive(Clone, Debug)]
@@ -134,6 +131,8 @@ pub struct AnalyseScreen {
     /// The table row shown in Line preview.
     selected: Option<RowKey>,
     row_chosen: bool,
+    /// The candidate whose full interactive line is expanded.
+    expanded_pv: Option<RowKey>,
     reference: Vec<MoveStat>,
     /// A failed local database lookup, shown instead of a misleading empty result.
     reference_error: Option<String>,
@@ -208,6 +207,10 @@ pub struct AnalyseScreen {
     pub(super) pv_kibitz: bool,
     pub(super) kibitz: Entity<crate::kibitz::Kibitz>,
     pv_hover: Option<usize>,
+    /// The hovered line, independent of which engine row is selected.
+    pv_hover_line: Vec<String>,
+    /// The collapsed row that owns the hover board, if any.
+    pv_hover_row: Option<usize>,
     /// The small board that follows the cursor over a hovered PV move.
     pv_peek: Entity<BoardView>,
     pv_peek_at: Option<Point<Pixels>>,
@@ -347,6 +350,7 @@ impl AnalyseScreen {
             last_child: HashMap::new(),
             selected: None,
             row_chosen: false,
+            expanded_pv: None,
             reference: Vec::new(),
             reference_error: None,
             mine: Vec::new(),
@@ -405,6 +409,8 @@ impl AnalyseScreen {
             pv_kibitz: false,
             kibitz,
             pv_hover: None,
+            pv_hover_line: Vec::new(),
+            pv_hover_row: None,
             pv_peek: cx.new(|_| BoardView::new("pv-peek-board").read_only()),
             pv_peek_at: None,
             pv_focus: cx.focus_handle(),
@@ -813,7 +819,6 @@ impl Render for AnalyseScreen {
         };
         let board_column = self.render_board_column(board_size, cx);
         let table = self.render_moves_table(cx);
-        let preview = self.render_line_preview(cx);
         let editor = self.editor.is_some().then(|| self.render_editor(cx));
         let engine_panel = self.render_engine_panel(cx);
         let log_panel = self.log_panel_open.then(|| self.render_log_panel(cx));
@@ -900,7 +905,6 @@ impl Render for AnalyseScreen {
                             .children(editor)
                             .child(engine_panel)
                             .child(table)
-                            .child(preview)
                             .children(log_panel)
                             .child(
                                 panel()

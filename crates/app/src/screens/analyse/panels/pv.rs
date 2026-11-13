@@ -136,13 +136,14 @@ impl AnalyseScreen {
         }
         if !hovering {
             // Moving to the next move reports its hover first, so only clear our own.
-            if self.pv_hover == Some(index) {
+            if self.pv_hover == Some(index) && self.pv_hover_line == sans {
                 self.pv_hover = None;
                 self.update_arrows(cx);
                 cx.notify();
             }
             return;
         }
+        self.pv_hover_line = sans.to_vec();
         self.pv_hover = Some(index);
         let base = &self.tree.node(self.current).pos;
         let (after, moves) = replay(base, &sans[..sans.len().min(index + 1)]);
@@ -194,7 +195,10 @@ impl AnalyseScreen {
     ) -> impl IntoElement + use<> {
         let sans = self.preview_line(selected);
         // Numbered from the game position, wherever the preview has got to.
-        let text = format_pv(self.tree.node(self.current).ply, &sans);
+        let text = format_pv(
+            self.tree.node(self.current).ply + 1,
+            sans.get(1..).unwrap_or_default(),
+        );
         let labels: Vec<&str> = if text.is_empty() {
             Vec::new()
         } else {
@@ -215,7 +219,10 @@ impl AnalyseScreen {
                 MouseButton::Left,
                 cx.listener(|this, _, _, _| this.pv_dragging = false),
             );
-        for (index, label) in labels.into_iter().enumerate() {
+        // The candidate row already shows the first move; keep full-line indices
+        // so hovering and highlighting still replay from the game position.
+        for (reply_index, label) in labels.into_iter().enumerate() {
+            let index = reply_index + 1;
             let highlighted = self
                 .pv_view
                 .as_ref()
@@ -236,6 +243,9 @@ impl AnalyseScreen {
                         chip.bg(rgb(T.hover_strong)).text_color(rgb(T.fg))
                     })
                     .on_hover(cx.listener(move |this, hovering: &bool, window, cx| {
+                        if *hovering {
+                            this.pv_hover_row = None;
+                        }
                         this.hover_pv_move(index, *hovering, &hover_sans, window, cx);
                     }))
                     .on_mouse_down(
@@ -262,31 +272,19 @@ impl AnalyseScreen {
             );
         }
         let peek = self
-            .pv_peek_at
-            .filter(|_| self.pv_hover.is_some())
-            .map(|at| {
-                let offset = px(PEEK_OFFSET);
-                deferred(
-                    anchored()
-                        .position(at + point(offset, offset))
-                        .snap_to_window_with_margin(px(8.))
-                        .child(
-                            div()
-                                .size(ui::board::snap_board_size(px(PEEK_SIZE), self.scale))
-                                .shadow_lg()
-                                .child(self.pv_peek.clone()),
-                        ),
-                )
-                .with_priority(1)
-            });
-        // Long lines scroll inside the fixed-height inset, so the buttons below stay put.
+            .pv_hover_row
+            .is_none()
+            .then(|| self.render_pv_peek())
+            .flatten();
+        // Short lines fit their content; long lines scroll after eight rows.
         v_flex()
-            .size_full()
+            .w_full()
+            .flex_none()
             .child(
                 div()
                     .id("pv-scroll")
-                    .flex_1()
-                    .min_h_0()
+                    .max_h(px(8. * 26.))
+                    .flex_none()
                     .overflow_y_scrollbar()
                     .child(flow),
             )
@@ -308,6 +306,105 @@ impl AnalyseScreen {
                         ),
                 )
             })
+    }
+
+    /// Shows the hover board for both collapsed and expanded engine lines.
+    pub(super) fn render_pv_peek(&self) -> Option<AnyElement> {
+        self.pv_peek_at
+            .filter(|_| self.pv_hover.is_some())
+            .map(|at| {
+                let offset = px(PEEK_OFFSET);
+                deferred(
+                    anchored()
+                        .position(at + point(offset, offset))
+                        .snap_to_window_with_margin(px(8.))
+                        .child(
+                            div()
+                                .size(ui::board::snap_board_size(px(PEEK_SIZE), self.scale))
+                                .border_as(T.border)
+                                .child(self.pv_peek.clone()),
+                        ),
+                )
+                .with_priority(1)
+            })
+            .map(IntoElement::into_any_element)
+    }
+
+    /// A compact PV with individually hoverable moves and an emphasised first move.
+    pub(crate) fn render_compact_pv(
+        &self,
+        row: &MoveRow,
+        row_index: usize,
+        first_move: (&str, u32),
+        expanded: bool,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement + use<> {
+        let sans = if row.pv.is_empty() {
+            vec![row.san.clone()]
+        } else {
+            row.pv.clone()
+        };
+        let text = format_pv(self.analysed_ply(), &sans);
+        let mut line = h_flex()
+            .flex_none()
+            .font_family(MONO)
+            .text_as(12., T.fg_2)
+            .whitespace_nowrap();
+        for (index, label) in text.split_whitespace().enumerate() {
+            if expanded && index > 0 {
+                break;
+            }
+            let hover_sans = sans.clone();
+            let move_sans = sans.clone();
+            let hovered = self.pv_hover == Some(index) && self.pv_hover_line == sans;
+            line = line.child(
+                div()
+                    .id(SharedString::from(format!(
+                        "compact-pv-{row_index}-{index}"
+                    )))
+                    .flex_none()
+                    .px(px(3.))
+                    .rounded(px(3.))
+                    .cursor_pointer()
+                    .when(index == 0, |chip| {
+                        chip.font_weight(FontWeight::SEMIBOLD)
+                            .text_as(13., first_move.1)
+                    })
+                    .when(hovered, |chip| chip.bg(rgb(T.hover_strong)))
+                    .on_hover(cx.listener(move |screen, hovering: &bool, window, cx| {
+                        if *hovering {
+                            screen.pv_hover_row = Some(row_index);
+                        } else if screen.pv_hover_row != Some(row_index) {
+                            return;
+                        }
+                        screen.hover_pv_move(index, *hovering, &hover_sans, window, cx);
+                    }))
+                    .on_mouse_move(cx.listener(move |screen, _: &MouseMoveEvent, window, cx| {
+                        if screen.pv_hover == Some(index) && screen.pv_hover_line == move_sans {
+                            screen.pv_peek_at = Some(window.mouse_position());
+                            cx.notify();
+                        }
+                    }))
+                    .child(if index == 0 {
+                        first_move.0.to_owned()
+                    } else {
+                        label.to_owned()
+                    }),
+            );
+        }
+        // Size the clipping viewport independently of the moves' intrinsic width,
+        // leaving the adjacent disclosure button its own fixed space.
+        div()
+            .id(("compact-pv-viewport", row_index))
+            .w(px(0.))
+            .flex_1()
+            .min_w_0()
+            .overflow_hidden()
+            .child(line)
+            .when(
+                self.pv_hover_row == Some(row_index) && self.pv_hover_line == sans,
+                |viewport| viewport.children(self.render_pv_peek()),
+            )
     }
 
     /// Puts the highlight on the board and points the engine and table at that position.
@@ -385,7 +482,7 @@ impl AnalyseScreen {
 
     /// Move `index` of the line Line preview lists now, if that line still reaches it.
     pub(crate) fn hovered_move(&self, index: usize) -> Option<Move> {
-        let sans = self.preview_line(self.selected_row());
+        let sans = &self.pv_hover_line;
         let base = &self.tree.node(self.current).pos;
         let (_, moves) = replay(base, &sans[..sans.len().min(index + 1)]);
         moves.get(index).copied()

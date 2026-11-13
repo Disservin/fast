@@ -124,12 +124,5 @@ pub fn info_line(update: &AnalysisUpdate) -> String {
     )
 }
 
-/// One-line explanation shown in Line preview (the hook is empty outside demo mode).
-pub fn explanation(san: &str) -> Option<&'static str> {
-    (san == "f4").then_some(
-        "Gains a tempo on the kingside and forces Black to commit the light-squared bishop before the queenside storm lands.",
-    )
-}
-
 /// A mid-game Italian for the Play screen.
 pub const PLAY_LINE: &str = "e4 e5 Nf3 Nc6 Bc4 Bc5 c3 Nf6";

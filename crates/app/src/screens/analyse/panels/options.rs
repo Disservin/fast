@@ -55,8 +55,7 @@ pub fn step_value(name: &str, value: i64, up: bool, min: i64, max: i64) -> i64 {
 }
 
 impl AnalyseScreen {
-    /// Lines each engine searches (MultiPV), for every analysis engine at once:
-    /// one fewer, one more, back to each engine's default, or as many as allowed.
+    /// Adjusts the selected engine's line count, default or maximum.
     pub(super) fn render_lines_control(&self, cx: &mut Context<Self>) -> Option<Div> {
         let this = cx.entity();
         let small = |id: &'static str, label: &'static str| btn(id, label).compact();
@@ -76,7 +75,7 @@ impl AnalyseScreen {
                         .value_width(24.)
                         .tooltips(
                             "Search one fewer engine line",
-                            "MultiPV: lines each engine searches, saved in its options",
+                            "MultiPV: lines the selected engine searches, saved in its options",
                         )
                         .on_down(
                             value > 1,
@@ -89,7 +88,9 @@ impl AnalyseScreen {
                 )
                 .child(
                     small("lines-reset", ui::i18n::t("Reset"))
-                        .tooltip(ui::i18n::t("Back to each engine's default number of lines"))
+                        .tooltip(ui::i18n::t(
+                            "Back to the selected engine's default number of lines",
+                        ))
                         .on_click(this.listen(move |screen, _, cx| {
                             screen.set_lines(LinesTarget::Default, cx)
                         })),
@@ -212,56 +213,38 @@ impl AnalyseScreen {
         (toggles, settings)
     }
 
-    /// Lines shown by the analysis engines: the first one's MultiPV.
+    /// The selected engine's configured number of candidate lines.
     pub(crate) fn shown_lines(&self, cx: &gpui::App) -> Option<i64> {
-        self.live
-            .read(cx)
-            .engines
-            .iter()
-            .find_map(|engine| spin_option(&engine.config, "MultiPV"))
-            .map(|(value, ..)| value)
+        let config = self.panel_engine_config(cx)?;
+        spin_option(&config, "MultiPV").map(|(value, ..)| value)
     }
 
-    /// Steps MultiPV on every analysis engine that has it, saved in each engine's
-    /// options, without restarting them.
+    /// Steps the selected engine's line count without restarting other engines.
     pub(crate) fn step_lines(&mut self, up: bool, cx: &mut Context<Self>) {
         self.set_lines(LinesTarget::Step(up), cx);
     }
 
-    /// Sets MultiPV on every analysis engine that has it, each within its own range,
-    /// saved in its options and applied without restarting it.
+    /// Saves and applies the line count only to the engine chosen in Search options.
     pub(crate) fn set_lines(&mut self, target: LinesTarget, cx: &mut Context<Self>) {
-        let Some(current) = self.shown_lines(cx) else {
+        let Some(config) = self.panel_engine_config(cx) else {
             return;
         };
-        let changes: Vec<(EngineId, i64)> = self
-            .live
-            .read(cx)
-            .engines
+        let Some((current, min, max)) = spin_option(&config, "MultiPV") else {
+            return;
+        };
+        let default = config
+            .info
+            .options
             .iter()
-            .filter_map(|engine| {
-                let (value, min, max) = spin_option(&engine.config, "MultiPV")?;
-                let default = match engine
-                    .config
-                    .info
-                    .options
-                    .iter()
-                    .find(|option| option.name == "MultiPV")
-                    .map(|option| &option.kind)
-                {
-                    Some(OptionKind::Spin { default, .. }) => *default,
-                    _ => 1,
-                };
-                let next = lines_target(target, current, default, min, max);
-                (next != value).then_some((engine.config.id, next))
+            .find_map(|option| match (&*option.name, &option.kind) {
+                ("MultiPV", OptionKind::Spin { default, .. }) => Some(*default),
+                _ => None,
             })
-            .collect();
-        for (id, value) in changes {
-            self.live.update(cx, |live, cx| {
-                live.set_option(id, "MultiPV", value.to_string(), cx);
-            });
+            .unwrap_or(1);
+        let next = lines_target(target, current, default, min, max);
+        if next != current {
+            self.set_spin(config.id, "MultiPV", next, cx);
         }
-        self.rebuild_rows(cx);
     }
 
     pub(super) fn set_spin(
