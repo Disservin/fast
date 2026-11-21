@@ -159,13 +159,11 @@ impl AnalyseScreen {
     }
 
     /// Under the board: a swatch for each engine's arrow with its best move, then the
-    /// last-move highlight.
-    pub(super) fn render_arrow_legend(&self, cx: &mut Context<Self>) -> Option<gpui::Div> {
+    /// last-move highlight. The row keeps its height when empty, so the buttons under
+    /// it stay where they are while stepping through the moves.
+    pub(super) fn render_arrow_legend(&self, cx: &mut Context<Self>) -> gpui::Div {
         let engines = self.engine_best_moves(cx);
         let last = self.current != GameTree::ROOT;
-        if engines.is_empty() && !last {
-            return None;
-        }
         let swatch = |colour: u32| {
             div()
                 .flex_none()
@@ -181,6 +179,7 @@ impl AnalyseScreen {
             .gap_x(px(14.))
             .gap_y(px(2.))
             .mt(px(4.))
+            .min_h(px(18.))
             .text_as(12., T.muted);
         for (name, san, colour) in engines {
             row = row.child(
@@ -191,7 +190,7 @@ impl AnalyseScreen {
                     .child(mono(san).text_color(rgb(T.fg_2))),
             );
         }
-        Some(row.when(last, |row| {
+        row.when(last, |row| {
             row.child(
                 h_flex()
                     .gap(px(6.))
@@ -205,7 +204,7 @@ impl AnalyseScreen {
                     )
                     .child(ui::i18n::t("Last move")),
             )
-        }))
+        })
     }
 }
 

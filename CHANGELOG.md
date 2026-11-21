@@ -4,6 +4,7 @@ Settings › Changelog shows this file. Describe the finished changes since each
 
 ## 0.1.4
 
+- Analyse: the bar under the board adds auto-play and a scrubber along the line, and its tooltips name the shortcuts.
 - Analyse: the board header says what the evaluation means, the players show a colour swatch, a material badge and Add name, and a legend under the board names each engine's arrow and best move.
 - Analyse: the moves have Moves, Notes and Headers tabs, coloured move symbols, muted book moves with a row where the game leaves theory, and a note saying who plays next in an unfinished game.
 - Analyse: the annotation toolbar adds Delete from here and shows which symbols the current move has.

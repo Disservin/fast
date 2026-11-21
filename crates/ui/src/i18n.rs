@@ -1006,6 +1006,9 @@ pub fn translate(language: Language, text: &str) -> &str {
                 "Suche pausieren und aktuelle Varianten behalten (P)"
             }
             "Start analysis" => "Analyse starten",
+            "Stop playing through the moves" => "Abspielen der Züge anhalten",
+            "Play through the moves" => "Züge abspielen",
+            "Position in the line" => "Stellung in der Variante",
             "{} mates in {}" => "{} setzt matt in {}",
             "Equal position" => "Ausgeglichene Stellung",
             "Slight edge for {}" => "Leichter Vorteil für {}",

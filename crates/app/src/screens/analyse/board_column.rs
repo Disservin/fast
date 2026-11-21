@@ -147,16 +147,6 @@ impl AnalyseScreen {
         board_size: Pixels,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
-        let this = cx.entity();
-        let compact = board_size < px(440.);
-        // Eight buttons share the row under the board, so they narrow with it.
-        let nav_width = if board_size < px(340.) {
-            32.
-        } else if compact {
-            34.
-        } else {
-            42.
-        };
         let end = self.live.read(cx).end;
         let header = self.render_board_header(end, cx);
         let legend = self.render_arrow_legend(cx);
@@ -169,38 +159,7 @@ impl AnalyseScreen {
         };
         let top_strip = self.render_player_strip(top_side, end, cx);
         let bottom_strip = self.render_player_strip(bottom_side, end, cx);
-        // Where the shown position sits in the line, in full moves.
-        let move_counter = {
-            let ply = self.tree.node(self.current).ply;
-            let last = self
-                .timeline_ids()
-                .last()
-                .map_or(ply, |id| self.tree.node(*id).ply)
-                .max(ply);
-            mono(format!(
-                "{} {} / {}",
-                ui::i18n::t("Move"),
-                ply.div_ceil(2),
-                last.div_ceil(2)
-            ))
-            .flex_none()
-            .whitespace_nowrap()
-            .text_as(12., T.muted)
-        };
-        let nav = |id: &'static str,
-                   icon: &'static str,
-                   tip: &'static str,
-                   action: fn(&mut Self, &mut Window, &mut Context<Self>)| {
-            icon_btn(id, icon)
-                .w(nav_width)
-                .tooltip(tip)
-                .on_click(this.listen(action))
-        };
-        let copy_menu = self.render_copy_menu(nav_width, cx);
-        let flip_tip = match self.model.read(cx).config.shortcuts.get("flip_board") {
-            Some(key) => format!("Flip board ({})", key.to_uppercase()),
-            None => ui::i18n::t("Flip board").to_owned(),
-        };
+        let nav_bar = self.render_nav_bar(board_size, cx);
         v_flex()
             .flex_none()
             .w(board_size)
@@ -227,70 +186,8 @@ impl AnalyseScreen {
                     .child(self.board.clone())
             })
             .child(bottom_strip)
-            .children(legend)
-            .child(
-                h_flex()
-                    .mt(px(6.))
-                    .justify_between()
-                    .child(
-                        h_flex()
-                            .gap(px(6.))
-                            .child(nav(
-                                "first",
-                                "icons/skip-back.svg",
-                                ui::i18n::t("First move"),
-                                Self::go_first,
-                            ))
-                            .child(nav(
-                                "prev",
-                                "icons/chevron-left.svg",
-                                ui::i18n::t("Previous move"),
-                                |s, w, c| s.step(-1, w, c),
-                            ))
-                            .child(nav(
-                                "next",
-                                "icons/chevron-right.svg",
-                                ui::i18n::t("Next move"),
-                                |s, w, c| s.step(1, w, c),
-                            ))
-                            .child(nav(
-                                "last",
-                                "icons/skip-forward.svg",
-                                ui::i18n::t("Last move"),
-                                Self::go_last,
-                            ))
-                            .when(!compact, |row| row.child(move_counter.ml(px(6.)))),
-                    )
-                    .child(
-                        h_flex()
-                            .gap(px(6.))
-                            .child(
-                                icon_btn("flip", "icons/arrow-down-up.svg")
-                                    .w(nav_width)
-                                    .selected(flipped)
-                                    .tooltip(flip_tip)
-                                    .on_click(this.listen(move |screen, _, cx| screen.flip(cx))),
-                            )
-                            .child(
-                                icon_btn("edit-position", "icons/pencil.svg")
-                                    .w(nav_width)
-                                    .selected(self.editor.is_some())
-                                    .tooltip(ui::i18n::t("Edit position"))
-                                    .on_click(
-                                        this.listen(move |screen, _, cx| screen.toggle_editor(cx)),
-                                    ),
-                            )
-                            .child(copy_menu)
-                            .child(
-                                icon_btn("snapshot", "icons/camera.svg")
-                                    .w(nav_width)
-                                    .tooltip(ui::i18n::t("Copy the board as an image and save it"))
-                                    .on_click(
-                                        this.listen(move |screen, _, cx| screen.snapshot_board(cx)),
-                                    ),
-                            ),
-                    ),
-            )
+            .child(legend)
+            .child(nav_bar)
             .child(graph)
     }
 

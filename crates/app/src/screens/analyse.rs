@@ -84,6 +84,7 @@ mod files;
 mod game_card;
 mod line_preview;
 mod moves_table;
+mod nav_bar;
 mod online;
 mod panels;
 mod rows;
@@ -157,6 +158,10 @@ pub struct AnalyseScreen {
     header_form: Option<game_card::HeaderForm>,
     /// What the scoresheet column shows under the game card.
     sheet_tab: sheet_tabs::SheetTab,
+    /// Steps through the moves while auto-play is on.
+    autoplay: Option<Task<()>>,
+    /// The scrubber under the board, from the start (0) to the end (1) of the line.
+    scrubber: Entity<gpui_component::slider::SliderState>,
     fen_input: Entity<InputState>,
     /// The search type and editable value shared with the Infinite toggle.
     limit_controls: Entity<panels::limit::SearchLimitControls>,
@@ -260,7 +265,17 @@ impl AnalyseScreen {
         let fen_input = cx.new(|cx| {
             InputState::new(window, cx).placeholder(ui::i18n::t("Paste a FEN and press Enter"))
         });
+        let scrubber = cx.new(|_| {
+            gpui_component::slider::SliderState::new()
+                .max(1.)
+                .step(0.001)
+        });
         let subscriptions = vec![
+            cx.subscribe_in(&scrubber, window, |this, _, event, window, cx| {
+                if let gpui_component::slider::SliderEvent::Change(value) = event {
+                    this.scrub_to(value.start(), window, cx);
+                }
+            }),
             cx.subscribe_in(&board, window, |this, _, event, window, cx| match event {
                 BoardEvent::Moved(mv) => this.play_move(*mv, window, cx),
                 BoardEvent::Premove(_) => {}
@@ -369,6 +384,8 @@ impl AnalyseScreen {
             editing_comment: None,
             header_form: None,
             sheet_tab: sheet_tabs::SheetTab::Moves,
+            autoplay: None,
+            scrubber,
             fen_input,
             limit_controls,
             editor: None,
@@ -471,6 +488,9 @@ impl AnalyseScreen {
 
     pub fn set_visible(&mut self, visible: bool, cx: &mut Context<Self>) {
         self.visible = visible;
+        if !visible {
+            self.autoplay = None;
+        }
         let pause = !visible && self.model.read(cx).config.pause_in_background;
         self.live.update(cx, |live, cx| {
             if pause && live.on {
@@ -788,6 +808,7 @@ impl Render for AnalyseScreen {
             self.load_text(&recovery.pgn, window, cx);
         }
         self.autosave(cx);
+        self.sync_scrubber(window, cx);
         let tag = if self.model.read(cx).config.board.show_move_badges
             && self.editor.is_none()
             && self.pv_view.is_none()
