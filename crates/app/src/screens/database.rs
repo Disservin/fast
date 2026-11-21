@@ -20,7 +20,7 @@ use gpui_component::{
     select::SelectEvent,
 };
 use ui::{
-    BoardView, MONO, T,
+    BoardView, DisplayName, MONO, T,
     widgets::{
         Listen, StyleExt, badge, btn, check, col_heading, h_flex, icon_btn, mono, panel,
         section_label, stat, table_header, v_flex,

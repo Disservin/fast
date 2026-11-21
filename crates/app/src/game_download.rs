@@ -10,6 +10,7 @@ use std::{
 
 use db::{ImportControl, ImportOptions, ImportProgress, import_games};
 use serde::{Deserialize, Serialize};
+use ui::DisplayName;
 
 /// The client name sent to the sites, without anything about the user.
 const USER_AGENT: &str = "Fast chess app (github.com/Disservin/fast)";
@@ -24,18 +25,20 @@ pub enum Site {
 }
 
 impl Site {
-    pub fn name(self) -> &'static str {
-        match self {
-            Self::Lichess => "Lichess",
-            Self::ChessCom => "Chess.com",
-        }
-    }
-
     /// The host the dialog says Fast connects to.
     pub fn host(self) -> &'static str {
         match self {
             Self::Lichess => "lichess.org",
             Self::ChessCom => "chess.com",
+        }
+    }
+}
+
+impl DisplayName for Site {
+    fn name(&self) -> &'static str {
+        match self {
+            Self::Lichess => "Lichess",
+            Self::ChessCom => "Chess.com",
         }
     }
 }

@@ -13,6 +13,7 @@ use std::{
 };
 
 use chess_core::{Chess, GameEnd, Move, Position};
+use ui::DisplayName;
 
 const RATE: u32 = 44_100;
 /// Loudness at full volume; the sounds are short, so they stay clear of clipping.
@@ -59,7 +60,10 @@ impl SoundProfile {
         Self::Piano,
         Self::Sfx,
     ];
-    pub fn name(self) -> &'static str {
+}
+
+impl DisplayName for SoundProfile {
+    fn name(&self) -> &'static str {
         match self {
             Self::Classic => "Classic",
             Self::Wood => "Wood",
