@@ -193,6 +193,7 @@ mod tests {
             white_wins: games,
             draws: 0,
             black_wins: 0,
+            avg_elo: None,
         }
     }
 

@@ -1,18 +1,16 @@
 //! Local game frequencies and results for the position being analysed.
 
-use chess_core::{display_san, shakmaty::san::San};
 use db::MoveStat;
 use gpui::{Context, IntoElement, div, px, rgb};
 use ui::{
     T,
-    widgets::{Listen, StyleExt, btn, h_flex, mono, section_label, v_flex},
+    widgets::{Listen, StyleExt, h_flex, mono, v_flex},
 };
 
 use super::*;
-use crate::format::format_count;
 
 /// Adds the move counts and results for the explorer's total row.
-fn total_stats(moves: &[MoveStat]) -> MoveStat {
+pub(super) fn total_stats(moves: &[MoveStat]) -> MoveStat {
     moves.iter().fold(
         MoveStat {
             san: String::new(),
@@ -20,6 +18,7 @@ fn total_stats(moves: &[MoveStat]) -> MoveStat {
             white_wins: 0,
             draws: 0,
             black_wins: 0,
+            avg_elo: None,
         },
         |mut total, stat| {
             total.games += stat.games;
@@ -41,7 +40,7 @@ fn result_shares(stat: &MoveStat) -> [f64; 4] {
 }
 
 /// Shows White wins, draws and Black wins with exact percentages available on hover.
-fn results_bar(stat: &MoveStat) -> gpui::AnyElement {
+pub(super) fn results_bar(stat: &MoveStat) -> gpui::AnyElement {
     let shares = result_shares(stat);
     let tooltip = ui::i18n::tf(
         "White wins: {}%, draws: {}%, Black wins: {}%, unfinished: {}%",
@@ -99,181 +98,6 @@ fn results_bar(stat: &MoveStat) -> gpui::AnyElement {
                 }),
         )
         .into_any_element()
-}
-
-impl AnalyseScreen {
-    /// The Database panel: its header, then every recorded continuation.
-    pub(super) fn render_database_panel(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
-        panel()
-            .rounded_none()
-            .flex_none()
-            .overflow_hidden()
-            .child(ui::widgets::panel_header("Database"))
-            .child(self.render_database_explorer(cx))
-            .into_any_element()
-    }
-
-    /// Lists every recorded continuation, with the same database choice as the moves table.
-    pub(super) fn render_database_explorer(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
-        let total = total_stats(&self.reference);
-        let loading = self.db_task.is_some();
-        let database = self.explorer_database(cx);
-        let pos = self.analysed_pos();
-        let notation = self.model.read(cx).config.board.notation;
-        let mut body = v_flex()
-            .min_w_0()
-            .child(
-                h_flex()
-                    .px(px(16.))
-                    .h(px(40.))
-                    .justify_between()
-                    .child(self.render_explorer_picker(180., cx))
-                    .child(
-                        mono(if loading {
-                            ui::i18n::t("Loading…").to_owned()
-                        } else {
-                            ui::i18n::tf("{} games", &[&format_count(total.games)])
-                        })
-                        .text_as(12., T.muted),
-                    ),
-            )
-            .child(
-                table_header()
-                    .h(px(28.))
-                    .px(px(16.))
-                    .gap(px(8.))
-                    .child(col_heading(px(56.), "Move"))
-                    .child(col_heading(px(48.), "Played"))
-                    .child(col_heading(px(82.), "Games"))
-                    .child(section_label("White / Draw / Black")),
-            );
-        let mut rows = v_flex()
-            .id("database-explorer-rows")
-            .max_h(px(280.))
-            .overflow_y_scroll();
-        for (index, stat) in self.reference.iter().enumerate() {
-            let mv = stat
-                .san
-                .parse::<San>()
-                .ok()
-                .and_then(|san| san.to_move(&pos).ok());
-            let label = display_san(&stat.san, mv.as_ref(), notation);
-            let san = stat.san.clone();
-            let this = cx.entity();
-            rows = rows.child(
-                h_flex()
-                    .id(("database-move", index))
-                    .h(px(32.))
-                    .px(px(16.))
-                    .gap(px(8.))
-                    .border_b_as(T.divider)
-                    .hover(|row| row.bg(rgb(T.hover)))
-                    .child(
-                        btn(("database-play", index), label.clone())
-                            .mini()
-                            .mono()
-                            .w(56.)
-                            .disabled(mv.is_none())
-                            .on_click(this.listen(move |screen, window, cx| {
-                                let mut line: Vec<String> = screen
-                                    .analysed_san_path()
-                                    .into_iter()
-                                    .skip(screen.base_san_path().len())
-                                    .collect();
-                                line.push(san.clone());
-                                if let Some(&node) = screen.add_line(&line).last() {
-                                    screen.jump(node, window, cx);
-                                }
-                            })),
-                    )
-                    .child(
-                        mono(format!(
-                            "{:.1}%",
-                            stat.games as f64 * 100. / total.games.max(1) as f64
-                        ))
-                        .text_size(px(12.))
-                        .col_w(48.)
-                        .whitespace_nowrap(),
-                    )
-                    .child({
-                        // The count opens the Database tab on the games after this move.
-                        let target = database.as_ref().zip(mv).map(|(entry, mv)| {
-                            let mut after = pos.clone();
-                            after.play_unchecked(mv);
-                            let numbered =
-                                chess_core::notation::numbered(self.analysed_ply() + 1, &label);
-                            (entry.path.clone(), position_hash(&after), numbered)
-                        });
-                        let workspace = self.workspace.clone();
-                        mono(format_count(stat.games))
-                            .id(("database-count", index))
-                            .text_size(px(12.))
-                            .col_w(82.)
-                            .whitespace_nowrap()
-                            .when_some(target, |cell, (path, hash, label)| {
-                                cell.cursor_pointer()
-                                    .hover(|style| style.text_color(rgb(T.accent)).underline())
-                                    .tooltip(|window, cx| {
-                                        gpui_component::tooltip::Tooltip::new(ui::i18n::t(
-                                            "Show these games in the Database tab",
-                                        ))
-                                        .build(window, cx)
-                                    })
-                                    .on_click(move |_, window, cx| {
-                                        let (path, label) = (path.clone(), label.clone());
-                                        if let Some(workspace) = workspace.upgrade() {
-                                            workspace.update(cx, |workspace, cx| {
-                                                workspace.show_position_in_database(
-                                                    path,
-                                                    hash,
-                                                    ui::i18n::tf("After {}", &[&label]),
-                                                    window,
-                                                    cx,
-                                                );
-                                            });
-                                        }
-                                    })
-                            })
-                    })
-                    .child(results_bar(stat)),
-            );
-        }
-        if let Some(error) = &self.reference_error {
-            rows = rows.child(
-                div()
-                    .p(px(16.))
-                    .text_as(13., T.warn)
-                    .child(ui::i18n::tf("Could not query database: {}", &[error])),
-            );
-        } else if self.reference.is_empty() {
-            rows = rows.child(ui::widgets::note(if loading {
-                "Loading…"
-            } else if database.is_none() {
-                "Add a database in Settings › Databases."
-            } else {
-                "No games reach this position."
-            }));
-        }
-        body = body.child(rows);
-        if total.games > 0 {
-            body = body.child(
-                h_flex()
-                    .h(px(32.))
-                    .px(px(16.))
-                    .gap(px(8.))
-                    .border_t_as(T.border)
-                    .child(col_heading(px(112.), "Total"))
-                    .child(
-                        mono(format_count(total.games))
-                            .text_size(px(12.))
-                            .col_w(82.)
-                            .whitespace_nowrap(),
-                    )
-                    .child(results_bar(&total)),
-            );
-        }
-        body.into_any_element()
-    }
 }
 
 /// A database name short enough for the Reference column's heading: "Reference: OTB
@@ -685,6 +509,7 @@ mod tests {
                 white_wins: 4,
                 draws: 3,
                 black_wins: 2,
+                avg_elo: None,
             },
             MoveStat {
                 san: "d4".into(),
@@ -692,6 +517,7 @@ mod tests {
                 white_wins: 2,
                 draws: 3,
                 black_wins: 4,
+                avg_elo: None,
             },
         ]);
         assert_eq!(total.games, 20);

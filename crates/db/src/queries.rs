@@ -572,13 +572,15 @@ impl GameDetails {
 }
 
 /// Aggregate of a move played from a position.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct MoveStat {
     pub san: String,
     pub games: u64,
     pub white_wins: u64,
     pub draws: u64,
     pub black_wins: u64,
+    /// The players' average rating over the games where both ratings are known.
+    pub avg_elo: Option<u32>,
 }
 
 impl MoveStat {
@@ -883,7 +885,9 @@ impl Database {
         };
         let sql = format!(
             "SELECT p.next_san, COUNT(*) AS n,
-                    SUM(g.result = '1-0'), SUM(g.result = '1/2-1/2'), SUM(g.result = '0-1')
+                    SUM(g.result = '1-0'), SUM(g.result = '1/2-1/2'), SUM(g.result = '0-1'),
+                    AVG(CASE WHEN g.white_elo > 0 AND g.black_elo > 0
+                        THEN (g.white_elo + g.black_elo) / 2.0 END)
              FROM positions p JOIN games g ON g.id = p.game_id
              WHERE p.hash = ?1 AND p.next_san IS NOT NULL {player_clause}
              GROUP BY p.next_san ORDER BY n DESC, p.next_san"
@@ -896,6 +900,7 @@ impl Database {
                 white_wins: row.get::<_, i64>(2)? as u64,
                 draws: row.get::<_, i64>(3)? as u64,
                 black_wins: row.get::<_, i64>(4)? as u64,
+                avg_elo: row.get::<_, Option<f64>>(5)?.map(|elo| elo.round() as u32),
             })
         };
         let mut values: Vec<&dyn ToSql> = Vec::new();

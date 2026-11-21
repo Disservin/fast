@@ -4,6 +4,7 @@ Settings › Changelog shows this file. Describe the finished changes since each
 
 ## 0.1.4
 
+- Analyse: the Explorer panel shows moves from a database, your own games or your repertoire with results and average rating, and says where the game left theory when no game reaches the position.
 - Analyse: one compact Engines panel lists each engine with its lines, WDL, cloud scores and an add-to-game button, with Online, Log, search settings and pause in its header and the ChessDB and tablebase results in its footer.
 - Analyse: the game review shows each side's accuracy with counts of inaccuracies, mistakes and blunders, and the eval graph shades White's and Black's share with marked errors and move numbers.
 - Analyse: the bar under the board adds auto-play and a scrubber along the line, and its tooltips name the shortcuts.

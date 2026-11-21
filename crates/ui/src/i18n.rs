@@ -1006,6 +1006,31 @@ pub fn translate(language: Language, text: &str) -> &str {
                 "Suche pausieren und aktuelle Varianten behalten (P)"
             }
             "Start analysis" => "Analyse starten",
+            "Explorer" => "Explorer",
+            "Avg Elo" => "Ø Elo",
+            "Main move" => "Hauptzug",
+            "Side line" => "Nebenvariante",
+            "Download or import your games in the Database tab to see what you played here." => {
+                "Eigene Partien im Datenbank-Tab herunterladen oder importieren, um zu sehen, was du hier gespielt hast."
+            }
+            "You have not reached this position in your games." => {
+                "Diese Stellung kam in deinen Partien noch nicht vor."
+            }
+            "Repertoires start from the initial position." => {
+                "Repertoires beginnen in der Grundstellung."
+            }
+            "Your repertoire has no moves from this position." => {
+                "Dein Repertoire hat keine Züge aus dieser Stellung."
+            }
+            "Add position to repertoire" => "Stellung zum Repertoire hinzufügen",
+            "The game left known theory after {}." => {
+                "Die Partie hat die bekannte Theorie nach {} verlassen."
+            }
+            "This position is in your repertoire." => "Diese Stellung ist in deinem Repertoire.",
+            "This position is not in your repertoire." => {
+                "Diese Stellung ist nicht in deinem Repertoire."
+            }
+            "Jump to last book move" => "Zum letzten Theoriezug",
             "Cloud evaluations from chessdb.cn and the ChessTB tablebase. Sends each position you visit while on." => {
                 "Cloud-Bewertungen von chessdb.cn und der ChessTB-Endspieldatenbank. Sendet jede besuchte Stellung, solange eingeschaltet."
             }

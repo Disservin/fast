@@ -81,6 +81,7 @@ mod board_header;
 mod database_explorer;
 mod editor;
 mod engines_panel;
+mod explorer_panel;
 mod files;
 mod game_card;
 mod line_preview;
@@ -182,6 +183,8 @@ pub struct AnalyseScreen {
     explorer_db: Option<std::path::PathBuf>,
     /// The database the last opening-tree query used, to notice when it disappears.
     explorer_used: Option<std::path::PathBuf>,
+    /// Where the Explorer's moves come from.
+    explorer_source: explorer_panel::ExplorerSource,
     /// The opening tree's database list is open, with its highlighted entry.
     explorer_menu: Option<usize>,
     explorer_focus: FocusHandle,
@@ -401,6 +404,7 @@ impl AnalyseScreen {
             db_task: None,
             explorer_db: None,
             explorer_used: None,
+            explorer_source: explorer_panel::ExplorerSource::Database,
             explorer_menu: None,
             explorer_focus: cx.focus_handle().tab_stop(true),
             move_cache: crate::explorer::MoveCache::default(),
@@ -856,7 +860,7 @@ impl Render for AnalyseScreen {
         let board_column = self.render_board_column(board_size, cx);
         let editor = self.editor.is_some().then(|| self.render_editor(cx));
         let engine_panel = self.render_engines(cx);
-        let table = self.render_database_panel(cx);
+        let table = self.render_explorer(cx);
         let log_panel = self.log_panel_open.then(|| self.render_log_panel(cx));
         self.sync_online(cx);
         let note = self.note.clone();

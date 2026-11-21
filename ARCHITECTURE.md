@@ -247,14 +247,18 @@ forgets its entries; the cache starts over past 50,000 positions.
 Each Analyse tab also keeps a `MoveCache` (`explorer.rs`) of its opening-tree answers, keyed by
 database, position hash and player, holding the 512 most recent. Only answers missing from it
 are queried, in one background task. Any `ModelEvent::Databases` (import, edit, delete, rename)
-clears it. `explorer::pick_database` chooses the Reference column's database: the tab's
+clears it. `explorer::pick_database` chooses the Explorer's database: the tab's
 choice, the `DbGame` database, `config.explorer_default`, then `AppModel::reference_db()`.
-The Database tab beside Engines and Search options renders these same answers through
-`analyse/database_explorer.rs`: all recorded continuations in popularity order, game
-frequencies, White/draw/Black result shares and totals. Unfinished games stay separate
-from draws. Changing the picker updates both views. Uncached queries clear stale rows,
-show a loading state and report lookup errors without caching them; clicking a move
-adds it to the analysed line and advances the board.
+The Explorer panel (`analyse/explorer_panel.rs`) shows these answers from one of three local
+sources: the picked database, the user's own games, or the repertoire. The database and own
+games list every recorded continuation in popularity order with game counts, White/draw/Black
+result shares, the players' average rating (`MoveStat::avg_elo`, over games where both
+ratings are known) and totals. Unfinished games stay separate from draws. Uncached queries
+clear stale rows, show a loading state and report lookup errors without caching them;
+clicking a move adds it to the analysed line and advances the board, and clicking a count
+opens those games in the Database tab. When no game reaches the position, the panel says
+after which move the game left named theory (`chess_core::classify_depth`) and whether the
+position is in the repertoire, with buttons to go back to theory or add it.
 
 The Database screen uses a searchable collection picker with Add database and Manage
 in a compact header. The picker follows collection changes and selections made by
