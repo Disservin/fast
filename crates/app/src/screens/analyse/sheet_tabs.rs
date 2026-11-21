@@ -155,7 +155,11 @@ impl AnalyseScreen {
                     .mono()
                     .w(26.)
                     .pad(0.)
-                    .color(ui::scoresheet::nag_color(nag))
+                    // A chosen symbol sits on `selected`, where only `fg` is readable in
+                    // every palette.
+                    .when(!nags.contains(&nag), |button| {
+                        button.color(ui::scoresheet::nag_color(nag))
+                    })
                     .selected(nags.contains(&nag))
                     .disabled(at_root)
                     .tooltip(tip)

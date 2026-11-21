@@ -210,6 +210,7 @@ impl AnalyseScreen {
                     height: Some(140.),
                     on_scrub,
                     empty: "No evaluations yet. Analyse the game to see each side's accuracy and mistakes.",
+                    name: "Evaluation graph",
                     sides: Some((
                         ui::board::piece_colour(theme, chess_core::Color::White),
                         ui::board::piece_colour(theme, chess_core::Color::Black),
@@ -246,6 +247,7 @@ impl AnalyseScreen {
                     height: None,
                     on_scrub,
                     empty: "No clock data. Games with [%clk] or [%emt] comments show time per move.",
+                    name: "Time graph",
                     sides: None,
                     marks: Vec::new(),
                     x_ticks,
@@ -270,6 +272,7 @@ impl AnalyseScreen {
                     height: None,
                     on_scrub,
                     empty: "No search depths yet.",
+                    name: "Depth graph",
                     sides: None,
                     marks: Vec::new(),
                     x_ticks,

@@ -172,6 +172,14 @@ impl AnalyseScreen {
                 let share = evals[0].map_or(0.5, |cp| {
                     ((engine::quality::winning_chances(Score::Cp(cp)) + 1.) / 2.) as f32
                 });
+                let bar_label = match evals[0] {
+                    Some(cp) => format!(
+                        "{} {}",
+                        ui::i18n::t("Evaluation bar"),
+                        Score::Cp(cp).display()
+                    ),
+                    None => ui::i18n::t("Evaluation bar, no evaluation yet").to_owned(),
+                };
                 div()
                     .relative()
                     .size(board_size)
@@ -180,7 +188,8 @@ impl AnalyseScreen {
                         div().absolute().left(px(-14.)).top(px(0.)).child(
                             ui::eval_bar::EvalBar::new("analysis-eval", share, board_size)
                                 .flipped(self.board.read(cx).is_flipped())
-                                .mid_line(),
+                                .mid_line()
+                                .label(bar_label),
                         ),
                     )
                     .child(self.board.clone())

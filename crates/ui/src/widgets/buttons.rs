@@ -284,6 +284,19 @@ impl RenderOnce for Btn {
         if let Some(path) = self.icon {
             el = el.gap(px(6.)).child(icon(path, px(16.), fg));
         }
+        // Screen readers hear the label, or for an icon-only button its tooltip.
+        let name = self
+            .label
+            .clone()
+            .filter(|label| !label.is_empty())
+            .or_else(|| self.tooltip.clone());
+        el = el.role(gpui::Role::Button);
+        if let Some(name) = name {
+            el = el.aria_label(name);
+        }
+        if kind == BtnKind::Selected {
+            el = el.aria_toggled(gpui::Toggled::True);
+        }
         if let Some(label) = self.label
             && !label.is_empty()
         {
@@ -366,6 +379,9 @@ impl RenderOnce for HeaderTab {
                 }
             })
             .focus_visible(|style| style.border_2().border_color(rgb(T.accent)).rounded(px(4.)))
+            .role(gpui::Role::Tab)
+            .aria_label(self.label.clone())
+            .when(self.selected, |tab| tab.aria_toggled(gpui::Toggled::True))
             .child(self.label)
     }
 }

@@ -1006,6 +1006,13 @@ pub fn translate(language: Language, text: &str) -> &str {
                 "Suche pausieren und aktuelle Varianten behalten (P)"
             }
             "Start analysis" => "Analyse starten",
+            "Evaluation bar" => "Bewertungsbalken",
+            "Evaluation bar, no evaluation yet" => "Bewertungsbalken, noch keine Bewertung",
+            "{}, {} moves, at move {}" => "{}, {} Züge, bei Zug {}",
+            "Evaluation graph" => "Bewertungsgrafik",
+            "Time graph" => "Zeitgrafik",
+            "Depth graph" => "Tiefengrafik",
+            "Search graph" => "Suchgrafik",
             "Navigate" => "Navigieren",
             "Flip" => "Drehen",
             "Kingside attack" => "Königsangriff",

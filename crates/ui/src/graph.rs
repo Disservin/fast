@@ -71,6 +71,8 @@ pub struct GraphProps {
     pub on_scrub: ScrubHandler,
     /// Shown when no series has a value yet.
     pub empty: &'static str,
+    /// What the graph shows, for screen readers: "Evaluation graph".
+    pub name: &'static str,
     /// Colours for White's and Black's share of the first series: the area below its
     /// line is White's and the area above is Black's, with a dashed line at zero.
     pub sides: Option<(u32, u32)>,
@@ -420,10 +422,18 @@ pub fn graph(props: GraphProps) -> impl IntoElement {
         height,
         on_scrub,
         empty,
+        name,
         sides,
         marks,
         x_ticks,
     } = props;
+    let description = match current {
+        Some(index) if count > 0 => crate::i18n::t("{}, {} moves, at move {}")
+            .replacen("{}", crate::i18n::t(name), 1)
+            .replacen("{}", &count.to_string(), 1)
+            .replacen("{}", &(index + 1).to_string(), 1),
+        _ => crate::i18n::t(name).to_owned(),
+    };
     let bottom_gap = if x_ticks.is_empty() { 6. } else { 20. };
     let has_data = series
         .iter()
@@ -447,6 +457,9 @@ pub fn graph(props: GraphProps) -> impl IntoElement {
         .collect();
     let dragging = Rc::new(Cell::new(false));
     div()
+        .id(gpui::SharedString::from(format!("graph-{name}")))
+        .role(gpui::Role::Image)
+        .aria_label(description)
         .relative()
         .w_full()
         .when_some(height, |el, height| el.h(px(height)).flex_none())

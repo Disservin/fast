@@ -244,7 +244,13 @@ impl AnalyseScreen {
             .gap(px(8.))
             .child(col_heading(px(64.), "Move"))
             .child(col_heading(px(96.), "Games"))
-            .child(div().flex_1().child(section_label("White / Draw / Black")))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .overflow_hidden()
+                    .child(section_label("White / Draw / Black").whitespace_nowrap()),
+            )
             .child(
                 div()
                     .col_w(56.)

@@ -1,7 +1,10 @@
 //! Retargetable evaluation-bar animation shared by analysis and tournament boards.
 
 use crate::T;
-use gpui::{App, ElementId, IntoElement, Pixels, RenderOnce, Window, div, prelude::*, px, rgb};
+use gpui::{
+    App, ElementId, IntoElement, Pixels, RenderOnce, StatefulInteractiveElement, Window, div,
+    prelude::*, px, rgb,
+};
 use std::time::{Duration, Instant};
 
 const TRANSITION: Duration = Duration::from_millis(650);
@@ -27,6 +30,7 @@ pub struct EvalBar {
     edge: Pixels,
     flipped: bool,
     mid_line: bool,
+    label: Option<gpui::SharedString>,
 }
 
 impl EvalBar {
@@ -37,11 +41,18 @@ impl EvalBar {
             edge,
             flipped: false,
             mid_line: false,
+            label: None,
         }
     }
 
     pub fn flipped(mut self, flipped: bool) -> Self {
         self.flipped = flipped;
+        self
+    }
+
+    /// What screen readers say for the bar, such as "Evaluation +0.42".
+    pub fn label(mut self, label: impl Into<gpui::SharedString>) -> Self {
+        self.label = Some(label.into());
         self
     }
 
@@ -55,7 +66,7 @@ impl EvalBar {
 impl RenderOnce for EvalBar {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let now = Instant::now();
-        let state = window.use_keyed_state(self.id, cx, |_, _| Transition {
+        let state = window.use_keyed_state(self.id.clone(), cx, |_, _| Transition {
             from: self.share,
             target: self.share,
             started: now,
@@ -77,6 +88,9 @@ impl RenderOnce for EvalBar {
         let width = px(8.);
         let radius = width / 2.;
         div()
+            .id(self.id)
+            .role(gpui::Role::Image)
+            .when_some(self.label, |bar, label| bar.aria_label(label))
             .relative()
             .w(width)
             .h(self.edge)

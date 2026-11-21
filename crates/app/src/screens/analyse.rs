@@ -103,6 +103,9 @@ use sheet_tabs::SheetTab;
 
 type MenuHandler = Box<dyn Fn(&mut Window, &mut gpui::App)>;
 
+/// The room right of the scoresheet below which the side panels stack under the board:
+/// a 340px board with its margins beside a 420px side column.
+const STACK_BELOW: f32 = 760.;
 /// Width of the folded scoresheet.
 const SCORESHEET_RAIL: f32 = 44.;
 /// The search depth both evals around a move need before live analysis may badge it.
@@ -844,9 +847,13 @@ impl Render for AnalyseScreen {
         };
         // The side column keeps room for its table, so the board gives way first.
         self.scale = window.scale_factor();
+        // When the board and the side panels no longer fit side by side, the panels go
+        // under the board.
+        let stacked = viewport.width - px(scoresheet_width) < px(STACK_BELOW);
+        let side_room = if stacked { 80. } else { 420. };
         let board_size = ui::board::snap_board_size(
             (viewport.height - px(416.))
-                .min(viewport.width - px(scoresheet_width + 420.))
+                .min(viewport.width - px(scoresheet_width + side_room))
                 .min(px(panels.board_size.unwrap_or(u32::MAX) as f32))
                 .max(px(240.)),
             self.scale,
@@ -868,6 +875,17 @@ impl Render for AnalyseScreen {
         self.sync_online(cx);
         let menu = self.render_context_menu(cx);
         let status_bar = self.render_status_bar(cx);
+        let mut side = Some(
+            v_flex()
+                .gap(px(18.))
+                // The search changes the height of everything below the table, so the
+                // Engine panel goes first to keep its buttons still.
+                .children(editor)
+                .child(engine_panel)
+                .child(table)
+                .children(log_panel)
+                .child(self.render_position_note(cx)),
+        );
         let columns = h_flex()
             .items_start()
             .flex_1()
@@ -925,15 +943,19 @@ impl Render for AnalyseScreen {
                     ))
                     .px(px(28.))
                     .h_full()
-                    .flex_none()
+                    .when(stacked, |column| column.flex_1().min_w_0())
+                    .when(!stacked, |column| column.flex_none())
                     .overflow_y_scroll()
                     .child(board_column)
+                    .when(stacked, |column| {
+                        column.child(side.take().unwrap_or_else(div).pb(px(16.)))
+                    })
                     .child(panel_resize_handle(
                         "board-panel-resize",
                         AnalysisPanel::Board,
                     )),
             )
-            .child(
+            .children(side.map(|side| {
                 div()
                     .id("moves-column")
                     .flex_1()
@@ -942,18 +964,8 @@ impl Render for AnalyseScreen {
                     .overflow_y_scroll()
                     .pr(px(24.))
                     .pb(px(16.))
-                    .child(
-                        v_flex()
-                            .gap(px(18.))
-                            // The search changes the height of everything below the table, so the
-                            // Engine panel goes first to keep its buttons still.
-                            .children(editor)
-                            .child(engine_panel)
-                            .child(table)
-                            .children(log_panel)
-                            .child(self.render_position_note(cx)),
-                    ),
-            )
+                    .child(side)
+            }))
             .children(menu);
         v_flex()
             .size_full()

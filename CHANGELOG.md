@@ -4,6 +4,7 @@ Settings › Changelog shows this file. Describe the finished changes since each
 
 ## 0.1.4
 
+- Analyse: narrow windows put the engine, explorer and note panels under the board, and screen readers hear names for buttons, tabs, the eval bar and the graphs.
 - Analyse: a status bar shows the position's FEN with a copy button and the main shortcuts.
 - Analyse: the position note says it is kept for the position in every game and offers quick tags such as Critical and Review later.
 - Analyse: the Explorer panel shows moves from a database, your own games or your repertoire with results and average rating, and says where the game left theory when no game reaches the position.

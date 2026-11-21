@@ -81,14 +81,15 @@ impl AnalyseScreen {
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
         let this = cx.entity();
-        let width = 32.;
+        // Nine buttons share the row, so they narrow with a small board.
+        let width = if board_size < px(340.) { 28. } else { 32. };
         let nav = |id: &'static str,
                    icon: &'static str,
                    tip: String,
                    action: fn(&mut Self, &mut Window, &mut Context<Self>)| {
             icon_btn(id, icon)
                 .w(width)
-                .h(32.)
+                .h(width)
                 .tooltip(tip)
                 .on_click(this.listen(action))
         };
@@ -135,7 +136,7 @@ impl AnalyseScreen {
                     },
                 )
                 .w(width)
-                .h(32.)
+                .h(width)
                 .selected(playing)
                 .tooltip(if playing {
                     "Stop playing through the moves"
@@ -175,7 +176,7 @@ impl AnalyseScreen {
             .child(
                 icon_btn("flip", "icons/arrow-down-up.svg")
                     .w(width)
-                    .h(32.)
+                    .h(width)
                     .selected(flipped)
                     .tooltip(self.shortcut_tip("Flip board", "flip_board", cx))
                     .on_click(this.listen(move |screen, _, cx| screen.flip(cx))),
@@ -183,7 +184,7 @@ impl AnalyseScreen {
             .child(
                 icon_btn("edit-position", "icons/pencil.svg")
                     .w(width)
-                    .h(32.)
+                    .h(width)
                     .selected(self.editor.is_some())
                     .tooltip(ui::i18n::t("Edit position"))
                     .on_click(this.listen(move |screen, _, cx| screen.toggle_editor(cx))),
@@ -192,7 +193,7 @@ impl AnalyseScreen {
             .child(
                 icon_btn("snapshot", "icons/camera.svg")
                     .w(width)
-                    .h(32.)
+                    .h(width)
                     .tooltip(ui::i18n::t("Copy the board as an image and save it"))
                     .on_click(this.listen(move |screen, _, cx| screen.snapshot_board(cx))),
             )
