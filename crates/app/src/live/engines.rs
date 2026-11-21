@@ -255,8 +255,15 @@ impl LiveAnalysis {
                     if progress_only || update.bound {
                         if let Some(line) = live.lines.get_mut(&update.multipv) {
                             analysed = true;
+                            // A stale line came from another limit or engine: its depth
+                            // says nothing about this search.
+                            let stale = line.stale;
                             let kept = &mut line.update;
-                            kept.depth = kept.depth.max(update.depth);
+                            kept.depth = if stale {
+                                update.depth
+                            } else {
+                                kept.depth.max(update.depth)
+                            };
                             kept.seldepth = update.seldepth.or(kept.seldepth);
                             kept.nodes = update.nodes.or(kept.nodes);
                             kept.nps = update.nps.or(kept.nps);

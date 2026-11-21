@@ -301,8 +301,11 @@ impl AnalyseScreen {
                 LiveEvent::Updated => this.rebuild_rows(cx),
                 LiveEvent::Eval(node, score, depth) => {
                     // Keep the deeper of what is known: a game's annotations or the engine.
+                    // A backward run searches every move to the same limit, so its results
+                    // replace older ones.
                     if this.depths.get(node).is_none_or(|known| *known <= *depth)
                         || !this.evals.contains_key(node)
+                        || this.backward.is_some()
                     {
                         this.evals.insert(*node, crate::live::score_cp(*score));
                         this.depths.insert(*node, *depth);

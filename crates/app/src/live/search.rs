@@ -144,8 +144,10 @@ impl LiveAnalysis {
                     })
                     .unwrap_or_default()
             };
+            // A stale line was searched under another limit or engine version, so it
+            // must not stand in for this search's evaluation.
             if known.is_none()
-                && let Some(line) = engine.lines.get(&1)
+                && let Some(line) = engine.lines.get(&1).filter(|line| !line.stale)
                 && let Some(score) = line.score
             {
                 known = Some((score, line.update.depth));
