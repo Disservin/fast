@@ -407,21 +407,30 @@ impl AnalyseScreen {
         let mut lines = v_flex();
         if rows.is_empty() {
             let searching = self.live.read(cx).on && self.live.read(cx).end.is_none();
-            return lines.child(
+            // While searching, blank rows hold the height of the lines shown last, so the
+            // panels below stay put when the position changes.
+            let reserved = if searching {
+                self.engine_line_counts.get(&id).copied().unwrap_or(1)
+            } else {
+                1
+            };
+            let row = || {
                 div()
                     .h(px(LINE_H))
                     .px(px(16.))
                     .flex()
                     .items_center()
                     .border_b_as(T.divider)
-                    .text_as(12., T.muted)
-                    .child(ui::i18n::t(if searching {
-                        "Waiting for engine lines…"
-                    } else {
-                        "Stopped"
-                    })),
-            );
+            };
+            return lines
+                .child(row().text_as(12., T.muted).child(ui::i18n::t(if searching {
+                    "Waiting for engine lines…"
+                } else {
+                    "Stopped"
+                })))
+                .children((1..reserved).map(|_| row()));
         }
+        self.engine_line_counts.insert(id, rows.len());
         let quality_arrows = self.model.read(cx).config.view.quality_arrows;
         let white_to_move = self.analysed_pos().turn().is_white();
         let notation = self.model.read(cx).config.board.notation;

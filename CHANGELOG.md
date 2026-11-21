@@ -4,6 +4,7 @@ Settings › Changelog shows this file. Describe the finished changes since each
 
 ## 0.1.4
 
+- Analyse: the engine lines keep their height while a new position waits for its first lines, so the panels no longer jump at each step of backwards analysis.
 - Analyse: the panels beside the board sit closer together and closer to the window edge, and meet the board column with a single line.
 - Analyse: the game review tiles name their counts ("1 inaccuracy, 2 mistakes").
 - Analyse: the Explorer sources and the game review graphs sit in a tab group, with the chosen one raised on an inset track.

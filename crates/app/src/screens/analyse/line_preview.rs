@@ -27,6 +27,9 @@ impl AnalyseScreen {
                         line.child(
                             div()
                                 .text_as(13., T.muted)
+                                // As tall as one line of moves, so the panel keeps its
+                                // height while a new position waits for lines.
+                                .line_height(px(26.))
                                 .child(ui::i18n::t("Select a row to see its engine line")),
                         )
                     })

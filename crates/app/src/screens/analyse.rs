@@ -241,6 +241,9 @@ pub struct AnalyseScreen {
     pv_peek_at: Option<Point<Pixels>>,
     pv_focus: FocusHandle,
     backward: Option<BackwardRun>,
+    /// How many lines each engine showed last, so its block keeps that height while it
+    /// waits for the first lines of a new position instead of shrinking and growing back.
+    engine_line_counts: HashMap<EngineId, usize>,
     /// The window's scale factor at the last render, for snapping fixed-size boards.
     scale: f32,
     _subscriptions: Vec<Subscription>,
@@ -461,6 +464,7 @@ impl AnalyseScreen {
             pv_focus: cx.focus_handle(),
             scale: window.scale_factor(),
             backward: None,
+            engine_line_counts: HashMap::new(),
             _subscriptions: subscriptions,
         };
         this.position_changed(false, window, cx);
