@@ -4,6 +4,8 @@ use std::sync::atomic::{AtomicU8, Ordering};
 
 use serde::{Deserialize, Serialize};
 
+use crate::DisplayName;
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Language {
     #[default]
@@ -21,7 +23,10 @@ impl Language {
             Self::German => "de",
         }
     }
-    pub fn name(self) -> &'static str {
+}
+
+impl DisplayName for Language {
+    fn name(&self) -> &'static str {
         match self {
             Self::English => "English",
             Self::German => "Deutsch",

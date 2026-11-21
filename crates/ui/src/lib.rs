@@ -11,3 +11,9 @@ pub mod widgets;
 
 pub use board::{Arrow, BoardEvent, BoardPrefs, BoardTheme, BoardView, CoordinateStyle, PieceSet};
 pub use theme::{MONO, SANS, T, Theme, UiTheme, apply_component_theme, set_theme};
+
+/// Provides a static name for display in the interface.
+pub trait DisplayName {
+    /// Returns the name shown to the user.
+    fn name(&self) -> &'static str;
+}

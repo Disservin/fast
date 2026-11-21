@@ -1,5 +1,7 @@
 //! Settings › Board: the theme, board colours, pieces and sounds.
 
+use ui::DisplayName;
+
 use super::*;
 
 pub(super) fn tile(id: impl Into<gpui::ElementId>, selected: bool) -> gpui::Stateful<Div> {

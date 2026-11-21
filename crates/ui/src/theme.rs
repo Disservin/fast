@@ -3,6 +3,8 @@
 use gpui::{App, Hsla, rgb};
 use gpui_component::{Theme as ComponentTheme, ThemeTokens};
 
+use crate::DisplayName;
+
 pub const SANS: &str = "Geist";
 pub const MONO: &str = "Geist Mono";
 
@@ -138,7 +140,17 @@ impl UiTheme {
         Self::Obsidian,
     ];
 
-    pub fn name(self) -> &'static str {
+    pub fn palette(self) -> &'static Theme {
+        &PALETTES[self as usize]
+    }
+
+    pub fn is_light(self) -> bool {
+        matches!(self, Self::Paper | Self::Sand)
+    }
+}
+
+impl DisplayName for UiTheme {
+    fn name(&self) -> &'static str {
         match self {
             Self::Slate => "Slate",
             Self::Paper => "Paper",
@@ -147,14 +159,6 @@ impl UiTheme {
             Self::Plum => "Plum",
             Self::Obsidian => "Obsidian",
         }
-    }
-
-    pub fn palette(self) -> &'static Theme {
-        &PALETTES[self as usize]
-    }
-
-    pub fn is_light(self) -> bool {
-        matches!(self, Self::Paper | Self::Sand)
     }
 }
 

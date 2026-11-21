@@ -13,7 +13,10 @@ use gpui::{
     prelude::*, px, relative, rgb, rgba, svg,
 };
 
-use crate::theme::{MONO, SANS, T};
+use crate::{
+    DisplayName,
+    theme::{MONO, SANS, T},
+};
 
 mod arrows;
 mod input;
@@ -58,8 +61,10 @@ impl BoardTheme {
             Self::Plum => (0xB7A5B7, 0x775B7C),
         }
     }
+}
 
-    pub fn name(self) -> &'static str {
+impl DisplayName for BoardTheme {
+    fn name(&self) -> &'static str {
         match self {
             Self::Blue => "Blue",
             Self::Walnut => "Walnut",
@@ -96,18 +101,6 @@ impl PieceSet {
         Self::Fantasy,
     ];
 
-    pub fn name(self) -> &'static str {
-        match self {
-            Self::Classic => "Classic",
-            Self::Cburnett => "Cburnett",
-            Self::Chessnut => "Chessnut",
-            Self::MpChess => "MPChess",
-            Self::Fantasy => "Fantasy",
-            Self::Letters => "Letters",
-            Self::Flat => "Flat",
-        }
-    }
-
     /// The asset folder with this set's artwork. Letters and Flat have none of their
     /// own; Flat draws Merida's outlines in one colour.
     pub fn folder(self) -> &'static str {
@@ -123,6 +116,20 @@ impl PieceSet {
     /// The asset path of a piece's picture in this set.
     pub fn asset(self, piece: Piece) -> SharedString {
         format!("pieces/{}/{}.svg", self.folder(), piece_file(piece)).into()
+    }
+}
+
+impl DisplayName for PieceSet {
+    fn name(&self) -> &'static str {
+        match self {
+            Self::Classic => "Classic",
+            Self::Cburnett => "Cburnett",
+            Self::Chessnut => "Chessnut",
+            Self::MpChess => "MPChess",
+            Self::Fantasy => "Fantasy",
+            Self::Letters => "Letters",
+            Self::Flat => "Flat",
+        }
     }
 }
 
