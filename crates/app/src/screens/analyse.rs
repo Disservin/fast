@@ -880,7 +880,7 @@ impl Render for AnalyseScreen {
         let status_bar = self.render_status_bar(cx);
         let mut side = Some(
             v_flex()
-                .gap(px(18.))
+                .gap(px(8.))
                 // The search changes the height of everything below the table, so the
                 // Engine panel goes first to keep its buttons still.
                 .children(editor)
@@ -965,8 +965,8 @@ impl Render for AnalyseScreen {
                     .min_w_0()
                     .h_full()
                     .overflow_y_scroll()
-                    .pr(px(24.))
-                    .pb(px(16.))
+                    .pr(px(8.))
+                    .pb(px(8.))
                     .child(side)
             }))
             .children(menu);
