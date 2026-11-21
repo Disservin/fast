@@ -26,26 +26,22 @@ impl AnalyseScreen {
     pub(super) fn render_explorer(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
         let this = cx.entity();
         let source = self.explorer_source;
-        let mut sources = h_flex().gap(px(4.));
-        for (index, (value, label)) in [
-            (ExplorerSource::Database, "Database"),
-            (ExplorerSource::MyGames, "My games"),
-            (ExplorerSource::Repertoire, "Repertoire"),
-        ]
-        .into_iter()
-        .enumerate()
-        {
-            sources = sources.child(
-                btn(("explorer-source", index), label)
-                    .mini()
-                    .selected(source == value)
-                    .on_click(this.listen(move |screen, _, cx| {
-                        screen.explorer_source = value;
-                        screen.explorer_menu = None;
-                        cx.notify();
-                    })),
-            );
-        }
+        let sources = ui::widgets::tab_group(
+            "explorer-source",
+            [
+                (ExplorerSource::Database, "Database"),
+                (ExplorerSource::MyGames, "My games"),
+                (ExplorerSource::Repertoire, "Repertoire"),
+            ],
+            source,
+            move |value, _, cx| {
+                this.update(cx, |screen, cx| {
+                    screen.explorer_source = value;
+                    screen.explorer_menu = None;
+                    cx.notify();
+                });
+            },
+        );
         let body = match source {
             ExplorerSource::Database => self.render_database_moves(cx),
             ExplorerSource::MyGames => self.render_my_games_moves(cx),
@@ -61,7 +57,7 @@ impl AnalyseScreen {
                     .px(px(16.))
                     .gap(px(8.))
                     .border_b_as(T.border)
-                    .child(section_label("Explorer"))
+                    .child(section_label("Explorer").flex_none())
                     .child(div().flex_1())
                     .child(sources),
             )

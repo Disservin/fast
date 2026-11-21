@@ -326,8 +326,43 @@ pub fn header_tab(
         id: id.into(),
         label: crate::i18n::t(&label.into()).to_owned().into(),
         selected,
+        pill: false,
         on_select: Rc::new(on_select),
     }
+}
+
+/// A group of tabs on an inset `surface_2` track, where the chosen tab is a raised
+/// `tab_active` chip in `fg` and the others are `muted`. It fits a panel header and
+/// switches between views of the same panel. Labels are translated.
+pub fn tab_group<V: Copy + PartialEq + 'static>(
+    id: &'static str,
+    options: impl IntoIterator<Item = (V, &'static str)>,
+    selected: V,
+    on_select: impl Fn(V, &mut Window, &mut App) + 'static,
+) -> Div {
+    let on_select = Rc::new(on_select);
+    // The track and its tabs may shrink below their natural width, so a narrow panel
+    // truncates the labels instead of pushing the group past the panel's edge.
+    let mut track = h_flex()
+        .flex_shrink(1.)
+        .min_w_0()
+        .overflow_hidden()
+        .h(px(30.))
+        .p(px(3.))
+        .gap(px(2.))
+        .rounded(px(6.))
+        .bg(rgb(T.surface_2));
+    for (index, (value, label)) in options.into_iter().enumerate() {
+        let on_select = on_select.clone();
+        track = track.child(HeaderTab {
+            id: (id, index).into(),
+            label: crate::i18n::t(label).to_owned().into(),
+            selected: value == selected,
+            pill: true,
+            on_select: Rc::new(move |window, cx| on_select(value, window, cx)),
+        });
+    }
+    track
 }
 
 #[derive(IntoElement)]
@@ -335,6 +370,8 @@ pub(super) struct HeaderTab {
     id: ElementId,
     label: SharedString,
     selected: bool,
+    /// Drawn as a chip inside a `tab_group` rather than as a full-height header tab.
+    pill: bool,
     on_select: ClickHandler,
 }
 
@@ -353,15 +390,25 @@ impl RenderOnce for HeaderTab {
             .key_context("FastButton")
             .track_focus(&focus)
             .flex()
-            .flex_none()
             .items_center()
+            .when(!self.pill, |tab| tab.flex_none())
+            .when(self.pill, |tab| {
+                tab.flex_shrink(1.).min_w_0().overflow_hidden()
+            })
             .h_full()
-            .px(px(4.))
-            .border_b_2()
-            .border_color(if self.selected {
-                rgb(T.accent).into()
-            } else {
-                gpui::transparent_black()
+            .when(!self.pill, |tab| {
+                tab.px(px(4.)).border_b_2().border_color(if self.selected {
+                    rgb(T.accent).into()
+                } else {
+                    gpui::transparent_black()
+                })
+            })
+            .when(self.pill, |tab| {
+                tab.px(px(8.))
+                    .rounded(px(4.))
+                    .border_1()
+                    .border_color(gpui::transparent_black())
+                    .when(self.selected, |tab| tab.bg(rgb(T.tab_active)))
             })
             .text_size(px(13.))
             .font_weight(FontWeight::MEDIUM)
@@ -382,7 +429,7 @@ impl RenderOnce for HeaderTab {
             .role(gpui::Role::Tab)
             .aria_label(self.label.clone())
             .when(self.selected, |tab| tab.aria_toggled(gpui::Toggled::True))
-            .child(self.label)
+            .child(div().min_w_0().truncate().child(self.label))
     }
 }
 

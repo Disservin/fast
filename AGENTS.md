@@ -61,6 +61,7 @@ decoration is kept to a minimum.
   | `hover` | Hover background |
 | `hover_strong` | Hover on small items inside an inset, such as moves in Line preview |
   | `selected` | Selected row or item, selected segmented button |
+  | `tab_active` | The chosen tab in a `tab_group()`, raised above its `surface_2` track |
   | `border` | Panel outlines |
   | `border_strong` | Button and input outlines |
   | `divider` | Row separators, inner rules, empty progress tracks |
@@ -111,6 +112,8 @@ decoration is kept to a minimum.
   normal: `surface` with a `border_strong` outline.
 - Tabs in a panel header use `header_tab()`: full header height, the chosen one in `fg` with a
   2px `accent` bottom line, the others `muted`.
+- To switch between views of one panel from its header, use `tab_group()`: an inset `surface_2`
+  track where the chosen tab is a `tab_active` chip in `fg` and the others are `muted`.
 - Build segmented controls (`segmented()`) as rows of buttons. The chosen one is `.selected()`:
   a `selected` background with an `accent` border. Toggle buttons such as Engine, Log and
   Online use `.selected(open)` the same way.

@@ -75,7 +75,7 @@ engines).
 
 Code shared across screens lives outside them:
 
-- `ui::widgets`: `btn`, `stepper`, `sort_heading`, `dialog`, `panel_header`, `segmented`,
+- `ui::widgets`: `btn`, `stepper`, `sort_heading`, `dialog`, `panel_header`, `segmented`, `tab_group`,
   `check`, `meter` and the other design-system controls. `Listen` turns a view handle into
   widget handlers (`this.listen(|screen, window, cx| ...)`), and `StyleExt::text_as` sets text
   size and colour together.
