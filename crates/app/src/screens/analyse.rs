@@ -94,6 +94,7 @@ mod review_card;
 mod rows;
 mod scoresheet;
 mod sheet_tabs;
+mod status_bar;
 mod tree_edit;
 
 use editor::PositionEditor;
@@ -866,9 +867,12 @@ impl Render for AnalyseScreen {
         let log_panel = self.log_panel_open.then(|| self.render_log_panel(cx));
         self.sync_online(cx);
         let menu = self.render_context_menu(cx);
-        h_flex()
+        let status_bar = self.render_status_bar(cx);
+        let columns = h_flex()
             .items_start()
-            .size_full()
+            .flex_1()
+            .min_h_0()
+            .w_full()
             .child(
                 div()
                     .id("scoresheet-panel")
@@ -950,7 +954,11 @@ impl Render for AnalyseScreen {
                             .child(self.render_position_note(cx)),
                     ),
             )
-            .children(menu)
+            .children(menu);
+        v_flex()
+            .size_full()
+            .child(columns)
+            .child(status_bar)
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(|screen, _, _, cx| {

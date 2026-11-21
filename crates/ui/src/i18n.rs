@@ -1006,6 +1006,8 @@ pub fn translate(language: Language, text: &str) -> &str {
                 "Suche pausieren und aktuelle Varianten behalten (P)"
             }
             "Start analysis" => "Analyse starten",
+            "Navigate" => "Navigieren",
+            "Flip" => "Drehen",
             "Kingside attack" => "Königsangriff",
             "IQP" => "Isolani",
             "Critical" => "Kritisch",
