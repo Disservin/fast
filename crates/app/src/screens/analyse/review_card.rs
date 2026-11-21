@@ -78,12 +78,17 @@ impl AnalyseScreen {
         cx: &gpui::App,
     ) -> gpui::Div {
         let theme = self.model.read(cx).config.board.prefs().theme;
-        // The legend under the graph names the colours.
-        let count = |colour: u32, value: usize| {
+        let count = |colour: u32, value: usize, one: &'static str, many: &'static str| {
             h_flex()
                 .gap(px(4.))
+                .whitespace_nowrap()
                 .child(div().size(px(6.)).rounded_full().bg(rgb(colour)))
                 .child(mono(value.to_string()).text_as(12., T.fg_2))
+                .child(
+                    div()
+                        .text_as(12., T.muted)
+                        .child(ui::i18n::t(if value == 1 { one } else { many })),
+                )
         };
         v_flex()
             .flex_1()
@@ -124,9 +129,14 @@ impl AnalyseScreen {
                 h_flex()
                     .flex_wrap()
                     .gap_x(px(12.))
-                    .child(count(T.q_inaccuracy, review.counts[0]))
-                    .child(count(T.q_mistake, review.counts[1]))
-                    .child(count(T.q_blunder, review.counts[2])),
+                    .child(count(
+                        T.q_inaccuracy,
+                        review.counts[0],
+                        "inaccuracy",
+                        "inaccuracies",
+                    ))
+                    .child(count(T.q_mistake, review.counts[1], "mistake", "mistakes"))
+                    .child(count(T.q_blunder, review.counts[2], "blunder", "blunders")),
             )
     }
 
@@ -306,22 +316,19 @@ impl AnalyseScreen {
     ) -> impl IntoElement + use<> {
         let this = cx.entity();
         let tab = self.model.read(cx).config.view.graph;
-        let mut tabs = h_flex().gap(px(2.));
-        for (index, option) in GraphTab::ALL.into_iter().enumerate() {
-            tabs = tabs.child(
-                btn(("graph-tab", index), option.label())
-                    .mini()
-                    .pad(6.)
-                    .kind(if option == tab {
-                        ui::widgets::BtnKind::Selected
-                    } else {
-                        ui::widgets::BtnKind::Ghost
-                    })
-                    .on_click(this.listen(move |screen, _, cx| {
-                        screen.set_view(cx, |view| view.graph = option);
-                    })),
-            );
-        }
+        let tabs = ui::widgets::tab_group(
+            "graph-tab",
+            GraphTab::ALL.map(|option| (option, option.label())),
+            tab,
+            {
+                let this = this.clone();
+                move |option, _, cx| {
+                    this.update(cx, |screen, cx| {
+                        screen.set_view(cx, |view| view.graph = option)
+                    });
+                }
+            },
+        );
         let running = self.backward.is_some();
         let nodes = self.model.read(cx).config.backward_nodes;
         let label = if running {

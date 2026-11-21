@@ -1138,6 +1138,12 @@ pub fn translate(language: Language, text: &str) -> &str {
             "Dubious move" => "Zweifelhafter Zug",
             "Mistake" => "Fehler",
             "Blunder" => "Grober Fehler",
+            "inaccuracy" => "Ungenauigkeit",
+            "inaccuracies" => "Ungenauigkeiten",
+            "mistake" => "Fehler",
+            "mistakes" => "Fehler",
+            "blunder" => "grober Fehler",
+            "blunders" => "grobe Fehler",
             "Comment on this move" => "Diesen Zug kommentieren",
             "Name not set" => "Name nicht gesetzt",
             "Edit players, event and other headers" => {
