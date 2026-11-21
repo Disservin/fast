@@ -1006,6 +1006,17 @@ pub fn translate(language: Language, text: &str) -> &str {
                 "Suche pausieren und aktuelle Varianten behalten (P)"
             }
             "Start analysis" => "Analyse starten",
+            "{} mates in {}" => "{} setzt matt in {}",
+            "Equal position" => "Ausgeglichene Stellung",
+            "Slight edge for {}" => "Leichter Vorteil für {}",
+            "Clear advantage for {}" => "Klarer Vorteil für {}",
+            "{} is winning" => "{} steht auf Gewinn",
+            "{} to move" => "{} am Zug",
+            "After {}, move {}" => "Nach {}, Zug {}",
+            "Add name" => "Namen eintragen",
+            "Name the players in the game's headers" => {
+                "Spieler in den Kopfzeilen der Partie benennen"
+            }
             "book" => "Theorie",
             "Left theory" => "Theorie verlassen",
             "Game unfinished, {} to play" => "Partie nicht beendet, {} am Zug",

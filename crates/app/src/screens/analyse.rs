@@ -77,6 +77,7 @@ pub use self::rows::{MoveRow, RepTag, RowKey, RowOptions, merge_rows, quality_co
 
 mod backward;
 mod board_column;
+mod board_header;
 mod database_explorer;
 mod editor;
 mod files;

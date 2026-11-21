@@ -71,6 +71,20 @@ impl AnalyseScreen {
                 .and_then(|id| self.model.read(cx).engine(id)?.arrow_color)
         };
         let mut arrows: Vec<Arrow> = Vec::new();
+        if !quality_arrows {
+            // Each engine's best move, in that engine's colour; engines that agree
+            // share the first one's arrow.
+            let mut seen: Vec<String> = Vec::new();
+            for (_, san, colour) in self.engine_best_moves(cx) {
+                if seen.contains(&san) {
+                    continue;
+                }
+                if let Some(arrow) = arrow_for(&san) {
+                    arrows.push(arrow.with_color(colour));
+                }
+                seen.push(san);
+            }
+        }
         if quality_arrows {
             // Every engine line gets an arrow coloured by quality, worst drawn first
             // so the best end up on top; the selected one is drawn last of all.
@@ -143,26 +157,9 @@ impl AnalyseScreen {
         } else {
             42.
         };
-        let shown = self.shown_pos();
-        let turn = if shown.turn().is_white() {
-            ui::i18n::t("White")
-        } else {
-            ui::i18n::t("Black")
-        };
         let end = self.live.read(cx).end;
-        let status = if self.editor.is_some() {
-            ui::i18n::t("Edit position").to_owned()
-        } else if let Some(end) = end {
-            end.describe().to_owned()
-        } else {
-            format!("{turn} to move")
-        };
-        let after = (self.current != GameTree::ROOT && self.editor.is_none())
-            .then(|| format!("after {}", self.tree.move_label(self.current)));
-        let after = self
-            .pv_preview_label(self.tree.node(self.current).ply)
-            .or(after);
-        let eval_text = self.eval_text(end, cx);
+        let header = self.render_board_header(end, cx);
+        let legend = self.render_arrow_legend(cx);
         let graph = self.render_graph(cx);
         let flipped = self.board.read(cx).is_flipped();
         let (top_side, bottom_side) = if flipped {
@@ -209,29 +206,7 @@ impl AnalyseScreen {
             .w(board_size)
             .min_h_full()
             .pb(px(16.))
-            .child(
-                h_flex()
-                    .h(px(39.))
-                    .mt(px(12.))
-                    .justify_between()
-                    .child(
-                        h_flex()
-                            .gap(px(12.))
-                            .items_baseline()
-                            .child(
-                                div()
-                                    .text_size(px(20.))
-                                    .font_weight(FontWeight::SEMIBOLD)
-                                    .child(status),
-                            )
-                            .children(after.map(|text| div().text_as(14., T.muted).child(text))),
-                    )
-                    .child(
-                        mono(eval_text)
-                            .text_size(px(18.))
-                            .font_weight(FontWeight::SEMIBOLD),
-                    ),
-            )
+            .child(header)
             .child(top_strip)
             .child({
                 let (evals, _) = self.line_evals(&[self.current], cx);
@@ -245,12 +220,14 @@ impl AnalyseScreen {
                     .child(
                         div().absolute().left(px(-14.)).top(px(0.)).child(
                             ui::eval_bar::EvalBar::new("analysis-eval", share, board_size)
-                                .flipped(self.board.read(cx).is_flipped()),
+                                .flipped(self.board.read(cx).is_flipped())
+                                .mid_line(),
                         ),
                     )
                     .child(self.board.clone())
             })
             .child(bottom_strip)
+            .children(legend)
             .child(
                 h_flex()
                     .mt(px(6.))
@@ -317,84 +294,81 @@ impl AnalyseScreen {
             .child(graph)
     }
 
-    /// The evaluation beside the status line: the main engine's score, else the stored
-    /// evaluation, or the result once the game is over.
-    fn eval_text(&self, end: Option<chess_core::GameEnd>, cx: &mut Context<Self>) -> String {
-        let live = self.live.read(cx);
-        let eval_text = live
-            .primary()
-            .and_then(|engine| engine.lines.get(&1))
-            .and_then(|line| line.score)
-            .map(Score::display)
-            .or_else(|| {
-                self.evals
-                    .get(&self.current)
-                    .filter(|_| self.pv_view.is_none())
-                    .map(|cp| Score::Cp(*cp).display())
-            })
-            .filter(|_| self.editor.is_none())
-            .unwrap_or_else(|| "—".to_owned());
-        // A finished game shows its result, not an evaluation.
-        match end.filter(|_| self.editor.is_none()) {
-            Some(end) => end.result().replace("1/2", "½"),
-            None => eval_text,
-        }
-    }
-
-    /// One player's name and rating above or below the board, with a dot when they are
-    /// to move and the pieces they are up on.
+    /// One player above or below the board: a swatch in their piece colour, the name
+    /// (or a link to add it) and rating, a dot when they are to move, the pieces they
+    /// are up on and a badge with the material balance.
     fn render_player_strip(
         &self,
         side: chess_core::Color,
         end: Option<chess_core::GameEnd>,
         cx: &mut Context<Self>,
     ) -> gpui::Div {
+        let this = cx.entity();
         let shown = self.shown_pos();
         let to_move = shown.turn();
         let balance = chess_core::material_balance(shown.board());
-        let set = self.model.read(cx).config.board.prefs().pieces;
-        let strip = move |side: chess_core::Color| {
-            (!balance.up(side).is_empty()).then(|| {
-                ui::board::material_strip(
-                    balance.up(side),
-                    side.other(),
-                    balance.lead(side),
-                    set,
-                    17.,
-                )
-            })
-        };
-        let material = strip(side).filter(|_| self.editor.is_none());
+        let prefs = self.model.read(cx).config.board.prefs();
+        let editing = self.editor.is_some();
+        let material = (!balance.up(side).is_empty() && !editing).then(|| {
+            ui::board::material_strip(balance.up(side), side.other(), None, prefs.pieces, 17.)
+        });
+        // The badge shows the lead on the side that has it, and "=" on both when level.
+        let level = balance.lead(side).is_none() && balance.lead(side.other()).is_none();
+        let badge = balance
+            .lead(side)
+            .map(|lead| format!("+{lead}"))
+            .or_else(|| level.then(|| "=".to_owned()))
+            .filter(|_| !editing);
+        let tag = if side.is_white() { "White" } else { "Black" };
+        let named = game_card::known_header(&self.tree, tag).is_some();
         let (name, rating) = self.player(side);
         h_flex()
             .h(px(26.))
             .gap(px(8.))
-            .justify_between()
             .child(
-                h_flex()
-                    .gap(px(8.))
-                    .min_w_0()
-                    .child(
-                        // The side to move is marked beside its name.
-                        div()
-                            .flex_none()
-                            .size(px(6.))
-                            .rounded_full()
-                            .when(to_move == side && end.is_none(), |dot| {
-                                dot.bg(rgb(T.accent))
-                            }),
-                    )
-                    .child(
-                        div()
-                            .min_w_0()
-                            .truncate()
-                            .text_size(px(13.))
-                            .font_weight(FontWeight::MEDIUM)
-                            .child(name),
-                    )
-                    .child(mono(rating).flex_none().text_as(12., T.muted)),
+                // The side to move is marked beside its name.
+                div()
+                    .flex_none()
+                    .size(px(6.))
+                    .rounded_full()
+                    .when(to_move == side && end.is_none(), |dot| {
+                        dot.bg(rgb(T.accent))
+                    }),
             )
+            .child(
+                div()
+                    .flex_none()
+                    .size(px(10.))
+                    .rounded(px(2.))
+                    .bg(rgb(ui::board::piece_colour(prefs.theme, side)))
+                    .border_as(T.border_strong),
+            )
+            .child(
+                div()
+                    .min_w_0()
+                    .truncate()
+                    .text_size(px(13.))
+                    .font_weight(FontWeight::MEDIUM)
+                    .when(!named, |el| el.text_color(rgb(T.muted)))
+                    .child(name),
+            )
+            .child(mono(rating).flex_none().text_as(12., T.muted))
+            .when(!named, |row| {
+                row.child(
+                    btn(("add-name", side as usize), "Add name")
+                        .mini()
+                        .pad(4.)
+                        .kind(ui::widgets::BtnKind::Ghost)
+                        .color(T.accent)
+                        .tooltip("Name the players in the game's headers")
+                        .on_click(this.listen(move |screen, window, cx| {
+                            screen.set_sheet_tab(SheetTab::Headers, window, cx)
+                        })),
+                )
+            })
+            .child(div().flex_1())
             .children(material)
+            .children(badge.map(|text| ui::widgets::badge(text).font_family(MONO)))
     }
 
     /// Evals along the shown line: the game's own, else what any engine found for that

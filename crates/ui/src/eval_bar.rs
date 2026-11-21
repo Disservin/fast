@@ -26,6 +26,7 @@ pub struct EvalBar {
     share: f32,
     edge: Pixels,
     flipped: bool,
+    mid_line: bool,
 }
 
 impl EvalBar {
@@ -35,11 +36,18 @@ impl EvalBar {
             share: share.clamp(0., 1.),
             edge,
             flipped: false,
+            mid_line: false,
         }
     }
 
     pub fn flipped(mut self, flipped: bool) -> Self {
         self.flipped = flipped;
+        self
+    }
+
+    /// Marks the middle, where the position is equal, with a thin `accent` line.
+    pub fn mid_line(mut self) -> Self {
+        self.mid_line = true;
         self
     }
 }
@@ -97,6 +105,17 @@ impl RenderOnce for EvalBar {
                             .bg(rgb(T.fg)),
                     ),
             )
+            .when(self.mid_line, |bar| {
+                bar.child(
+                    div()
+                        .absolute()
+                        .left(px(-2.))
+                        .w(width + px(4.))
+                        .h(px(2.))
+                        .top(self.edge / 2. - px(1.))
+                        .bg(rgb(T.accent)),
+                )
+            })
     }
 }
 
