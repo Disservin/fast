@@ -26,8 +26,8 @@ use ui::{
     scoresheet::{ScoresheetProps, scoresheet_body, scoresheet_inline},
     timeline::{TimelineProps, timeline},
     widgets::{
-        Listen, StyleExt, btn, col_heading, h_flex, icon_btn, mono, panel, section_label,
-        table_header, v_flex,
+        Listen, StyleExt, btn, col_heading, h_flex, header_tab, icon_btn, mono, panel,
+        section_label, table_header, v_flex,
     },
 };
 
@@ -87,10 +87,12 @@ mod online;
 mod panels;
 mod rows;
 mod scoresheet;
+mod sheet_tabs;
 mod tree_edit;
 
 use editor::PositionEditor;
 use panels::{LOG_POLL, LogSelection, PvView};
+use sheet_tabs::SheetTab;
 
 type MenuHandler = Box<dyn Fn(&mut Window, &mut gpui::App)>;
 
@@ -152,6 +154,8 @@ pub struct AnalyseScreen {
     editing_comment: Option<NodeId>,
     /// The game card's header form, while it is open.
     header_form: Option<game_card::HeaderForm>,
+    /// What the scoresheet column shows under the game card.
+    sheet_tab: sheet_tabs::SheetTab,
     fen_input: Entity<InputState>,
     /// The search type and editable value shared with the Infinite toggle.
     limit_controls: Entity<panels::limit::SearchLimitControls>,
@@ -363,6 +367,7 @@ impl AnalyseScreen {
             comment,
             editing_comment: None,
             header_form: None,
+            sheet_tab: sheet_tabs::SheetTab::Moves,
             fen_input,
             limit_controls,
             editor: None,

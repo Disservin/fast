@@ -95,6 +95,12 @@ impl OpeningTable {
 
 /// The most specific opening matching a sequence of SAN moves, ignoring check marks.
 pub fn classify<'a>(moves: impl IntoIterator<Item = &'a str>) -> Option<Opening> {
+    classify_depth(moves).map(|(opening, _)| opening)
+}
+
+/// Like [`classify`], with how many of the moves the named line covers: the moves up
+/// to there are known theory.
+pub fn classify_depth<'a>(moves: impl IntoIterator<Item = &'a str>) -> Option<(Opening, usize)> {
     let active = UPDATED.read().unwrap_or_else(|e| e.into_inner());
     let mut line = moves
         .into_iter()
@@ -104,14 +110,15 @@ pub fn classify<'a>(moves: impl IntoIterator<Item = &'a str>) -> Option<Opening>
     loop {
         if let Some(table) = active.as_ref() {
             if let Some(opening) = table.entries.get(&line) {
-                return Some(opening.clone());
+                return Some((opening.clone(), line.split(' ').count()));
             }
         } else if let Ok(index) = OPENINGS.binary_search_by_key(&line.as_str(), |entry| entry.0) {
             let (_, eco, name) = OPENINGS[index];
-            return Some(Opening {
+            let opening = Opening {
                 eco: eco.into(),
                 name: name.into(),
-            });
+            };
+            return Some((opening, line.split(' ').count()));
         }
         let end = line.rfind(' ')?;
         line.truncate(end);
@@ -121,6 +128,17 @@ pub fn classify<'a>(moves: impl IntoIterator<Item = &'a str>) -> Option<Opening>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn depth_counts_the_moves_of_the_named_line() {
+        let moves = [
+            "e4", "c5", "Nf3", "d6", "d4", "cxd4", "Nxd4", "Nf6", "Nc3", "a6", "h4",
+        ];
+        let (opening, depth) = classify_depth(moves).unwrap();
+        assert!(opening.name.contains("Najdorf"));
+        assert_eq!(depth, 10);
+        assert!(classify_depth(["Nh3", "h5", "Ng1"]).is_none_or(|(_, depth)| depth < 3));
+    }
 
     #[test]
     fn runtime_table_validates_complete_data_and_rejects_bad_updates() {

@@ -14,7 +14,8 @@ use crate::{
 };
 
 const NUMBER_W: f32 = 42.;
-const MOVE_W: f32 = 114.;
+/// The narrowest a move cell gets; cells share the rest of the width.
+const MOVE_W: f32 = 100.;
 const ROW_H: f32 = 25.;
 
 pub type SelectHandler = Rc<dyn Fn(NodeId, &mut Window, &mut App)>;
@@ -30,6 +31,24 @@ pub struct ScoresheetProps {
     pub evals: Rc<HashMap<NodeId, SharedString>>,
     /// Where the current move was last drawn, so the sheet can be scrolled to keep it in view.
     pub current_bounds: Rc<Cell<Option<Bounds<Pixels>>>>,
+    /// How many main-line moves are known opening theory, and the opening they reach.
+    /// Those moves are muted, and a row after them marks where the game leaves theory.
+    pub book: Option<(usize, SharedString)>,
+    /// The game has no result yet, so the end of the main line says who is to play.
+    pub unfinished: bool,
+}
+
+/// The colour of a move's annotation symbol: good moves green, doubtful ones in
+/// rising shades toward a blunder, and position judgements `muted`.
+pub fn nag_color(nag: u8) -> u32 {
+    match nag {
+        1 | 5 => T.q_good,
+        3 => T.q_best,
+        6 => T.q_inaccuracy,
+        2 => T.q_mistake,
+        4 => T.q_blunder,
+        _ => T.muted,
+    }
 }
 
 /// An invisible layer over the current move that records where it is drawn.
@@ -56,15 +75,60 @@ fn nag_text(nags: &[u8]) -> Option<String> {
     (!out.is_empty()).then_some(out)
 }
 
+/// The main line's move symbols, each in its own colour.
+fn nag_glyphs(nags: &[u8]) -> Option<Div> {
+    let symbols: Vec<_> = nags
+        .iter()
+        .filter_map(|&nag| nag_symbol(nag).map(|symbol| (nag, symbol)))
+        .collect();
+    (!symbols.is_empty()).then(|| {
+        h_flex()
+            .flex_none()
+            .font_weight(FontWeight::SEMIBOLD)
+            .children(symbols.into_iter().map(|(nag, symbol)| {
+                div()
+                    .when(nag >= 10, |el| el.ml(px(4.)))
+                    .text_color(rgb(nag_color(nag)))
+                    .child(symbol)
+            }))
+    })
+}
+
+/// Whether a main-line move is part of the known opening theory.
+fn in_book(tree: &GameTree, id: NodeId, props: &ScoresheetProps) -> bool {
+    props
+        .book
+        .as_ref()
+        .is_some_and(|(plies, _)| (tree.node(id).ply as usize) <= *plies)
+}
+
+/// One main-line move in the table: the move, its symbols, and its evaluation (or
+/// "book" for theory) at the right edge of the cell.
 fn move_cell(tree: &GameTree, id: NodeId, props: &ScoresheetProps) -> impl IntoElement + use<> {
     let node = tree.node(id);
     let text = display_san(&node.san, node.mv.as_ref(), props.notation);
     let current = props.current == id;
+    let book = in_book(tree, id, props);
     let select = props.on_select.clone();
     let context = props.on_context.clone();
     let hover: Hsla = rgb(T.hover).into();
+    let eval = eval_text(id, props).or_else(|| {
+        book.then(|| {
+            div()
+                .flex_none()
+                .whitespace_nowrap()
+                .text_as(11., T.faint)
+                .font_family(SANS)
+                .child(crate::i18n::t("book"))
+                .into_any_element()
+        })
+    });
     h_flex()
         .id(("mv", id))
+        .flex_1()
+        .min_w_0()
+        .h(px(21.))
+        .mr(px(8.))
         .cursor_pointer()
         .on_click(move |_, window, cx| select(id, window, cx))
         .on_mouse_down(MouseButton::Right, move |event, window, cx| {
@@ -78,6 +142,7 @@ fn move_cell(tree: &GameTree, id: NodeId, props: &ScoresheetProps) -> impl IntoE
                 .items_center()
                 .rounded(px(4.))
                 .relative()
+                .when(book && !current, |pill| pill.text_color(rgb(T.muted)))
                 .when(current, |pill| {
                     pill.bg(rgb(T.accent))
                         .text_color(rgb(T.accent_fg))
@@ -86,17 +151,13 @@ fn move_cell(tree: &GameTree, id: NodeId, props: &ScoresheetProps) -> impl IntoE
                 .when(!current, |pill| pill.hover(move |style| style.bg(hover)))
                 .child(text),
         )
-        .children(nag_text(&node.nags).map(|nags| {
-            div()
-                .text_color(rgb(T.warn))
-                .font_weight(FontWeight::SEMIBOLD)
-                .child(nags)
-        }))
-        .children(eval_text(id, props))
+        .children(nag_glyphs(&node.nags))
+        .child(div().flex_1())
+        .children(eval)
 }
 
 /// The evaluation after a move, small and `muted` so the moves stay the thing to read.
-fn eval_text(id: NodeId, props: &ScoresheetProps) -> Option<impl IntoElement + use<>> {
+fn eval_text(id: NodeId, props: &ScoresheetProps) -> Option<gpui::AnyElement> {
     let text = props.evals.get(&id)?.clone();
     Some(
         div()
@@ -104,7 +165,8 @@ fn eval_text(id: NodeId, props: &ScoresheetProps) -> Option<impl IntoElement + u
             .flex_none()
             .whitespace_nowrap()
             .text_as(11., T.muted)
-            .child(text),
+            .child(text)
+            .into_any_element(),
     )
 }
 
@@ -193,18 +255,77 @@ fn variation_block(tree: &GameTree, start: NodeId, props: &ScoresheetProps, dept
         .children(nested)
 }
 
+/// A comment under its move, as a softly filled block of prose.
 fn comment(text: &str) -> Div {
     // Clock and eval commands are data for the graphs, not prose.
     let text = chess_core::strip_commands(text);
     div()
-        .ml(px(47.))
+        .ml(px(48.))
         .mr(px(14.))
         .my(px(4.))
+        .px(px(10.))
+        .py(px(5.))
+        .rounded(px(4.))
+        .bg(rgb(T.surface_2))
         .font_family(SANS)
-        .italic()
         .text_as(13., T.fg_2)
         .line_height(px(20.))
         .child(SharedString::from(text.to_owned()))
+}
+
+/// The row after the last book move: the game leaves known theory here.
+fn left_theory(opening: &SharedString) -> Div {
+    h_flex()
+        .w_full()
+        .h(px(ROW_H + 2.))
+        .pl(px(18.))
+        .pr(px(14.))
+        .gap(px(8.))
+        .border_b_as(T.divider)
+        .bg(rgb(T.surface_2))
+        .font_family(SANS)
+        .text_as(12., T.muted)
+        .child(crate::widgets::icon(
+            "icons/book-open.svg",
+            px(14.),
+            T.muted,
+        ))
+        .child(
+            div()
+                .min_w_0()
+                .truncate()
+                .child(format!("{} — {opening}", crate::i18n::t("Left theory"))),
+        )
+}
+
+/// The end of an unfinished game: a dashed note saying who plays after which move.
+fn unfinished_hint(tree: &GameTree, end: NodeId, props: &ScoresheetProps) -> Div {
+    let node = tree.node(end);
+    let side = if node.ply.is_multiple_of(2) {
+        crate::i18n::t("White")
+    } else {
+        crate::i18n::t("Black")
+    };
+    let text = if end == GameTree::ROOT {
+        crate::i18n::t("Game unfinished, {} to play").replace("{}", side)
+    } else {
+        let san = display_san(&node.san, node.mv.as_ref(), props.notation);
+        crate::i18n::t("Game unfinished, {} to play after {}")
+            .replacen("{}", side, 1)
+            .replacen("{}", &chess_core::notation::numbered(node.ply, &san), 1)
+    };
+    div()
+        .mx(px(16.))
+        .my(px(10.))
+        .px(px(10.))
+        .py(px(6.))
+        .rounded(px(4.))
+        .border_1()
+        .border_dashed()
+        .border_color(rgb(T.border_strong))
+        .font_family(SANS)
+        .text_as(12., T.muted)
+        .child(text)
 }
 
 /// Builds the scoresheet body: one row per full move, with comments and variations
@@ -220,12 +341,16 @@ pub fn scoresheet_body(tree: &GameTree, props: &ScoresheetProps) -> impl IntoEle
             .h(px(ROW_H))
             .flex_none()
             .pl(px(18.))
+            .pr(px(6.))
             .border_b_as(T.divider)
             .child(
                 div()
                     .col_w(NUMBER_W - 4.)
+                    .pr(px(10.))
+                    .flex()
+                    .justify_end()
                     .text_color(rgb(T.faint))
-                    .child(format!("{number}.")),
+                    .child(format!("{number}")),
             )
     };
 
@@ -247,15 +372,11 @@ pub fn scoresheet_body(tree: &GameTree, props: &ScoresheetProps) -> impl IntoEle
             Some(id)
         };
         cells = match white_id {
-            Some(white) => cells.child(
-                div()
-                    .col_w(MOVE_W)
-                    .overflow_hidden()
-                    .child(move_cell(tree, white, props)),
-            ),
+            Some(white) => cells.child(move_cell(tree, white, props)),
             None => cells.child(
                 div()
-                    .col_w(MOVE_W)
+                    .flex_1()
+                    .min_w(px(MOVE_W))
                     .pl(px(6.))
                     .text_color(rgb(T.faint))
                     .child("…"),
@@ -263,9 +384,8 @@ pub fn scoresheet_body(tree: &GameTree, props: &ScoresheetProps) -> impl IntoEle
         };
         if let Some(black) = black_id {
             cells = cells.child(move_cell(tree, black, props));
-        } else if !node.pos.is_game_over_like() {
-            // Black to reply: the prompt shares White's row.
-            cells = cells.child(div().pl(px(6.)).text_color(rgb(T.faint)).child("?"));
+        } else {
+            cells = cells.child(div().flex_1());
         }
         body = body.child(cells);
         index += 1;
@@ -273,8 +393,15 @@ pub fn scoresheet_body(tree: &GameTree, props: &ScoresheetProps) -> impl IntoEle
             index += 1;
         }
 
-        // Annotations of the moves just shown, white's first.
         let shown: Vec<NodeId> = white_id.into_iter().chain(black_id).collect();
+        // Theory ends within this row: say so under it, before its comments.
+        if let Some((plies, opening)) = &props.book
+            && *plies < main.len()
+            && shown.iter().any(|&id| tree.node(id).ply as usize == *plies)
+        {
+            body = body.child(left_theory(opening));
+        }
+        // Annotations of the moves just shown, white's first.
         for &move_id in &shown {
             let move_node = tree.node(move_id);
             if has_text(&move_node.comment) {
@@ -292,23 +419,10 @@ pub fn scoresheet_body(tree: &GameTree, props: &ScoresheetProps) -> impl IntoEle
         }
     }
 
-    // White to move next gets a fresh row with the prompt. After a Black start position
-    // with no moves yet, the prompt follows an ellipsis instead.
+    // An unfinished game says who is to play at the end of its main line.
     let end = main.last().copied().unwrap_or(GameTree::ROOT);
-    let end_node = tree.node(end);
-    let next_ply = end_node.ply + 1;
-    if !end_node.pos.is_game_over_like() && (next_ply % 2 == 1 || main.is_empty()) {
-        let mut cells = row(next_ply.div_ceil(2)).border_b_0();
-        if next_ply.is_multiple_of(2) {
-            cells = cells.child(
-                div()
-                    .col_w(MOVE_W)
-                    .pl(px(6.))
-                    .text_color(rgb(T.faint))
-                    .child("…"),
-            );
-        }
-        body = body.child(cells.child(div().pl(px(6.)).text_color(rgb(T.faint)).child("?")));
+    if props.unfinished && !tree.node(end).pos.is_game_over_like() {
+        body = body.child(unfinished_hint(tree, end, props));
     }
     body
 }

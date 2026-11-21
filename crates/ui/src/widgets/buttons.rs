@@ -35,6 +35,7 @@ pub struct Btn {
     dot: Option<u32>,
     left: bool,
     trailing: Option<&'static str>,
+    color: Option<u32>,
 }
 
 pub fn btn(id: impl Into<ElementId>, label: impl Into<SharedString>) -> Btn {
@@ -57,6 +58,7 @@ pub fn btn(id: impl Into<ElementId>, label: impl Into<SharedString>) -> Btn {
         dot: None,
         left: false,
         trailing: None,
+        color: None,
     }
 }
 
@@ -160,6 +162,12 @@ impl Btn {
         self
     }
 
+    /// Draws the label in its own colour, such as a move symbol in its quality colour.
+    pub fn color(mut self, color: u32) -> Self {
+        self.color = Some(color);
+        self
+    }
+
     /// Shows an icon after the label, such as the chevron of a button that opens a menu.
     pub fn trailing_icon(mut self, path: &'static str) -> Self {
         self.trailing = Some(path);
@@ -200,7 +208,11 @@ impl RenderOnce for Btn {
             BtnKind::Active => (Some(T.accent), T.accent, T.accent_fg, None),
             BtnKind::Ghost => (None, T.hover, T.fg_2, None),
         };
-        let fg = if self.disabled { T.faint } else { fg };
+        let fg = if self.disabled {
+            T.faint
+        } else {
+            self.color.unwrap_or(fg)
+        };
         let hover_color: Hsla = rgb(hover).into();
         let on_click = self.on_click.clone();
         let on_key = self.on_click.clone();

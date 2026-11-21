@@ -15,6 +15,17 @@ pub(super) fn eval_label(cp: i32, mate: Option<i32>) -> String {
 }
 
 impl AnalyseScreen {
+    /// How many main-line moves are opening theory, and the opening's name, for a game
+    /// from the standard starting position.
+    fn book_line(&self) -> Option<(usize, SharedString)> {
+        if self.tree.variant != chess_core::Variant::Standard || self.tree.header("FEN").is_some() {
+            return None;
+        }
+        let main = self.tree.mainline();
+        chess_core::classify_depth(main.iter().map(|&id| self.tree.node(id).san.as_str()))
+            .map(|(opening, plies)| (plies, opening.name.into()))
+    }
+
     pub(super) fn timeline_ids(&self) -> Vec<NodeId> {
         self.tree.line_through(self.current)
     }
@@ -182,39 +193,19 @@ impl AnalyseScreen {
                     cx.notify();
                 });
             }),
+            book: self.book_line(),
+            unfinished: game_card::result_label(self.tree.header("Result")) == "Unfinished",
         };
         let style = self.model.read(cx).config.view.scoresheet;
-        let sheet = match (self.render_header_form(cx), style) {
-            (Some(form), _) => form,
-            (None, ScoresheetStyle::Table) => {
-                scoresheet_body(&self.tree, &props).into_any_element()
-            }
-            (None, ScoresheetStyle::Inline) => {
-                scoresheet_inline(&self.tree, &props).into_any_element()
-            }
-        };
-        let style_toggle = {
-            let (label, tip) = match style {
-                ScoresheetStyle::Table => (
-                    ui::i18n::t("Table"),
-                    "Lichess style. Click for running text.",
-                ),
-                ScoresheetStyle::Inline => (
-                    ui::i18n::t("Inline"),
-                    "Nibbler style. Click for the move table.",
-                ),
-            };
-            btn("sheet-style", label)
-                .mini()
-                .tooltip(tip)
-                .on_click(this.listen(move |screen, _, cx| {
-                    screen.set_view(cx, |view| {
-                        view.scoresheet = match view.scoresheet {
-                            ScoresheetStyle::Table => ScoresheetStyle::Inline,
-                            ScoresheetStyle::Inline => ScoresheetStyle::Table,
-                        };
-                    });
-                }))
+        let sheet = match self.sheet_tab {
+            SheetTab::Headers => self
+                .render_header_form(cx)
+                .unwrap_or_else(|| div().into_any_element()),
+            SheetTab::Notes => self.render_notes_list(cx),
+            SheetTab::Moves => match style {
+                ScoresheetStyle::Table => scoresheet_body(&self.tree, &props).into_any_element(),
+                ScoresheetStyle::Inline => scoresheet_inline(&self.tree, &props).into_any_element(),
+            },
         };
         v_flex()
             .w_full()
@@ -222,22 +213,23 @@ impl AnalyseScreen {
             .flex_none()
             .bg(rgb(T.surface))
             .border_r_as(T.border)
-            .child(self.render_game_card(
-                h_flex().gap(px(4.)).child(style_toggle).child({
-                    icon_btn("sheet-collapse", "icons/chevron-left.svg")
-                        .mini()
-                        .w(24.)
-                        .pad(0.)
-                        .tooltip(ui::i18n::t("Hide the scoresheet"))
-                        .on_click(
-                            this.listen(move |screen, _, cx| {
+            .child(
+                self.render_game_card(
+                    h_flex().child(
+                        icon_btn("sheet-collapse", "icons/chevron-left.svg")
+                            .mini()
+                            .w(24.)
+                            .pad(0.)
+                            .tooltip(ui::i18n::t("Hide the scoresheet"))
+                            .on_click(this.listen(move |screen, _, cx| {
                                 screen.set_scoresheet_collapsed(true, cx)
-                            }),
-                        )
-                }),
-                cx,
-            ))
+                            })),
+                    ),
+                    cx,
+                ),
+            )
             .children(self.render_db_game_strip(cx))
+            .child(self.render_sheet_tabs(cx))
             .child(
                 div()
                     .relative()
@@ -284,60 +276,6 @@ impl AnalyseScreen {
                 )
             })
             .child(self.render_annotation_bar(cx))
-    }
-
-    /// The annotation buttons under the scoresheet: move symbols, Comment and Promote.
-    fn render_annotation_bar(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let this = cx.entity();
-        let nag_button = |id: &'static str, label: &'static str, nag: u8| {
-            btn(id, label)
-                .w(36.)
-                .h(30.)
-                .pad(0.)
-                .on_click(this.listen(move |screen, _, cx| screen.annotate(nag, cx)))
-        };
-        div()
-            .flex()
-            .flex_row()
-            .flex_wrap()
-            .flex_none()
-            .gap(px(6.))
-            .px(px(18.))
-            .py(px(12.))
-            .border_t_as(T.border)
-            .child(nag_button("nag-good", "!", 1))
-            .child(nag_button("nag-bad", "?", 2))
-            .child(nag_button("nag-brilliant", "!!", 3))
-            .child(nag_button("nag-blunder", "??", 4))
-            .child(nag_button("nag-inaccuracy", "?!", 6))
-            .child(nag_button("nag-interesting", "!?", 5))
-            .child(
-                btn("comment", ui::i18n::t("Comment"))
-                    .h(30.)
-                    .pad(13.)
-                    .on_click(this.listen(move |screen, window, cx| {
-                        screen.editing_comment = if screen.editing_comment.is_some() {
-                            None
-                        } else {
-                            Some(screen.current)
-                        };
-                        let text =
-                            chess_core::strip_commands(&screen.tree.node(screen.current).comment);
-                        screen.comment.update(cx, |state, cx| {
-                            state.set_value(text, window, cx);
-                        });
-                        cx.notify();
-                    })),
-            )
-            .child(
-                btn("promote", "Promote")
-                    .h(30.)
-                    .pad(13.)
-                    .on_click(this.listen(move |screen, _, cx| {
-                        let current = screen.current;
-                        screen.promote(current, cx);
-                    })),
-            )
     }
 
     /// After the scoresheet is laid out, scrolls just far enough to show the current move

@@ -1006,6 +1006,26 @@ pub fn translate(language: Language, text: &str) -> &str {
                 "Suche pausieren und aktuelle Varianten behalten (P)"
             }
             "Start analysis" => "Analyse starten",
+            "book" => "Theorie",
+            "Left theory" => "Theorie verlassen",
+            "Game unfinished, {} to play" => "Partie nicht beendet, {} am Zug",
+            "Game unfinished, {} to play after {}" => "Partie nicht beendet, {} am Zug nach {}",
+            "Headers" => "Kopfzeilen",
+            "Text" => "Text",
+            "One row per move, as on a scoresheet" => {
+                "Eine Zeile pro Zug, wie auf einem Partieformular"
+            }
+            "Running text with variations in brackets" => "Fließtext mit Varianten in Klammern",
+            "No comments yet. Select a move and press Comment." => {
+                "Noch keine Kommentare. Zug wählen und Kommentar drücken."
+            }
+            "Good move" => "Guter Zug",
+            "Brilliant move" => "Brillanter Zug",
+            "Interesting move" => "Interessanter Zug",
+            "Dubious move" => "Zweifelhafter Zug",
+            "Mistake" => "Fehler",
+            "Blunder" => "Grober Fehler",
+            "Comment on this move" => "Diesen Zug kommentieren",
             "Name not set" => "Name nicht gesetzt",
             "Edit players, event and other headers" => {
                 "Spieler, Turnier und weitere Kopfzeilen bearbeiten"

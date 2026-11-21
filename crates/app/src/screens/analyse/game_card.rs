@@ -206,10 +206,15 @@ impl AnalyseScreen {
                             .mini()
                             .w(24.)
                             .pad(0.)
-                            .selected(self.header_form.is_some())
+                            .selected(self.sheet_tab == SheetTab::Headers)
                             .tooltip(ui::i18n::t("Edit players, event and other headers"))
                             .on_click(this.listen(move |screen, window, cx| {
-                                screen.toggle_header_form(window, cx)
+                                let tab = if screen.sheet_tab == SheetTab::Headers {
+                                    SheetTab::Moves
+                                } else {
+                                    SheetTab::Headers
+                                };
+                                screen.set_sheet_tab(tab, window, cx)
                             })),
                     )
                     .child(actions),
@@ -259,7 +264,7 @@ impl AnalyseScreen {
             )
     }
 
-    /// The header form, shown in place of the moves while the card's edit button is on.
+    /// The header form, shown on the Headers tab.
     pub(super) fn render_header_form(&self, cx: &mut Context<Self>) -> Option<gpui::AnyElement> {
         let form = self.header_form.as_ref()?;
         let this = cx.entity();
@@ -287,11 +292,9 @@ impl AnalyseScreen {
             v_flex()
                 .child(list)
                 .child(h_flex().px(px(16.)).pb(px(12.)).justify_end().child(
-                    btn("headers-done", "Done").compact().on_click(
-                        this.listen(move |screen, window, cx| {
-                            screen.toggle_header_form(window, cx)
-                        }),
-                    ),
+                    btn("headers-done", "Done").compact().on_click(this.listen(
+                        move |screen, window, cx| screen.set_sheet_tab(SheetTab::Moves, window, cx),
+                    )),
                 ))
                 .into_any_element(),
         )

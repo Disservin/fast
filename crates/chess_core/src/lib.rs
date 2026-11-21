@@ -18,7 +18,7 @@ pub use annotation::{
     strip_commands, with_comment_text, with_eval_command,
 };
 pub use chess960::{Variant, back_rank, chess960_number, chess960_position, fen_variant};
-pub use eco::{Opening, classify};
+pub use eco::{Opening, classify, classify_depth};
 pub use epd::{EpdLine, EpdPosition, parse_epd};
 pub use material::{MaterialBalance, material_balance};
 pub use notation::{Notation, display_san, format_pv, nag_symbol, pv_to_san};

@@ -4,6 +4,8 @@ Settings › Changelog shows this file. Describe the finished changes since each
 
 ## 0.1.4
 
+- Analyse: the moves have Moves, Notes and Headers tabs, coloured move symbols, muted book moves with a row where the game leaves theory, and a note saying who plays next in an unfinished game.
+- Analyse: the annotation toolbar adds Delete from here and shows which symbols the current move has.
 - Analyse: a game card above the moves shows both players, ratings, event, date, time control, result and opening, with a form to edit the headers.
 - Top bar: the engine button says how many engines are running and opens a menu to pick engines, pause them or open their settings.
 - Analyse: group candidates by engine with compact inline PVs, hover previews and a chevron to expand each line.
