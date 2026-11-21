@@ -157,12 +157,6 @@ impl AnalyseScreen {
 
     pub(super) fn render_scoresheet(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let this = cx.entity();
-        let opening = self
-            .tree
-            .header("Opening")
-            .map(str::to_owned)
-            .or_else(|| self.opening().map(|o| format!("{} {}", o.eco, o.name)))
-            .unwrap_or_else(|| ui::i18n::t("Starting position").to_owned());
         let notation = self.model.read(cx).config.board.notation;
         let context_this = this.clone();
         // Only a move drawn in this frame counts; the start position has none.
@@ -190,9 +184,14 @@ impl AnalyseScreen {
             }),
         };
         let style = self.model.read(cx).config.view.scoresheet;
-        let sheet = match style {
-            ScoresheetStyle::Table => scoresheet_body(&self.tree, &props).into_any_element(),
-            ScoresheetStyle::Inline => scoresheet_inline(&self.tree, &props).into_any_element(),
+        let sheet = match (self.render_header_form(cx), style) {
+            (Some(form), _) => form,
+            (None, ScoresheetStyle::Table) => {
+                scoresheet_body(&self.tree, &props).into_any_element()
+            }
+            (None, ScoresheetStyle::Inline) => {
+                scoresheet_inline(&self.tree, &props).into_any_element()
+            }
         };
         let style_toggle = {
             let (label, tip) = match style {
@@ -223,33 +222,21 @@ impl AnalyseScreen {
             .flex_none()
             .bg(rgb(T.surface))
             .border_r_as(T.border)
-            .child(
-                v_flex()
-                    .flex_none()
-                    .px(px(18.))
-                    .pt(px(16.))
-                    .pb(px(10.))
-                    .gap(px(1.))
-                    .border_b_as(T.border)
-                    .child(
-                        h_flex()
-                            .justify_between()
-                            .mb(px(9.))
-                            .child(section_label("Scoresheet"))
-                            .when(self.tree.variant == chess_core::Variant::Chess960, |row| {
-                                row.child(ui::widgets::badge("Chess960"))
-                            })
-                            .child(h_flex().gap(px(4.)).child(style_toggle).child({
-                                icon_btn("sheet-collapse", "icons/chevron-left.svg")
-                                    .mini()
-                                    .tooltip(ui::i18n::t("Hide the scoresheet"))
-                                    .on_click(this.listen(move |screen, _, cx| {
-                                        screen.set_scoresheet_collapsed(true, cx)
-                                    }))
-                            })),
-                    )
-                    .child(div().text_as(13., T.muted).child(opening)),
-            )
+            .child(self.render_game_card(
+                h_flex().gap(px(4.)).child(style_toggle).child({
+                    icon_btn("sheet-collapse", "icons/chevron-left.svg")
+                        .mini()
+                        .w(24.)
+                        .pad(0.)
+                        .tooltip(ui::i18n::t("Hide the scoresheet"))
+                        .on_click(
+                            this.listen(move |screen, _, cx| {
+                                screen.set_scoresheet_collapsed(true, cx)
+                            }),
+                        )
+                }),
+                cx,
+            ))
             .children(self.render_db_game_strip(cx))
             .child(
                 div()

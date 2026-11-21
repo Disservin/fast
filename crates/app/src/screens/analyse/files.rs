@@ -28,6 +28,7 @@ pub(super) fn read_game_files(paths: &[std::path::PathBuf]) -> (Vec<GameTree>, V
 impl AnalyseScreen {
     pub fn load_tree(&mut self, tree: GameTree, window: &mut Window, cx: &mut Context<Self>) {
         self.tree = tree;
+        self.header_form = None;
         self.db_game = None;
         self.db_findings.clear();
         // A different game: engines hear `ucinewgame` before its first search.

@@ -80,6 +80,7 @@ mod board_column;
 mod database_explorer;
 mod editor;
 mod files;
+mod game_card;
 mod line_preview;
 mod moves_table;
 mod online;
@@ -149,6 +150,8 @@ pub struct AnalyseScreen {
     note_hash: u64,
     comment: Entity<TextareaState>,
     editing_comment: Option<NodeId>,
+    /// The game card's header form, while it is open.
+    header_form: Option<game_card::HeaderForm>,
     fen_input: Entity<InputState>,
     /// The search type and editable value shared with the Infinite toggle.
     limit_controls: Entity<panels::limit::SearchLimitControls>,
@@ -359,6 +362,7 @@ impl AnalyseScreen {
             note_hash: 0,
             comment,
             editing_comment: None,
+            header_form: None,
             fen_input,
             limit_controls,
             editor: None,

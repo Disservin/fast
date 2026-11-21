@@ -1006,6 +1006,13 @@ pub fn translate(language: Language, text: &str) -> &str {
                 "Suche pausieren und aktuelle Varianten behalten (P)"
             }
             "Start analysis" => "Analyse starten",
+            "Name not set" => "Name nicht gesetzt",
+            "Edit players, event and other headers" => {
+                "Spieler, Turnier und weitere Kopfzeilen bearbeiten"
+            }
+            "Unfinished" => "Nicht beendet",
+            "White Elo" => "Elo Weiß",
+            "Black Elo" => "Elo Schwarz",
             "Pause analysis" => "Analyse anhalten",
             "Resume analysis" => "Analyse fortsetzen",
             "Analysis engines" => "Analyse-Engines",
