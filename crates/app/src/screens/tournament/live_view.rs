@@ -235,6 +235,9 @@ pub(crate) fn eval_graph(game: &LiveGame, names: &[String], height: f32) -> Div 
         height: Some(height),
         on_scrub: std::rc::Rc::new(|_, _, _| {}),
         empty: "No evaluations yet. Each engine's score appears after its move.",
+        sides: None,
+        marks: Vec::new(),
+        x_ticks: Vec::new(),
     });
     v_flex()
         .gap(px(6.))

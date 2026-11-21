@@ -287,6 +287,9 @@ impl PlayScreen {
                 empty: ui::i18n::t(
                     "No search data yet. Scores and search effort appear after each move.",
                 ),
+                sides: None,
+                marks: Vec::new(),
+                x_ticks: Vec::new(),
             }))
     }
 

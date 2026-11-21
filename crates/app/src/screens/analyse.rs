@@ -87,6 +87,7 @@ mod moves_table;
 mod nav_bar;
 mod online;
 mod panels;
+mod review_card;
 mod rows;
 mod scoresheet;
 mod sheet_tabs;

@@ -71,6 +71,35 @@ pub struct GraphProps {
     pub on_scrub: ScrubHandler,
     /// Shown when no series has a value yet.
     pub empty: &'static str,
+    /// Colours for White's and Black's share of the first series: the area below its
+    /// line is White's and the area above is Black's, with a dashed line at zero.
+    pub sides: Option<(u32, u32)>,
+    /// Dots on the first series' line, such as move-quality marks: index and colour.
+    pub marks: Vec<(usize, u32)>,
+    /// Labels along the bottom edge, such as move numbers: index and text.
+    pub x_ticks: Vec<(usize, String)>,
+}
+
+/// Move-number labels for a line of `count` plies starting after `first_ply`, about
+/// `max` of them at round intervals.
+pub fn move_ticks(count: usize, first_ply: u32, max: usize) -> Vec<(usize, String)> {
+    if count < 2 || max == 0 {
+        return Vec::new();
+    }
+    let moves = (count as u32 + first_ply).div_ceil(2);
+    let step = [1, 2, 5, 10, 20, 25, 50, 100]
+        .into_iter()
+        .find(|step| moves / step < max as u32)
+        .unwrap_or(100);
+    (1..)
+        .map(|n| n * step)
+        .take_while(|number| *number <= moves)
+        .filter_map(|number| {
+            // White's move `number` is ply 2n-1; index 0 is ply `first_ply + 1`.
+            let index = (2 * number - 1).checked_sub(first_ply + 1)? as usize;
+            (index < count).then(|| (index, number.to_string()))
+        })
+        .collect()
 }
 
 /// Eval ticks for the symmetric log scale, in pawns.
@@ -223,6 +252,86 @@ fn paint_series(
     }
 }
 
+/// White's share below the line and Black's above it, over each run of known values.
+fn paint_sides(
+    window: &mut gpui::Window,
+    series: &Series,
+    count: usize,
+    bounds: Bounds<Pixels>,
+    y_of: &dyn Fn(f32) -> f32,
+    (white, black): (u32, u32),
+) {
+    let top = f32::from(bounds.origin.y);
+    let bottom = top + f32::from(bounds.size.height);
+    let mut runs: Vec<Vec<(f32, f32)>> = vec![Vec::new()];
+    for (index, value) in series.values.iter().enumerate() {
+        match value {
+            Some(value) => runs
+                .last_mut()
+                .expect("non-empty")
+                .push((x_of(index, count, bounds), y_of(*value))),
+            None => runs.push(Vec::new()),
+        }
+    }
+    for run in runs.iter().filter(|run| run.len() > 1) {
+        for (edge, colour) in [(bottom, white), (top, black)] {
+            let mut area = vec![point(px(run[0].0), px(edge))];
+            area.extend(run.iter().map(|(x, y)| point(px(*x), px(*y))));
+            area.push(point(px(run[run.len() - 1].0), px(edge)));
+            let mut builder = PathBuilder::fill();
+            builder.add_polygon(&area, true);
+            if let Ok(path) = builder.build() {
+                let mut colour: gpui::Hsla = rgb(colour).into();
+                colour.a = 0.85;
+                window.paint_path(path, colour);
+            }
+        }
+    }
+}
+
+/// A horizontal dashed line across the graph, for the zero line.
+fn paint_dashed(window: &mut gpui::Window, bounds: Bounds<Pixels>, y: f32, color: u32) {
+    let left = f32::from(bounds.origin.x);
+    let right = left + f32::from(bounds.size.width);
+    let mut x = left;
+    while x < right {
+        window.paint_quad(quad(
+            Bounds::new(point(px(x), px(y)), size(px(4.0f32.min(right - x)), px(1.))),
+            px(0.),
+            rgb(color),
+            px(0.),
+            gpui::transparent_black(),
+            Default::default(),
+        ));
+        x += 8.;
+    }
+}
+
+/// Coloured dots on the line at the marked indices.
+fn paint_marks(
+    window: &mut gpui::Window,
+    series: &Series,
+    marks: &[(usize, u32)],
+    count: usize,
+    bounds: Bounds<Pixels>,
+    y_of: &dyn Fn(f32) -> f32,
+) {
+    for (index, colour) in marks {
+        let Some(Some(value)) = series.values.get(*index) else {
+            continue;
+        };
+        let (x, y) = (x_of(*index, count, bounds), y_of(*value));
+        window.paint_quad(quad(
+            Bounds::new(point(px(x - 3.5), px(y - 3.5)), size(px(7.), px(7.))),
+            px(3.5),
+            rgb(*colour),
+            px(1.),
+            rgb(T.surface),
+            Default::default(),
+        ));
+    }
+}
+
 /// The current move: a vertical accent line with a ringed dot on every series.
 fn paint_current(
     window: &mut gpui::Window,
@@ -311,7 +420,11 @@ pub fn graph(props: GraphProps) -> impl IntoElement {
         height,
         on_scrub,
         empty,
+        sides,
+        marks,
+        x_ticks,
     } = props;
+    let bottom_gap = if x_ticks.is_empty() { 6. } else { 20. };
     let has_data = series
         .iter()
         .any(|series| series.values.iter().any(Option::is_some));
@@ -368,16 +481,26 @@ pub fn graph(props: GraphProps) -> impl IntoElement {
                             Default::default(),
                         ));
                     };
+                    let zero_y = top + h * (1.0 - scale.zero());
+                    if let (Some(colours), Some(first)) = (sides, series.first()) {
+                        paint_sides(window, first, count, bounds, &y_of, colours);
+                    }
                     for (value, _) in &ticks {
                         line(window, y_of(*value), T.border_strong, 0.6);
                     }
-                    let zero_y = top + h * (1.0 - scale.zero());
-                    line(window, zero_y, T.bar, 0.9);
+                    if sides.is_some() {
+                        paint_dashed(window, bounds, zero_y, T.accent);
+                    } else {
+                        line(window, zero_y, T.bar, 0.9);
+                    }
                     if count == 0 {
                         return;
                     }
                     for series in &series {
                         paint_series(window, series, count, bounds, &y_of, zero_y);
+                    }
+                    if let Some(first) = series.first() {
+                        paint_marks(window, first, &marks, count, bounds, &y_of);
                     }
                     if let Some(index) = current.filter(|index| *index < count) {
                         paint_current(window, &series, index, count, bounds, &y_of);
@@ -387,7 +510,7 @@ pub fn graph(props: GraphProps) -> impl IntoElement {
             )
             .absolute()
             .top(px(6.))
-            .bottom(px(6.))
+            .bottom(px(bottom_gap))
             .left(px(gutter))
             .right(px(8.)),
         )
@@ -395,10 +518,33 @@ pub fn graph(props: GraphProps) -> impl IntoElement {
             div()
                 .absolute()
                 .top(px(6.))
-                .bottom(px(6.))
+                .bottom(px(bottom_gap))
                 .left_0()
                 .when(has_data, |el| el.children(labels)),
         )
+        .when(has_data && !x_ticks.is_empty(), |el| {
+            let last = count.saturating_sub(1).max(1) as f32;
+            el.child(
+                div()
+                    .absolute()
+                    .bottom(px(3.))
+                    .h(px(14.))
+                    .left(px(gutter))
+                    .right(px(8.))
+                    .children(x_ticks.into_iter().map(|(index, label)| {
+                        div()
+                            .absolute()
+                            .left(relative(index as f32 / last))
+                            .ml(px(-10.))
+                            .w(px(20.))
+                            .text_center()
+                            .line_height(px(14.))
+                            .font_family(MONO)
+                            .text_as(10., T.muted)
+                            .child(label)
+                    })),
+            )
+        })
         .when(!has_data, |el| {
             el.child(
                 div()
@@ -481,6 +627,15 @@ mod tests {
         let (_, ticks) = nodes_axis(10_000_000.0);
         assert_eq!(label_gutter(&ticks), 60.0);
         assert_eq!(label_gutter(&eval_ticks()), 30.0);
+    }
+
+    #[test]
+    fn move_ticks_label_whole_moves() {
+        // Forty plies from the start: moves 1 to 20, labelled every five.
+        let ticks = move_ticks(40, 0, 8);
+        assert_eq!(ticks[0], (8, "5".to_owned()));
+        assert_eq!(ticks.last(), Some(&(38, "20".to_owned())));
+        assert!(move_ticks(1, 0, 8).is_empty());
     }
 
     #[test]

@@ -1006,6 +1006,20 @@ pub fn translate(language: Language, text: &str) -> &str {
                 "Suche pausieren und aktuelle Varianten behalten (P)"
             }
             "Start analysis" => "Analyse starten",
+            "depth {} per move" => "Tiefe {} pro Zug",
+            "Accuracy" => "Genauigkeit",
+            "Re-analyse game" => "Partie neu analysieren",
+            "Analyse game" => "Partie analysieren",
+            "Game review" => "Partieanalyse",
+            "Click the graph to go to a move" => "Auf die Grafik klicken, um zu einem Zug zu gehen",
+            "Inaccuracy" => "Ungenauigkeit",
+            "Current move" => "Aktueller Zug",
+            "Search every position from the last move to the first, nodes per position:" => {
+                "Jede Stellung vom letzten bis zum ersten Zug durchsuchen, Knoten pro Stellung:"
+            }
+            "No evaluations yet. Analyse the game to see each side's accuracy and mistakes." => {
+                "Noch keine Bewertungen. Partie analysieren, um Genauigkeit und Fehler beider Seiten zu sehen."
+            }
             "Stop playing through the moves" => "Abspielen der Züge anhalten",
             "Play through the moves" => "Züge abspielen",
             "Position in the line" => "Stellung in der Variante",
