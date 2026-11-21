@@ -66,23 +66,36 @@ impl RenderOnce for EvalBar {
         if animating {
             window.on_next_frame(move |_, cx| state.update(cx, |_, cx| cx.notify()));
         }
+        let width = px(8.);
+        let radius = width / 2.;
         div()
             .relative()
-            .w(px(8.))
+            .w(width)
             .h(self.edge)
             .flex_none()
-            .rounded(px(4.))
-            .overflow_hidden()
+            .rounded(radius)
             .bg(rgb(T.tour_tile_border))
             .child(
+                // Clip a full rounded fill so only the moving boundary stays flat.
                 div()
                     .absolute()
                     .left(px(0.))
                     .w_full()
                     .h(self.edge * share)
+                    .overflow_hidden()
                     .when(self.flipped, |el| el.top(px(0.)))
                     .when(!self.flipped, |el| el.bottom(px(0.)))
-                    .bg(rgb(T.fg)),
+                    .child(
+                        div()
+                            .absolute()
+                            .left(px(0.))
+                            .w_full()
+                            .h(self.edge)
+                            .when(self.flipped, |el| el.top(px(0.)))
+                            .when(!self.flipped, |el| el.bottom(px(0.)))
+                            .rounded(radius)
+                            .bg(rgb(T.fg)),
+                    ),
             )
     }
 }
