@@ -502,6 +502,9 @@ pub struct Config {
     /// Nodes each engine searches per position when a game is analysed backwards,
     /// whatever the search limit for ordinary analysis.
     pub backward_nodes: u64,
+    /// The engine that analyses a game backwards for the game review, when several
+    /// analyse; `None` takes the first analysis engine.
+    pub backward_engine: Option<engine::EngineId>,
     pub view: AnalysisView,
     /// A fastchess executable to use instead of the pinned download.
     pub fastchess_path: Option<PathBuf>,
@@ -659,6 +662,7 @@ impl Default for Config {
             analysis_limit: AnalysisLimit::default(),
             finite_limit: AnalysisLimit::default(),
             backward_nodes: DEFAULT_BACKWARD_NODES,
+            backward_engine: None,
             view: AnalysisView::default(),
             fastchess_path: None,
             window: None,

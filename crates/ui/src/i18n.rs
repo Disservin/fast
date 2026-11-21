@@ -1006,6 +1006,16 @@ pub fn translate(language: Language, text: &str) -> &str {
                 "Suche pausieren und aktuelle Varianten behalten (P)"
             }
             "Start analysis" => "Analyse starten",
+            "Review engine" => "Analyse-Engine",
+            "The engine that analyses the game for the game review. Only engines turned on in Analyse can review." => {
+                "Die Engine, die die Partie für die Partieanalyse untersucht. Nur in Analyse eingeschaltete Engines können analysieren."
+            }
+            "The review engine searches this many nodes in every position, from the last move back to the first. A fixed node count gives every position the same effort on any machine." => {
+                "Die Analyse-Engine durchsucht so viele Knoten in jeder Stellung, vom letzten bis zum ersten Zug. Eine feste Knotenzahl gibt jeder Stellung auf jedem Rechner den gleichen Aufwand."
+            }
+            "The review engine is not analysing, so {} reviews the game." => {
+                "Die Analyse-Engine läuft nicht, daher analysiert {} die Partie."
+            }
             "Evaluation bar" => "Bewertungsbalken",
             "Evaluation bar, no evaluation yet" => "Bewertungsbalken, noch keine Bewertung",
             "{}, {} moves, at move {}" => "{}, {} Züge, bei Zug {}",

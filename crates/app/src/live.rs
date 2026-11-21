@@ -130,6 +130,9 @@ pub struct LiveAnalysis {
     /// Replaces the configured search limit, e.g. a fixed node count per position
     /// while a game is analysed backwards.
     pub limit_override: Option<AnalysisLimit>,
+    /// Only this engine searches, such as the review engine while a game is analysed
+    /// backwards; the others stop and wait.
+    pub only_engine: Option<EngineId>,
     /// Bumped when Analyse loads a different game, so engines get `ucinewgame`.
     pub game: u64,
     fen: String,
@@ -162,6 +165,7 @@ impl LiveAnalysis {
             end: None,
             cache: LineCache::default(),
             limit_override: None,
+            only_engine: None,
             game: 0,
             fen: String::new(),
             moves: Vec::new(),

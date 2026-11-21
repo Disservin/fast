@@ -4,6 +4,7 @@ Settings › Changelog shows this file. Describe the finished changes since each
 
 ## 0.1.4
 
+- Analyse: backwards analysis for the game review runs one engine, chosen in Settings › Analysis, instead of all analysis engines at once.
 - Analyse: backwards analysis shows the depth its node limit reaches, and its results replace deeper evaluations left from earlier searches under another limit.
 - Analyse: narrow windows put the engine, explorer and note panels under the board, and screen readers hear names for buttons, tabs, the eval bar and the graphs.
 - Analyse: a status bar shows the position's FEN with a copy button and the main shortcuts.

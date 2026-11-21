@@ -147,6 +147,7 @@ impl LiveAnalysis {
             // A stale line was searched under another limit or engine version, so it
             // must not stand in for this search's evaluation.
             if known.is_none()
+                && self.only_engine.is_none_or(|only| only == engine.config.id)
                 && let Some(line) = engine.lines.get(&1).filter(|line| !line.stale)
                 && let Some(score) = line.score
             {
@@ -283,6 +284,20 @@ impl LiveAnalysis {
             let Some(handle) = &engine.handle else {
                 continue;
             };
+            // Engines left out of a single-engine search stop and drop their lines, so
+            // only that engine's results show and count.
+            if self
+                .only_engine
+                .is_some_and(|only| only != engine.config.id)
+            {
+                handle.stop();
+                engine.running = false;
+                engine.lines.clear();
+                self.model.update(cx, |model, cx| {
+                    model.set_engine_status(engine.config.id, EngineStatus::Ready, cx);
+                });
+                continue;
+            }
             if terminal {
                 handle.stop();
                 // No search is started for this position, so there will be no

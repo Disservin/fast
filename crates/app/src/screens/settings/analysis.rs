@@ -155,6 +155,39 @@ impl SettingsScreen {
             ))
     }
 
+    /// The choice of engine for backwards analysis: the first analysis engine, or one
+    /// of the engines turned on in Analyse.
+    fn render_backward_engine(&self, cx: &mut Context<Self>) -> Div {
+        let model = self.model.read(cx);
+        let mut choices = vec![(
+            None,
+            SharedString::from(ui::i18n::t("First analysis engine")),
+        )];
+        choices.extend(
+            model
+                .analysis_engines()
+                .into_iter()
+                .map(|engine| (Some(engine.id), engine.name.into())),
+        );
+        let chosen = model
+            .config
+            .backward_engine
+            .filter(|id| choices.iter().any(|(choice, _)| *choice == Some(*id)));
+        segmented(
+            "backward-engine",
+            choices,
+            chosen,
+            cx.entity().listen_with(|screen: &mut Self, value, _, cx| {
+                screen
+                    .model
+                    .edit_config(cx, |config| config.backward_engine = value);
+                cx.notify();
+            }),
+        )
+        .flex_wrap()
+        .gap_y(px(6.))
+    }
+
     pub(super) fn render_analysis(&mut self, cx: &mut Context<Self>) -> Div {
         let current = self.model.read(cx).config.backward_nodes;
         let mut presets = h_flex().gap(px(6.)).flex_wrap();
@@ -195,9 +228,17 @@ impl SettingsScreen {
             .child(
                 section(ui::i18n::t("Backwards analysis"))
                     .child(option_row(
+                        ui::i18n::t("Review engine"),
+                        Some(ui::i18n::t(
+                            "The engine that analyses the game for the game review. Only \
+                             engines turned on in Analyse can review.",
+                        )),
+                        self.render_backward_engine(cx),
+                    ))
+                    .child(option_row(
                         ui::i18n::t("Nodes per position"),
                         Some(ui::i18n::t(
-                            "Each analysis engine searches this many nodes in every position, \
+                            "The review engine searches this many nodes in every position, \
                              from the last move back to the first. A fixed node count gives \
                              every position the same effort on any machine.",
                         )),

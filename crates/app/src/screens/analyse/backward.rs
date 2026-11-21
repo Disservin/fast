@@ -29,13 +29,36 @@ impl AnalyseScreen {
         // A fixed node count, set in Settings › Analysis, so every position gets the same
         // search whatever the limit for ordinary analysis.
         let nodes = self.model.read(cx).config.backward_nodes.max(1);
-        self.live.update(cx, |live, cx| {
+        let wanted = self.model.read(cx).config.backward_engine;
+        let fallback = self.live.update(cx, |live, cx| {
             live.limit_override = Some(crate::config::AnalysisLimit::Nodes(nodes));
             if !live.on {
                 live.toggle(cx);
             }
+            // One engine reviews the game, so every move is judged by the same engine
+            // and the run does not wait for the slowest of several.
+            let running = live.engine_ids();
+            let engine = wanted
+                .filter(|id| running.contains(id))
+                .or_else(|| running.first().copied());
+            live.only_engine = engine;
             live.set_paused(false, cx);
+            wanted.is_some() && engine != wanted
         });
+        if fallback {
+            let name = self
+                .live
+                .read(cx)
+                .only_engine
+                .and_then(|id| self.model.read(cx).engine(id))
+                .map(|engine| engine.name.clone())
+                .unwrap_or_default();
+            self.model.toast(
+                ui::i18n::t("The review engine is not analysing, so {} reviews the game.")
+                    .replace("{}", &name),
+                cx,
+            );
+        }
         let end = self
             .tree
             .line_through(self.current)
@@ -77,7 +100,11 @@ impl AnalyseScreen {
         }
         let (loaded, idle) = {
             let live = self.live.read(cx);
-            (live.loaded(), live.idle())
+            // The review engine was turned off during the run: nothing searches any more.
+            let reviewer_gone = live
+                .only_engine
+                .is_some_and(|id| !live.engine_ids().contains(&id));
+            (if reviewer_gone { 0 } else { live.loaded() }, live.idle())
         };
         if loaded == 0 {
             self.stop_backward(
@@ -111,6 +138,7 @@ impl AnalyseScreen {
         }
         self.live.update(cx, |live, cx| {
             live.limit_override = None;
+            live.only_engine = None;
             live.search(cx);
         });
         if let Some(message) = message {
