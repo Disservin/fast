@@ -433,7 +433,11 @@ impl Workspace {
             .child({
                 h_flex()
                     .gap(px(6.))
-                    .child(ui::widgets::mono(id.to_string()).text_color(rgb(T.faint)))
+                    .child(ui::widgets::mono(id.to_string()).text_color(rgb(if active {
+                        T.accent
+                    } else {
+                        T.faint
+                    })))
                     .child(
                         div()
                             .font_weight(if active {

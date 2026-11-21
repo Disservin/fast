@@ -304,6 +304,8 @@ pub struct Workspace {
     /// Tabs left with Back, most recent last, for Forward.
     forward_tabs: Vec<u64>,
     new_tab_menu_open: bool,
+    /// The engine menu under the top bar's engine button is open.
+    engine_menu_open: bool,
     /// The tab being renamed and the field holding its new name.
     renaming: Option<crate::controls::Rename<u64>>,
     /// The tab strip's horizontal scroll.
@@ -476,6 +478,7 @@ impl Workspace {
             search,
             search_results: Vec::new(),
             search_open: false,
+            engine_menu_open: false,
             search_selected: None,
             search_pending: false,
             search_failed: false,
@@ -547,6 +550,7 @@ impl Workspace {
     }
 
     pub fn set_mode(&mut self, mode: Mode, cx: &mut Context<Self>) {
+        self.engine_menu_open = false;
         let existing = self
             .last_tab
             .get(&mode)

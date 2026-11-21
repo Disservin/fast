@@ -255,56 +255,175 @@ impl Workspace {
             )
     }
 
-    /// The engine button's text, when the current mode shows one.
+    /// The engine button's text, when the current mode shows one: how many engines
+    /// are analysing, or that they are paused or stopped.
     pub(super) fn engine_button_label(&self, cx: &App) -> Option<String> {
         (self.mode == Mode::Analyse).then(|| {
-            let names: Vec<String> = self
-                .model
-                .read(cx)
-                .analysis_engines()
-                .iter()
-                .map(|engine| engine.name.clone())
-                .collect();
-            if names.is_empty() {
-                "No engine".to_owned()
+            let count = self.model.read(cx).analysis_engines().len();
+            let analyse = self.analyse.read(cx);
+            let template = if count == 0 {
+                "No engine"
+            } else if analyse.live_paused(cx) {
+                "Engines paused"
+            } else if !analyse.live_on(cx) {
+                "Engines stopped"
+            } else if count == 1 {
+                "1 engine running"
             } else {
-                names.join(" + ")
-            }
+                "{} engines running"
+            };
+            ui::i18n::t(template).replace("{}", &count.to_string())
         })
     }
 
+    /// The engine chip: a status dot, how many engines run, and a chevron for the
+    /// engine menu.
     pub(super) fn engine_button(&self, cx: &mut Context<Self>) -> Option<Btn> {
+        let label = self.engine_button_label(cx)?;
         let model = self.model.read(cx);
         let engines = model.analysis_engines();
-        let live_on = self.analyse.read(cx).live_on(cx);
-        let names: Vec<String> = engines.iter().map(|engine| engine.name.clone()).collect();
+        let analyse = self.analyse.read(cx);
+        let running = analyse.live_on(cx) && !analyse.live_paused(cx);
         let ok = !engines.is_empty()
             && engines
                 .iter()
                 .all(|engine| model.engine_status.get(&engine.id) != Some(&EngineStatus::Error));
-        let label = if names.is_empty() {
-            "No engine".to_owned()
-        } else {
-            names.join(" + ")
-        };
         let this = cx.entity();
         Some(
             btn("engines-status", label)
                 .pad(14.)
                 .text(13.)
-                .dot(if ok && live_on { T.good } else { T.faint })
-                .tooltip(if ok && live_on {
-                    "Engines running. Press Space to pause; click for engine settings."
-                } else {
-                    "Engines stopped. Press Space to start; click for engine settings."
-                })
-                .on_click(this.listen(move |this, window, cx| {
-                    this.settings.update(cx, |settings, cx| {
-                        settings.set_page(SettingsPage::Engines, window, cx);
-                    });
-                    this.set_mode(Mode::Settings, cx);
+                .dot(if ok && running { T.good } else { T.faint })
+                .trailing_icon("icons/chevron-down.svg")
+                .selected(self.engine_menu_open)
+                .tooltip("Choose engines, pause them or open engine settings")
+                .on_click(this.listen(move |this, _, cx| {
+                    this.engine_menu_open = !this.engine_menu_open;
+                    cx.notify();
                 })),
         )
+    }
+
+    /// The menu under the engine chip: a check per engine to use it in Analyse, then
+    /// pause or start, and the engine settings.
+    fn engine_menu(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let this = cx.entity();
+        let engines = self.model.read(cx).config.engines.clone();
+        let analyse = self.analyse.read(cx);
+        let (on, paused) = (analyse.live_on(cx), analyse.live_paused(cx));
+        let mut menu = v_flex()
+            .absolute()
+            .top(px(42.))
+            .right_0()
+            .w(px(260.))
+            .py(px(4.))
+            .rounded(px(6.))
+            .bg(rgb(T.surface))
+            .border_as(T.border)
+            .text_as(13., T.fg)
+            .occlude()
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .on_mouse_down_out(cx.listener(|this, _, _, cx| {
+                this.engine_menu_open = false;
+                cx.notify();
+            }))
+            .child(
+                div()
+                    .px(px(14.))
+                    .py(px(6.))
+                    .child(ui::widgets::section_label("Analysis engines")),
+            );
+        if engines.is_empty() {
+            menu = menu.child(div().px(px(14.)).py(px(6.)).text_color(rgb(T.muted)).child(
+                ui::i18n::t("No engines yet. Add one in Settings › Engines."),
+            ));
+        }
+        for engine in &engines {
+            let id = engine.id;
+            let model = self.model.clone();
+            menu = menu.child(
+                h_flex()
+                    .h(px(32.))
+                    .px(px(14.))
+                    .gap(px(8.))
+                    .child(
+                        div().col_w(20.).child(
+                            ui::widgets::check(
+                                SharedString::from(format!("menu-engine-{id}")),
+                                engine.use_analysis,
+                                "",
+                            )
+                            .on_change(move |on, _, cx| {
+                                model.update(cx, |model, cx| {
+                                    model.set_engine_use(id, |config| config.use_analysis = on, cx);
+                                });
+                            }),
+                        ),
+                    )
+                    .child(crate::controls::engine_icon(engine, 16.))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .overflow_hidden()
+                            .whitespace_nowrap()
+                            .child(engine.name.clone()),
+                    ),
+            );
+        }
+        let toggle = this.clone();
+        let settings = this.clone();
+        menu.child(div().my(px(4.)).h(px(1.)).bg(rgb(T.divider)))
+            .when(!engines.is_empty(), |menu| {
+                menu.child(
+                    btn(
+                        "engine-menu-run",
+                        if !on {
+                            "Start analysis"
+                        } else if paused {
+                            "Resume analysis"
+                        } else {
+                            "Pause analysis"
+                        },
+                    )
+                    .compact()
+                    .kind(BtnKind::Ghost)
+                    .left()
+                    .pad(14.)
+                    .full()
+                    .icon(if on && !paused {
+                        "icons/pause.svg"
+                    } else {
+                        "icons/play.svg"
+                    })
+                    .on_click(toggle.listen(move |this, _, cx| {
+                        this.engine_menu_open = false;
+                        this.analyse.update(cx, |analyse, cx| {
+                            if analyse.live_on(cx) {
+                                analyse.toggle_pause(cx);
+                            } else {
+                                analyse.toggle_engine(cx);
+                            }
+                        });
+                    })),
+                )
+            })
+            .child(
+                btn("engine-menu-settings", "Engine settings")
+                    .compact()
+                    .kind(BtnKind::Ghost)
+                    .left()
+                    .pad(14.)
+                    .full()
+                    .icon("icons/settings.svg")
+                    .on_click(settings.listen(move |this, window, cx| {
+                        this.engine_menu_open = false;
+                        this.settings.update(cx, |settings, cx| {
+                            settings.set_page(SettingsPage::Engines, window, cx);
+                        });
+                        this.set_mode(Mode::Settings, cx);
+                    })),
+            )
     }
 
     pub(super) fn right_controls(
@@ -319,7 +438,7 @@ impl Workspace {
         // The search box takes what is left beside the centered mode switch.
         let engine_w = self
             .engine_button_label(cx)
-            .map_or(0., |label| 60. + label.len() as f32 * 7.);
+            .map_or(0., |label| 80. + label.len() as f32 * 7.);
         let others = match self.mode {
             Mode::Analyse => engine_w + 10.,
             _ => 0.,
@@ -441,10 +560,11 @@ impl Workspace {
             }
             row = row.child(search_box);
         }
-        if self.mode == Mode::Analyse
-            && let Some(button) = self.engine_button(cx)
-        {
-            row = row.child(button);
+        if let Some(button) = self.engine_button(cx) {
+            let menu = self
+                .engine_menu_open
+                .then(|| deferred(self.engine_menu(cx)));
+            row = row.child(div().relative().child(button).children(menu));
         }
         let settings_active = self.mode == Mode::Settings;
         row.child(

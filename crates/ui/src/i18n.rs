@@ -1006,6 +1006,17 @@ pub fn translate(language: Language, text: &str) -> &str {
                 "Suche pausieren und aktuelle Varianten behalten (P)"
             }
             "Start analysis" => "Analyse starten",
+            "Pause analysis" => "Analyse anhalten",
+            "Resume analysis" => "Analyse fortsetzen",
+            "Analysis engines" => "Analyse-Engines",
+            "Engine settings" => "Engine-Einstellungen",
+            "Engines paused" => "Engines angehalten",
+            "Engines stopped" => "Engines gestoppt",
+            "1 engine running" => "1 Engine läuft",
+            "{} engines running" => "{} Engines laufen",
+            "Choose engines, pause them or open engine settings" => {
+                "Engines wählen, anhalten oder Engine-Einstellungen öffnen"
+            }
             "Search moves" => "Suchzüge",
             "all" => "alle",
             "selected" => "ausgewählt",

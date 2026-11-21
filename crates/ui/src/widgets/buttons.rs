@@ -34,6 +34,7 @@ pub struct Btn {
     tooltip: Option<SharedString>,
     dot: Option<u32>,
     left: bool,
+    trailing: Option<&'static str>,
 }
 
 pub fn btn(id: impl Into<ElementId>, label: impl Into<SharedString>) -> Btn {
@@ -55,6 +56,7 @@ pub fn btn(id: impl Into<ElementId>, label: impl Into<SharedString>) -> Btn {
         tooltip: None,
         dot: None,
         left: false,
+        trailing: None,
     }
 }
 
@@ -152,10 +154,15 @@ impl Btn {
         self
     }
 
-    /// A small status dot before the label.
     /// Shows an icon before the label, as in "+ New tab".
     pub fn icon(mut self, path: &'static str) -> Self {
         self.icon = Some(path);
+        self
+    }
+
+    /// Shows an icon after the label, such as the chevron of a button that opens a menu.
+    pub fn trailing_icon(mut self, path: &'static str) -> Self {
+        self.trailing = Some(path);
         self
     }
 
@@ -165,6 +172,7 @@ impl Btn {
         self
     }
 
+    /// A small status dot before the label.
     pub fn dot(mut self, color: u32) -> Self {
         self.dot = Some(color);
         self
@@ -254,7 +262,7 @@ impl RenderOnce for Btn {
         }
         el = el.focus_visible(|style| style.border_2().border_color(rgb(T.accent)));
         if self.left {
-            el = el.justify_start().overflow_hidden();
+            el = el.justify_start().overflow_hidden().px(self.padding);
         }
         if let Some(color) = self.dot {
             el = el
@@ -268,6 +276,9 @@ impl RenderOnce for Btn {
             && !label.is_empty()
         {
             el = el.child(label);
+        }
+        if let Some(path) = self.trailing {
+            el = el.gap(px(6.)).child(icon(path, px(14.), T.muted));
         }
         if let Some(text) = self.tooltip {
             el = el.tooltip(move |window, cx| {
