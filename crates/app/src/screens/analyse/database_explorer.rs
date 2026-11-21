@@ -231,6 +231,7 @@ impl AnalyseScreen {
         self.reference_error = None;
         let hash = position_hash(&self.analysed_pos());
         let reference = self.explorer_database(cx).map(|entry| entry.path);
+        let same_database = self.explorer_used == reference;
         self.explorer_used = reference.clone();
         let model = self.model.read(cx);
         let mine = model.my_games().map(|entry| entry.path.clone());
@@ -244,6 +245,8 @@ impl AnalyseScreen {
         let (cached_reference, cached_mine) = (cached(&reference, ""), cached(&mine, &player));
         if let (Some(reference), Some(mine)) = (&cached_reference, &cached_mine) {
             self.db_task = None;
+            self.held_reference = None;
+            self.held_mine = None;
             self.reference = reference.clone();
             self.mine = mine.clone();
             self.rebuild_rows(cx);
@@ -253,6 +256,18 @@ impl AnalyseScreen {
             reference.clone().filter(|_| cached_reference.is_none()),
             mine.clone().filter(|_| cached_mine.is_none()),
         );
+        // A query already running keeps what it held: that is still what is on screen.
+        // Another database's moves are never held.
+        if query_reference.is_none() || !same_database {
+            self.held_reference = None;
+        } else if self.held_reference.is_none() {
+            self.held_reference = Some(self.reference.clone());
+        }
+        if query_mine.is_none() {
+            self.held_mine = None;
+        } else if self.held_mine.is_none() {
+            self.held_mine = Some(self.mine.clone());
+        }
         self.reference = cached_reference.clone().unwrap_or_default();
         self.mine = cached_mine.clone().unwrap_or_default();
         self.rebuild_rows(cx);
@@ -284,6 +299,8 @@ impl AnalyseScreen {
             let (found_reference, found_mine) = task.await;
             let _ = this.update(cx, |this, cx| {
                 this.db_task = None;
+                this.held_reference = None;
+                this.held_mine = None;
                 let found_reference = found_reference.and_then(|result| match result {
                     Ok(moves) => Some(moves),
                     Err(err) => {

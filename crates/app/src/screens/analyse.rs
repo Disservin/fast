@@ -184,6 +184,11 @@ pub struct AnalyseScreen {
     /// The current move changed, so the scoresheet should scroll it into view once.
     scoresheet_follow: Rc<Cell<bool>>,
     db_task: Option<Task<()>>,
+    /// The database moves shown before the running query, kept on screen until its
+    /// answer comes so the Explorer does not collapse and grow back at every move.
+    held_reference: Option<Vec<db::MoveStat>>,
+    /// The same for the user's own games.
+    held_mine: Option<Vec<db::MoveStat>>,
     /// The database this tab's opening tree counts, when the user picked one here.
     explorer_db: Option<std::path::PathBuf>,
     /// The database the last opening-tree query used, to notice when it disappears.
@@ -414,6 +419,8 @@ impl AnalyseScreen {
             scoresheet_current: Rc::default(),
             scoresheet_follow: Rc::new(Cell::new(true)),
             db_task: None,
+            held_reference: None,
+            held_mine: None,
             explorer_db: None,
             explorer_used: None,
             explorer_source: explorer_panel::ExplorerSource::Database,

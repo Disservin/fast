@@ -67,8 +67,10 @@ impl AnalyseScreen {
 
     /// The chosen database's moves, with the picker and the number of games above.
     fn render_database_moves(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
-        let total = total_stats(&self.reference);
         let loading = self.db_task.is_some();
+        let held = self.held_reference.as_ref().filter(|_| loading);
+        let stats = held.unwrap_or(&self.reference);
+        let total = total_stats(stats);
         let database = self.explorer_database(cx);
         let picker = h_flex()
             .px(px(16.))
@@ -81,7 +83,7 @@ impl AnalyseScreen {
                     .child(self.render_explorer_picker(200., cx)),
             )
             .child(
-                mono(if loading {
+                mono(if loading && held.is_none() {
                     ui::i18n::t("Loading…").to_owned()
                 } else {
                     ui::i18n::tf("{} games", &[&format_count(total.games)])
@@ -96,10 +98,11 @@ impl AnalyseScreen {
                 .into_any_element()
         } else if database.is_none() {
             ui::widgets::note("Add a database in Settings › Databases.").into_any_element()
-        } else if self.reference.is_empty() && !loading {
+        } else if stats.is_empty() && (!loading || held.is_some()) {
             self.render_out_of_book(cx).into_any_element()
         } else {
-            self.render_stat_table("database", &self.reference, database.map(|e| e.path), cx)
+            let path = database.map(|entry| entry.path);
+            self.render_stat_table("database", stats, path, held.is_some(), cx)
         };
         v_flex().child(picker).child(content).into_any_element()
     }
@@ -117,11 +120,13 @@ impl AnalyseScreen {
             )
             .into_any_element();
         }
-        if self.mine.is_empty() {
+        let held = self.held_mine.as_ref().filter(|_| self.db_task.is_some());
+        let stats = held.unwrap_or(&self.mine);
+        if stats.is_empty() {
             return ui::widgets::note("You have not reached this position in your games.")
                 .into_any_element();
         }
-        self.render_stat_table("mine", &self.mine, mine, cx)
+        self.render_stat_table("mine", stats, mine, held.is_some(), cx)
     }
 
     /// The repertoire's moves from here, main move first.
@@ -223,12 +228,14 @@ impl AnalyseScreen {
     }
 
     /// The moves with their games, results and average rating, and a total row. The
-    /// game counts open those games in the Database tab.
+    /// game counts open those games in the Database tab. Moves `held` over from the
+    /// last position while the new one loads are shown but cannot be clicked.
     fn render_stat_table(
         &self,
         id: &'static str,
         stats: &[MoveStat],
         database: Option<std::path::PathBuf>,
+        held: bool,
         cx: &mut Context<Self>,
     ) -> gpui::AnyElement {
         let pos = self.analysed_pos();
@@ -263,7 +270,8 @@ impl AnalyseScreen {
                 .san
                 .parse::<San>()
                 .ok()
-                .and_then(|san| san.to_move(&pos).ok());
+                .and_then(|san| san.to_move(&pos).ok())
+                .filter(|_| !held);
             let label = display_san(&stat.san, mv.as_ref(), notation);
             let target = database.as_ref().zip(mv).map(|(path, mv)| {
                 let mut after = pos.clone();
