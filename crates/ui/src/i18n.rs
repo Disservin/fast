@@ -1006,6 +1006,16 @@ pub fn translate(language: Language, text: &str) -> &str {
                 "Suche pausieren und aktuelle Varianten behalten (P)"
             }
             "Start analysis" => "Analyse starten",
+            "Kingside attack" => "Königsangriff",
+            "IQP" => "Isolani",
+            "Critical" => "Kritisch",
+            "Review later" => "Später ansehen",
+            "Remove this tag from the note" => "Diesen Tag aus der Notiz entfernen",
+            "Add this tag to the note" => "Diesen Tag zur Notiz hinzufügen",
+            "Saved to this position in all games" => {
+                "Für diese Stellung in allen Partien gespeichert"
+            }
+            "Plans, ideas, things to remember…" => "Pläne, Ideen, Merkenswertes…",
             "Explorer" => "Explorer",
             "Avg Elo" => "Ø Elo",
             "Main move" => "Hauptzug",

@@ -89,6 +89,7 @@ mod moves_table;
 mod nav_bar;
 mod online;
 mod panels;
+mod position_note;
 mod review_card;
 mod rows;
 mod scoresheet;
@@ -266,7 +267,8 @@ impl AnalyseScreen {
         });
         let kibitz = cx.new(|_| crate::kibitz::Kibitz::default());
         let note = cx.new(|cx| {
-            TextareaState::new(window, cx).placeholder(ui::i18n::t("Add a note for this position"))
+            TextareaState::new(window, cx)
+                .placeholder(ui::i18n::t("Plans, ideas, things to remember…"))
         });
         let comment = cx.new(|cx| TextareaState::new(window, cx));
         let fen_input = cx.new(|cx| {
@@ -863,7 +865,6 @@ impl Render for AnalyseScreen {
         let table = self.render_explorer(cx);
         let log_panel = self.log_panel_open.then(|| self.render_log_panel(cx));
         self.sync_online(cx);
-        let note = self.note.clone();
         let menu = self.render_context_menu(cx);
         h_flex()
             .items_start()
@@ -946,20 +947,7 @@ impl Render for AnalyseScreen {
                             .child(engine_panel)
                             .child(table)
                             .children(log_panel)
-                            .child(
-                                panel()
-                                    .rounded_none()
-                                    .flex_none()
-                                    .p(px(16.))
-                                    .child(section_label("Position note").mb(px(10.)))
-                                    .child(
-                                        div().bg(rgb(T.bg)).rounded(px(4.)).child(
-                                            gpui_component::input::Textarea::new(&note)
-                                                .h(px(64.))
-                                                .text_size(px(13.)),
-                                        ),
-                                    ),
-                            ),
+                            .child(self.render_position_note(cx)),
                     ),
             )
             .children(menu)
