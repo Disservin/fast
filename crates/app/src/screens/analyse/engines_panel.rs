@@ -271,8 +271,12 @@ impl AnalyseScreen {
                 || "—".to_owned(),
                 |stats| {
                     let mut parts = vec![format!("d{}", stats.depth)];
+                    parts.extend(stats.nodes.map(engine::format_nodes));
                     parts.extend(stats.nps.map(engine::format_speed));
                     parts.extend(stats.time_ms.map(super::search_time));
+                    parts.extend(stats.hashfull.map(|full| {
+                        format!("{} {:.0}%", ui::i18n::t("Hash"), f64::from(full) / 10.)
+                    }));
                     parts.join("  ")
                 },
             )
@@ -286,20 +290,6 @@ impl AnalyseScreen {
             if let Some(stats) = &stats {
                 if let Some(sel) = stats.seldepth {
                     lines.push(format!("{} {}/{sel}", ui::i18n::t("Depth"), stats.depth));
-                }
-                if let Some(nodes) = stats.nodes {
-                    lines.push(format!(
-                        "{} {}",
-                        ui::i18n::t("Nodes"),
-                        engine::format_nodes(nodes)
-                    ));
-                }
-                if let Some(full) = stats.hashfull {
-                    lines.push(format!(
-                        "{} {:.0}%",
-                        ui::i18n::t("Hash"),
-                        f64::from(full) / 10.
-                    ));
                 }
                 if let Some(hits) = stats.tbhits.filter(|hits| *hits > 0) {
                     lines.push(format!(

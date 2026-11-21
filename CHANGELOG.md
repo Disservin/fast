@@ -4,6 +4,7 @@ Settings › Changelog shows this file. Describe the finished changes since each
 
 ## 0.1.4
 
+- Analyse: each engine row shows its node count and hash usage again, next to depth, speed and time.
 - Analyse: the Log panel has an engine menu in its header, so you can read any engine's log, not only the one the panels show.
 - Analyse: the Explorer keeps the last position's moves on screen until the new position's moves load, instead of collapsing to its column headings.
 - Analyse: the engine lines keep their height while a new position waits for its first lines, so the panels no longer jump at each step of backwards analysis.
