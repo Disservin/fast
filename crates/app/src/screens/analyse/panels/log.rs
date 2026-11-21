@@ -61,9 +61,19 @@ pub(super) fn floor_char(text: &str, index: usize) -> usize {
 }
 
 impl AnalyseScreen {
-    /// The log of the engine the panels show, if it is in analysis.
+    /// The engine the Log panel shows: the one chosen in its menu, else the panels' engine.
+    pub(super) fn log_engine_config(&self, cx: &gpui::App) -> Option<EngineConfig> {
+        self.log_engine
+            .and_then(|id| {
+                let engines = &self.model.read(cx).config.engines;
+                engines.iter().find(|engine| engine.id == id).cloned()
+            })
+            .or_else(|| self.panel_engine_config(cx))
+    }
+
+    /// The log of the engine the Log panel shows, if it is in analysis.
     pub(super) fn panel_log(&self, cx: &gpui::App) -> Option<(EngineId, engine::EngineLog)> {
-        let chosen = self.panel_engine_config(cx)?.id;
+        let chosen = self.log_engine_config(cx)?.id;
         self.live
             .read(cx)
             .engines
@@ -200,16 +210,13 @@ impl AnalyseScreen {
             self.log_scroll
                 .scroll_to_item(count - 1, ScrollStrategy::Bottom);
         }
-        let name = self
-            .panel_engine_config(cx)
-            .map_or_else(|| "No engine".to_owned(), |config| config.name);
         let tools = h_flex()
             .h(px(44.))
             .px(px(16.))
             .gap(px(10.))
             .border_b_as(T.border)
             .child(section_label("Log"))
-            .child(div().text_as(12., T.muted).child(name))
+            .child(self.render_log_engine_picker(cx))
             .when(holding, |row| {
                 row.child(div().text_as(12., T.warn).child(ui::i18n::t(
                     "Held while selected. Ctrl+C copies, Esc releases.",
@@ -268,7 +275,12 @@ impl AnalyseScreen {
                     ))
                     .on_click({
                         let this = cx.entity();
-                        this.listen(move |screen, _, cx| screen.open_engine_output(cx))
+                        this.listen(move |screen, _, cx| match screen.log_engine_config(cx) {
+                            Some(config) => {
+                                crate::model::open_debug_window(&screen.model, config.id, cx)
+                            }
+                            None => screen.open_engine_output(cx),
+                        })
                     }),
             )
             .child(
@@ -276,7 +288,7 @@ impl AnalyseScreen {
                     .compact()
                     .on_click(this.listen(move |screen, _, cx| {
                         screen.log_selection = None;
-                        let chosen = screen.panel_engine_config(cx).map(|config| config.id);
+                        let chosen = screen.log_engine_config(cx).map(|config| config.id);
                         if let Some(engine) = screen
                             .live
                             .read(cx)
@@ -354,6 +366,96 @@ impl AnalyseScreen {
 }
 
 impl AnalyseScreen {
+    /// The Log panel's engine chip and, when open, a menu of every engine to read the log of.
+    fn render_log_engine_picker(&self, cx: &mut Context<Self>) -> AnyElement {
+        let this = cx.entity();
+        let engines = self.model.read(cx).config.engines.clone();
+        let chosen = self.log_engine_config(cx);
+        let Some(current) = chosen else {
+            return div()
+                .text_as(12., T.muted)
+                .child(ui::i18n::t("No engine"))
+                .into_any_element();
+        };
+        let running: Vec<EngineId> = self
+            .live
+            .read(cx)
+            .engines
+            .iter()
+            .map(|engine| engine.config.id)
+            .collect();
+        let chip = btn("log-engine", current.name.clone())
+            .mini()
+            .text(12.)
+            .trailing_icon("icons/chevron-down.svg")
+            .selected(self.log_engine_menu)
+            .tooltip(ui::i18n::t("Choose whose log to show"))
+            .on_click(this.listen(move |screen, _, cx| {
+                screen.log_engine_menu = !screen.log_engine_menu;
+                cx.notify();
+            }));
+        let menu = self.log_engine_menu.then(|| {
+            let mut list = v_flex()
+                .id("log-engine-menu")
+                .min_w(px(200.))
+                .py(px(4.))
+                .rounded(px(6.))
+                .bg(rgb(T.surface))
+                .border_as(T.border_strong)
+                .text_as(13., T.fg)
+                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                .on_mouse_down_out(cx.listener(|screen, _, _, cx| {
+                    screen.log_engine_menu = false;
+                    cx.notify();
+                }));
+            for engine in &engines {
+                let id = engine.id;
+                let picked = id == current.id;
+                let idle = !running.contains(&id);
+                list = list.child(
+                    h_flex()
+                        .id(("log-engine-item", id as usize))
+                        .h(px(28.))
+                        .px(px(10.))
+                        .gap(px(8.))
+                        .cursor_pointer()
+                        .when(picked, |row| row.bg(rgb(T.selected)))
+                        .when(!picked, |row| row.hover(|style| style.bg(rgb(T.hover))))
+                        .on_click(this.listen_event(move |screen, _, _, cx| {
+                            screen.log_engine = Some(id);
+                            screen.log_engine_menu = false;
+                            screen.log_selection = None;
+                            screen.log_follow = true;
+                            cx.notify();
+                        }))
+                        .child(crate::controls::engine_icon(engine, 16.))
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w_0()
+                                .whitespace_nowrap()
+                                .overflow_hidden()
+                                .child(engine.name.clone()),
+                        )
+                        .when(idle, |row| {
+                            row.child(
+                                div()
+                                    .flex_none()
+                                    .text_as(12., T.faint)
+                                    .child(ui::i18n::t("not running")),
+                            )
+                        }),
+                );
+            }
+            deferred(anchored().child(div().mt(px(2.)).occlude().child(list))).with_priority(1)
+        });
+        v_flex()
+            .flex_none()
+            .child(chip)
+            .children(menu)
+            .into_any_element()
+    }
+
     pub(crate) fn current_log_key(&self, cx: &gpui::App) -> Option<(EngineId, u64, bool)> {
         self.panel_log(cx)
             .map(|(id, log)| (id, log.revision(), self.log_show_info))

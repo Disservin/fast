@@ -1170,6 +1170,8 @@ pub fn translate(language: Language, text: &str) -> &str {
             "Speed" => "Tempo",
             "Seed" => "Gesetzt",
             "No engine" => "Keine Engine",
+            "Choose whose log to show" => "Wählen, wessen Log angezeigt wird",
+            "not running" => "läuft nicht",
             "Selection copied." => "Auswahl kopiert.",
             "Log copied." => "Protokoll kopiert.",
             "Line copied." => "Variante kopiert.",

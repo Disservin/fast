@@ -215,6 +215,10 @@ pub struct AnalyseScreen {
     engine_settings_open: bool,
     /// The engine the Engine and Log panels are showing.
     panel_engine: Option<EngineId>,
+    /// The engine chosen in the Log panel; until one is chosen it follows `panel_engine`.
+    log_engine: Option<EngineId>,
+    /// Whether the Log panel's engine menu is open.
+    log_engine_menu: bool,
     log_show_info: bool,
     log_follow: bool,
     log_lines: Vec<LogLine>,
@@ -436,6 +440,8 @@ impl AnalyseScreen {
             online_all: false,
             engine_settings_open: false,
             panel_engine: None,
+            log_engine: None,
+            log_engine_menu: false,
             log_show_info: true,
             log_follow: true,
             log_lines: Vec::new(),
