@@ -39,6 +39,18 @@ impl AnalyseScreen {
         body = body.child(self.render_line_captions());
         let limit = self.model.read(cx).config.analysis_limit;
         let running: Vec<EngineId> = self.live.read(cx).engine_ids();
+        // A previewed line whose engine shows no lines here stays on screen at the top.
+        let source_listed = self.frozen_source().is_some_and(|row| {
+            engines.iter().any(|config| {
+                Some(config.id) == row.engine_id
+                    && config.use_analysis
+                    && running.contains(&config.id)
+            })
+        });
+        if self.pv_view.is_some() && !self.pv_kibitz && !self.expanded_row_shown() && !source_listed
+        {
+            body = body.child(self.render_line_preview(cx));
+        }
         for (index, config) in engines.iter().enumerate() {
             body = body.child(self.render_engine_heading(config, index, limit, cx));
             if config.use_analysis && running.contains(&config.id) {
@@ -47,6 +59,29 @@ impl AnalyseScreen {
         }
         body.children(self.render_online_footer(cx))
             .into_any_element()
+    }
+
+    /// Whether an engine row is expanded and so already shows Line preview under it.
+    fn expanded_row_shown(&self) -> bool {
+        self.expanded_pv.as_ref().is_some_and(|key| {
+            self.rows
+                .iter()
+                .any(|row| row.engine_id.is_some() && !row.pv.is_empty() && key.matches(row))
+        })
+    }
+
+    /// The row a preview was started from, once the engines have moved on to the previewed
+    /// position and dropped it. It stays in its engine's list, expanded, so the line being
+    /// read does not move.
+    fn frozen_source(&self) -> Option<&MoveRow> {
+        if self.pv_kibitz || self.expanded_row_shown() {
+            return None;
+        }
+        self.pv_view
+            .as_ref()?
+            .source
+            .as_ref()
+            .filter(|row| row.engine_id.is_some() && !row.pv.is_empty())
     }
 
     /// The panel header: its title, then Online, Log, search settings and pause.
@@ -395,7 +430,11 @@ impl AnalyseScreen {
             .map(|(index, row)| (index, row.clone()))
             .collect();
         let mut lines = v_flex();
-        if rows.is_empty() {
+        let frozen = self
+            .frozen_source()
+            .filter(|row| row.engine_id == Some(id))
+            .cloned();
+        if rows.is_empty() && frozen.is_none() {
             let searching = self.live.read(cx).on && self.live.read(cx).end.is_none();
             // While searching, blank rows hold the height of the lines shown last, so the
             // panels below stay put when the position changes.
@@ -420,25 +459,42 @@ impl AnalyseScreen {
                 })))
                 .children((1..reserved).map(|_| row()));
         }
-        self.engine_line_counts.insert(id, rows.len());
+        let waiting = rows.is_empty();
+        if !waiting {
+            self.engine_line_counts.insert(id, rows.len());
+        }
         let quality_arrows = self.model.read(cx).config.view.quality_arrows;
-        let white_to_move = self.analysed_pos().turn().is_white();
         let notation = self.model.read(cx).config.board.notation;
-        let pos = self.analysed_pos();
-        for (index, row) in rows {
-            let selected = self.selected.as_ref().is_some_and(|key| key.matches(&row));
-            let expanded = self
-                .expanded_pv
-                .as_ref()
-                .is_some_and(|key| key.matches(&row));
+        let game = self.tree.node(self.current);
+        let (game_pos, game_ply) = (game.pos.clone(), game.ply);
+        let (live_pos, live_ply) = (self.analysed_pos(), self.analysed_ply());
+        // The frozen row comes first and takes an index past the live rows.
+        let entries: Vec<(usize, MoveRow, bool)> = frozen
+            .map(|row| (self.rows.len(), row, true))
+            .into_iter()
+            .chain(rows.into_iter().map(|(index, row)| (index, row, false)))
+            .collect();
+        for (index, row, frozen) in entries {
+            let (pos, ply) = if frozen {
+                (&game_pos, game_ply)
+            } else {
+                (&live_pos, live_ply)
+            };
+            let white_to_move = pos.turn().is_white();
+            let selected = frozen || self.selected.as_ref().is_some_and(|key| key.matches(&row));
+            let expanded = frozen
+                || self
+                    .expanded_pv
+                    .as_ref()
+                    .is_some_and(|key| key.matches(&row));
             let key = RowKey::of(&row);
             let mv = row
                 .san
                 .parse::<chess_core::shakmaty::san::San>()
                 .ok()
-                .and_then(|parsed| parsed.to_move(&pos).ok());
+                .and_then(|parsed| parsed.to_move(pos).ok());
             let shown = display_san(&row.san, mv.as_ref(), notation);
-            let label = chess_core::notation::numbered(self.analysed_ply() + 1, &shown);
+            let label = chess_core::notation::numbered(ply + 1, &shown);
             let label_colour = row
                 .quality
                 .filter(|_| quality_arrows)
@@ -462,9 +518,11 @@ impl AnalyseScreen {
                     .cursor_pointer()
                     .when(selected, |el| el.bg(rgb(T.selected)))
                     .when(!selected, |el| el.hover(|style| style.bg(rgb(T.hover))))
-                    .on_click(move |_, _, cx| {
-                        let key = key.clone();
-                        select.update(cx, |screen, cx| screen.select_row(key, cx));
+                    .when(!frozen, |el| {
+                        el.on_click(move |_, _, cx| {
+                            let key = key.clone();
+                            select.update(cx, |screen, cx| screen.select_row(key, cx));
+                        })
                     })
                     .when(selected, |el| {
                         el.child(
@@ -518,6 +576,7 @@ impl AnalyseScreen {
                                 index,
                                 (&label, label_colour),
                                 expanded,
+                                frozen,
                                 cx,
                             ))
                             .child(
@@ -537,7 +596,10 @@ impl AnalyseScreen {
                                 .on_click(this.listen(
                                     move |screen, _, cx| {
                                         cx.stop_propagation();
-                                        if expanded {
+                                        if frozen {
+                                            // Folding the previewed line goes back to the game.
+                                            screen.exit_pv_preview(cx);
+                                        } else if expanded {
                                             screen.expanded_pv = None;
                                         } else {
                                             screen.select_row(expand.clone(), cx);
@@ -579,6 +641,23 @@ impl AnalyseScreen {
             if expanded {
                 lines = lines.child(self.render_line_preview(cx));
             }
+        }
+        if waiting {
+            let searching = self.live.read(cx).on && self.live.read(cx).end.is_none();
+            lines = lines.child(
+                div()
+                    .h(px(LINE_H))
+                    .px(px(16.))
+                    .flex()
+                    .items_center()
+                    .border_b_as(T.divider)
+                    .text_as(12., T.muted)
+                    .child(ui::i18n::t(if searching {
+                        "Waiting for engine lines…"
+                    } else {
+                        "Stopped"
+                    })),
+            );
         }
         lines
     }

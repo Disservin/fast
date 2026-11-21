@@ -82,7 +82,11 @@ impl AnalyseScreen {
                 .and_then(|view| view.source_row(self.selected_row()))
                 .cloned()
         } else {
-            self.selected_row().cloned()
+            // A preview already under way keeps the game position's row it began from.
+            self.pv_view
+                .as_ref()
+                .and_then(|view| view.source.clone())
+                .or_else(|| self.selected_row().cloned())
         };
         self.pv_view = Some(PvView {
             sans,
@@ -227,7 +231,10 @@ impl AnalyseScreen {
                 .pv_view
                 .as_ref()
                 .is_some_and(|view| view.contains(index));
-            let hovered = self.pv_hover == Some(index) && !highlighted;
+            let hovered = self.pv_hover == Some(index)
+                && self.pv_hover_row.is_none()
+                && self.pv_hover_line == sans
+                && !highlighted;
             let begin_sans = sans.clone();
             let hover_sans = sans.clone();
             flow = flow.child(
@@ -337,26 +344,45 @@ impl AnalyseScreen {
         row_index: usize,
         first_move: (&str, u32),
         expanded: bool,
+        frozen: bool,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
-        let sans = if row.pv.is_empty() {
+        let row_sans = if row.pv.is_empty() {
             vec![row.san.clone()]
         } else {
             row.pv.clone()
         };
-        let text = format_pv(self.analysed_ply(), &sans);
+        // Hovering replays from the game position, so a row of a previewed position
+        // carries the preview's moves in front of its own. A frozen row is the game
+        // position's own.
+        let prefix = if frozen {
+            &[][..]
+        } else {
+            self.preview_moves()
+        };
+        let text = format_pv(
+            self.tree.node(self.current).ply + prefix.len() as u32,
+            &row_sans,
+        );
+        let offset = prefix.len();
+        let mut sans = prefix.to_vec();
+        sans.extend(row_sans);
         let mut line = h_flex()
             .flex_none()
             .font_family(MONO)
             .text_as(12., T.fg_2)
             .whitespace_nowrap();
-        for (index, label) in text.split_whitespace().enumerate() {
-            if expanded && index > 0 {
+        for (move_index, label) in text.split_whitespace().enumerate() {
+            if expanded && move_index > 0 {
                 break;
             }
+            let index = offset + move_index;
             let hover_sans = sans.clone();
             let move_sans = sans.clone();
-            let hovered = self.pv_hover == Some(index) && self.pv_hover_line == sans;
+            // Rows with the same line light up only where the cursor is.
+            let hovered = self.pv_hover == Some(index)
+                && self.pv_hover_row == Some(row_index)
+                && self.pv_hover_line == sans;
             line = line.child(
                 div()
                     .id(SharedString::from(format!(
@@ -366,7 +392,7 @@ impl AnalyseScreen {
                     .px(px(3.))
                     .rounded(px(3.))
                     .cursor_pointer()
-                    .when(index == 0, |chip| {
+                    .when(move_index == 0, |chip| {
                         chip.font_weight(FontWeight::SEMIBOLD)
                             .text_as(13., first_move.1)
                     })
@@ -385,7 +411,7 @@ impl AnalyseScreen {
                             cx.notify();
                         }
                     }))
-                    .child(if index == 0 {
+                    .child(if move_index == 0 {
                         first_move.0.to_owned()
                     } else {
                         label.to_owned()
@@ -458,6 +484,9 @@ impl AnalyseScreen {
         if self.pv_played != Some(played) {
             self.pv_played = Some(played);
             self.selected = None;
+            // The rows are about to be the new position's: a key from the old ones could
+            // match an unrelated move there.
+            self.expanded_pv = None;
             self.row_chosen = false;
             let extra: Vec<Move> = moves.into_iter().take(played).collect();
             let (tree, current) = (self.tree.clone(), self.current);
