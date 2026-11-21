@@ -43,18 +43,6 @@ pub enum Outcome {
 }
 
 impl Outcome {
-    pub fn label(self) -> &'static str {
-        match self {
-            Outcome::Win => "Win",
-            Outcome::CursedWin => "Cursed win",
-            Outcome::Draw => "Draw",
-            Outcome::BlessedLoss => "Blessed loss",
-            Outcome::Loss => "Loss",
-            Outcome::Unknown => "Unknown",
-            Outcome::NotAvailable => "n/a",
-        }
-    }
-
     fn from_wdl(wdl: i32) -> Self {
         match wdl {
             2 => Outcome::Win,

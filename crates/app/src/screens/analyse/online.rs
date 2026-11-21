@@ -1,25 +1,23 @@
 //! Analyse's Online lookups: the ChessTB Explorer tablebase and chessdb.cn for the
-//! position on the board, merged into Moves from here. It sends nothing while off.
+//! position on the board, shown in the Engines panel. It sends nothing while off.
 
 use std::{collections::HashMap, time::Duration};
 
 use chess_core::{GameTree, Position};
-use gpui::{Context, Div, FontWeight, Task, div, prelude::*, px, rgb};
+use gpui::{Context, Div, Task, div, prelude::*, px, rgb};
 use ui::{
     T,
-    widgets::{StyleExt, h_flex, stat},
+    widgets::{Listen, StyleExt, btn, h_flex, mono, v_flex},
 };
 
 use super::{AnalyseScreen, MoveRow};
 use crate::online::{
-    CloudReply, Outcome, TABLEBASE_PIECES, TbProbe, TbRow, cloud_score, probe_tablebase,
-    query_chessdb,
+    CloudReply, Outcome, TABLEBASE_PIECES, TbProbe, cloud_score, probe_tablebase, query_chessdb,
 };
 
 /// Quick navigation only queries where it stops.
 const DEBOUNCE: Duration = Duration::from_millis(300);
 const CACHE_LIMIT: usize = 1000;
-const TABLEBASE_SOURCE: &str = "chesstb-explorer.hf.space";
 
 #[derive(Clone, Default)]
 pub(super) enum Lookup<T> {
@@ -167,105 +165,148 @@ impl AnalyseScreen {
             }
         }
     }
+}
 
-    /// The tablebase verdict and the state of both lookups, shown above the moves.
-    pub(super) fn render_online_status(&self) -> Option<Div> {
+impl AnalyseScreen {
+    /// The Engines panel's footer while Online is on: chessdb.cn's best move and
+    /// score, the tablebase's verdict (or how many pieces it needs), and a button to
+    /// list every cloud move.
+    pub(super) fn render_online_footer(&self, cx: &mut Context<Self>) -> Option<Div> {
         if !self.online.open {
             return None;
         }
+        let this = cx.entity();
         let white = self.analysed_pos().turn().is_white();
-        let tablebase = match &self.online.tablebase {
-            Lookup::Ready(Some(probe)) => {
-                let side = |win: bool| {
-                    if win == white {
-                        ui::i18n::t("White")
-                    } else {
-                        ui::i18n::t("Black")
-                    }
-                };
-                let verdict = match probe.outcome() {
-                    Outcome::Win => format!("{} wins", side(true)),
-                    Outcome::CursedWin => {
-                        format!("Draw by the 50-move rule ({} would win)", side(true))
-                    }
-                    Outcome::BlessedLoss => {
-                        format!("Draw by the 50-move rule ({} would win)", side(false))
-                    }
-                    Outcome::Loss => format!("{} wins", side(false)),
-                    _ => match &probe.draw_reason {
-                        Some(reason) => format!("Draw ({})", reason.replace('_', " ")),
-                        None => ui::i18n::t("Draw").into(),
-                    },
-                };
-                let decided = probe.wdl != 0;
-                h_flex()
-                    .gap(px(6.))
-                    .child(
-                        div()
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(rgb(outcome_color(probe.outcome())))
-                            .child(verdict),
-                    )
-                    .children(
-                        probe
-                            .dtz
-                            .filter(|_| decided)
-                            .map(|dtz| stat("DTZ", dtz.abs().to_string())),
-                    )
-                    .children(
-                        probe
-                            .dtm
-                            .filter(|_| decided)
-                            .map(|dtm| stat("DTM", dtm.abs().to_string())),
-                    )
-            }
-            Lookup::Ready(None) => h_flex().child(note("Not in the tablebase")),
+        let pieces = self.analysed_pos().board().occupied().count();
+        let cloud = match &self.online.cloud {
+            Lookup::Ready(CloudReply::Moves(moves)) => match moves.first() {
+                Some(best) => {
+                    let (score, colour) = cloud_cell(best, white);
+                    h_flex()
+                        .gap(px(6.))
+                        .child(mono(score).text_color(rgb(colour)))
+                        .child(mono(best.san.clone()).text_color(rgb(T.fg_2)))
+                }
+                None => h_flex().child(note("No moves")),
+            },
+            Lookup::Ready(CloudReply::Unknown) => h_flex().child(note("Not analysed yet")),
+            Lookup::Ready(CloudReply::Over(reason)) => h_flex().child(note(reason.clone())),
             other => h_flex().child(status(other)),
         };
-        let cloud = match &self.online.cloud {
-            Lookup::Ready(CloudReply::Moves(moves)) if moves.is_empty() => note("No moves"),
-            Lookup::Ready(CloudReply::Moves(moves)) => note(format!(
-                "{} move{}",
-                moves.len(),
-                if moves.len() == 1 { "" } else { "s" }
-            )),
-            Lookup::Ready(CloudReply::Unknown) => note("Not analysed yet"),
-            Lookup::Ready(CloudReply::Over(reason)) => note(reason.clone()),
+        let tablebase = match &self.online.tablebase {
+            Lookup::Ready(Some(probe)) => {
+                let (text, colour) = tb_verdict(probe, white);
+                div().text_color(rgb(colour)).child(text)
+            }
+            Lookup::Ready(None) => note("Not in the tablebase"),
+            Lookup::Skipped(_) => note(ui::i18n::t("{} pieces").replace("{}", &pieces.to_string())),
             other => status(other),
         };
-        Some(
+        let cloud_moves = match &self.online.cloud {
+            Lookup::Ready(CloudReply::Moves(moves)) => moves.clone(),
+            _ => Vec::new(),
+        };
+        let tb_tip = ui::i18n::t("The tablebase knows positions with up to {} pieces")
+            .replace("{}", &TABLEBASE_PIECES.to_string());
+        let mut footer = v_flex().border_t_as(T.border).child(
             h_flex()
                 .flex_wrap()
-                .gap_x(px(20.))
+                .gap_x(px(16.))
                 .gap_y(px(4.))
                 .px(px(16.))
                 .py(px(8.))
-                .border_t_as(T.border)
                 .text_size(px(12.))
-                .child(source("Tablebase", TABLEBASE_SOURCE).child(tablebase))
-                .child(source("Cloud", "chessdb.cn").child(cloud)),
-        )
+                .child(
+                    h_flex()
+                        .gap(px(6.))
+                        .child(ui::widgets::icon("icons/cloud.svg", px(14.), T.muted))
+                        .child(div().text_color(rgb(T.muted)).child("ChessDB"))
+                        .child(cloud),
+                )
+                .child(
+                    h_flex()
+                        .id("tablebase-status")
+                        .gap(px(6.))
+                        .tooltip(move |window, cx| {
+                            gpui_component::tooltip::Tooltip::new(tb_tip.clone()).build(window, cx)
+                        })
+                        .child(
+                            div()
+                                .text_color(rgb(T.muted))
+                                .child(ui::i18n::t("Tablebase")),
+                        )
+                        .child(tablebase),
+                )
+                .child(div().flex_1())
+                .when(!cloud_moves.is_empty(), |row| {
+                    row.child(
+                        btn("all-cloud-moves", "All cloud moves")
+                            .mini()
+                            .kind(ui::widgets::BtnKind::Ghost)
+                            .color(T.accent)
+                            .selected(self.online_all)
+                            .on_click(this.listen(move |screen, _, cx| {
+                                screen.online_all = !screen.online_all;
+                                cx.notify();
+                            })),
+                    )
+                }),
+        );
+        if self.online_all && !cloud_moves.is_empty() {
+            let mut list = h_flex().flex_wrap().gap(px(4.)).px(px(16.)).pb(px(10.));
+            for (index, cloud) in cloud_moves.into_iter().enumerate() {
+                let (score, _) = cloud_cell(&cloud, white);
+                let san = cloud.san.clone();
+                list = list.child(
+                    btn(("cloud-move", index), format!("{} {score}", cloud.san))
+                        .mini()
+                        .mono()
+                        .pad(6.)
+                        .tooltip("Play this move")
+                        .on_click(this.listen(move |screen, window, cx| {
+                            if let Some(&node) = screen.add_line(std::slice::from_ref(&san)).last()
+                            {
+                                screen.jump(node, window, cx);
+                            }
+                        })),
+                );
+            }
+            footer = footer.child(list);
+        }
+        Some(footer)
     }
 }
 
-/// The Tablebase column: the result the move leads to, with its distance.
-pub(super) fn tb_cell(tb: &TbRow) -> (String, u32) {
-    let result = if tb.is_mate {
-        "Mate".to_owned()
-    } else if let Some(reason) = &tb.draw_reason {
-        reason.replace('_', " ")
-    } else {
-        tb.outcome.label().to_owned()
+/// The tablebase's verdict on the position, from White's or Black's side, in its colour.
+fn tb_verdict(probe: &TbProbe, white: bool) -> (String, u32) {
+    let side = |win: bool| {
+        if win == white {
+            ui::i18n::t("White")
+        } else {
+            ui::i18n::t("Black")
+        }
     };
-    let distance = tb
+    let verdict = match probe.outcome() {
+        Outcome::Win => ui::i18n::t("{} wins").replace("{}", side(true)),
+        Outcome::Loss => ui::i18n::t("{} wins").replace("{}", side(false)),
+        Outcome::CursedWin | Outcome::BlessedLoss => {
+            ui::i18n::t("Draw by the 50-move rule").to_owned()
+        }
+        _ => match &probe.draw_reason {
+            Some(reason) => format!("{} ({})", ui::i18n::t("Draw"), reason.replace('_', " ")),
+            None => ui::i18n::t("Draw").to_owned(),
+        },
+    };
+    let distance = probe
         .dtm
-        .or(tb.dtz)
-        .filter(|_| !tb.is_mate && tb.outcome != Outcome::Draw);
-    let text = match distance {
-        Some(plies) => format!("{result} {}", plies.abs()),
-        None => result,
-    };
-    (text, outcome_color(tb.outcome))
+        .or(probe.dtz)
+        .filter(|_| probe.wdl != 0)
+        .map(|plies| format!(" ({})", plies.abs()))
+        .unwrap_or_default();
+    (
+        format!("{verdict}{distance}"),
+        outcome_color(probe.outcome()),
+    )
 }
 
 /// The Cloud column: chessdb.cn's score from White's side, brightest for its best moves.
@@ -294,19 +335,6 @@ pub(super) fn outcome_rank(outcome: Outcome) -> i32 {
         Outcome::Loss => 0,
         _ => -1,
     }
-}
-
-/// A lookup's name and service, then what it found.
-fn source(name: &'static str, service: &'static str) -> Div {
-    h_flex()
-        .gap(px(8.))
-        .child(
-            div()
-                .font_weight(FontWeight::SEMIBOLD)
-                .text_color(rgb(T.fg_2))
-                .child(name),
-        )
-        .child(div().text_as(11., T.faint).child(service))
 }
 
 fn note(text: impl Into<gpui::SharedString>) -> Div {

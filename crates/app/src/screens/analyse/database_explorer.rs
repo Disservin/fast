@@ -102,6 +102,17 @@ fn results_bar(stat: &MoveStat) -> gpui::AnyElement {
 }
 
 impl AnalyseScreen {
+    /// The Database panel: its header, then every recorded continuation.
+    pub(super) fn render_database_panel(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+        panel()
+            .rounded_none()
+            .flex_none()
+            .overflow_hidden()
+            .child(ui::widgets::panel_header("Database"))
+            .child(self.render_database_explorer(cx))
+            .into_any_element()
+    }
+
     /// Lists every recorded continuation, with the same database choice as the moves table.
     pub(super) fn render_database_explorer(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
         let total = total_stats(&self.reference);
@@ -158,7 +169,7 @@ impl AnalyseScreen {
                     .border_b_as(T.divider)
                     .hover(|row| row.bg(rgb(T.hover)))
                     .child(
-                        btn(("database-play", index), label)
+                        btn(("database-play", index), label.clone())
                             .mini()
                             .mono()
                             .w(56.)
@@ -184,12 +195,46 @@ impl AnalyseScreen {
                         .col_w(48.)
                         .whitespace_nowrap(),
                     )
-                    .child(
+                    .child({
+                        // The count opens the Database tab on the games after this move.
+                        let target = database.as_ref().zip(mv).map(|(entry, mv)| {
+                            let mut after = pos.clone();
+                            after.play_unchecked(mv);
+                            let numbered =
+                                chess_core::notation::numbered(self.analysed_ply() + 1, &label);
+                            (entry.path.clone(), position_hash(&after), numbered)
+                        });
+                        let workspace = self.workspace.clone();
                         mono(format_count(stat.games))
+                            .id(("database-count", index))
                             .text_size(px(12.))
                             .col_w(82.)
-                            .whitespace_nowrap(),
-                    )
+                            .whitespace_nowrap()
+                            .when_some(target, |cell, (path, hash, label)| {
+                                cell.cursor_pointer()
+                                    .hover(|style| style.text_color(rgb(T.accent)).underline())
+                                    .tooltip(|window, cx| {
+                                        gpui_component::tooltip::Tooltip::new(ui::i18n::t(
+                                            "Show these games in the Database tab",
+                                        ))
+                                        .build(window, cx)
+                                    })
+                                    .on_click(move |_, window, cx| {
+                                        let (path, label) = (path.clone(), label.clone());
+                                        if let Some(workspace) = workspace.upgrade() {
+                                            workspace.update(cx, |workspace, cx| {
+                                                workspace.show_position_in_database(
+                                                    path,
+                                                    hash,
+                                                    ui::i18n::tf("After {}", &[&label]),
+                                                    window,
+                                                    cx,
+                                                );
+                                            });
+                                        }
+                                    })
+                            })
+                    })
                     .child(results_bar(stat)),
             );
         }

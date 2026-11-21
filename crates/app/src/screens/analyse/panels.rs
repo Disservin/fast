@@ -16,10 +16,7 @@ use gpui_component::{
 };
 use ui::{
     Arrow, CoordinateStyle, MONO, T,
-    widgets::{
-        Listen, StyleExt, btn, check, h_flex, header_tab, icon_btn, mono, panel, section_label,
-        v_flex,
-    },
+    widgets::{Listen, StyleExt, btn, check, h_flex, mono, panel, section_label, v_flex},
 };
 
 use super::{AnalyseScreen, MoveRow, RowKey};
@@ -34,22 +31,10 @@ mod log;
 mod options;
 mod pv;
 
-/// The engine controls or local database results shown above the moves table.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum EngineTab {
-    /// The engines with their live figures, and replacing cached results.
-    Engines,
-    /// The chosen engine's lines, threads and hash, the search limit and the moves
-    /// searched.
-    Options,
-    /// Moves and game results from the selected local database.
-    Database,
-}
-
 /// How often an open Log panel checks its engine for new lines.
 pub(super) const LOG_POLL: std::time::Duration = std::time::Duration::from_millis(200);
 /// How far a search is toward the limit, from 0 to 1; an infinite search has no end.
-fn limit_progress(stats: &engine::AnalysisUpdate, limit: AnalysisLimit) -> Option<f32> {
+pub(super) fn limit_progress(stats: &engine::AnalysisUpdate, limit: AnalysisLimit) -> Option<f32> {
     let fraction = match limit {
         AnalysisLimit::Infinite => return None,
         AnalysisLimit::Depth(depth) => stats.depth as f64 / f64::from(depth.max(1)),
@@ -81,7 +66,7 @@ pub(super) fn replay(base: &Chess, sans: &[String]) -> (Chess, Vec<Move>) {
 
 impl AnalyseScreen {
     /// The engine the panels show: the chosen one if still configured, else the first.
-    fn panel_engine_config(&self, cx: &gpui::App) -> Option<EngineConfig> {
+    pub(super) fn panel_engine_config(&self, cx: &gpui::App) -> Option<EngineConfig> {
         let engines = &self.model.read(cx).config.engines;
         self.panel_engine
             .and_then(|id| engines.iter().find(|engine| engine.id == id))
@@ -94,236 +79,9 @@ impl AnalyseScreen {
         self.panel_engine_config(cx).map(|config| config.id)
     }
 
-    /// One engine: an on/off check, what its search is doing right now, and a thin bar
-    /// along the bottom for how far it is toward the search limit.
-    fn engine_row(
-        &self,
-        config: &EngineConfig,
-        chosen: bool,
-        limit: AnalysisLimit,
-        cx: &mut Context<Self>,
-    ) -> Div {
-        let this = cx.entity();
-        let id = config.id;
-        let live = self.live.read(cx);
-        let running = live.engines.iter().find(|engine| engine.config.id == id);
-        let stats = running.and_then(|engine| engine.stats());
-        let cached = running
-            .and_then(|engine| engine.lines.get(&1))
-            .is_some_and(|line| line.cached);
-        let stale = running
-            .and_then(|engine| engine.lines.get(&1))
-            .is_some_and(|line| line.stale);
-        let cell = |text: String, width: f32, title: &'static str| {
-            v_flex()
-                .col_w(width)
-                .gap(px(1.))
-                .child(div().text_as(11., T.muted).child(title))
-                .child(
-                    mono(text)
-                        .whitespace_nowrap()
-                        .text_as(14., T.fg)
-                        .font_weight(FontWeight::MEDIUM),
-                )
-        };
-        let dash = || "—".to_owned();
-        let depth = stats.map_or_else(dash, |stats| match stats.seldepth {
-            Some(sel) => format!("{}/{sel}", stats.depth),
-            None => stats.depth.to_string(),
-        });
-        let unsupported = self.tree.variant == chess_core::Variant::Chess960
-            && !config
-                .info
-                .options
-                .iter()
-                .any(|option| option.name == "UCI_Chess960");
-        let state = if unsupported {
-            Some("No Chess960 support")
-        } else if stale {
-            Some("stale")
-        } else if cached {
-            Some("cached")
-        } else {
-            None
-        };
-        let nodes = stats
-            .and_then(|stats| stats.nodes)
-            .map_or_else(dash, engine::format_nodes);
-        let speed = stats
-            .and_then(|stats| stats.nps)
-            .map_or_else(dash, engine::format_speed);
-        let time = stats
-            .and_then(|stats| stats.time_ms)
-            .map_or_else(dash, super::search_time);
-        let hash = stats
-            .and_then(|stats| stats.hashfull)
-            .map_or_else(dash, |full| format!("{:.0}%", f64::from(full) / 10.));
-        let tb = stats
-            .and_then(|stats| stats.tbhits)
-            .filter(|hits| *hits > 0)
-            .map(|hits| engine::format_nodes(hits).replace(" n", ""));
-        let progress = stats.and_then(|stats| limit_progress(stats, limit));
-        let name = if config.version.is_empty() || config.version.len() > 8 {
-            config.name.clone()
-        } else {
-            format!("{} {}", config.name, config.version)
-        };
-        let row = h_flex()
-            .h(px(52.))
-            .px(px(16.))
-            .gap(px(6.))
-            .child(
-                div().col_w(20.).child(
-                    check(
-                        SharedString::from(format!("engine-on-{id}")),
-                        config.use_analysis,
-                        "",
-                    )
-                    .on_change(this.listen_with(move |screen, on, _, cx| {
-                        screen.set_engine_analysis(id, on, cx)
-                    })),
-                ),
-            )
-            .child(crate::controls::engine_icon(config, 20.))
-            .child(
-                div()
-                    .id(SharedString::from(format!("engine-pick-{id}")))
-                    .flex_1()
-                    .min_w_0()
-                    .overflow_hidden()
-                    .whitespace_nowrap()
-                    .cursor_pointer()
-                    .font_weight(FontWeight::MEDIUM)
-                    .text_size(px(13.))
-                    .on_click(this.listen_event(move |screen, _, _, cx| {
-                        screen.panel_engine = Some(id);
-                        cx.notify();
-                    }))
-                    .child(name),
-            )
-            .children(state.map(|state| {
-                div()
-                    .flex_none()
-                    .text_size(px(11.))
-                    .text_color(rgb(if unsupported { T.warn } else { T.faint }))
-                    .child(ui::i18n::t(state).to_owned())
-            }))
-            .when(!unsupported, |row| {
-                row.child(cell(depth, 68., "DEPTH"))
-                    .child(cell(nodes, 78., "NODES"))
-                    .child(cell(speed, 90., "SPEED"))
-                    .child(cell(time, 64., "TIME"))
-                    .child(cell(hash, 50., "HASH"))
-                    .children(tb.map(|tb| cell(tb, 60., "TB")))
-            });
-        v_flex()
-            .when(chosen, |el| el.bg(rgb(T.selected)))
-            .child(row)
-            .child(
-                div().h(px(2.)).w_full().bg(rgb(T.divider)).children(
-                    progress.map(|fraction| {
-                        div().h_full().w(gpui::relative(fraction)).bg(rgb(T.accent))
-                    }),
-                ),
-            )
-    }
-
-    pub(super) fn render_engine_panel(&mut self, cx: &mut Context<Self>) -> AnyElement {
-        let this = cx.entity();
-        let engines = self.model.read(cx).config.engines.clone();
-        let limit = self.model.read(cx).config.analysis_limit;
-        let chosen = self.panel_engine_config(cx);
-        let tab = self.engine_tab;
-        let mut body = panel().rounded_none().flex_none().overflow_hidden().child(
-            h_flex()
-                .h(px(44.))
-                .px(px(16.))
-                .gap(px(6.))
-                .border_b_as(T.border)
-                .child({
-                    let mut tabs = h_flex().h_full().gap(px(16.));
-                    for (index, (value, label)) in [
-                        (EngineTab::Engines, "Engines"),
-                        (EngineTab::Options, "Search options"),
-                        (EngineTab::Database, "Database"),
-                    ]
-                    .into_iter()
-                    .enumerate()
-                    {
-                        tabs = tabs.child(header_tab(
-                            ("engine-tab", index),
-                            label,
-                            tab == value,
-                            this.listen(move |screen, _, cx| {
-                                screen.engine_tab = value;
-                                screen.explorer_menu = None;
-                                cx.notify();
-                            }),
-                        ));
-                    }
-                    tabs
-                })
-                .child(div().flex_1())
-                // Engine controls keep the search limit in reach.
-                .children(
-                    (!engines.is_empty() && tab != EngineTab::Database).then(|| {
-                        btn("infinite-search", "Infinite")
-                            .mini()
-                            .selected(limit == AnalysisLimit::Infinite)
-                            .tooltip(ui::i18n::t(
-                                "Search until stopped, instead of up to the search limit",
-                            ))
-                            .on_click(this.listen(move |screen, _, cx| {
-                                screen.live.update(cx, |live, cx| live.toggle_infinite(cx));
-                            }))
-                    }),
-                ),
-        );
-        if tab == EngineTab::Database {
-            return body
-                .child(self.render_database_explorer(cx))
-                .into_any_element();
-        }
-        if engines.is_empty() {
-            return body
-                .child(ui::widgets::note(
-                    "No engines yet. Add one in Settings › Engines.",
-                ))
-                .into_any_element();
-        }
-        if tab == EngineTab::Engines {
-            for config in &engines {
-                let is_chosen = chosen.as_ref().is_some_and(|chosen| chosen.id == config.id);
-                body = body.child(self.engine_row(config, is_chosen, limit, cx));
-            }
-            return self.render_engines_tab(body, chosen, cx).into_any_element();
-        }
-        // Options apply to the engine chosen on the Engines tab, so its name leads the row.
-        if let Some(config) = &chosen {
-            body = body.child(self.render_engine_options_row(config, cx));
-        }
-        body = body.child(
-            h_flex()
-                .flex_wrap()
-                .gap(px(10.))
-                .px(px(16.))
-                .py(px(10.))
-                .border_t_as(T.divider)
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w(px(90.))
-                        .text_as(13., T.fg_2)
-                        .child(ui::i18n::t("Search limit")),
-                )
-                .child(self.limit_controls.clone()),
-        );
-        body.child(self.render_search_moves(cx)).into_any_element()
-    }
-
     /// Search moves: how many of the legal moves the engine searches, and when opened,
     /// a button per move to restrict the root search to.
-    fn render_search_moves(&self, cx: &mut Context<Self>) -> gpui::Div {
+    pub(super) fn render_search_moves(&self, cx: &mut Context<Self>) -> gpui::Div {
         let this = cx.entity();
         // Restricting the root search is rare, so the move list stays folded until asked for.
         let pos = self.analysed_pos();
@@ -423,7 +181,7 @@ impl AnalyseScreen {
 
     /// The chosen engine's name with its lines, threads and hash, Restart engine and
     /// All options.
-    fn render_engine_options_row(
+    pub(super) fn render_engine_options_row(
         &self,
         config: &EngineConfig,
         cx: &mut Context<Self>,
@@ -475,48 +233,5 @@ impl AnalyseScreen {
                         }
                     }),
             )
-    }
-
-    /// The Engine panel's first tab under its engine rows: replacing a cached result
-    /// with a fresh search, when the chosen engine's lines came from the cache.
-    fn render_engines_tab(
-        &mut self,
-        body: Div,
-        chosen: Option<EngineConfig>,
-        cx: &mut Context<Self>,
-    ) -> Div {
-        let this = cx.entity();
-        let Some(config) = chosen else {
-            return body;
-        };
-        let id = config.id;
-        let has_cached = self
-            .live
-            .read(cx)
-            .engines
-            .iter()
-            .find(|engine| engine.config.id == id)
-            .is_some_and(|engine| engine.lines.values().any(|line| line.cached));
-        body.when(has_cached, |body| {
-            body.child(
-                h_flex()
-                    .justify_end()
-                    .px(px(16.))
-                    .py(px(10.))
-                    .border_t_as(T.divider)
-                    .child(
-                        btn("replace-cached-analysis", "Replace cached analysis")
-                            .compact()
-                            .tooltip(ui::i18n::t(
-                                "Discard this saved result and run a fresh search",
-                            ))
-                            .on_click(this.listen(move |screen, _, cx| {
-                                screen
-                                    .live
-                                    .update(cx, |live, cx| live.replace_cached(id, cx));
-                            })),
-                    ),
-            )
-        })
     }
 }

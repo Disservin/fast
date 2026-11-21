@@ -110,109 +110,6 @@ impl AnalyseScreen {
         })
     }
 
-    /// The Moves header's controls: the view settings on the left, and the pause
-    /// button and panel toggles on the right.
-    pub(crate) fn render_table_tools(&self, cx: &mut Context<Self>) -> (AnyElement, AnyElement) {
-        let this = cx.entity();
-        let live = self.live.read(cx);
-        let (on, paused) = (live.on, live.paused);
-        let view = self.model.read(cx).config.view.clone();
-        let small = |id: &'static str, label: &'static str| btn(id, label).compact();
-        let view_tools = h_flex()
-            .flex_wrap()
-            .gap(px(4.))
-            .mr(px(6.))
-            .child(
-                small("all-moves", ui::i18n::t("All moves"))
-                    .selected(view.all_moves)
-                    .tooltip(ui::i18n::t("List every legal move, analysed or not"))
-                    .on_click(this.listen(move |screen, _, cx| {
-                        screen.set_view(cx, |view| view.all_moves = !view.all_moves);
-                    })),
-            )
-            .child(
-                small("quality-arrows", "Arrows")
-                    .selected(view.quality_arrows)
-                    .tooltip(ui::i18n::t(
-                        "An arrow per engine line, coloured from best (blue) to blunder (red)",
-                    ))
-                    .on_click(this.listen(move |screen, _, cx| {
-                        screen.set_view(cx, |view| view.quality_arrows = !view.quality_arrows);
-                    })),
-            )
-            .child(
-                small("my-moves", "My moves")
-                    .selected(view.my_moves)
-                    .tooltip(ui::i18n::t(
-                        "Show what you played and your repertoire for each move",
-                    ))
-                    .on_click(this.listen(move |screen, _, cx| {
-                        screen.set_view(cx, |view| view.my_moves = !view.my_moves);
-                    })),
-            );
-        let pause_this = this.clone();
-        let settings = h_flex()
-            .flex_wrap()
-            .gap(px(8.))
-            .child(view_tools)
-            .into_any_element();
-        let toggles = h_flex()
-            .flex_wrap()
-            .gap(px(6.))
-            .child(
-                icon_btn(
-                    "engine-pause",
-                    if on && !paused {
-                        "icons/pause.svg"
-                    } else {
-                        "icons/play.svg"
-                    },
-                )
-                .w(28.)
-                .compact()
-                .selected(on && paused)
-                .tooltip(if !on {
-                    "Start analysis"
-                } else if paused {
-                    "Resume search (P)"
-                } else {
-                    "Pause search and keep the current lines (P)"
-                })
-                .on_click(move |_, cx| {
-                    // With the engines off, the same button starts them again.
-                    pause_this.update(cx, |screen, cx| {
-                        if on {
-                            screen.toggle_pause(cx);
-                        } else {
-                            screen.toggle_engine(cx);
-                        }
-                    });
-                }),
-            )
-            .child(
-                btn("log-panel", "Log")
-                    .compact()
-                    .selected(self.log_panel_open)
-                    .tooltip(ui::i18n::t("Show or hide engine output"))
-                    .on_click(this.listen(move |screen, _, cx| {
-                        screen.log_panel_open = !screen.log_panel_open;
-                        cx.notify();
-                    })),
-            )
-            .child(
-                btn("online-panel", "Online")
-                    .compact()
-                    .selected(self.online.open)
-                    .tooltip(
-                        "Add the ChessTB Explorer tablebase and chessdb.cn to Moves from here. \
-                         Sends each position you visit while on.",
-                    )
-                    .on_click(this.listen(move |screen, _, cx| screen.toggle_online(cx))),
-            )
-            .into_any_element();
-        (toggles, settings)
-    }
-
     /// The selected engine's configured number of candidate lines.
     pub(crate) fn shown_lines(&self, cx: &gpui::App) -> Option<i64> {
         let config = self.panel_engine_config(cx)?;
@@ -262,7 +159,7 @@ impl AnalyseScreen {
     }
 
     /// Turns an engine on or off for live analysis.
-    pub(super) fn set_engine_analysis(&mut self, id: EngineId, on: bool, cx: &mut Context<Self>) {
+    pub(crate) fn set_engine_analysis(&mut self, id: EngineId, on: bool, cx: &mut Context<Self>) {
         self.model.update(cx, |model, cx| {
             model.set_engine_use(id, |config| config.use_analysis = on, cx);
         });

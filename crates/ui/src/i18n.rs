@@ -1006,6 +1006,37 @@ pub fn translate(language: Language, text: &str) -> &str {
                 "Suche pausieren und aktuelle Varianten behalten (P)"
             }
             "Start analysis" => "Analyse starten",
+            "Cloud evaluations from chessdb.cn and the ChessTB tablebase. Sends each position you visit while on." => {
+                "Cloud-Bewertungen von chessdb.cn und der ChessTB-Endspieldatenbank. Sendet jede besuchte Stellung, solange eingeschaltet."
+            }
+            "What the engines send and receive" => "Was die Engines senden und empfangen",
+            "Lines, search limit, threads and hash" => "Varianten, Suchgrenze, Threads und Hash",
+            "Pause all engines" => "Alle Engines anhalten",
+            "Start all engines" => "Alle Engines starten",
+            "WDL" => "WDL",
+            "off" => "aus",
+            "stale" => "veraltet",
+            "cached" => "zwischengespeichert",
+            "Lines, threads and hash for this engine" => {
+                "Varianten, Threads und Hash dieser Engine"
+            }
+            "Stopped" => "Gestoppt",
+            "White wins" => "Weiß gewinnt",
+            "Black wins" => "Schwarz gewinnt",
+            "draw" => "Remis",
+            "Add this line to the game" => "Diese Variante zur Partie hinzufügen",
+            "Line added to the game" => "Variante zur Partie hinzugefügt",
+            "An arrow per engine line, coloured from best to blunder, instead of one per engine in its own colour" => {
+                "Ein Pfeil pro Engine-Variante, vom besten Zug bis zum groben Fehler gefärbt, statt einem pro Engine in ihrer Farbe"
+            }
+            "{} pieces" => "{} Steine",
+            "The tablebase knows positions with up to {} pieces" => {
+                "Die Endspieldatenbank kennt Stellungen mit bis zu {} Steinen"
+            }
+            "All cloud moves" => "Alle Cloud-Züge",
+            "Play this move" => "Diesen Zug spielen",
+            "{} wins" => "{} gewinnt",
+            "Draw by the 50-move rule" => "Remis durch die 50-Züge-Regel",
             "depth {} per move" => "Tiefe {} pro Zug",
             "Accuracy" => "Genauigkeit",
             "Re-analyse game" => "Partie neu analysieren",

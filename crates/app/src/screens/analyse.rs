@@ -73,13 +73,14 @@ struct BackwardRun {
 use self::moves_table::reference_column_title;
 pub(crate) use self::moves_table::search_time;
 pub(crate) use self::rows::rows_for;
-pub use self::rows::{MoveRow, RepTag, RowKey, RowOptions, merge_rows, quality_color};
+pub use self::rows::{MoveRow, RowKey, RowOptions, merge_rows, quality_color};
 
 mod backward;
 mod board_column;
 mod board_header;
 mod database_explorer;
 mod editor;
+mod engines_panel;
 mod files;
 mod game_card;
 mod line_preview;
@@ -191,12 +192,14 @@ pub struct AnalyseScreen {
     show_wdl: bool,
     /// Whether the Engine panel lists every legal move to restrict the search to.
     search_moves_open: bool,
-    /// Which tab of settings the Engine panel shows under its engines.
-    engine_tab: panels::EngineTab,
     spin_edit: Option<(EngineId, &'static str, Entity<InputState>, Subscription)>,
     log_panel_open: bool,
     /// The Online panel and its tablebase and cloud lookups.
     online: online::OnlineState,
+    /// The Engines panel lists every cloud move under its footer.
+    online_all: bool,
+    /// The Engines panel shows the search settings of the chosen engine.
+    engine_settings_open: bool,
     /// The engine the Engine and Log panels are showing.
     panel_engine: Option<EngineId>,
     log_show_info: bool,
@@ -404,10 +407,11 @@ impl AnalyseScreen {
             visible: false,
             show_wdl: true,
             search_moves_open: false,
-            engine_tab: panels::EngineTab::Engines,
             spin_edit: None,
             log_panel_open: false,
             online: online::OnlineState::default(),
+            online_all: false,
+            engine_settings_open: false,
             panel_engine: None,
             log_show_info: true,
             log_follow: true,
@@ -850,9 +854,9 @@ impl Render for AnalyseScreen {
                 .into_any_element()
         };
         let board_column = self.render_board_column(board_size, cx);
-        let table = self.render_moves_table(cx);
         let editor = self.editor.is_some().then(|| self.render_editor(cx));
-        let engine_panel = self.render_engine_panel(cx);
+        let engine_panel = self.render_engines(cx);
+        let table = self.render_database_panel(cx);
         let log_panel = self.log_panel_open.then(|| self.render_log_panel(cx));
         self.sync_online(cx);
         let note = self.note.clone();

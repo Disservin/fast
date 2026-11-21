@@ -211,16 +211,17 @@ cap, and count a mate no longer than N.
 
 ## Kibitz engine
 
-The moves table groups candidates under engine headings, primary engine first, preserving
-score order within each group and placing database-only moves last. Each candidate row puts
-evaluation and database figures before a truncated inline PV, with the first move
-emphasised. Collapsed PV moves share the expanded line’s hover board; the hovered line is
-held separately from the selected candidate so other engines can be previewed without
-changing selection. Expand selects the row and opens its full interactive PV and actions;
-Collapse hides them again. Selecting a row emphasises its board arrow. Evaluation, WDL and
-database figures stay in the rows; depth stays in the Engine panel. Line actions sit below
-the PV. Search options reads and changes MultiPV only for the engine selected in the Engine
-panel, including Lines shortcuts, Reset and Max.
+The Engines panel (`screens/analyse/engines_panel.rs`) lists every configured engine as one
+row (on/off, colour, name, depth, speed and time, with nodes and hash in its tooltip) and the
+engine's lines under it, in score order. Each line puts the evaluation, WDL and chessdb.cn's
+score for its first move around a truncated inline PV with the first move emphasised.
+Collapsed PV moves share the expanded line's hover board; the hovered line is held separately
+from the selected candidate so other engines can be previewed without changing selection.
+Expand selects the row and opens its full interactive PV and actions; Collapse hides them
+again. Selecting a row emphasises its board arrow. The settings button in the header (or an
+engine's own) opens that engine's Lines, Threads and Hash, the search limit with Infinite,
+Search moves and Quality arrows. With Quality arrows off, each engine's best move is drawn in
+the engine's colour (`board_header::engine_colour`) and the legend under the board names it.
 
 With Settings › Analysis › Kibitz engine on, clicking a move in the selected candidate’s
 inline PV no longer moves
@@ -287,8 +288,9 @@ management dialog, preserving removed files in the recoverable `removed` folder.
 ## Online lookups
 
 `online.rs` queries the ChessTB Explorer tablebase (`POST /probe`, up to 8 pieces) and
-chessdb.cn (`queryall`) with blocking `ureq` calls on background tasks. Analyse's Online panel
-is the only caller and sends nothing while closed. Lookups wait 300 ms so quick navigation only
+chessdb.cn (`queryall`) with blocking `ureq` calls on background tasks. Analyse's Online toggle
+in the Engines panel is the only caller and sends nothing while off; the results show in the
+lines' Cloud column and the panel's footer. Lookups wait 300 ms so quick navigation only
 queries where it stops, results are cached per FEN for the session, and clicking a move plays it.
 
 `game_download.rs` downloads a player's games, only after the user clicks Download games or
