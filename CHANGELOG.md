@@ -4,7 +4,7 @@ Settings › Changelog shows this file. Describe the finished changes since each
 
 ## 0.1.4
 
-- Analyse: the panels beside the board sit closer together and closer to the window edge.
+- Analyse: the panels beside the board sit closer together and closer to the window edge, and meet the board column with a single line.
 - Analyse: the Explorer sources sit in a tab group, with the chosen one raised on an inset track.
 - Analyse: backwards analysis for the game review runs one engine, chosen in Settings › Analysis, instead of all analysis engines at once.
 - Analyse: backwards analysis shows the depth its node limit reaches, and its results replace deeper evaluations left from earlier searches under another limit.

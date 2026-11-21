@@ -965,6 +965,9 @@ impl Render for AnalyseScreen {
                     .min_w_0()
                     .h_full()
                     .overflow_y_scroll()
+                    // The panels' left border lies over the board column's resize line,
+                    // so the seam shows one line instead of two.
+                    .ml(px(-1.))
                     .pr(px(8.))
                     .pb(px(8.))
                     .child(side)
