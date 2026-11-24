@@ -518,6 +518,7 @@ pub fn translate(language: Language, text: &str) -> &str {
             }
             "Download & install" => "Herunterladen und installieren",
             "Add from file" => "Aus Datei hinzufügen",
+            "Add engine" => "Engine hinzufügen",
             "Source" => "Quelle",
             "None yet" => "Noch keine",
             "Use" => "Verwenden",
@@ -652,6 +653,9 @@ pub fn translate(language: Language, text: &str) -> &str {
             }
             "No engines yet. Add one in Settings › Engines." => {
                 "Noch keine Engines. Fügen Sie unter Einstellungen › Engines eine hinzu."
+            }
+            "No engines yet. Use + to add a UCI engine executable." => {
+                "Noch keine Engines. Fügen Sie über + eine UCI-Engine hinzu."
             }
             "Nothing logged yet. Start the engine to see its UCI traffic." => {
                 "Noch kein Protokoll. Starten Sie die Engine, um ihre UCI-Kommunikation zu sehen."

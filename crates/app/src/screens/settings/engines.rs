@@ -127,7 +127,8 @@ impl SettingsScreen {
             .update(cx, |model, cx| model.set_engine_use(id, change, cx));
     }
 
-    pub(super) fn add_from_file(&mut self, cx: &mut Context<Self>) {
+    /// Opens the file picker and registers the chosen UCI engine.
+    pub(crate) fn add_from_file(&mut self, cx: &mut Context<Self>) {
         let this = cx.entity().downgrade();
         pick_path(
             self.model.clone(),
