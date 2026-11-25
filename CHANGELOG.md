@@ -4,6 +4,7 @@ Settings › Changelog shows this file. Describe the finished changes since each
 
 ## 0.1.4
 
+- Demo: new Analyse tabs, including the one opened after closing the last tab, start on an empty board instead of repeating the sample game.
 - Analyse: add a local engine from the Engines panel with the same file picker as Settings.
 - Analyse: the scoresheet and board dividers highlight when you hover over them to resize.
 - Analyse: clicking a move in an expanded engine line keeps that line open under its row while the board previews it, and hovering moves during a preview shows the peek board again.

@@ -282,15 +282,30 @@ impl AnalyseScreen {
         cx: &mut Context<Self>,
     ) -> Self {
         let path = model.read(cx).paths.data_dir.join("game-recovery.json");
-        Self::new_with_recovery(model, workspace, window, cx, path)
+        let demo = model.read(cx).demo;
+        Self::build(model, workspace, window, cx, path, demo)
     }
 
+    /// Opens an Analyse tab on an empty board, or on the game kept in `recovery_path`.
     pub fn new_with_recovery(
         model: Entity<AppModel>,
         workspace: WeakEntity<Workspace>,
         window: &mut Window,
         cx: &mut Context<Self>,
         recovery_path: std::path::PathBuf,
+    ) -> Self {
+        Self::build(model, workspace, window, cx, recovery_path, false)
+    }
+
+    /// Builds the screen. Only the first tab of a demo profile opens on the sample game,
+    /// so new tabs there start on an empty board as they do elsewhere.
+    fn build(
+        model: Entity<AppModel>,
+        workspace: WeakEntity<Workspace>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        recovery_path: std::path::PathBuf,
+        demo: bool,
     ) -> Self {
         let board = cx.new(|_| BoardView::new("analyse-board"));
         let live = cx.new(|cx| LiveAnalysis::new(model.clone(), cx));
@@ -375,7 +390,6 @@ impl AnalyseScreen {
                 ModelEvent::Engines | ModelEvent::Restored => {}
             }),
         ];
-        let demo = model.read(cx).demo;
         let tree = if demo {
             chess_core::sample::najdorf()
         } else {
