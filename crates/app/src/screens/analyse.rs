@@ -53,9 +53,25 @@ impl Render for ResizeAnalysisPanel {
     }
 }
 
+/// Highlights a panel edge while the pointer is over its resize handle or is dragging it.
 fn panel_resize_handle(id: &'static str, panel: AnalysisPanel) -> impl IntoElement {
     gpui_component::resizable::resize_handle(id, gpui::Axis::Horizontal)
         .inside(gpui_component::resizable::HandleEdge::Trailing)
+        .with_appearance(Rc::new(|handle, _, _| {
+            let highlighted = handle.state() != Default::default();
+            Some(
+                div()
+                    .flex_none()
+                    .h_full()
+                    .w(px(1.))
+                    .bg(rgb(T.border_strong))
+                    // Widen into the resizable panel so the neighbouring panel cannot cover it.
+                    .when(highlighted, |line| {
+                        line.w(px(2.)).ml(px(-1.)).bg(rgb(T.accent))
+                    })
+                    .into_any_element(),
+            )
+        }))
         .on_drag(ResizeAnalysisPanel(panel), |drag, _, _, cx| {
             cx.new(|_| drag.clone())
         })
