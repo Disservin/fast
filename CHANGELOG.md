@@ -5,6 +5,7 @@ Settings › Changelog shows this file. Describe the finished changes since each
 ## 0.1.4
 
 - Analyse: add a local engine from the Engines panel with the same file picker as Settings.
+- Analyse: the scoresheet and board dividers highlight when you hover over them to resize.
 - Analyse: clicking a move in an expanded engine line keeps that line open under its row while the board previews it, and hovering moves during a preview shows the peek board again.
 - Analyse: each engine row shows its node count and hash usage again, next to depth, speed and time.
 - Analyse: the Log panel has an engine menu in its header, so you can read any engine's log, not only the one the panels show.
