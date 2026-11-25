@@ -222,6 +222,7 @@ again. Selecting a row emphasises its board arrow. The settings button in the he
 engine's own) opens that engine's Lines, Threads and Hash, the search limit with Infinite,
 Search moves and Quality arrows. With Quality arrows off, each engine's best move is drawn in
 the engine's colour (`board_header::engine_colour`) and the legend under the board names it.
+The header's Add engine button uses Settings › Engines' file picker and registration flow.
 
 With Settings › Analysis › Kibitz engine on, clicking a move in the selected candidate’s
 inline PV no longer moves

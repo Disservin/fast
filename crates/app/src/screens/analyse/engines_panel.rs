@@ -17,8 +17,7 @@ const COL_ADD: f32 = 24.;
 const LINE_H: f32 = 32.;
 
 impl AnalyseScreen {
-    /// The Engines panel: header with Online, Log, settings and pause; the search
-    /// settings when open; then each engine with its lines; then the online footer.
+    /// Shows the engine controls, search settings, engine lines and online results.
     pub(super) fn render_engines(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let engines = self.model.read(cx).config.engines.clone();
         let mut body = panel()
@@ -29,7 +28,7 @@ impl AnalyseScreen {
         if engines.is_empty() {
             return body
                 .child(ui::widgets::note(
-                    "No engines yet. Add one in Settings › Engines.",
+                    "No engines yet. Use + to add a UCI engine executable.",
                 ))
                 .into_any_element();
         }
@@ -84,9 +83,10 @@ impl AnalyseScreen {
             .filter(|row| row.engine_id.is_some() && !row.pv.is_empty())
     }
 
-    /// The panel header: its title, then Online, Log, search settings and pause.
+    /// Shows the controls for adding engines and managing analysis.
     fn render_engines_header(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let this = cx.entity();
+        let workspace = self.workspace.clone();
         let live = self.live.read(cx);
         let (on, paused) = (live.on, live.paused);
         let running = on && !paused;
@@ -97,6 +97,19 @@ impl AnalyseScreen {
             .border_b_as(T.border)
             .child(section_label("Engines"))
             .child(div().flex_1())
+            .child(
+                icon_btn("analyse-add-engine", "icons/plus.svg")
+                    .mini()
+                    .w(24.)
+                    .pad(0.)
+                    .tooltip("Add engine")
+                    .on_click(move |_, cx| {
+                        if let Some(workspace) = workspace.upgrade() {
+                            let settings = workspace.read(cx).settings.clone();
+                            settings.update(cx, |settings, cx| settings.add_from_file(cx));
+                        }
+                    }),
+            )
             .child(
                 btn("online-toggle", "Online")
                     .mini()
